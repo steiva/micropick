@@ -1,0 +1,3 @@
+[submodule "src/opentrons_api"]
+	path = src/opentrons_api
+	url = https://github.com/steiva/opentrons-ot2-http-python-wrapper.git
