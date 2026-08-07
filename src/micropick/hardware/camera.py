@@ -504,15 +504,26 @@ class CameraManager:
             ) from None
 
     def open(self, label: str, *, resolution: tuple[int, int] | None = None,
-             controls: dict | None = None, reuse: bool = True,
-             verbose: bool = True) -> BackgroundCamera:
-        if reuse and label in self._open and self._open[label].is_alive():
-            return self._open[label]
-
+                controls: dict | None = None, reuse: bool = True,
+                verbose: bool = True) -> BackgroundCamera:
         spec = self.spec(label)
-        device = devices.find_device(spec["device_name"])
-
         wanted = tuple(resolution) if resolution else tuple(spec["default_resolution"])
+
+        existing = self._open.get(label)
+        if existing is not None and existing.is_alive():
+            if not reuse:
+                self.close(label)
+            elif existing.resolution == wanted:
+                return existing
+            else:
+                # Reopening rather than returning the old one: silently handing
+                # back a camera at the wrong resolution would misplace every
+                # coordinate derived from it, with nothing to show for it.
+                if verbose:
+                    print(f"{label}: reopening {existing.resolution} -> {wanted}")
+                self.close(label)
+
+        device = devices.find_device(spec["device_name"])
         allowed = [tuple(r) for r in spec.get("resolutions", [])]
         if allowed and wanted not in allowed:
             raise CameraError(

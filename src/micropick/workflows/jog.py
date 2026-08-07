@@ -304,12 +304,12 @@ def jog_in_window(controller: JogController, camera=None, *,
             y += int(45 * scale)
             if message and time.monotonic() < msg_until:
                 cv2.putText(frame, message, (20, y), cv2.FONT_HERSHEY_SIMPLEX,
-                            scale, (0, 200, 255), 2)
+                            scale, (0, 255, 0), 2)
             y += int(45 * scale)
             if show_help:
                 for line in _WINDOW_HELP:
                     cv2.putText(frame, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX,
-                                scale * 0.62, (200, 200, 200), 1)
+                                scale * 0.62, (0, 200, 0), 1)
                     y += int(30 * scale)
 
             cv2.imshow(window, frame)

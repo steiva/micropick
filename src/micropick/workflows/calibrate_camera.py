@@ -24,7 +24,7 @@ import cv2
 import numpy as np
 
 from ..core.calibration.pixel_map import FitReport, PixelMap, fit_pixel_map
-from ..hardware.protocols import Camera, Robot, xyz
+from ..hardware.protocols import Camera, Robot, goto_xy, xyz
 
 __all__ = ["MarkerTracker", "ScaleProbe", "SweepPlan", "SweepData",
            "measure_scale", "plan_sweep", "run_sweep", "calibrate_camera",
@@ -65,6 +65,7 @@ class MarkerTracker:
         self.min_hits = min_hits
         self.last_frame: np.ndarray | None = None
         self.last_jitter = 0.0
+        self.last_wait = 0.0
 
     def _corners_in(self, frame) -> np.ndarray | None:
         corners, ids, _ = self.detector.detectMarkers(frame)
@@ -80,34 +81,52 @@ class MarkerTracker:
             return None
         return corners[hit[0]].reshape(4, 2).astype(float)
 
-    def measure(self, camera: Camera, after: float | None = None) -> np.ndarray | None:
-        """Average several detections. Returns (4, 2) corners or None.
+    def measure(self, camera: Camera, after: float | None = None, *,
+                timeout: float = 4.0) -> np.ndarray | None:
+        """Wait until the marker stops moving, then return its corners.
 
-        Averaging beats down detection noise; the spread across frames is also
-        the cheapest available check that the scene was actually still, so a
-        pose caught mid-vibration is discarded rather than fitted.
+        Frames are taken until several consecutive readings agree to within
+        max_jitter_px, rather than grabbing a fixed number after a guessed
+        pause. A gantry settles in a time that depends on the move, the load
+        and the day; measuring that directly is both faster on short moves and
+        reliable on long ones, and it removes the tuning parameter that decided
+        whether the whole sweep succeeded or failed.
+
+        Returns None if the marker never appears, or never holds still.
         """
-        hits = []
-        for i in range(self.frames):
-            if after is not None:
-                frame = camera.read_after(after if i == 0 else time.monotonic())
-            else:
-                ok, frame = camera.read()
-                if not ok:
-                    continue
-            self.last_frame = frame
-            c = self._corners_in(frame)
-            if c is not None:
-                hits.append(c)
+        deadline = time.monotonic() + timeout
+        window: list[np.ndarray] = []
+        seen = False
+        t = after if after is not None else time.monotonic()
 
-        if len(hits) < self.min_hits:
-            self.last_jitter = float("inf")
-            return None
-        stack = np.array(hits)
-        self.last_jitter = float(np.linalg.norm(stack.std(axis=0), axis=1).max())
-        if self.last_jitter > self.max_jitter_px:
-            return None
-        return stack.mean(axis=0)
+        while time.monotonic() < deadline:
+            try:
+                frame = camera.read_after(t, timeout=max(0.2, deadline - time.monotonic()))
+            except TimeoutError:
+                break
+            t = time.monotonic()
+            self.last_frame = frame
+
+            corners = self._corners_in(frame)
+            if corners is None:
+                window.clear()          # a gap means the run of stillness broke
+                continue
+            seen = True
+            window.append(corners)
+            if len(window) < self.frames:
+                continue
+
+            stack = np.array(window[-self.frames:])
+            jitter = float(np.linalg.norm(stack.std(axis=0), axis=1).max())
+            self.last_jitter = jitter
+            if jitter <= self.max_jitter_px:
+                self.last_wait = timeout - (deadline - time.monotonic())
+                return stack.mean(axis=0)
+            window.pop(0)               # slide, keep waiting for a quiet run
+
+        self.last_jitter = self.last_jitter if seen else float("inf")
+        self.last_wait = timeout
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +172,7 @@ def measure_scale(robot: Robot, camera: Camera, tracker: MarkerTracker, *,
     lo, hi = target_fraction
 
     for attempt in range(1, max_attempts + 1):
-        robot.move_to_coordinates((origin[0] + step, origin[1], origin[2]),
-                                  min_z_height=1, verbose=False)
+        goto_xy(robot, origin[0] + step, origin[1])
         time.sleep(settle_s)
         t = time.monotonic()
         moved_to = xyz(robot)
@@ -174,7 +192,7 @@ def measure_scale(robot: Robot, camera: Camera, tracker: MarkerTracker, *,
 
         mm_per_px = moved / shift
         if lo * width <= shift <= hi * width:
-            robot.move_to_coordinates(origin, min_z_height=1, verbose=False)
+            goto_xy(robot, origin[0], origin[1])
             marker_px = float(max(
                 probe[:, 0].max() - probe[:, 0].min(),
                 probe[:, 1].max() - probe[:, 1].min()))
@@ -186,7 +204,7 @@ def measure_scale(robot: Robot, camera: Camera, tracker: MarkerTracker, *,
         step = float(np.clip(step * target / shift, 0.05, max_step_mm))
         log(f"  probe {attempt}: {shift:.0f} px, adjusting step to {step:.2f} mm")
 
-    robot.move_to_coordinates(origin, min_z_height=1, verbose=False)
+    goto_xy(robot, origin[0], origin[1])
     raise CalibrationError(
         "the scale probe did not converge; check that the marker stays visible"
     )
@@ -288,7 +306,7 @@ class SweepData:
 
 
 def run_sweep(robot: Robot, camera: Camera, tracker: MarkerTracker,
-              plan: SweepPlan, *, settle_s: float = 0.15,
+              plan: SweepPlan, *, settle_s: float = 0.0,
               backlash_mm: float = 1.0, marker_side_mm: float | None = None,
               on_progress=None, on_frame=None, cancel=None,
               log=print) -> SweepData:
@@ -299,21 +317,37 @@ def run_sweep(robot: Robot, camera: Camera, tracker: MarkerTracker,
     with the raster direction. And the pose is read back after the move rather
     than assumed, so the robot's own positioning error never enters the fit.
 
-    Frames come from read_after rather than a fixed sleep, so a pose costs
-    exactly one camera period plus the mechanical settle instead of a guessed
-    margin repeated at every point.
+    Settling is measured rather than waited out: the tracker keeps grabbing
+    until consecutive readings of the marker agree, so a pose costs exactly as
+    long as the gantry needs. settle_s adds a fixed pause before that starts and
+    is normally left at zero.
     """
+    # Z is recorded, never commanded: the camera is fixed in height and the
+    # sweep is pure XY travel.
     _, _, z = plan.origin
     track_px, gantry, skipped = [], [], []
+    previous = np.array(xyz(robot)[:2])
 
     for i, (tx, ty) in enumerate(plan.poses, 1):
         if cancel is not None and cancel.is_set():
             raise Cancelled(f"stopped after {len(gantry)} poses")
 
-        robot.move_to_coordinates((tx - backlash_mm, ty - backlash_mm, z),
-                                  min_z_height=1, verbose=False)
-        robot.move_to_coordinates((tx, ty, z), min_z_height=1, verbose=False)
-        time.sleep(settle_s)                 # mechanical, not frame freshness
+        target = np.array([tx, ty])
+        # Arrive travelling in the same direction on every pose, so lost motion
+        # is the same everywhere. An axis whose step is already positive needs
+        # nothing; only one moving the other way takes a detour below the
+        # target first. Doing it unconditionally meant a detour on both axes at
+        # every pose, which is most of the motion in a raster where one axis
+        # usually does not move at all, and it left the gantry ringing when the
+        # picture was taken.
+        step = target - previous
+        needs_detour = step < -1e-9
+        if backlash_mm and needs_detour.any():
+            goto_xy(robot, *(target - needs_detour * backlash_mm))
+        goto_xy(robot, tx, ty)
+        previous = target
+        if settle_s:
+            time.sleep(settle_s)
         t_settled = time.monotonic()
 
         corners = tracker.measure(camera, after=t_settled)
@@ -324,7 +358,7 @@ def run_sweep(robot: Robot, camera: Camera, tracker: MarkerTracker,
             on_progress(i, len(plan.poses))
 
         if corners is None:
-            reason = ("jitter %.2f px" % tracker.last_jitter
+            reason = ("never settled, jitter %.2f px" % tracker.last_jitter
                       if np.isfinite(tracker.last_jitter) else "not detected")
             skipped.append((i, reason))
             log(f"  [{i}/{len(plan.poses)}] skipped, {reason}")
@@ -354,7 +388,7 @@ def calibrate_camera(robot: Robot, camera: Camera, detector, *,
                      grid_n: int = 7, degree: int = 3,
                      target_id: int | None = None,
                      frames_per_pose: int = 5,
-                     settle_s: float = 0.15,
+                     settle_s: float = 0.0,
                      backlash_mm: float = 1.0,
                      margin_px: float = 20.0,
                      on_progress=None, on_frame=None, cancel=None,
@@ -384,7 +418,7 @@ def calibrate_camera(robot: Robot, camera: Camera, detector, *,
     log(f"  collected {len(sweep.gantry)}/{len(plan.poses)} poses, "
         f"tracking id {sweep.track_id}")
 
-    robot.move_to_coordinates(plan.origin, min_z_height=1, verbose=False)
+    goto_xy(robot, plan.origin[0], plan.origin[1])
 
     pmap, report = fit_pixel_map(
         sweep.track_px, sweep.gantry, sweep.image_size, degree=degree,

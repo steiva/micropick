@@ -40,7 +40,8 @@ import numpy as np
 
 from ..config.schema import PipetteOffset, TipTarget
 from ..core.calibration.pixel_map import PixelMap
-from ..hardware.protocols import Camera, Robot, xyz
+from ..hardware.protocols import (Camera, Robot, move_relative,
+                                  move_to, xyz)
 
 __all__ = ["Detection", "PatternView", "TipDetector", "OffsetResult",
            "calibrate_pipette_offset", "TipCalibrationError"]
@@ -325,9 +326,8 @@ def calibrate_pipette_offset(
 
     # --- drive the tip there, offset to one side so it does not hide it -----
     aim = target_xy + np.asarray(current_offset, dtype=float) + approach
-    robot.move_to_coordinates((aim[0], aim[1], target.module_height),
-                              min_z_height=target.module_height - 0.1,
-                              verbose=False)
+    move_to(robot, (aim[0], aim[1], target.module_height),
+            min_z_height=target.module_height - 0.1)
     time.sleep(settle_s)
 
     # --- lower camera: how far is the tip from the crosshair ---------------
@@ -346,8 +346,8 @@ def calibrate_pipette_offset(
             f"detection is wrong; nothing has been saved"
         )
 
-    robot.move_relative("x", float(correction[0]), verbose=False)
-    robot.move_relative("y", float(correction[1]), verbose=False)
+    move_relative(robot, "x", float(correction[0]))
+    move_relative(robot, "y", float(correction[1]))
     time.sleep(settle_s)
 
     # --- verify, then optionally let the operator finish by hand -----------
