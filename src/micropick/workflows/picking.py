@@ -52,6 +52,7 @@ import numpy as np
 import pandas as pd
 
 from ..core.vision import cuboids as vision
+from ..core.calibration.homography import Homography
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, xyz)
 
@@ -104,6 +105,7 @@ class PickingSession:
 
     def __init__(self, robot: Robot, camera: Camera, pixel_map, profile,
                  routine, detector, *, labware_id: str | None = None,
+                 under_cam: Camera | None = None, clip_dir=None,
                  on_frame=None, logger=None):
         self.robot = robot
         self.camera = camera
@@ -151,6 +153,41 @@ class PickingSession:
         self._deposit_volume = 0.0
         self._pending_transfer = False
         self._held = 0
+
+        # Lower-camera clip recording is fully optional. The recorder is created
+        # and attached only when both a lower camera and a destination folder are
+        # given; otherwise nothing is created and no frames are ever accumulated.
+        self._under_cam = under_cam
+        self._clip_dir = None
+        self._recorder = None
+        self._homography = None
+        if clip_dir is not None:
+            if under_cam is None:
+                raise PickingError("clip_dir was given but under_cam is None; "
+                                   "recording needs the lower camera")
+            self._clip_dir = self._prepare_clip_dir(clip_dir)
+            self._recorder = under_cam.record(max_frames=self.config.clip_max_frames)
+            hcfg = profile.calibration.homography
+            if hcfg is not None:
+                self._homography = Homography.from_config(hcfg)
+
+    @staticmethod
+    def _prepare_clip_dir(clip_dir):
+        import os
+        path = str(clip_dir)
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as exc:
+            raise PickingError(f"clip_dir {path!r} is not usable: {exc}") from exc
+        if not os.access(path, os.W_OK):
+            raise PickingError(f"clip_dir {path!r} is not writable")
+        return path
+
+    def close(self) -> None:
+        """Detach the recorder from the camera. Safe to call more than once."""
+        if self._recorder is not None and self._under_cam is not None:
+            self._under_cam.detach(self._recorder)
+            self._recorder = None
 
     # -- public -------------------------------------------------------------
 
@@ -337,9 +374,27 @@ class PickingSession:
             xy = np.asarray(self.pixel_map.to_robot(cX, cY, self._gantry))
             xy = xy + self._offset
             self._world.append((float(xy[0]), float(xy[1])))
+        self._begin_clip()
         self.state = RobotState.PICKUP_SAMPLE
         return self._event("approached", "computed pickup coordinates",
                            n=len(self._world))
+
+    def _begin_clip(self) -> None:
+        """Start a lower-camera clip for this batch, marking where the first
+        cuboid will be picked. The ROI box is drawn only if a homography is
+        present and valid at the current pose; without one the clip records
+        without a box, which is not an error."""
+        if self._recorder is None:
+            return
+        first = self._choice[["cX", "cY"]].values[0]
+        under_px = None
+        if self._homography is not None:
+            under_px = self._homography.over_to_under([first], self._gantry)
+        if under_px is not None:
+            self._recorder.mark_roi(under_px[0][0], under_px[0][1])
+        else:
+            self._recorder.clear_roi()
+        self._recorder.start()
 
     def _state_pickup_sample(self, pause, stop) -> PickEvent:
         ph = self.config.pickup_height
@@ -357,8 +412,23 @@ class PickingSession:
                 "aspirate")
             self._gate(pause, stop)
             move_relative(self.robot, "z", lift)
+        self._save_clip()
         self.state = RobotState.VERIFY_PICKUP
         return self._event("picked", "aspirated the batch", n=len(self._world))
+
+    def _save_clip(self) -> None:
+        """Stop the clip and write it, named for the current target. Encoding
+        runs off the picking loop so it does not stall the next pickup."""
+        if self._recorder is None or not self._recorder.recording:
+            return
+        self._recorder.stop()
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        target = str(self.routine.current).replace(" ", "")
+        path = f"{self._clip_dir}/{target}_{stamp}.mp4"
+        try:
+            self._recorder.save_async(path, color=True)
+        except Exception as exc:                       # a clip is never critical
+            self._log(f"clip not saved: {exc}")
 
     def _state_verify_pickup(self, pause, stop) -> PickEvent:
         self._gate(pause, stop)

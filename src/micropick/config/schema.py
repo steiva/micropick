@@ -304,6 +304,7 @@ class PickingConfig(BaseModel):
                                        # after each aspirate
     capture_settle_s: float = 0.3      # pause after parking before a frame
     verify_settle_s: float = 0.75      # pause after parking before the check frame
+    clip_max_frames: int = 600         # bound on a lower-camera pickup clip
     # what to do with a partial miss. keep_successful deposits the held cuboids
     # into the well and returns only the missed volume to the dish, so the
     # per-well concentration stays constant; return_all sends everything back.

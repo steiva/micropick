@@ -16,8 +16,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from micropick.config.schema import (Calibration, PickingConfig, PipetteOffset,
-                                      ProfileMeta)
+from micropick.config.schema import (Calibration, CameraHomography,
+                                      PickingConfig, PipetteOffset, ProfileMeta)
 from micropick.config.schema import PixelMap as PixelMapConfig
 from micropick.config.store import Profile
 from micropick.core.calibration.pixel_map import PixelMap
@@ -179,12 +179,14 @@ def make_profile(cfg: PickingConfig) -> Profile:
     )
 
 
-def make_session(dish: Dish, routine: Routine, cfg: PickingConfig | None = None):
+def make_session(dish: Dish, routine: Routine, cfg: PickingConfig | None = None,
+                 *, profile=None, **session_kw):
     cfg = cfg or relaxed_config()
     robot = SceneRobot(dish, noise_mm=0.0, speed_mm_s=400.0)
     camera = open_mock_camera(width=W, height=H, fps=120.0, render=dish.render)
     session = PickingSession(robot, camera, linear_pixel_map(),
-                             make_profile(cfg), routine, SceneYOLO(dish))
+                             profile or make_profile(cfg), routine,
+                             SceneYOLO(dish), **session_kw)
     return session, robot, camera
 
 
@@ -392,4 +394,99 @@ def test_verify_uses_full_detection_frame_not_pickable():
         session.pickable = pd.DataFrame(columns=["cX", "cY"])   # filtered out
         assert session._count_misses() == 1
     finally:
+        camera.close()
+
+
+# ---------------------------------------------------------------------------
+# 5. optional lower-camera recording
+# ---------------------------------------------------------------------------
+
+import pytest
+
+from micropick.workflows.picking import PickingError
+
+
+def _one_target_run():
+    dish = Dish()
+    dish.add(1, (300, 350))
+    routine = Routine(Destination.coordinates([(200.0, 200.0)]),
+                      {(200.0, 200.0): 1})
+    return dish, routine
+
+
+def test_recording_off_creates_no_recorder():
+    dish, routine = _one_target_run()
+    session, robot, camera = make_session(dish, routine)   # no under_cam/clip_dir
+    try:
+        assert session._recorder is None
+        drive(session)
+        assert session.state is RobotState.COMPLETED
+    finally:
+        camera.close()
+
+
+def test_clip_dir_without_under_cam_raises():
+    dish, routine = _one_target_run()
+    with pytest.raises(PickingError):
+        make_session(dish, routine, clip_dir="/tmp/whatever")
+
+
+def test_recording_on_saves_a_clip(tmp_path):
+    dish, routine = _one_target_run()
+    under = open_mock_camera(width=320, height=240, fps=120.0)
+    session, robot, camera = make_session(dish, routine, under_cam=under,
+                                          clip_dir=tmp_path)
+    saved = []
+    session._recorder.save_async = lambda path, **kw: saved.append(path)
+    try:
+        assert session._recorder is not None
+        drive(session)
+        assert session.state is RobotState.COMPLETED
+        assert len(saved) == 1
+        assert str(tmp_path) in saved[0] and saved[0].endswith(".mp4")
+        assert not session._recorder.recording        # stopped after the clip
+    finally:
+        session.close()
+        under.close()
+        camera.close()
+
+
+def _profile_with_homography(cfg, matrix, gantry):
+    profile = make_profile(cfg)
+    profile.calibration.homography = CameraHomography(
+        matrix=matrix, gantry_xy=list(gantry))
+    return profile
+
+
+def test_roi_marked_only_with_valid_homography(tmp_path):
+    dish, routine = _one_target_run()
+    under = open_mock_camera(width=320, height=240, fps=120.0)
+    # identity map, valid at the observation pose (150, 150)
+    profile = _profile_with_homography(
+        relaxed_config(), [[1, 0, 0], [0, 1, 0], [0, 0, 1]], (150.0, 150.0))
+    session, robot, camera = make_session(
+        dish, routine, profile=profile, under_cam=under, clip_dir=tmp_path)
+    session._recorder.save_async = lambda path, **kw: None
+    try:
+        drive(session)
+        assert session._recorder._roi is not None       # box was placed
+    finally:
+        session.close()
+        under.close()
+        camera.close()
+
+
+def test_recording_without_homography_has_no_box(tmp_path):
+    dish, routine = _one_target_run()
+    under = open_mock_camera(width=320, height=240, fps=120.0)
+    session, robot, camera = make_session(dish, routine, under_cam=under,
+                                          clip_dir=tmp_path)   # no homography
+    session._recorder.save_async = lambda path, **kw: None
+    try:
+        drive(session)
+        assert session.state is RobotState.COMPLETED    # recorded, just no box
+        assert session._recorder._roi is None
+    finally:
+        session.close()
+        under.close()
         camera.close()
