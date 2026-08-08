@@ -22,6 +22,7 @@ from pydantic import (AliasChoices, BaseModel, ConfigDict, Field,
 SCHEMA_VERSION = 2
 
 Vec2 = Annotated[list[float], Field(min_length=2, max_length=2)]
+Vec3 = Annotated[list[float], Field(min_length=3, max_length=3)]
 
 
 def _n_basis_terms(degree: int) -> int:
@@ -221,12 +222,33 @@ class TipTarget(BaseModel):
         return self
 
 
+class CameraHomography(BaseModel):
+    """Pixel-to-pixel map from the upper (gantry) camera to the lower one.
+
+    Fitted from the five crosshair points the pipette calibration already sees
+    in both cameras. It is valid only for the marker plane and only for the
+    gantry pose the upper frame was taken at, since the upper camera moves and
+    the lower one is fixed, so gantry_xy is stored with the matrix. Optional: an
+    installation without a lower camera never fills it in.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    matrix: Annotated[list[Vec3], Field(min_length=3, max_length=3)]
+    gantry_xy: Vec2
+    reproj_mean_px: float | None = None
+    reproj_max_px: float | None = None
+    n_points: int | None = None
+    measured_at: datetime | None = None
+
+
 class Calibration(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pixel_map: PixelMap | None = None
     pipette_offset: PipetteOffset | None = None
     tip_target: TipTarget = Field(default_factory=lambda: TipTarget())
+    homography: CameraHomography | None = None
 
     @property
     def is_ready(self) -> bool:

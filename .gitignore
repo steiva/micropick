@@ -150,6 +150,7 @@ Desktop.ini
 #Custom
 logs/
 outputs/
+legacy/
 
 ml_models/*.pt
 
