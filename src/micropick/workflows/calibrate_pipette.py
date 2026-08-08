@@ -38,10 +38,12 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..config.schema import PipetteOffset, TipTarget
+from ..config.schema import CameraHomography, PipetteOffset, TipTarget
+from ..core.calibration.homography import HomographyError, HomographyReport
 from ..core.calibration.pixel_map import PixelMap
 from ..hardware.protocols import (Camera, Robot, move_relative,
                                   move_to, xyz)
+from .calibrate_homography import homography_from_views
 
 __all__ = ["Detection", "PatternView", "TipDetector", "OffsetResult",
            "calibrate_pipette_offset", "TipCalibrationError"]
@@ -258,6 +260,10 @@ class OffsetResult:
     under_view: PatternView
     final_view: PatternView | None
     manual_nudge_mm: np.ndarray | None = None
+    # By-product: the upper-to-lower homography from the same two views. None if
+    # the fit was too poor to trust; a bad homography never fails the offset.
+    homography: CameraHomography | None = None
+    homography_report: HomographyReport | None = None
 
     @property
     def change_mm(self) -> float:
@@ -395,5 +401,20 @@ def calibrate_pipette_offset(
         n_samples=under_view.n_frames,
         spread_mm=float(under_view.spread_px * under_view.mm_per_px),
     )
+
+    # --- free by-product: the upper-to-lower homography --------------------
+    # Both views saw the same disc, so the camera-to-camera map costs nothing
+    # more. gx, gy is the gantry pose the upper view was taken at, which the map
+    # is tied to. A poor fit is logged and dropped, never fatal to the offset.
+    homography, homography_report = None, None
+    try:
+        homography, homography_report = homography_from_views(
+            over_view, under_view, target.axes, (gx, gy))
+        log(f"  homography: {homography_report}")
+    except HomographyError as exc:
+        log(f"  homography unavailable: {exc}")
+
     return OffsetResult(offset, tuple(current_offset), correction,
-                        residual_mm, over_view, under_view, final_view, nudge)
+                        residual_mm, over_view, under_view, final_view, nudge,
+                        homography=homography,
+                        homography_report=homography_report)
