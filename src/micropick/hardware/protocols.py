@@ -21,7 +21,7 @@ from typing import Any, Protocol, Sequence, runtime_checkable
 import numpy as np
 
 __all__ = ["Camera", "Robot", "xyz", "move_to", "move_relative", "goto_xy",
-           "MoveFailed", "preflight"]
+           "MoveFailed", "preflight", "command_status", "require_ok"]
 
 
 @runtime_checkable
@@ -58,6 +58,7 @@ class Robot(Protocol):
 
     def move_to_coordinates(self, coordinates: Sequence[float],
                             min_z_height: float | None = None,
+                            force_direct: bool = False,
                             verbose: bool = True) -> Any:
         ...
 
@@ -66,6 +67,39 @@ class Robot(Protocol):
         """Returns (coordinates, response). The coordinates are a dict of x, y
         and z, hence the [0] everywhere; the second element is the raw HTTP
         response and is not used here."""
+        ...
+
+    # Liquid handling and well-relative moves the picking session needs. These
+    # cannot be pose-verified the way a coordinate move can — a well has no deck
+    # coordinate the caller knows — so their responses are checked with
+    # require_ok instead, which raises on a declined command.
+
+    def move_to_well(self, labware_id: str, well_name: str,
+                     well_location: str = "top",
+                     offset: Sequence[float] = (0, 0, 0),
+                     verbose: bool = False,
+                     force_direct: bool = False) -> Any:
+        ...
+
+    def aspirate_in_place(self, volume: float, flow_rate: float,
+                          verbose: bool = False) -> Any:
+        ...
+
+    def dispense_in_place(self, volume: float, flow_rate: float,
+                          verbose: bool = False) -> Any:
+        ...
+
+    def dispense(self, labware_id: str, well_name: str,
+                 well_location: str = "bottom",
+                 offset: Sequence[float] = (0, 0, 0),
+                 volume: float = 0.0, flow_rate: float = 50.0,
+                 verbose: bool = False) -> Any:
+        ...
+
+    def retract_axis(self, axis: str, verbose: bool = False) -> Any:
+        ...
+
+    def toggle_lights(self, verbose: bool = False) -> Any:
         ...
 
 
@@ -112,13 +146,35 @@ def _command_status(response) -> tuple[str | None, dict | None]:
         return None, None
 
 
+def command_status(response) -> tuple[str | None, dict | None]:
+    """Public reading of a command response's status and error."""
+    return _command_status(response)
+
+
+def require_ok(response, what: str = "command"):
+    """Raise if the robot declined a command it answered 201 to.
+
+    The pose-verified move helpers cover coordinate travel; this is the loud
+    check for commands with no target pose to compare against — a well move, an
+    aspirate, a dispense. A None response (the mock) has no status and passes.
+    """
+    status, error = _command_status(response)
+    if status == "failed":
+        detail = f"\n  robot said: {str(error)[:300]}" if error else ""
+        raise MoveFailed(f"the robot declined the {what} (status {status}).{detail}")
+    return response
+
+
 def move_to(robot: Robot, coordinates, *, min_z_height: float | None = None,
-            tolerance_mm: float = 0.1, verbose: bool = False):
+            force_direct: bool = False, tolerance_mm: float = 0.1,
+            verbose: bool = False):
     """Absolute move, verified. Returns the pose actually reached."""
     target = np.asarray(coordinates, dtype=float)
     kwargs = {"verbose": verbose}
     if min_z_height is not None:
         kwargs["min_z_height"] = min_z_height
+    if force_direct:
+        kwargs["force_direct"] = force_direct
     response = robot.move_to_coordinates(tuple(target), **kwargs)
 
     status, error = _command_status(response)

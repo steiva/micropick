@@ -274,6 +274,19 @@ class PickingConfig(BaseModel):
     yolo_iou: float = 0.80             # above default: touching cuboids labelled singly
     yolo_max_det: int = 600
 
+    # ---------------------- picking loop ----------------------
+    max_batch: int = 10                # cap on cuboids aspirated before a deposit
+    max_shake_retries: int = 3         # shakes with no isolated cuboids before
+                                       # handing back to the operator
+    lift_mm: float = 20.0              # clearance raised above pickup_height and
+                                       # after each aspirate
+    capture_settle_s: float = 0.3      # pause after parking before a frame
+    verify_settle_s: float = 0.75      # pause after parking before the check frame
+    # what to do with a partial miss. keep_successful deposits the held cuboids
+    # into the well and returns only the missed volume to the dish, so the
+    # per-well concentration stays constant; return_all sends everything back.
+    miss_policy: Literal["return_all", "keep_successful"] = "keep_successful"
+
     # ---------------------- Otsu and shape ----------------------
     otsu_pad: int = 6                  # margin around the box, Otsu needs background
     otsu_open_k: int = 3               # breaks bridges to the rim or a neighbour

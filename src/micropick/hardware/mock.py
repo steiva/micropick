@@ -103,8 +103,13 @@ class MockRobot:
         self._last_dir = np.zeros(3)
         self.moves = 0
         self.log: list[tuple[float, float, float]] = []
+        # ordered record of liquid-handling and well calls, so a workflow test
+        # can assert what volumes went where and how far a batch got before a
+        # stop interrupted it
+        self.calls: list[tuple] = []
 
-    def move_to_coordinates(self, coordinates, min_z_height=None, verbose=True):
+    def move_to_coordinates(self, coordinates, min_z_height=None,
+                            force_direct=False, speed=None, verbose=True):
         target = np.asarray(coordinates, dtype=float)
         step = target - self._pos
         if self.speed:
@@ -143,8 +148,26 @@ class MockRobot:
     def home_robot(self):
         self._pos = np.array([0.0, 0.0, 100.0])
 
-    def toggle_lights(self):
-        pass
+    def toggle_lights(self, verbose=False):
+        self.calls.append(("toggle_lights",))
+
+    def retract_axis(self, axis, verbose=False):
+        self.calls.append(("retract_axis", axis))
+
+    def move_to_well(self, labware_id, well_name, well_location="top",
+                     offset=(0, 0, 0), verbose=False, force_direct=False):
+        self.calls.append(("move_to_well", labware_id, well_name, well_location))
+
+    def aspirate_in_place(self, volume, flow_rate, verbose=False):
+        self.calls.append(("aspirate_in_place", float(volume), float(flow_rate)))
+
+    def dispense_in_place(self, volume, flow_rate, verbose=False):
+        self.calls.append(("dispense_in_place", float(volume), float(flow_rate)))
+
+    def dispense(self, labware_id, well_name, well_location="bottom",
+                 offset=(0, 0, 0), volume=0.0, flow_rate=50.0, verbose=False):
+        self.calls.append(("dispense", labware_id, well_name, float(volume),
+                           float(flow_rate)))
 
 
 def open_mock_camera(label="mock", width=640, height=480, fps=30.0, render=None):
