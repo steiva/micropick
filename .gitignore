@@ -154,4 +154,4 @@ outputs/
 ml_models/*.pt
 
 profiles/*/
-!profiles/example/
+!profiles/example/legacy/
