@@ -9,6 +9,7 @@ dependencies = [
     "pandas>=2.0",
     "pydantic>=2.5",
     "requests>=2.31",
+    "scikit-image>=0.22",
     "scipy>=1.11",
 ]
 
