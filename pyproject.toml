@@ -19,6 +19,11 @@ hardware = [
     "pygrabber; sys_platform == 'win32'",
 ]
 ml = ["ultralytics"]
+# Stock Opentrons labware definitions. Optional: custom plates in labware/ need
+# nothing. It pins numpy~=1.26, which conflicts with the numpy>=2 the vision
+# stack needs; install with pip's warning (runtime works with numpy 2), or keep
+# your plates in labware/.
+stock = ["opentrons-shared-data"]
 dev = ["nbstripout", "pytest", "ruff"]
 
 [build-system]

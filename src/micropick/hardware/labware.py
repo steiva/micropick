@@ -1,103 +1,43 @@
-"""Custom labware.
- 
+"""Talking to the robot about labware.
+
+Reading a definition is pure and lives in `config.labware`; this module is the
+robot-facing side: uploading a definition into a run and loading it into a slot.
+The readers are re-exported here so existing callers keep working.
+
 The OT-2 only knows the labware Opentrons ships with. Anything else, including
 the extended tip racks used here, has to be uploaded into each run before it can
-be loaded. Definitions live in the repository under labware/ so that a
-reinstall, or a second machine, does not depend on somebody remembering to copy
-a JSON file.
- 
-Names and namespaces are read out of the definitions rather than repeated in
-the calling code. The previous version hard-coded both next to the file path,
-which meant three places to keep in step and no error if they drifted: a
-mismatch surfaces only as a load failure much later.
+be loaded. Names and namespaces are read out of the definitions rather than
+repeated in the calling code, so they cannot drift.
 """
- 
+
 from __future__ import annotations
- 
+
 import json
-from dataclasses import dataclass
 from pathlib import Path
- 
+
 from .. import paths
- 
+from ..config.labware import (LabwareDefinition, LabwareError,
+                              local_definitions, read_definition,
+                              resolve_definition)
+
 __all__ = ["LabwareDefinition", "LabwareError", "list_definitions",
-           "load_definition", "upload_definition", "ensure_definitions",
-           "load_labware"]
- 
+           "load_definition", "read_definition", "resolve_definition",
+           "upload_definition", "ensure_definitions", "load_labware"]
+
 DEFAULT_NAMESPACE = "custom_beta"
- 
- 
-class LabwareError(RuntimeError):
-    pass
- 
- 
-@dataclass
-class LabwareDefinition:
-    load_name: str
-    namespace: str
-    version: int
-    display_name: str
-    path: Path
-    data: dict
- 
-    @property
-    def well_count(self) -> int:
-        return len(self.data.get("wells", {}))
- 
-    def __str__(self) -> str:
-        return (f"{self.load_name} v{self.version} ({self.namespace}), "
-                f"{self.well_count} wells")
- 
- 
-# ---------------------------------------------------------------------------
-# reading definitions
-# ---------------------------------------------------------------------------
- 
-def _parse(data: dict, path: Path) -> LabwareDefinition:
-    try:
-        load_name = data["parameters"]["loadName"]
-    except (KeyError, TypeError):
-        raise LabwareError(
-            f"{path} has no parameters.loadName, so it is not an Opentrons "
-            f"labware definition"
-        ) from None
-    for key in ("wells", "ordering"):
-        if key not in data:
-            raise LabwareError(f"{path} is missing '{key}'")
-    return LabwareDefinition(
-        load_name=load_name,
-        namespace=data.get("namespace", DEFAULT_NAMESPACE),
-        version=int(data.get("version", 1)),
-        display_name=data.get("metadata", {}).get("displayName", load_name),
-        path=path,
-        data=data,
-    )
- 
- 
+
+
+# Custom definitions in labware/, keyed by load name. Kept as the historical
+# name; the reader now lives in config.labware.
 def list_definitions(directory: Path | None = None) -> dict[str, LabwareDefinition]:
-    """Every definition in the labware directory, keyed by load name."""
-    directory = Path(directory) if directory else paths.labware_dir()
-    if not directory.is_dir():
-        return {}
-    out: dict[str, LabwareDefinition] = {}
-    for path in sorted(directory.glob("*.json")):
-        try:
-            with path.open(encoding="utf-8") as fh:
-                definition = _parse(json.load(fh), path)
-        except (json.JSONDecodeError, LabwareError) as exc:
-            raise LabwareError(f"could not read {path.name}: {exc}") from exc
-        if definition.load_name in out:
-            raise LabwareError(
-                f"two files define {definition.load_name!r}: "
-                f"{out[definition.load_name].path.name} and {path.name}"
-            )
-        out[definition.load_name] = definition
-    return out
- 
- 
+    """Every custom definition in the labware directory, keyed by load name."""
+    return local_definitions(directory)
+
+
 def load_definition(load_name: str,
                     directory: Path | None = None) -> LabwareDefinition:
-    known = list_definitions(directory)
+    """A custom definition from labware/ by load name."""
+    known = local_definitions(directory)
     if load_name not in known:
         raise LabwareError(
             f"no definition for {load_name!r} in "
@@ -105,8 +45,8 @@ def load_definition(load_name: str,
             f"available: {', '.join(sorted(known)) or 'none'}"
         )
     return known[load_name]
- 
- 
+
+
 # ---------------------------------------------------------------------------
 # talking to the robot
 # ---------------------------------------------------------------------------
