@@ -171,6 +171,27 @@ class PickingSession:
             if hcfg is not None:
                 self._homography = Homography.from_config(hcfg)
 
+        # Everything below happens before the first move: fail on a resumed run
+        # that has not been acknowledged, or on a slot that does not hold this
+        # routine's plate, rather than mid-plate with aspirate in the tip.
+        self._preflight()
+
+    def _preflight(self) -> None:
+        routine = self.routine
+        if routine.needs_confirmation:
+            raise PickingError(
+                "this routine was resumed from disk with progress already on "
+                "it. Review routine.summary() and call routine.confirm_resume() "
+                "first, so continuing onto the plate now loaded is a deliberate "
+                "choice.\n" + routine.summary())
+        if routine.destination.is_plate:
+            from ..core.routine import RoutineError
+            from ..hardware.labware import loaded_labware
+            try:
+                routine.check_labware(loaded_labware(self.robot))
+            except RoutineError as exc:
+                raise PickingError(str(exc)) from exc
+
     @staticmethod
     def _prepare_clip_dir(clip_dir):
         import os

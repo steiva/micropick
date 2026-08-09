@@ -322,9 +322,12 @@ def test_resume_from_disk_continues_routine(tmp_path):
     assert routine_a.remaining(targets[0]) == 0
     assert routine_a.remaining(targets[1]) == 1
 
-    # a brand new routine loaded from disk already knows the first is done
+    # a brand new routine loaded from disk already knows the first is done, and
+    # resuming onto real progress must be acknowledged first
     routine_b = Routine.load(path)
     assert routine_b.remaining(targets[0]) == 0
+    assert routine_b.needs_confirmation
+    routine_b.confirm_resume()
 
     # session B on a fresh dish finishes only what is left
     dish_b = Dish()

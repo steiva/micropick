@@ -26,6 +26,7 @@ import json
 import os
 import re
 import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Union
@@ -249,13 +250,28 @@ class Routine:
     """
 
     def __init__(self, destination: Destination, plan: dict[Target, int], *,
-                 strategy: str = "in_order", path: str | Path | None = None):
+                 name: str = "", strategy: str = "in_order",
+                 path: str | Path | None = None,
+                 _run_id: str | None = None, _created_at: datetime | None = None):
         self.destination = destination
         self.strategy = self._check_strategy(strategy, destination)
         self.plan = self._check_plan(plan, destination)
+        if destination.is_plate and not str(name).strip():
+            raise RoutineError(
+                "a plate routine needs a name: your own label for this physical "
+                "plate, so a run resumed from disk can be told apart from a "
+                "fresh plate of the same kind")
+        # Identity. run_id is the machine handle; name is the operator's label.
+        # Together they mark which physical run a progress file belongs to.
+        self.name = str(name)
+        self.run_id = _run_id or uuid.uuid4().hex[:8]
+        self.created_at = _created_at or datetime.now(timezone.utc)
         self._progress: dict[Target, _Progress] = {t: _Progress() for t in self.plan}
         self._current: Target | None = None
         self.path = Path(path) if path is not None else None
+        # A freshly built routine is confirmed; one loaded from disk with progress
+        # already on it must be acknowledged before a session will run it.
+        self.needs_confirmation = False
 
     # -- validation ---------------------------------------------------------
 
@@ -329,6 +345,71 @@ class Routine:
     def is_done(self) -> bool:
         return all(p.delivered >= self.plan[t] for t, p in self._progress.items())
 
+    # -- identity and resume ------------------------------------------------
+
+    def _peek_next(self) -> Target | None:
+        """The next target without moving the cursor, for summaries."""
+        for target in self._ordered():
+            if self._progress[target].delivered < self.plan[target]:
+                return target
+        return None
+
+    def check_labware(self, loaded) -> None:
+        """Refuse if the slot does not hold this routine's plate definition.
+
+        `loaded` maps a slot name to what is loaded there — an object with
+        `load_name`/`version`, or a `(load_name, version)` pair. A different
+        definition, or an empty slot, raises.
+
+        This verifies the *definition* in the slot, NOT that the physical plate
+        is the same one the routine was started on. No software check can tell an
+        identical fresh plate from the original, so this is not a guarantee; the
+        deliberate resume confirmation below covers what this cannot.
+        """
+        if not self.destination.is_plate:
+            return
+        slot = str(self.destination.slot)
+        entry = loaded.get(slot) if hasattr(loaded, "get") else None
+        want = f"{self.destination.load_name} v{self.destination.version}"
+        if entry is None:
+            raise RoutineError(
+                f"slot {slot} is empty, but this routine fills {want}. Load the "
+                f"plate, or start a routine for what is actually there.")
+        if hasattr(entry, "load_name"):
+            load_name, version = entry.load_name, entry.version
+        else:
+            load_name, version = entry[0], entry[1]
+        if load_name != self.destination.load_name or \
+                int(version) != int(self.destination.version):
+            raise RoutineError(
+                f"slot {slot} holds {load_name} v{version}, but this routine is "
+                f"for {want}. If you changed the plate format, build a new "
+                f"routine; if you swapped in a fresh plate of the same kind, "
+                f"build a new routine so its progress starts from zero.")
+
+    def confirm_resume(self) -> None:
+        """Acknowledge, after reading summary(), that continuing this progress
+        onto the plate now loaded is intended. Required before a session will run
+        a routine restored from disk with progress already on it."""
+        self.needs_confirmation = False
+
+    def summary(self) -> str:
+        """A human-readable state, shown before resuming so a wrong plate or a
+        surprising amount of progress is obvious."""
+        delivered = sum(p.delivered for p in self._progress.values())
+        want = sum(self.plan.values())
+        lines = [
+            f"routine {self.name!r} (run {self.run_id}, "
+            f"created {self.created_at:%Y-%m-%d %H:%M UTC})",
+            f"  {delivered}/{want} objects delivered across {len(self.plan)} targets",
+            f"  next: {self._peek_next()}",
+        ]
+        if self.destination.is_plate:
+            lines.append(
+                f"  plate {self.destination.load_name} v{self.destination.version} "
+                f"in slot {self.destination.slot}")
+        return "\n".join(lines)
+
     # -- recording ----------------------------------------------------------
 
     def record(self, delivered: int = 0, missed: int = 0, *,
@@ -389,6 +470,8 @@ class Routine:
 
     def to_dict(self) -> dict:
         return {
+            "identity": {"name": self.name, "run_id": self.run_id,
+                         "created_at": self.created_at.isoformat()},
             "destination": self.destination.to_dict(),
             "strategy": self.strategy,
             "progress": [
@@ -427,8 +510,12 @@ class Routine:
         destination = Destination.from_dict(data["destination"])
         plan = {cls._decode_target(entry["target"]): entry["count"]
                 for entry in data["progress"]}
-        routine = cls(destination, plan,
-                      strategy=data.get("strategy", "in_order"), path=path)
+        ident = data.get("identity", {})
+        created = ident.get("created_at")
+        routine = cls(destination, plan, name=ident.get("name", ""),
+                      strategy=data.get("strategy", "in_order"), path=path,
+                      _run_id=ident.get("run_id"),
+                      _created_at=datetime.fromisoformat(created) if created else None)
         for entry in data["progress"]:
             target = cls._decode_target(entry["target"])
             routine._progress[target] = _Progress(
@@ -436,6 +523,9 @@ class Routine:
                 missed=entry["missed"],
                 history=list(entry.get("history", [])),
             )
+        # Resuming onto real progress must be a conscious act (see check_labware).
+        if any(p.delivered for p in routine._progress.values()):
+            routine.needs_confirmation = True
         return routine
 
     def __repr__(self) -> str:

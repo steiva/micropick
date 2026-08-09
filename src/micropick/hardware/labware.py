@@ -13,6 +13,7 @@ repeated in the calling code, so they cannot drift.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from .. import paths
@@ -20,11 +21,62 @@ from ..config.labware import (LabwareDefinition, LabwareError,
                               local_definitions, read_definition,
                               resolve_definition)
 
-__all__ = ["LabwareDefinition", "LabwareError", "list_definitions",
-           "load_definition", "read_definition", "resolve_definition",
-           "upload_definition", "ensure_definitions", "load_labware"]
+__all__ = ["LabwareDefinition", "LabwareError", "LoadedLabware",
+           "list_definitions", "load_definition", "read_definition",
+           "resolve_definition", "loaded_labware", "upload_definition",
+           "ensure_definitions", "load_labware"]
 
 DEFAULT_NAMESPACE = "custom_beta"
+
+
+# ---------------------------------------------------------------------------
+# what is actually loaded in the current run
+# ---------------------------------------------------------------------------
+
+@dataclass
+class LoadedLabware:
+    slot: str
+    load_name: str
+    version: int
+    namespace: str
+    labware_id: str
+
+
+def _parse_run_labware(run_data: list) -> dict[str, LoadedLabware]:
+    """Loaded labware of the current run, keyed by slot name.
+
+    Reads each entry's loadName and definitionUri (namespace/loadName/version)
+    and its slot; labware sitting off-deck has no slot and is skipped, so a slot
+    emptied with move_labware simply does not appear. Pure, for testing.
+    """
+    out: dict[str, LoadedLabware] = {}
+    for run in run_data:
+        if not run.get("current"):
+            continue
+        for lw in run.get("labware", []):
+            location = lw.get("location")
+            if not isinstance(location, dict) or "slotName" not in location:
+                continue
+            uri = lw.get("definitionUri", "")
+            parts = uri.split("/")
+            namespace = parts[0] if len(parts) == 3 else ""
+            version = int(parts[2]) if len(parts) == 3 and parts[2].isdigit() else 1
+            out[str(location["slotName"])] = LoadedLabware(
+                slot=str(location["slotName"]),
+                load_name=lw.get("loadName", parts[1] if len(parts) == 3 else ""),
+                version=version, namespace=namespace, labware_id=lw.get("id", ""))
+    return out
+
+
+def loaded_labware(api) -> dict[str, LoadedLabware]:
+    """Query the robot for what is loaded in the current run, by slot.
+
+    Reads the run state (`get_all_runs`); does not move anything. Used to check a
+    resumed routine against the plate actually in the slot.
+    """
+    response = api.get_all_runs()
+    data = json.loads(response.text)["data"]
+    return _parse_run_labware(data)
 
 
 # Custom definitions in labware/, keyed by load name. Kept as the historical

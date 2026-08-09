@@ -369,8 +369,58 @@ boolean could not describe a batch that ended with some of both.
 `spread_out` sorted by the *planned* count, producing a fixed order that spread
 nothing.
 
-Well grids handle plates past 26 rows (1536) with two-letter labels. The old
-code sliced a string that ran into punctuation after Z.
+### Destinations are built from a definition, not a size
+
+A plate `Destination` comes from a resolved labware definition
+(`config.labware`): the well names are its `wells` and the fill order is its
+`ordering`. There is no plate-size input, so there is nothing to disagree with
+what is loaded. The old code took a number, looked its shape up in a preset
+table and generated well names itself; declaring 384 with a 96 loaded then
+worked until the first well past the real plate and failed mid-routine. The
+preset table, the base-26 label generation and the 1536 format are gone; a plate
+this rig cannot describe with a definition is not a plate it runs.
+
+Orderings come from the definition too: `by_column` is the file's own order,
+`by_row` its transpose. Nothing parses `int(well[1:])` (which broke on
+multi-character rows) or leans on sort stability. The planning grid and the
+progress table take their row and column labels from the ordering, so the table
+is shaped like the real plate, custom plates included.
+
+### Changing the plate between runs
+
+Labware in a slot can change between runs but never during one, and the two ways
+it changes need different handling:
+
+- **A different format** (96 → 384). The operator tells the robot with
+  `move_labware` that the slot is now empty and loads the new plate; the run
+  state changes. `loaded_labware` reads that state, and a routine's
+  `check_labware` refuses when the slot holds a different definition, or is
+  empty. This is machine-checkable and enforced automatically before the first
+  move.
+
+- **The same format, a new plate.** The operator just swaps the plate; no
+  command is issued, and this is **indistinguishable in software** from carrying
+  on with the same plate. It is the dangerous case: a routine restored from disk
+  would refill a fresh plate from the middle.
+
+The decision: a routine has its own identity — an operator-set `name` (required
+for a plate) plus a generated `run_id` and `created_at`, stored in the progress
+file — and **resuming is a deliberate act**. `Routine.load` marks a file that
+carries progress as needing confirmation; a session refuses to start it until
+the operator, having seen `summary()` (name, run, how many wells are already
+filled, the next well, the plate), calls `confirm_resume()`. A genuinely new
+plate means a **new routine** (new file, new `run_id`), which the summary makes
+obvious.
+
+Two weaker options were rejected. Auto-resuming whenever the definition matches
+is exactly the refill-a-new-plate bug. Trusting the run's `labware_id` does not
+help either: it changes when labware is reloaded or moved but not when a plate is
+physically swapped, so it is neither necessary nor sufficient. Splitting the
+problem — enforce the part a machine can check (slot and definition), make the
+part it cannot (this physical plate) a conscious confirmation gated on a visible
+summary — is the honest division. `check_labware` says so in its docstring: it
+verifies the definition in the slot, not the identity of the plate, and is not a
+guarantee.
 
 ---
 

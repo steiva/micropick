@@ -47,7 +47,7 @@ def test_bad_slot_rejected():
 
 def _order(strategy):
     d = Destination.from_definition(tiny_def(), slot=1)
-    r = Routine(d, {"A1": 1, "A3": 1, "B2": 1}, strategy=strategy)
+    r = Routine(d, {"A1": 1, "A3": 1, "B2": 1}, name="t", strategy=strategy)
     seq = []
     while (t := r.next()) is not None:
         seq.append(t)
@@ -111,7 +111,7 @@ def test_from_labware_resolves_local_plate():
 def test_disk_round_trip_reresolves_definition(tmp_path):
     d = Destination.from_labware("wide_bore_200ul", slot=5)
     path = tmp_path / "run.json"
-    r = Routine(d, {"A1": 2, "C3": 1}, path=path)
+    r = Routine(d, {"A1": 2, "C3": 1}, name="plate A", path=path)
     r.next()
     r.record(delivered=1, target="A1")
 
@@ -120,3 +120,23 @@ def test_disk_round_trip_reresolves_definition(tmp_path):
     assert back.destination.slot == 5
     assert back.plan == {"A1": 2, "C3": 1}
     assert back.remaining("A1") == 1
+    assert back.name == "plate A" and back.run_id == r.run_id
+    assert back.needs_confirmation                      # progress -> must confirm
+
+
+def test_plate_routine_requires_a_name():
+    d = Destination.from_definition(tiny_def(), slot=1)
+    with pytest.raises(RoutineError):
+        Routine(d, {"A1": 1})                           # no name
+
+
+def test_check_labware_matches_empty_and_wrong():
+    d = Destination.from_definition(tiny_def("myplate", version=2), slot=3)
+    r = Routine(d, {"A1": 1}, name="run")
+    r.check_labware({"3": ("myplate", 2)})              # ok, no raise
+    with pytest.raises(RoutineError):
+        r.check_labware({})                             # empty slot
+    with pytest.raises(RoutineError):
+        r.check_labware({"3": ("otherplate", 2)})       # wrong definition
+    with pytest.raises(RoutineError):
+        r.check_labware({"3": ("myplate", 1)})          # wrong version

@@ -107,6 +107,11 @@ class MockRobot:
         # can assert what volumes went where and how far a batch got before a
         # stop interrupted it
         self.calls: list[tuple] = []
+        # a minimal run model so loaded_labware() can be exercised: labware
+        # entries carry the same fields the real run reports
+        self._run_labware: list[dict] = []
+        self._lw_counter = 0
+        self.labware_dct: dict[str, str | None] = {str(i): None for i in range(1, 12)}
 
     def move_to_coordinates(self, coordinates, min_z_height=None,
                             force_direct=False, speed=None, verbose=True):
@@ -168,6 +173,40 @@ class MockRobot:
                  offset=(0, 0, 0), volume=0.0, flow_rate=50.0, verbose=False):
         self.calls.append(("dispense", labware_id, well_name, float(volume),
                            float(flow_rate)))
+
+    # -- labware run model (mirrors the wrapper enough for loaded_labware) ----
+
+    def load_labware(self, load_name, slot_name, namespace="opentrons",
+                     version=1, verbose=False):
+        self._lw_counter += 1
+        lw_id = f"lw{self._lw_counter}"
+        self._run_labware.append({
+            "id": lw_id, "loadName": load_name,
+            "definitionUri": f"{namespace}/{load_name}/{version}",
+            "location": {"slotName": str(slot_name)},
+        })
+        self.labware_dct[str(slot_name)] = lw_id
+        self.calls.append(("load_labware", load_name, str(slot_name)))
+        return lw_id
+
+    def move_labware(self, labware_id, new_location, strategy=None, verbose=False):
+        for lw in self._run_labware:
+            if lw["id"] == labware_id:
+                if isinstance(new_location, str):        # e.g. "offDeck"
+                    lw["location"] = new_location
+                else:
+                    lw["location"] = {"slotName": str(new_location)}
+        for slot, lid in list(self.labware_dct.items()):
+            if lid == labware_id:
+                self.labware_dct[slot] = None
+        self.calls.append(("move_labware", labware_id, new_location))
+
+    def get_all_runs(self):
+        payload = {"data": [{"id": "mock-run", "current": True, "status": "idle",
+                             "pipettes": [{"id": "mock-pip"}],
+                             "labware": self._run_labware}],
+                   "meta": {"totalLength": 1}}
+        return type("_Resp", (), {"text": __import__("json").dumps(payload)})()
 
 
 def open_mock_camera(label="mock", width=640, height=480, fps=30.0, render=None):
