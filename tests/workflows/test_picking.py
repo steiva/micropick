@@ -417,6 +417,16 @@ def _one_target_run():
     return dish, routine
 
 
+def test_session_validates_whole_plan_before_moving():
+    dish = Dish()
+    dish.add(1, (300, 350))
+    routine = Routine(Destination.coordinates([(200.0, 200.0)]),
+                      {(200.0, 200.0): 1})
+    routine.plan[(999.0, 999.0)] = 1                 # stray target, past the check
+    with pytest.raises(PickingError):
+        make_session(dish, routine)                  # fails at start, no move
+
+
 def test_recording_off_creates_no_recorder():
     dish, routine = _one_target_run()
     session, robot, camera = make_session(dish, routine)   # no under_cam/clip_dir

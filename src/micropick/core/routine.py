@@ -345,6 +345,16 @@ class Routine:
     def is_done(self) -> bool:
         return all(p.delivered >= self.plan[t] for t, p in self._progress.items())
 
+    def validate(self) -> None:
+        """Re-check the whole plan against the destination and the strategy.
+
+        The plan is already checked when the routine is built; this re-runs it as
+        a session precondition so an invalid plan fails at startup rather than
+        mid-plate with aspirate in the tip.
+        """
+        self._check_strategy(self.strategy, self.destination)
+        self._check_plan(self.plan, self.destination)
+
     # -- identity and resume ------------------------------------------------
 
     def _peek_next(self) -> Target | None:

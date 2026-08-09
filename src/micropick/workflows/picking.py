@@ -178,6 +178,11 @@ class PickingSession:
 
     def _preflight(self) -> None:
         routine = self.routine
+        from ..core.routine import RoutineError
+        try:
+            routine.validate()                       # whole plan, before any move
+        except RoutineError as exc:
+            raise PickingError(str(exc)) from exc
         if routine.needs_confirmation:
             raise PickingError(
                 "this routine was resumed from disk with progress already on "
@@ -185,7 +190,6 @@ class PickingSession:
                 "first, so continuing onto the plate now loaded is a deliberate "
                 "choice.\n" + routine.summary())
         if routine.destination.is_plate:
-            from ..core.routine import RoutineError
             from ..hardware.labware import loaded_labware
             try:
                 routine.check_labware(loaded_labware(self.robot))

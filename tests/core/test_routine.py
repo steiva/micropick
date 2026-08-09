@@ -78,6 +78,15 @@ def test_plan_well_not_in_definition_raises():
     assert "not in the destination" in str(exc.value)
 
 
+def test_validate_catches_a_plan_corrupted_after_build():
+    d = Destination.from_definition(tiny_def(), slot=1)
+    r = Routine(d, {"A1": 1}, name="run")
+    r.validate()                                     # fine as built
+    r.plan["Z9"] = 1                                 # a stray well slips in
+    with pytest.raises(RoutineError):
+        r.validate()
+
+
 # ---------------------------------------------------------------------------
 # planning tables shaped like the plate
 # ---------------------------------------------------------------------------
