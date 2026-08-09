@@ -1,32 +1,23 @@
 """Destinations, plans and progress for a picking run.
 
-A `Destination` is the set of places a run can deliver to: a standard well plate
-in a deck slot, or a bare list of deck coordinates. A `Routine` holds the plan
-(how many objects each target wants), the progress made so far and the order in
+A `Destination` is the set of places a run can deliver to: a labware plate in a
+deck slot, or a bare list of deck coordinates. A `Routine` holds the plan (how
+many objects each target wants), the progress made so far, and the order in
 which targets are visited.
 
-This module is deliberately free of hardware, windows and vision. Its one piece
-of I/O is the progress file: a `Routine` writes itself to disk after every
-recorded attempt, so a run interrupted to adjust a parameter resumes where it
-stopped even across a kernel restart. Previously progress lived only in the
-object and a restart lost an overnight run. That file is not a profile or robot
-file; nothing else here touches the disk. See DESIGN sections 2 and 7.
+A plate destination is built from a labware **definition**, not from a plate
+size the operator types in. The well names and the fill order come straight from
+the definition's `wells` and `ordering`, so there is no independent "format"
+input that can disagree with what is physically loaded. The old code took a
+number, looked its shape up in a preset table and generated well names itself;
+declaring 384 with a 96 loaded then worked until the first well past the real
+plate. Removing the input removes the mismatch.
 
-What the old `legacy/core.py` got wrong, and this fixes:
-
-- Progress was in memory only. Here it is persisted atomically after each record.
-- Attempts were a boolean success flag. A batch pickup can deliver some objects
-  and miss others in the same attempt, which a bool cannot describe, so
-  `record` counts objects: `record(delivered=, missed=)`.
-- `spread_out` sorted by the *planned* count, a fixed order that spread nothing.
-  `least_filled` here recomputes the order from the *actual* fill every call.
-- Row labels were a slice of a 26-character string, which ran into punctuation
-  past Z and mislabelled the 1536 plate. Labels here are base-26 (A..Z, AA..).
-- Coordinate targets were liable to be stringified through a dict key. Here they
-  round-trip as tuples of floats.
-- The plan was never checked against the destination, so a bad well or a
-  negative count surfaced as a deep exception later. Here both are refused at
-  construction with a plain message.
+This module is free of hardware, windows and vision. Its I/O is the progress
+file, written atomically after every recorded attempt so a run interrupted to
+adjust a parameter resumes even across a kernel restart, and it reads labware
+definitions through `config.labware` (offline, no robot). See DESIGN sections 2
+and 7.
 """
 
 from __future__ import annotations
@@ -41,18 +32,10 @@ from typing import Iterable, Union
 
 import pandas as pd
 
+from ..config.labware import LabwareDefinition, resolve_definition
+
 __all__ = ["Destination", "Routine", "RoutineError", "STRATEGIES",
            "empty_plate_table", "plan_from_table"]
-
-# rows x cols for the standard SBS plates we handle.
-WELL_PLATE_PRESETS = {
-    6: (2, 3),
-    24: (4, 6),
-    48: (6, 8),
-    96: (8, 12),
-    384: (16, 24),
-    1536: (32, 48),
-}
 
 # OT-2 addressable slots. Slot 12 is the fixed trash, never a destination.
 MAX_SLOT = 11
@@ -61,7 +44,7 @@ STRATEGIES = ("in_order", "by_row", "by_column", "least_filled")
 
 Target = Union[str, tuple]
 
-_LABEL = re.compile(r"^([A-Z]+)(\d+)$")
+_NAME = re.compile(r"^([A-Za-z]+)(\d+)$")
 
 
 class RoutineError(ValueError):
@@ -73,43 +56,39 @@ class RoutineError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# well labels
+# turning an ordering into a planning grid
 # ---------------------------------------------------------------------------
 
-def _row_label(index: int) -> str:
-    """Excel-style base-26 row label: 0->A, 25->Z, 26->AA, 31->AF.
+def _row_of(name: str) -> str:
+    m = _NAME.match(name)
+    return m.group(1) if m else name
 
-    The old code sliced a fixed 26-character string, so row 27 of the 1536 plate
-    became "[" instead of "AA".
+
+def _col_of(name: str, fallback: int) -> object:
+    m = _NAME.match(name)
+    return int(m.group(2)) if m else fallback
+
+
+def _grid(ordering: list[list[str]]):
+    """From a column-major ordering, derive the labels and the cell<->well maps
+    for a planning table shaped like the real plate.
+
+    Row and column labels come from the well names (A, B, ... and 1, 2, ...),
+    with a positional fallback for names that are not letter+number, so custom
+    plates work too.
     """
-    label = ""
-    n = index
-    while True:
-        label = chr(ord("A") + n % 26) + label
-        n = n // 26 - 1
-        if n < 0:
-            return label
-
-
-def _row_labels(rows: int) -> list[str]:
-    return [_row_label(i) for i in range(rows)]
-
-
-def _split_label(label: str) -> tuple[str, int]:
-    """"AF48" -> ("AF", 48). Used by the geometric orderings and the table view."""
-    match = _LABEL.match(label)
-    if not match:
-        raise RoutineError(f"{label!r} is not a well label like 'A1' or 'AF48'")
-    return match.group(1), int(match.group(2))
-
-
-def _row_rank(row: str) -> int:
-    """Inverse of _row_label, so labels sort in plate order rather than
-    lexically ('B' before 'AA')."""
-    rank = 0
-    for ch in row:
-        rank = rank * 26 + (ord(ch) - ord("A") + 1)
-    return rank - 1
+    n_cols = len(ordering)
+    n_rows = len(ordering[0]) if ordering else 0
+    row_labels = [_row_of(ordering[0][r]) for r in range(n_rows)]
+    col_labels = [_col_of(ordering[c][0], c + 1) for c in range(n_cols)]
+    cell_to_well: dict[tuple, str] = {}
+    well_to_cell: dict[str, tuple] = {}
+    for c in range(n_cols):
+        for r in range(len(ordering[c])):
+            well = ordering[c][r]
+            cell_to_well[(row_labels[r], col_labels[c])] = well
+            well_to_cell[well] = (row_labels[r], col_labels[c])
+    return row_labels, col_labels, cell_to_well, well_to_cell
 
 
 # ---------------------------------------------------------------------------
@@ -119,36 +98,53 @@ def _row_rank(row: str) -> int:
 class Destination:
     """The set of places a run can deliver to.
 
-    Built through `plate` or `coordinates` rather than a bare constructor, so an
-    unknown plate size or a malformed coordinate is refused here, with a
-    message, instead of producing an empty or half-formed destination that fails
-    later.
+    Built through `from_definition`/`from_labware` or `coordinates`, never a bare
+    constructor, so a plate always carries the identity and well list of a real
+    definition and a coordinate set is validated up front.
     """
 
     def __init__(self, kind: str, targets: list[Target], *,
-                 size: int | None = None, slot: int | None = None):
+                 load_name: str | None = None, version: int | None = None,
+                 namespace: str | None = None, slot: int | None = None,
+                 ordering: list[list[str]] | None = None):
         self.kind = kind
         self.targets = targets
-        self.size = size
+        self.load_name = load_name
+        self.version = version
+        self.namespace = namespace
         self.slot = slot
+        self.ordering = ordering
         self._target_set = set(targets)
 
     # -- construction -------------------------------------------------------
 
-    @classmethod
-    def plate(cls, size: int, slot: int) -> "Destination":
-        if size not in WELL_PLATE_PRESETS:
-            known = ", ".join(str(s) for s in sorted(WELL_PLATE_PRESETS))
-            raise RoutineError(f"unknown plate size {size!r}; known sizes: {known}")
+    @staticmethod
+    def _check_slot(slot: int) -> int:
         if not isinstance(slot, int) or isinstance(slot, bool):
             raise RoutineError(f"slot must be an int, got {slot!r}")
         if not 1 <= slot <= MAX_SLOT:
             raise RoutineError(f"slot must be 1..{MAX_SLOT}, got {slot}")
-        rows, cols = WELL_PLATE_PRESETS[size]
-        labels = [f"{row}{col}"
-                  for row in _row_labels(rows)
-                  for col in range(1, cols + 1)]
-        return cls("plate", labels, size=size, slot=slot)
+        return slot
+
+    @classmethod
+    def from_definition(cls, definition: LabwareDefinition,
+                        slot: int) -> "Destination":
+        """A plate destination whose wells and fill order come from a definition."""
+        cls._check_slot(slot)
+        if not definition.ordering:
+            raise RoutineError(
+                f"labware {definition.load_name!r} has no ordering")
+        return cls("plate", list(definition.wells),
+                   load_name=definition.load_name, version=definition.version,
+                   namespace=definition.namespace, slot=slot,
+                   ordering=[list(col) for col in definition.ordering])
+
+    @classmethod
+    def from_labware(cls, load_name: str, slot: int, *, version: int | None = None,
+                     directory=None) -> "Destination":
+        """Resolve a definition by load name (labware/ then stock) and build."""
+        definition = resolve_definition(load_name, version, directory)
+        return cls.from_definition(definition, slot)
 
     @classmethod
     def coordinates(cls, points: Iterable[Iterable[float]]) -> "Destination":
@@ -171,31 +167,44 @@ class Destination:
     def is_plate(self) -> bool:
         return self.kind == "plate"
 
-    @property
-    def layout(self) -> tuple[int, int]:
-        return WELL_PLATE_PRESETS[self.size]
-
     def contains(self, target: Target) -> bool:
         return target in self._target_set
 
     def index(self, target: Target) -> int:
         return self.targets.index(target)
 
+    def wells_by_row(self) -> list[str]:
+        """Well names row-major (A1, A2, ... B1, ...) from the ordering."""
+        n_rows = max((len(col) for col in self.ordering), default=0)
+        out = []
+        for r in range(n_rows):
+            for col in self.ordering:
+                if r < len(col):
+                    out.append(col[r])
+        return out
+
+    def wells_by_column(self) -> list[str]:
+        """Well names column-major, as the definition lists them."""
+        return [w for col in self.ordering for w in col]
+
     def __len__(self) -> int:
         return len(self.targets)
 
     def __repr__(self) -> str:
         if self.is_plate:
-            return f"Destination.plate(size={self.size}, slot={self.slot})"
+            return (f"Destination.plate({self.load_name!r} v{self.version}, "
+                    f"slot {self.slot}, {len(self.targets)} wells)")
         return f"Destination.coordinates(<{len(self.targets)} points>)"
 
     # -- serialisation ------------------------------------------------------
 
     def to_dict(self) -> dict:
         if self.is_plate:
-            return {"kind": "plate", "size": self.size, "slot": self.slot}
-        # Coordinates are stored as JSON arrays and rebuilt as tuples on load,
-        # never used as dict keys, so they never become strings.
+            # Only the identity is stored; the definition is re-resolved on load,
+            # so the file stays small and stays tied to the definition source.
+            return {"kind": "plate", "load_name": self.load_name,
+                    "version": self.version, "namespace": self.namespace,
+                    "slot": self.slot}
         return {"kind": "coordinates",
                 "targets": [list(t) for t in self.targets]}
 
@@ -203,7 +212,8 @@ class Destination:
     def from_dict(cls, data: dict) -> "Destination":
         kind = data.get("kind")
         if kind == "plate":
-            return cls.plate(data["size"], data["slot"])
+            definition = resolve_definition(data["load_name"], data.get("version"))
+            return cls.from_definition(definition, data["slot"])
         if kind == "coordinates":
             return cls.coordinates(data["targets"])
         raise RoutineError(f"unknown destination kind {kind!r}")
@@ -283,18 +293,16 @@ class Routine:
     # -- ordering -----------------------------------------------------------
 
     def _ordered(self) -> list[Target]:
-        targets = list(self.plan)
+        planned = set(self.plan)
         if self.strategy == "in_order":
-            return targets
+            return list(self.plan)
         if self.strategy == "by_row":
-            return sorted(targets, key=lambda t: (_row_rank(_split_label(t)[0]),
-                                                  _split_label(t)[1]))
+            return [w for w in self.destination.wells_by_row() if w in planned]
         if self.strategy == "by_column":
-            return sorted(targets, key=lambda t: (_split_label(t)[1],
-                                                  _row_rank(_split_label(t)[0])))
+            return [w for w in self.destination.wells_by_column() if w in planned]
         # least_filled: recomputed from actual delivered counts every call, so
         # the target furthest behind is filled next. Ties keep destination order.
-        return sorted(targets,
+        return sorted(self.plan,
                       key=lambda t: (self._progress[t].delivered,
                                      self.destination.index(t)))
 
@@ -361,15 +369,13 @@ class Routine:
     # -- views --------------------------------------------------------------
 
     def progress_table(self) -> pd.DataFrame:
-        """Delivered counts in the same shape the plan came in: a rows x cols
-        grid for a plate, a flat table for coordinates. For a notebook to show.
-        """
+        """Delivered counts in the same shape the plan came in: a grid shaped
+        like the real plate for a plate, a flat table for coordinates."""
         if self.destination.is_plate:
-            rows, cols = self.destination.layout
-            frame = pd.DataFrame(0, index=_row_labels(rows),
-                                 columns=list(range(1, cols + 1)), dtype=int)
+            row_labels, col_labels, _, well_to_cell = _grid(self.destination.ordering)
+            frame = pd.DataFrame(0, index=row_labels, columns=col_labels, dtype=int)
             for target, progress in self._progress.items():
-                row, col = _split_label(target)
+                row, col = well_to_cell[target]
                 frame.at[row, col] = progress.delivered
             return frame
         return pd.DataFrame(
@@ -443,35 +449,29 @@ class Routine:
 # building a plan from a plate-shaped table
 # ---------------------------------------------------------------------------
 
-def empty_plate_table(size: int) -> pd.DataFrame:
-    """A zeroed grid with correct row labels for the operator to fill in.
+def empty_plate_table(destination: Destination) -> pd.DataFrame:
+    """A zeroed grid shaped like the destination plate, for the operator to fill.
 
-    Unlike the old `create_well_plan`, the row index is base-26, so the 1536
-    plate is labelled A..Z, AA..AF rather than running into punctuation past Z.
+    Row and column labels come from the definition's ordering, so the table
+    matches the real plate, custom plates included, with no generated labels.
     """
-    if size not in WELL_PLATE_PRESETS:
-        known = ", ".join(str(s) for s in sorted(WELL_PLATE_PRESETS))
-        raise RoutineError(f"unknown plate size {size!r}; known sizes: {known}")
-    rows, cols = WELL_PLATE_PRESETS[size]
-    return pd.DataFrame(0, index=_row_labels(rows),
-                        columns=list(range(1, cols + 1)), dtype=int)
+    if not destination.is_plate:
+        raise RoutineError("empty_plate_table needs a plate destination")
+    row_labels, col_labels, _, _ = _grid(destination.ordering)
+    return pd.DataFrame(0, index=row_labels, columns=col_labels, dtype=int)
 
 
-def plan_from_table(table: pd.DataFrame, size: int) -> dict[str, int]:
+def plan_from_table(table: pd.DataFrame,
+                    destination: Destination) -> dict[str, int]:
     """Read a filled plate table into a validated plan, skipping the zeros.
 
-    `size` gives the plate the labels are checked against, so a table whose
-    shape does not match the named plate is caught here rather than when the
-    routine is built.
+    The table's cells are mapped to well names through the destination's grid, so
+    a cell that is not a well of this plate, or a non-integer or negative count,
+    is caught here rather than mid-routine.
     """
-    if size not in WELL_PLATE_PRESETS:
-        known = ", ".join(str(s) for s in sorted(WELL_PLATE_PRESETS))
-        raise RoutineError(f"unknown plate size {size!r}; known sizes: {known}")
-    rows, cols = WELL_PLATE_PRESETS[size]
-    if table.shape != (rows, cols):
-        raise RoutineError(
-            f"table is {table.shape[0]}x{table.shape[1]}, but a {size}-well "
-            f"plate is {rows}x{cols}")
+    if not destination.is_plate:
+        raise RoutineError("plan_from_table needs a plate destination")
+    _, _, cell_to_well, _ = _grid(destination.ordering)
 
     plan: dict[str, int] = {}
     for row in table.index:
@@ -483,8 +483,13 @@ def plan_from_table(table: pd.DataFrame, size: int) -> dict[str, int]:
                     f"count at {row}{col} is not a whole number ({value!r})")
             if count < 0:
                 raise RoutineError(f"count at {row}{col} is negative ({count})")
-            if count > 0:
-                plan[f"{row}{col}"] = count
+            if count == 0:
+                continue
+            well = cell_to_well.get((row, col))
+            if well is None:
+                raise RoutineError(
+                    f"cell {row}{col} is not a well of {destination.load_name!r}")
+            plan[well] = count
     if not plan:
         raise RoutineError("table is all zeros; nothing to fill")
     return plan
