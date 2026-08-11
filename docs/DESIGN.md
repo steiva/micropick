@@ -441,6 +441,12 @@ What the mocks make possible, and what should become the suite:
 - The first real sweep should be saved to `tests/fixtures/` and become a
   regression test: any change to the fitting maths must still reproduce roughly
   24 µm held-out error on that data.
+- The whole picking state machine runs headless. It needs no YOLO: the detector
+  is only ever called through `vision.detect_boxes`, so anything with a
+  `predict()` returning boxes and confidences will do, and a synthetic dish whose
+  objects are removed on a pickup and left in place on a miss drives every
+  branch — empty pickup, partial miss, shake, operator hand-back — in
+  milliseconds. That is how the transitions above were checked.
 
 Bugs these caught before they reached hardware: a `pickup_height` that
 serialised but would not load back; `read()` returning `False` for the first
@@ -486,53 +492,69 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `hardware/camera` | background capture, recorder, manager |
 | `hardware/labware` | custom definitions, upload, load |
 | `hardware/mock` | robot, camera, and a synthetic ArUco scene |
+| `core/vision/cuboids` | detection, per-box Otsu, shape filters, floaters |
 | `workflows/calibrate_camera` | probe, plan, sweep, fit |
 | `workflows/calibrate_pipette` | tip offset against the crosshair disc |
 | `workflows/jog` | manual control, two input backends |
+| `workflows/picking` | the pick-and-place state machine, one step at a time |
+| `viz/overlays` | drawing for the picking window, frame in, frame out |
 | `notebooks/01_robot_session.ipynb` | the whole session in one place |
 
 ---
 
-## 11. Remaining work
+## 11. The picking session
 
-**Cuboid vision** (`core/vision/`). YOLO detection, per-box Otsu and the shape
-filters, the derived-metrics DataFrame, floater detection from temporal
-variance. Currently in notebook cells. Pure functions: frame in, table out.
+Written (`workflows/picking.py`), with the vision it uses (`core/vision/`), the
+drawing (`viz/overlays.py`) and the notebook wrapper that supplies the loop, the
+keyboard and the window. What the port fixed in the old FSM — two sources of
+truth for the current well, a global `routine`, an endless
+`ANALYZE → AUTO_SHAKE → CAPTURE` cycle, hard-coded shake coordinates, a silent
+batch cap, YOLO running in a tight loop while idle — is listed in the module
+docstring, next to the code that fixes it.
 
-**Picking state machine** (`workflows/picking.py`). Currently ~22 k characters
-in one cell. The design decision already taken: **the session has no loop of its
-own.** `step()` performs one transition and returns an event; the caller holds
-the loop, the pause, the stop and the window. Pause and stop arrive as
-`threading.Event` and are checked between individual robot moves, not only
-between states, so a pause during a five-cuboid pickup takes effect at once.
+**The session has no loop of its own.** `step()` performs one transition and
+returns an event; the caller holds the loop, the pause, the stop and the window.
+Pause and stop arrive as `threading.Event` and are checked between individual
+robot moves, not only between states, so a pause during a five-cuboid pickup
+takes effect at once.
 
-Known problems in the old FSM to fix while porting:
+Four rules were added after the first bench runs, all of them for the same
+reason: the machine was doing work that the situation did not call for.
 
-- `self.current_well` and `self.routine.current_item` are two sources of truth,
-  updated in different places. The dispense uses one and the log uses the other.
-- `state_transfer_to_well` reads the **global** `routine`, not `self.routine`.
-- No retry limit: if shaking never yields isolated cuboids, `ANALYZE →
-  AUTO_SHAKE → CAPTURE → ANALYZE` loops forever.
-- Shake coordinates `(335.5, 223, 66.5)` are hard-coded; they belong in
-  `positions.json`.
-- The batch size cap of 10 is applied silently.
-- `state_idle` runs the full YOLO pipeline in a tight loop while idle.
+**The volume dispensed and the trip to the well both follow the count actually
+held.** A partial miss keeps the successful cuboids and returns only the missed
+volume, so the concentration per well stays constant (`miss_policy`,
+`keep_successful` / `return_all`). The case that caught us on the bench is the
+total miss: with nothing in the tip the session still drove to the plate and
+dispensed 0 µl, because the transfer was decided from the count aimed at. It is
+now decided from `held`, and `max_empty_pickups` empty pickups in a row hand back
+to the operator — the same class of endless loop as the shake retries.
 
-**Change requested, not a bug:** on a partial miss the robot currently returns
-the whole aspirate to the dish, so recording zero delivered is correct. The
-wanted behaviour is to keep the successful ones and dispense a volume
-proportional to the count actually held — five aspirations of 10 µl with one
-miss means 40 µl into the well and 10 µl back to the dish, so concentration per
-well stays constant. This needs the dispense volume computed from delivered
-count rather than target count, plus a miss policy in `PickingConfig`
-(`return_all` / `keep_successful`).
+**A run begins idle and stays there until told to start.** `start()`, or
+`resume()` under the name the operator already knows, is the only way out of
+IDLE; the state blocks inside `step()` rather than returning an event per poll,
+so a caller looping on `step()` does not spin. Which key means "go" stays in the
+notebook: the session only knows whether it has been told.
 
-**Logger** must become optional, defaulting to `None`.
+**`DETECT_FLOATERS` is the head of the cycle**, not a stage after the frame is
+taken. What floats is measured first and the decision frame is taken after,
+rather than 2.5 s before. The check is mandatory on the first cycle of a run and
+after every shake, since a shake is exactly what changes the answer; in between,
+`floater_check_interval` applies.
 
-**Overlays** (`viz/overlays.py`). Frame in, frame out. No windows.
+**The display mode is a property of the state, not of the window.** `live_view`
+is true while the operator needs to watch the dish itself — before the run and
+during the floater clip, where the movement is the whole point — and false
+everywhere else, where the useful picture is the annotated frame the last
+decision was made from, held until the next one. A live stream during travel
+shows motion and says nothing. The session reports the mode and emits decision
+frames at two points, `ANALYZE_FRAME` (after the choice, so it is in the frame)
+and `VERIFY_PICKUP`; what to draw and when is still the caller's business.
 
-**Notebook wrapper** for the picking session: the loop, the keyboard, the
-display.
+`choice` and `verify_radius_px` are public for the same reason: the overlays draw
+the chosen cuboids and the circle inside which the verify step looks for them,
+and `_count_misses` compares against that same radius, so what is drawn is what
+is decided.
 
 ---
 
