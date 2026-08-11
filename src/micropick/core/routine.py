@@ -371,6 +371,15 @@ class Routine:
         `load_name`/`version`, or a `(load_name, version)` pair. A different
         definition, or an empty slot, raises.
 
+        Only the load name is compared. The version is the revision of the
+        *definition file*, not a property of the physical plate: a later
+        revision usually corrects a well depth in the description, and the
+        plate on the deck is unchanged. It also cannot be compared usefully
+        here, because ot2_api.load_labware hard-codes `"version": 1` in the
+        load command, so the robot reports version 1 whatever the definition
+        says. Most stock Opentrons definitions are at version 2 or above, which
+        made this check fail for every one of them.
+
         This verifies the *definition* in the slot, NOT that the physical plate
         is the same one the routine was started on. No software check can tell an
         identical fresh plate from the original, so this is not a guarantee; the
@@ -380,22 +389,27 @@ class Routine:
             return
         slot = str(self.destination.slot)
         entry = loaded.get(slot) if hasattr(loaded, "get") else None
-        want = f"{self.destination.load_name} v{self.destination.version}"
+        want = self.destination.load_name
         if entry is None:
             raise RoutineError(
                 f"slot {slot} is empty, but this routine fills {want}. Load the "
                 f"plate, or start a routine for what is actually there.")
         if hasattr(entry, "load_name"):
-            load_name, version = entry.load_name, entry.version
+            load_name, version = entry.load_name, getattr(entry, "version", None)
         else:
-            load_name, version = entry[0], entry[1]
-        if load_name != self.destination.load_name or \
-                int(version) != int(self.destination.version):
+            load_name, version = entry[0], (entry[1] if len(entry) > 1 else None)
+        if load_name != want:
             raise RoutineError(
-                f"slot {slot} holds {load_name} v{version}, but this routine is "
-                f"for {want}. If you changed the plate format, build a new "
-                f"routine; if you swapped in a fresh plate of the same kind, "
-                f"build a new routine so its progress starts from zero.")
+                f"slot {slot} holds {load_name}, but this routine is for {want}. "
+                f"If you changed the plate format, build a new routine; if you "
+                f"swapped in a fresh plate of the same kind, build a new routine "
+                f"so its progress starts from zero.")
+        if version is not None and self.destination.version is not None \
+                and int(version) != int(self.destination.version):
+            # Informational only: see the note above about the hard-coded version.
+            print(f"note: slot {slot} reports {load_name} v{version}, the routine "
+                  f"recorded v{self.destination.version}; ignoring, versions are "
+                  f"definition revisions rather than plate identity")
 
     def confirm_resume(self) -> None:
         """Acknowledge, after reading summary(), that continuing this progress
