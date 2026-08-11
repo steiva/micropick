@@ -189,6 +189,64 @@ a ruler. The routine drives to where it believes the target is before looking,
 so an offset wrong by tens of millimetres puts the tip outside the lower
 camera's view with nothing to recover from.
 
+The offset and the upper-to-lower homography below are written to the profile by
+the routine itself, together. They come out of the same measurement, and while
+the homography was saved by a separate step it was easy to skip, which left a
+profile holding a fresh offset beside a matrix from an older tip and an older
+pose.
+
+### Upper-to-lower homography
+
+Both cameras see the same disc during the tip calibration, so the camera-to-camera
+map is free. Its one job is to draw a box around the chosen cuboid on the
+lower-camera clip: it holds only for the marker plane and only near the gantry
+pose it was fitted at, so it is a viewing aid and never a way to position the
+robot.
+
+**Pixels belong to a camera mode.** The tip calibration runs the lower camera at
+4000×3000 for precision; the clip records at 2000×1500. A matrix fitted in the
+first and applied in the second puts every point at twice its coordinate, off the
+frame, and the box simply never appeared — for a whole run of the machine,
+without a word, because nothing recorded which mode the numbers meant. Both
+resolutions are stored with the matrix now and it is rescaled to the modes in
+use. That works because these two modes share a field of view; a mode that crops
+the sensor instead scales the axes unequally, which is detected and refused.
+
+**Correspondence comes from the known orientation.** The crosshairs are
+identical, so the four outer ones are matched by angle about the disc centre,
+using the fact that the lower camera is turned ninety degrees from the upper one
+without mirroring: measured as `atan2(dv, du)` with v downwards, that is
+`θ_under = θ_over + 90`. The old code matched through `TipTarget.axes` — a
+pixels-to-millimetres map carrying a mirror of its own — and trusted the
+reprojection error to catch a bad match. It cannot: five points against eight
+degrees of freedom fit almost anything, so a correspondence off by ninety
+degrees produced a near-zero residual and a box on the wrong cuboid.
+
+**Four points fit, the centre checks.** Four points determine a homography
+exactly, so their residual is zero whatever the correspondence and measures
+nothing. The central crosshair is held out and reprojected; its error is the only
+honest number. The matrix is also decomposed and its determinant and rotation
+reported.
+
+**What none of it can prove.** The disc is four-fold symmetric and the fifth
+point sits at its centre of symmetry, so no arithmetic on these five points can
+reveal a wrong assumed rotation or a mirror: ask for the wrong rotation and the
+matching pairs each crosshair with a different neighbour, the fit is exact again,
+the held-out centre still lands on the centre, and the decomposition reports back
+the rotation that was assumed. That is what symmetry means, not a threshold to be
+tightened. The orientation is therefore a hardware fact in the profile
+(`TipTarget.under_rotation_deg`), and what confirms it is the first clip: the box
+is on the chosen cuboid or it is not. The checks catch everything else — a
+mis-detected crosshair, a degenerate arrangement, a disc that moved between the
+two views, and the wrong camera mode.
+
+**Pose.** The upper camera rides on the gantry, so the map goes stale as the pose
+moves away from where it was fitted. The distance is reported and warned about
+past a millimetre, not refused: it used to return nothing at all past two
+millimetres, which is the second way the box could vanish in silence, and the
+poses involved (`tip_calib`, `observe`) are taught separately and rarely agree
+to within that.
+
 ---
 
 ## 4. Robot
@@ -312,6 +370,23 @@ on a control that was silently ignored.
 Worth retrying with `cv2.CAP_DSHOW`, and `CameraSpec` has a `backend` field
 ready for it. Auto-exposure hunting when the gantry moves from a bright area to
 a dark one is the symptom to watch for.
+
+### The crop is a view, not a frame
+
+Most of the lower camera's field is empty: the disc and the dish sit in the
+middle. `CameraSpec.crop` says what fraction of it is worth looking at — 0.5 for
+that camera, a centred square of half the width, the same crop the old code used.
+
+It applies where a person looks and nowhere else: the clip recorder, the jog
+window, a preview. `read()` keeps handing out whole sensor frames, so detection,
+the pixel map and the homography are all fitted on what the sensor actually
+produced. The old version cropped inside the grab loop, which meant every
+coordinate downstream was in a frame whose origin was 500 px from the sensor's,
+and the two conventions were told apart only by remembering.
+
+Because of that split there is exactly one place where the crop meets geometry:
+a point computed in sensor pixels and drawn on a cropped frame is shifted by the
+crop origin, which `center_crop_box` returns without needing a frame in hand.
 
 ---
 
