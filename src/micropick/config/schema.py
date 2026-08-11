@@ -127,6 +127,14 @@ class CameraSpec(BaseModel):
     controls are re-applied on every open. That is what keeps a pixel map valid
     across restarts, since the map is only correct for the focus it was fitted
     at.
+
+    crop is a property of the *view*, never of the sensor: the fraction of the
+    frame worth looking at when this camera is displayed or recorded. Frames
+    handed to detection and to any fit stay whole, so nothing geometric depends
+    on it. The lower camera earns 0.5 because the disc and the dish sit in the
+    middle of a field that is mostly empty; the old code applied the same crop
+    inside the grab loop, where it leaked into the detections and the
+    homography.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -137,6 +145,7 @@ class CameraSpec(BaseModel):
     fps: int | None = None
     fourcc: str | None = "MJPG"
     controls: dict[str, float | str] = Field(default_factory=dict)
+    crop: float = Field(default=1.0, gt=0.0, le=1.0)
     notes: str = ""
 
     @model_validator(mode="after")
@@ -192,6 +201,15 @@ class TipTarget(BaseModel):
     never need editing; it lives in the profile because the previous version
     expressed it as two lines of code with the variable names crossed over,
     where it was invisible.
+
+    under_rotation_deg is a different fact about the same two cameras: how the
+    lower view is turned relative to the upper one in *pixels*, with no mirror
+    (west above is north below, north is east, east is south, south is west).
+    It is what matches the four crosshairs to each other, and it is separate
+    from axes because axes maps pixels to millimetres, where the v axis pointing
+    down contributes a flip of its own. Angles here are measured as
+    atan2(dv, du) with v growing downwards, so +90 is clockwise on screen; the
+    sign is the one place a ninety-degree error hides, which is why it is data.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -201,6 +219,7 @@ class TipTarget(BaseModel):
     approach_offset: Vec2 = [3.0, 0.0]
     axes: Annotated[list[Vec2], Field(min_length=2, max_length=2)] = [[0.0, 1.0],
                                                                      [1.0, 0.0]]
+    under_rotation_deg: float = 90.0
     axes_measured_at: datetime | None = None
     model_file: str = "tip_detector_v1.pt"
     imgsz: int = 2016
@@ -230,12 +249,31 @@ class CameraHomography(BaseModel):
     gantry pose the upper frame was taken at, since the upper camera moves and
     the lower one is fixed, so gantry_xy is stored with the matrix. Optional: an
     installation without a lower camera never fills it in.
+
+    A matrix is in the pixels of the two camera modes it was fitted at, and
+    those modes are not the ones used for recording: the tip calibration runs
+    the lower camera at 4000x3000 for precision, the pickup clip at 2000x1500.
+    Nothing recorded that, so the ROI box was placed at twice its coordinate and
+    landed outside the frame, silently. Both resolutions are stored now and the
+    matrix is rescaled to whatever mode is in use. They are optional only so
+    that a profile written before this change still loads; a matrix without them
+    is refused rather than guessed at.
+
+    centre_error_px is the reprojection error of the central crosshair, which is
+    deliberately left out of the fit. Four points determine a homography
+    exactly, so their own residual is zero whatever the correspondence; the
+    held-out centre is the only number that can disagree.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     matrix: Annotated[list[Vec3], Field(min_length=3, max_length=3)]
     gantry_xy: Vec2
+    over_resolution: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None
+    under_resolution: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None
+    centre_error_px: float | None = None
+    rotation_deg: float | None = None
+    det: float | None = None
     reproj_mean_px: float | None = None
     reproj_max_px: float | None = None
     n_points: int | None = None
@@ -309,6 +347,12 @@ class PickingConfig(BaseModel):
     capture_settle_s: float = 0.3      # pause after parking before a frame
     verify_settle_s: float = 0.75      # pause after parking before the check frame
     clip_max_frames: int = 600         # bound on a lower-camera pickup clip
+    homography_drift_warn_mm: float = 1.0
+                                       # the upper camera rides on the gantry, so
+                                       # the ROI box goes stale as the pose moves
+                                       # away from where the map was fitted. A
+                                       # warning, not a refusal: an approximate
+                                       # box beats the silence that hid this.
     # what to do with a partial miss. keep_successful deposits the held cuboids
     # into the well and returns only the missed volume to the dish, so the
     # per-well concentration stays constant; return_all sends everything back.

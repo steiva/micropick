@@ -300,13 +300,18 @@ def calibrate_pipette_offset(
         current_offset: tuple[float, float],
         frames: int = 5, settle_s: float = 0.8,
         verify: bool = True, max_correction_mm: float = 40.0,
-        tip_type: str | None = None,
+        tip_type: str | None = None, profile=None,
         manual_touch_up=None, log=print) -> OffsetResult:
     """Drive the tip onto the crosshair and record the offset that did it.
 
     current_offset is the starting estimate. It must be close enough to put the
     tip inside the lower camera's field; on a new installation measure it with
     a ruler first.
+
+    profile, if given, is written to and saved: the offset, and the homography
+    that came with it. Both are products of this one measurement, so keeping
+    them together is what stops a profile ending up with one refreshed and the
+    other left from a previous tip.
 
     manual_touch_up, if given, is called as f(robot, under_cam, view) after the
     automatic correction and should return once the operator is satisfied. Any
@@ -404,17 +409,35 @@ def calibrate_pipette_offset(
 
     # --- free by-product: the upper-to-lower homography --------------------
     # Both views saw the same disc, so the camera-to-camera map costs nothing
-    # more. gx, gy is the gantry pose the upper view was taken at, which the map
-    # is tied to. A poor fit is logged and dropped, never fatal to the offset.
+    # more. gx, gy is the gantry pose the upper view was taken at, and the
+    # resolutions are the modes the two views were taken at; the clip records at
+    # another one and the matrix is rescaled to it. A poor fit is logged and
+    # dropped, never fatal to the offset.
     homography, homography_report = None, None
     try:
         homography, homography_report = homography_from_views(
-            over_view, under_view, target.axes, (gx, gy))
-        log(f"  homography: {homography_report}")
+            over_view, under_view, target.under_rotation_deg, (gx, gy),
+            over_resolution=over_cam.resolution,
+            under_resolution=under_cam.resolution)
+        log(f"  {homography_report}")
     except HomographyError as exc:
         log(f"  homography unavailable: {exc}")
 
-    return OffsetResult(offset, tuple(current_offset), correction,
-                        residual_mm, over_view, under_view, final_view, nudge,
-                        homography=homography,
-                        homography_report=homography_report)
+    result = OffsetResult(offset, tuple(current_offset), correction,
+                          residual_mm, over_view, under_view, final_view, nudge,
+                          homography=homography,
+                          homography_report=homography_report)
+
+    # Saving here rather than in a cell of its own: the homography is a
+    # by-product of this measurement and used to be written by a separate step
+    # that was easy to forget, leaving the profile with a matrix from an older
+    # tip and an older pose.
+    if profile is not None:
+        profile.calibration.pipette_offset = offset
+        wrote = "offset"
+        if homography is not None:
+            profile.calibration.homography = homography
+            wrote += " and homography"
+        profile.save_calibration(backup=False)
+        log(f"  saved {wrote} to profile {profile.name!r}")
+    return result

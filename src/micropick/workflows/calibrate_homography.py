@@ -36,25 +36,32 @@ class HomographyResult:
         return str(self.report)
 
 
-def homography_from_views(over_view, under_view, axes, gantry_xy, *,
-                          max_reproj_px: float = 3.0
+def homography_from_views(over_view, under_view, rotation_deg, gantry_xy, *,
+                          over_resolution, under_resolution,
+                          max_centre_px: float = 15.0
                           ) -> tuple[CameraHomography, HomographyReport]:
     """Fit from two `PatternView`-like objects (each with centre and neighbours).
 
     Duck-typed on `.centre` and `.neighbours` so this stays independent of the
     pipette workflow that also produces those views.
+
+    The resolutions are those the two views were taken at. They are not optional:
+    a matrix without them cannot be applied to the modes the clip records at, and
+    a matrix applied at the wrong mode is worse than none, because it places the
+    box off frame and says nothing.
     """
     H, report = fit_homography(
         over_view.centre, over_view.neighbours,
         under_view.centre, under_view.neighbours,
-        np.asarray(axes, dtype=float), max_reproj_px=max_reproj_px)
-    config = Homography(H, gantry_xy).to_config(report)
+        float(rotation_deg), max_centre_px=max_centre_px)
+    config = Homography(H, gantry_xy, over_resolution,
+                        under_resolution).to_config(report)
     return config, report
 
 
 def calibrate_homography(robot: Robot, over_cam: Camera, under_cam: Camera,
                          detector, *, target: TipTarget | None = None,
-                         frames: int = 7, max_reproj_px: float = 3.0,
+                         frames: int = 7, max_centre_px: float = 15.0,
                          log=print) -> HomographyResult:
     """Fit the homography from one disc seen in both cameras. No pipette, no moves.
 
@@ -73,8 +80,10 @@ def calibrate_homography(robot: Robot, over_cam: Camera, under_cam: Camera,
                                frames=frames)
 
     config, report = homography_from_views(
-        over_view, under_view, target.axes, (gx, gy),
-        max_reproj_px=max_reproj_px)
+        over_view, under_view, target.under_rotation_deg, (gx, gy),
+        over_resolution=over_cam.resolution,
+        under_resolution=under_cam.resolution,
+        max_centre_px=max_centre_px)
     log(str(report))
     return HomographyResult(config, report, (float(gx), float(gy)),
                             over_view, under_view)

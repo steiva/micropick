@@ -266,9 +266,16 @@ def jog_in_window(controller: JogController, camera=None, *,
     window has focus, so a stray keystroke in the notebook cannot drive the
     robot.
 
+    The camera's own view crop is applied here, since this is a window and
+    nothing measured comes out of it. A camera with no crop set is unaffected.
+
     Returns the position at the moment Enter was pressed.
     """
     import cv2
+
+    from ..core.vision.cuboids import center_crop
+
+    crop = float(getattr(camera, "crop", 1.0)) if camera is not None else 1.0
 
     cv2.namedWindow(window, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(window, *size)
@@ -285,6 +292,8 @@ def jog_in_window(controller: JogController, camera=None, *,
                     frame = None
             if frame is None:
                 frame = np.zeros((size[1], size[0], 3), np.uint8)
+            elif crop != 1.0:
+                frame = center_crop(frame, crop)[0].copy()
             else:
                 frame = frame.copy()
             h, w = frame.shape[:2]

@@ -170,7 +170,7 @@ class Recorder:
         self._t0: float | None = None
         self._active = threading.Event()
         self._lock = threading.Lock()
-        self._roi: tuple[int, int, int] | None = None
+        self._rois: list[tuple[int, int, int]] = []
 
     # -- called by the camera thread ---------------------------------------
 
@@ -180,17 +180,17 @@ class Recorder:
         if self.transform is not None:
             frame = self.transform(frame)
         with self._lock:
-            roi = self._roi
+            rois = list(self._rois)
             if len(self.frames) == self.max_frames:
                 self.dropped += 1
-        if roi is not None:
-            cx, cy, half = roi
+        if rois:
             if frame.ndim == 2:
                 frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
             else:
                 frame = frame.copy()
-            cv2.rectangle(frame, (cx - half, cy - half), (cx + half, cy + half),
-                          (255, 255, 255), 2)
+            for cx, cy, half in rois:
+                cv2.rectangle(frame, (cx - half, cy - half),
+                              (cx + half, cy + half), (255, 255, 255), 2)
         if self.annotate is not None:
             frame = self.annotate(frame)
         with self._lock:
@@ -217,15 +217,24 @@ class Recorder:
     def recording(self) -> bool:
         return self._active.is_set()
 
-    def mark_roi(self, cx: float, cy: float, half: int = 60) -> None:
-        """Draw a box on recorded frames. Coordinates are in the frame the
-        recorder stores, which is post-transform."""
+    def mark_rois(self, points, half: int = 60) -> None:
+        """Draw a box around each point on recorded frames.
+
+        A pickup visits every cuboid of its batch, so a single box would mark
+        one of several. Coordinates are in the frame the recorder stores, which
+        is post-transform: a cropping transform means the caller shifts them by
+        the crop origin first.
+        """
         with self._lock:
-            self._roi = (int(cx), int(cy), int(half))
+            self._rois = [(int(x), int(y), int(half)) for x, y in points]
+
+    def mark_roi(self, cx: float, cy: float, half: int = 60) -> None:
+        """One box, for callers that only ever have one point."""
+        self.mark_rois([(cx, cy)], half)
 
     def clear_roi(self) -> None:
         with self._lock:
-            self._roi = None
+            self._rois = []
 
     def __enter__(self) -> "Recorder":
         return self.start()
@@ -294,15 +303,23 @@ class Recorder:
 # ---------------------------------------------------------------------------
 
 class BackgroundCamera:
-    """A camera held open by one grab thread."""
+    """A camera held open by one grab thread.
+
+    `crop` is carried, never applied. It is the fraction of the frame worth
+    looking at when this camera is shown or recorded, and read()/read_after()
+    keep handing out whole sensor frames regardless: cropping what detection and
+    calibration see is exactly the mistake the previous version made, and it
+    moved every coordinate fitted from those frames.
+    """
 
     def __init__(self, cap, *, label: str = "camera",
                  resolution: tuple[int, int] | None = None,
                  controls: ControlReport | None = None,
-                 warmup: int = 5):
+                 crop: float = 1.0, warmup: int = 5):
         self._cap = cap
         self.label = label
         self.controls = controls or ControlReport()
+        self.crop = float(crop)
 
         actual = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                   int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
@@ -552,11 +569,13 @@ class CameraManager:
         report = apply_controls(cap, merged) if merged else ControlReport()
 
         cam = BackgroundCamera(cap, label=label, resolution=wanted,
-                               controls=report)
+                               controls=report,
+                               crop=float(spec.get("crop", 1.0)))
         self._open[label] = cam
 
         if verbose:
-            print(f"{label}: {device}  {wanted[0]}x{wanted[1]}")
+            print(f"{label}: {device}  {wanted[0]}x{wanted[1]}"
+                  + (f"  view crop {cam.crop:g}" if cam.crop != 1.0 else ""))
             if merged:
                 print(f"  {report}".replace("\n", "\n  "))
         return cam

@@ -39,7 +39,7 @@ __all__ = [
     "detect_boxes", "otsu_contour", "contour_metrics", "build_cuboid_df",
     "add_derived", "select_pickable", "roi_mask",
     "temporal_variance", "analyze_mask", "check_distance_from_center",
-    "detect_floater_zones", "drop_in_zones", "center_crop",
+    "detect_floater_zones", "drop_in_zones", "center_crop", "center_crop_box",
 ]
 
 
@@ -343,14 +343,21 @@ def drop_in_zones(df: pd.DataFrame, zones, radius_px: float) -> pd.DataFrame:
 # frame utility
 # ---------------------------------------------------------------------------
 
+def center_crop_box(shape, frac: float = 0.5, ref: str = 'width'):
+    """Where the centred square crop sits: (x0, y0, side), in full-frame pixels.
+
+    Separate from center_crop because the origin is needed without a frame to
+    hand: anything drawn on a cropped view has to be shifted by it, and the
+    shift is computed once from the camera's resolution rather than per frame.
+    """
+    H, W = shape[:2]
+    base = {'width': W, 'height': H, 'min': min(H, W)}[ref]
+    side = min(int(base * frac), H, W)
+    return (W - side) // 2, (H - side) // 2, side
+
+
 def center_crop(img: np.ndarray, frac: float = 0.5, ref: str = 'width'):
     """Centred square crop. Returns (crop, x0, y0) so detections can be mapped
     back to full-frame coordinates. Deduplicated from three identical copies."""
-    H, W = img.shape[:2]
-    base = {'width': W, 'height': H, 'min': min(H, W)}[ref]
-    side = int(base * frac)
-    side = min(side, H, W)
-
-    x0 = (W - side) // 2
-    y0 = (H - side) // 2
+    x0, y0, side = center_crop_box(img.shape, frac, ref)
     return img[y0:y0 + side, x0:x0 + side], x0, y0

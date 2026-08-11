@@ -73,7 +73,7 @@ import numpy as np
 import pandas as pd
 
 from ..core.vision import cuboids as vision
-from ..core.calibration.homography import Homography
+from ..core.calibration.homography import Homography, HomographyError
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, xyz)
 
@@ -195,12 +195,25 @@ class PickingSession:
         self._clip_dir = None
         self._recorder = None
         self._homography = None
+        self._clip_crop = (1.0, 0, 0)                  # frac, x0, y0
+        self._clip_size = (0, 0)                       # what the clip records
         if clip_dir is not None:
             if under_cam is None:
                 raise PickingError("clip_dir was given but under_cam is None; "
                                    "recording needs the lower camera")
             self._clip_dir = self._prepare_clip_dir(clip_dir)
-            self._recorder = under_cam.record(max_frames=self.config.clip_max_frames)
+            # The clip is a picture for a person, so it carries the camera's view
+            # crop. The transform runs in the grab thread, once per frame, and
+            # nothing else sees it: what the session measures stays whole.
+            frac = float(getattr(under_cam, "crop", 1.0))
+            w, h = under_cam.resolution
+            x0, y0, side = vision.center_crop_box((h, w), frac)
+            self._clip_crop = (frac, x0, y0)
+            self._clip_size = (side, side) if frac != 1.0 else (w, h)
+            self._recorder = under_cam.record(
+                max_frames=self.config.clip_max_frames,
+                transform=(None if frac == 1.0
+                           else lambda f: vision.center_crop(f, frac)[0]))
             hcfg = profile.calibration.homography
             if hcfg is not None:
                 self._homography = Homography.from_config(hcfg)
@@ -491,27 +504,64 @@ class PickingSession:
             xy = np.asarray(self.pixel_map.to_robot(cX, cY, self._gantry))
             xy = xy + self._offset
             self._world.append((float(xy[0]), float(xy[1])))
-        self._begin_clip()
+        marked = self._begin_clip()
         self.state = RobotState.PICKUP_SAMPLE
         return self._event("approached", "computed pickup coordinates",
-                           n=len(self._world))
+                           n=len(self._world), marked=marked)
 
-    def _begin_clip(self) -> None:
-        """Start a lower-camera clip for this batch, marking where the first
-        cuboid will be picked. The ROI box is drawn only if a homography is
-        present and valid at the current pose; without one the clip records
-        without a box, which is not an error."""
+    def _begin_clip(self) -> int:
+        """Start a lower-camera clip for this batch and box every chosen cuboid.
+
+        Returns how many boxes were placed. A clip with no boxes is not fatal —
+        it is a viewing aid — but it is never silent: each way of ending up
+        without one says so, because this failing quietly is precisely how the
+        box went missing for a whole run of the machine.
+        """
         if self._recorder is None:
-            return
-        first = self._choice[["cX", "cY"]].values[0]
-        under_px = None
-        if self._homography is not None:
-            under_px = self._homography.over_to_under([first], self._gantry)
-        if under_px is not None:
-            self._recorder.mark_roi(under_px[0][0], under_px[0][1])
-        else:
-            self._recorder.clear_roi()
+            return 0
+        self._recorder.clear_roi()
+        marked = 0
+        try:
+            marked = self._mark_choice()
+        except HomographyError as exc:
+            self._log(f"no ROI box on the clip: {exc}")
         self._recorder.start()
+        return marked
+
+    def _mark_choice(self) -> int:
+        """Chosen cuboids, from upper-camera pixels to boxes on the clip."""
+        if self._homography is None:
+            raise HomographyError(
+                "the profile has no upper-to-lower homography; run the tip "
+                "calibration, which fits one from the same two views")
+
+        drift = self._homography.drift_mm(self._gantry)
+        if drift > self.config.homography_drift_warn_mm:
+            # Not refused: the upper camera has moved with the gantry, so the map
+            # is a little stale, and a box slightly off beats no box at all.
+            self._log(f"homography was fitted {drift:.1f} mm away from this "
+                      f"pose; the ROI boxes are approximate")
+
+        under_px = self._homography.over_to_under(
+            self._choice[["cX", "cY"]].values, self._gantry,
+            self.camera.resolution, self._under_cam.resolution)
+
+        _, x0, y0 = self._clip_crop            # the clip is cropped, the map is not
+        marks = under_px - np.array([x0, y0], dtype=float)
+
+        # A box outside the recorded frame is drawn and never seen, which is how
+        # the whole thing went unnoticed while the coordinates were in the wrong
+        # camera mode. Say it rather than let the clip come back bare.
+        w, h = self._clip_size
+        outside = int(np.sum((marks[:, 0] < 0) | (marks[:, 0] >= w) |
+                             (marks[:, 1] < 0) | (marks[:, 1] >= h)))
+        if outside:
+            self._log(f"{outside} of {len(marks)} ROI boxes fall outside the "
+                      f"{w}x{h} clip frame; check that the homography was "
+                      f"fitted on this disc and this lower camera")
+
+        self._recorder.mark_rois(marks)
+        return len(under_px)
 
     def _state_pickup_sample(self, pause, stop) -> PickEvent:
         ph = self.config.pickup_height
