@@ -300,6 +300,10 @@ class PickingConfig(BaseModel):
     max_batch: int = 10                # cap on cuboids aspirated before a deposit
     max_shake_retries: int = 3         # shakes with no isolated cuboids before
                                        # handing back to the operator
+    max_empty_pickups: int = 3         # pickups in a row that held nothing before
+                                       # handing back to the operator. Without a
+                                       # cap, cuboids the detector sees but the
+                                       # tip never catches loop for ever.
     lift_mm: float = 20.0              # clearance raised above pickup_height and
                                        # after each aspirate
     capture_settle_s: float = 0.3      # pause after parking before a frame

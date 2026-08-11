@@ -21,6 +21,22 @@ No windows, no keyboard, no printing. Frames leave through the `on_frame`
 callback; drawing belongs to `viz/overlays.py`, not here. Everything the session
 needs is passed to the constructor; there are no module globals.
 
+The session starts idle and stays there until `start()` (or `resume()`, the same
+go-ahead under the name the operator already knows) is called: a run beginning
+by itself the moment the cell executes leaves nobody time to look at the dish.
+Which key means "go" is the caller's business; all the session knows is that it
+has not been told yet.
+
+The head of the picking cycle is `DETECT_FLOATERS`, not `CAPTURE_FRAME`: the
+frame a decision is made from has to be taken *after* the floaters are measured,
+not 2.5 s before. Every path back into the loop returns there.
+
+`live_view` says which picture the caller should show. During the floater clip
+the operator has to watch the dish move, so the display follows the camera;
+everywhere else the useful picture is the annotated frame the last decision was
+made from, held until the next one. The session only reports the mode; it does
+not know what a window is.
+
 What this fixes from the old `TissuePickerFSM` (DESIGN section 11):
 - one source of truth for the current target: `routine.current`, never a second
   `self.current_well` that drifts from it;
@@ -39,6 +55,11 @@ Behaviour change (requested): on a partial miss the held cuboids are kept and
 the dispensed volume is proportional to the count actually held, so per-well
 concentration stays constant. `PickingConfig.miss_policy` selects this
 (`keep_successful`) or the old return-everything behaviour (`return_all`).
+
+Both the dispensed volume and the trip to the well itself follow the count
+actually held, never the count aimed at. A pickup that held nothing returns its
+volume to the dish and starts the cycle again without going near the plate;
+`max_empty_pickups` of those in a row hand back to the operator.
 """
 
 from __future__ import annotations
@@ -84,6 +105,15 @@ class RobotState(Enum):
 
 
 _TERMINAL = {RobotState.COMPLETED, RobotState.CANCELED}
+
+# States whose picture is worth watching live rather than frozen: the operator is
+# looking at the dish itself, either before the run or while the floater clip
+# records the movement that identifies them.
+_LIVE = {RobotState.IDLE, RobotState.DETECT_FLOATERS}
+
+# How often the idle state looks to see whether it has been told to start. A step
+# of the waiting mechanism, not a parameter of the process, so it is not config.
+_IDLE_POLL_S = 0.1
 
 
 @dataclass
@@ -140,6 +170,7 @@ class PickingSession:
         self._size_ratio = mmpp * mmpp
 
         self.state = RobotState.IDLE
+        self._started = False
         self._frame: np.ndarray | None = None
         self._gantry: np.ndarray | None = None
         self.cuboid_df = pd.DataFrame()
@@ -148,7 +179,10 @@ class PickingSession:
         self._choice: pd.DataFrame | None = None
         self._world: list[tuple[float, float]] = []
         self._shake_retries = 0
-        self._cycles_since_floater = 0
+        self._empty_pickups = 0
+        # due, not zero: the first cycle of a run must measure the floaters, and
+        # counting up from zero silently skips the first `interval` cycles.
+        self._cycles_since_floater = self.config.floater_check_interval
         self.floater_zones: list[tuple[float, float]] = []
         self._deposit_volume = 0.0
         self._pending_transfer = False
@@ -229,16 +263,53 @@ class PickingSession:
             self.state = RobotState.CANCELED
             return self._event("canceled", "stopped between moves")
 
+    def start(self) -> None:
+        """The operator's go-ahead: leave the initial idle state.
+
+        Idempotent, and safe to call from another thread than the one inside
+        `step()` — that is the normal case, since the display thread reads the
+        key while the worker thread sits in IDLE.
+        """
+        self._started = True
+
     def resume(self) -> None:
-        """Leave NEEDS_OPERATOR and try again, e.g. after the operator has
-        adjusted the dish. Resets the shake counter."""
+        """Carry on after a state that waits for a person.
+
+        One command covers both: the go-ahead out of IDLE and the retry out of
+        NEEDS_OPERATOR, so the caller needs a single key. Both counters are
+        cleared, since the operator has just had a chance to fix the dish.
+        """
+        if self.state is RobotState.IDLE:
+            self.start()
+            return
         if self.state is RobotState.NEEDS_OPERATOR:
             self._shake_retries = 0
-            self.state = RobotState.CAPTURE_FRAME
+            self._empty_pickups = 0
+            self.state = RobotState.DETECT_FLOATERS
 
     @property
     def done(self) -> bool:
         return self.state in _TERMINAL
+
+    @property
+    def live_view(self) -> bool:
+        """True while the camera itself is the useful picture, False while the
+        last annotated decision frame is. The caller decides what to do with
+        that; this only reports which one the state calls for."""
+        return self.state in _LIVE
+
+    @property
+    def choice(self) -> pd.DataFrame | None:
+        """The cuboids chosen for the current pickup, or None between cycles.
+        Exposed so overlays can draw them; treat as read-only."""
+        return self._choice
+
+    @property
+    def verify_radius_px(self) -> float:
+        """Radius around a chosen position within which a detection still means
+        the cuboid was not picked. `_count_misses` compares against this same
+        number, so what is drawn is what is decided."""
+        return self.config.failure_threshold / self._one_d_ratio
 
     # -- helpers ------------------------------------------------------------
 
@@ -293,13 +364,21 @@ class PickingSession:
     # -- states -------------------------------------------------------------
 
     def _state_idle(self, pause, stop) -> PickEvent:
+        """Wait for the go-ahead, then retract and enter the cycle.
+
+        The wait blocks inside `step()` rather than returning an event per poll:
+        a caller that loops on `step()` would otherwise spin, and there is
+        nothing to report until something happens. `_gate` keeps the stop event
+        working, so cancelling from idle behaves like cancelling anywhere else.
+        """
+        while not self._started:
+            self._gate(pause, stop)
+            time.sleep(_IDLE_POLL_S)
+
         self._gate(pause, stop)
         require_ok(self.robot.retract_axis("leftZ"), "retract")
-        self._gate(pause, stop)
-        move_to(self.robot, self._observe, min_z_height=self.config.dish_bottom)
-        self._emit(self._fresh_frame())
-        self.state = RobotState.CAPTURE_FRAME
-        return self._event("idle", "parked at the observation pose")
+        self.state = RobotState.DETECT_FLOATERS
+        return self._event("started", "operator started the run")
 
     def _state_capture_frame(self, pause, stop) -> PickEvent:
         self._gate(pause, stop)
@@ -308,23 +387,29 @@ class PickingSession:
             time.sleep(self.config.capture_settle_s)
         self._frame = self._fresh_frame()
         self._gantry = np.array(xyz(self.robot)[:2])
-        self._emit(self._frame)
-        self.state = RobotState.DETECT_FLOATERS
+        self.state = RobotState.ANALYZE_FRAME
         return self._event("captured", "frame taken at the observation pose")
 
     def _state_detect_floaters(self, pause, stop) -> PickEvent:
+        """Head of the cycle. Measures which objects drift, before the frame
+        that the pickup decision is made from is taken."""
         if self._cycles_since_floater < self.config.floater_check_interval:
             self._cycles_since_floater += 1
-            self.state = RobotState.ANALYZE_FRAME
+            self.state = RobotState.CAPTURE_FRAME
             return self._event("floaters", "skipped, within interval")
 
+        # The clip is the dish seen from above, so the pose has to be right
+        # first: this state is entered from the shake pose and, at the start of
+        # a run, from wherever the gantry happened to be left.
+        self._gate(pause, stop)
+        move_to(self.robot, self._observe, min_z_height=self.config.dish_bottom)
         frames = self._grab_clip(self.config.floater_clip_sec, pause, stop)
         self.floater_zones = vision.detect_floater_zones(
             frames, min_area=self.config.floater_min_area,
             mad_k=self.config.floater_mad_k)
         self._cycles_since_floater = 0
         self._log(f"floater check: {len(self.floater_zones)} zones")
-        self.state = RobotState.ANALYZE_FRAME
+        self.state = RobotState.CAPTURE_FRAME
         return self._event("floaters", "checked",
                            zones=len(self.floater_zones))
 
@@ -340,19 +425,24 @@ class PickingSession:
         return frames
 
     def _state_analyze_frame(self, pause, stop) -> PickEvent:
+        # Dropped before the pipeline runs: the frame emitted below must carry
+        # this cycle's choice or none at all, never the last cycle's cuboids
+        # drawn over a dish they have already left.
+        self._choice = None
         self._run_pipeline(self._frame)
-        self._emit(self._frame)
 
         if self.routine.current is None:
             self.routine.next()
         current = self.routine.current
         if current is None:
+            self._emit(self._frame)
             self.state = RobotState.COMPLETED
             return self._event("completed", "routine already satisfied")
 
         if len(self.isolated) == 0:
             self._shake_retries += 1
             self._log("no isolated cuboids in the working region")
+            self._emit(self._frame)
             if self._shake_retries >= self.config.max_shake_retries:
                 self.state = RobotState.NEEDS_OPERATOR
                 return self._event("needs_operator",
@@ -369,6 +459,7 @@ class PickingSession:
         want = max(1, min(want, len(self.isolated)))
         self._choice = (self.isolated.sample(n=want)
                         if len(self.isolated) > want else self.isolated)
+        self._emit(self._frame)                 # after the choice, so it shows
         self.state = RobotState.APPROACH_TARGET
         return self._event("analyzed", "chose a batch",
                            isolated=len(self.isolated), batch=len(self._choice))
@@ -388,9 +479,10 @@ class PickingSession:
         move_relative(self.robot, "x", -2)
         self._gate(pause, stop)
         move_relative(self.robot, "x", 2)
-        # a clip is worth taking after a shake, since floaters were just stirred
+        # a clip is mandatory after a shake: what floats has just been stirred,
+        # and the zones measured before it say nothing about the dish now.
         self._cycles_since_floater = self.config.floater_check_interval
-        self.state = RobotState.CAPTURE_FRAME
+        self.state = RobotState.DETECT_FLOATERS
         return self._event("shaken", "shook the dish")
 
     def _state_approach_target(self, pause, stop) -> PickEvent:
@@ -470,14 +562,22 @@ class PickingSession:
         current = self.routine.current
         self._log(f"well {current}: {held} held, {misses} missed")
 
+        # return_all treats a partial miss as a total one, so nothing is held
+        # under it either; from here on only `held` decides.
         if self.config.miss_policy == "return_all" and misses > 0:
-            self.routine.record(delivered=0, missed=attempted)
+            held = 0
+        self._held = held
+        self.routine.record(delivered=held, missed=attempted - held)
+
+        if held == 0:
+            # Nothing in the tip, so nothing to deliver and no reason to visit
+            # the well. Everything goes back to the dish and the cycle restarts.
+            self._empty_pickups += 1
             self._deposit_volume = self.config.vol * attempted
             self._pending_transfer = False
             self.state = RobotState.DEPOSIT_BACK
         else:
-            self.routine.record(delivered=held, missed=misses)
-            self._held = held
+            self._empty_pickups = 0
             if misses > 0:
                 self._deposit_volume = self.config.vol * misses
                 self._pending_transfer = True
@@ -485,7 +585,7 @@ class PickingSession:
             else:
                 self.state = RobotState.TRANSFER_TO_WELL
         return self._event("verified", "checked the pickup",
-                           attempted=attempted, held=held, missed=misses)
+                           attempted=attempted, held=held, missed=attempted - held)
 
     def _count_misses(self) -> int:
         """A miss is a chosen position where a cuboid still sits. Checked
@@ -495,11 +595,11 @@ class PickingSession:
         if self._choice is None or len(self.cuboid_df) == 0:
             return 0
         det = self.cuboid_df[["cX", "cY"]].values
+        radius = self.verify_radius_px           # the same circle overlays draw
         misses = 0
         for prev_x, prev_y in self._choice[["cX", "cY"]].values:
-            dist_mm = np.hypot(det[:, 0] - prev_x,
-                               det[:, 1] - prev_y) * self._one_d_ratio
-            if np.any(dist_mm <= self.config.failure_threshold):
+            dist_px = np.hypot(det[:, 0] - prev_x, det[:, 1] - prev_y)
+            if np.any(dist_px <= radius):
                 misses += 1
         return misses
 
@@ -523,8 +623,17 @@ class PickingSession:
         if self._pending_transfer:
             self._pending_transfer = False
             self.state = RobotState.TRANSFER_TO_WELL
+        elif self._empty_pickups >= self.config.max_empty_pickups:
+            # Cuboids keep being detected and keep not being caught: something
+            # is wrong with the dish or the tip, and repeating cannot fix it.
+            self.state = RobotState.NEEDS_OPERATOR
+            return self._event("needs_operator",
+                               "returned the volume; "
+                               f"{self._empty_pickups} pickups in a row held "
+                               "nothing", volume=self._deposit_volume,
+                               empty=self._empty_pickups)
         else:
-            self.state = RobotState.CAPTURE_FRAME
+            self.state = RobotState.DETECT_FLOATERS
         return self._event("deposited_back", "returned volume to the dish",
                            volume=self._deposit_volume)
 
@@ -579,7 +688,7 @@ class PickingSession:
         if nxt is None or self.routine.is_done():
             self.state = RobotState.COMPLETED
         else:
-            self.state = RobotState.CAPTURE_FRAME
+            self.state = RobotState.DETECT_FLOATERS
         return self._event("transferred", "deposited into the destination",
                            target=str(current), volume=volume)
 
