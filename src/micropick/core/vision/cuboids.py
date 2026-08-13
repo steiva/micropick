@@ -34,13 +34,33 @@ from scipy.spatial import cKDTree
 from skimage.filters import threshold_multiotsu
 
 from ...config.schema import PickingConfig
+from . import bubbles
 
 __all__ = [
     "detect_boxes", "otsu_contour", "contour_metrics", "build_cuboid_df",
     "add_derived", "select_pickable", "roi_mask",
+    "REJECT_REASONS", "STAGE_COLUMNS", "label_rejections", "reject_counts",
     "temporal_variance", "analyze_mask", "check_distance_from_center",
-    "detect_floater_zones", "drop_in_zones", "center_crop", "center_crop_box",
+    "detect_floater_zones", "in_zones", "drop_in_zones",
+    "center_crop", "center_crop_box",
 ]
+
+# Why a detection is not eligible, in the order the reasons are decided. A row
+# takes the first one that applies, so the reasons partition the detections and
+# their counts add up to the number of rows - which is what makes "the filter ate
+# every cuboid" distinguishable from "there were no bubbles".
+#
+# `bubble` comes before `floater` deliberately. A bubble drifts, so it is nearly
+# always inside a floater zone as well; ordering floater first would label almost
+# every bubble `floater` and drive the bubble count to zero exactly when bubbles
+# are the problem. Nothing is lost either way, because `label_rejections` also
+# returns the four tests as independent columns, so no count depends on the order
+# and it can be changed later without invalidating recorded data.
+REJECT_REASONS = ("shape", "bubble", "floater", "crowded")
+
+# The four tests behind those reasons, kept per row. `shape_ok` is the only one
+# stated positively, because that is the direction `select_pickable` answers in.
+STAGE_COLUMNS = ("shape_ok", "is_bubble", "in_floater_zone", "crowded")
 
 
 # ---------------------------------------------------------------------------
@@ -127,12 +147,25 @@ def contour_metrics(cnt):
 
 
 def build_cuboid_df(gray: np.ndarray, boxes, confs, roi_mask=None,
-                    pad: int = 6, open_k: int = 3) -> pd.DataFrame:
-    """Boxes -> a DataFrame of contour geometry, one row per accepted box.
+                    pad: int = 6, open_k: int = 3,
+                    bubble_core_r: float = 0.30,
+                    bubble_ring_window=(0.40, 0.85),
+                    bubble_min_area_px: int = 20) -> pd.DataFrame:
+    """Boxes -> a DataFrame of contour geometry and optics, one row per box.
 
     `roi_mask` drops objects whose centre falls outside the working zone.
     `open_k` is threaded through to `otsu_contour`; in the old code the config
     value existed but never reached the morphology step.
+
+    The bubble features are measured here, on the same contour the geometry comes
+    from, and unconditionally: whether they cause a rejection is decided later by
+    `label_rejections`. The thresholds they will be judged against rest on eight
+    crops, so a run has to accumulate features for objects that are kept as well
+    as ones that are dropped, or there is never any data to replace them with.
+
+    Rows dropped above - no Otsu component, a degenerate contour, a centre
+    outside the ROI - leave no trace here, so a count of reasons adds up to
+    `len(df)` and not to `len(boxes)`. Callers that report one should report both.
     """
     rows = []
     for box, cf in zip(boxes, confs):
@@ -145,6 +178,16 @@ def build_cuboid_df(gray: np.ndarray, boxes, confs, roi_mask=None,
         if roi_mask is not None and roi_mask[int(mt['cY']), int(mt['cX'])] == 0:
             continue
         mt['conf'] = float(cf)
+
+        f = bubbles.bubble_features(gray, cnt, center=(mt['cX'], mt['cY']),
+                                    core_r=bubble_core_r,
+                                    ring_window=bubble_ring_window,
+                                    min_area_px=bubble_min_area_px)
+        # Written even when unmeasurable, so the columns cannot go missing on a
+        # frame where every object degenerates - which would leave the label step
+        # below with nothing to read and turn a bad frame into a crash.
+        for key in bubbles.FEATURES:
+            mt[key] = np.nan if f is None else f[key]
         rows.append(mt)
     return pd.DataFrame(rows)
 
@@ -187,6 +230,76 @@ def select_pickable(df: pd.DataFrame, cfg: PickingConfig):
         (df.radial_cv <= cfg.max_radial_cv) &
         (df.distance_to_center <= cfg.circle_radius)
     )
+
+
+def label_rejections(df: pd.DataFrame, cfg: PickingConfig,
+                     floater_zones=()) -> pd.DataFrame:
+    """Why each detection is not eligible: the four tests, and one reason.
+
+    Returns a frame indexed like `df` carrying `STAGE_COLUMNS` as independent
+    booleans, the bubble `margin`, and a `reject_reason` string that is `""` for
+    an object that passed everything. Must run after `add_derived`, whose
+    spacing and dish-distance columns two of the tests read.
+
+    A rejected object is meant to stay in the table wearing its reason rather
+    than vanish from a filtered copy: without that, a frame with no bubbles and a
+    frame whose cuboids were all eaten by the filter look identical, and at 13%
+    of margin on `spec_ratio` the second is a real possibility.
+
+    Both the label and the raw tests are returned because one object can fail
+    several at once - a bubble also floats, and a bubble whose rim the
+    morphological opening broke also fails on shape. Any single label therefore
+    undercounts something. With the booleans present every count is recoverable:
+    how many bubbles were seen at all, and how many objects the filter alone
+    cost, which are different numbers and both worth having.
+
+    `bubble_filter_enabled` gates only the rejection. `is_bubble` and `margin`
+    are filled in either way, so a run with the filter off still records how many
+    bubbles were there and what switching it on would have cost.
+    """
+    if len(df) == 0:
+        return pd.DataFrame({
+            **{c: pd.Series(dtype=bool) for c in STAGE_COLUMNS},
+            "margin": pd.Series(dtype=float),
+            "reject_reason": pd.Series(dtype=object),
+        })
+
+    shape_ok = np.asarray(select_pickable(df, cfg), dtype=bool)
+    is_bubble = np.asarray(bubbles.select_bubbles(df, cfg), dtype=bool)
+    in_zone = in_zones(df, floater_zones, cfg.floater_zone_radius_px)
+    crowded = np.asarray(df.min_dist_mm <= cfg.minimum_distance, dtype=bool)
+
+    tests = {"shape": ~shape_ok,
+             "bubble": is_bubble & bool(cfg.bubble_filter_enabled),
+             "floater": in_zone,
+             "crowded": crowded}
+    reason = np.select([tests[r] for r in REJECT_REASONS], REJECT_REASONS,
+                       default="")
+
+    return pd.DataFrame({
+        "shape_ok": shape_ok, "is_bubble": is_bubble,
+        "in_floater_zone": in_zone, "crowded": crowded,
+        "margin": bubbles.bubble_margin(df, cfg).values,
+        # object dtype, not the fixed-width string numpy hands back: a longer
+        # reason added later would otherwise be silently truncated
+        "reject_reason": reason.astype(object),
+    }, index=df.index)
+
+
+def reject_counts(df: pd.DataFrame) -> dict:
+    """How many rows carry each reason, and how many carry none.
+
+    Zeroes are spelled out. A missing `bubble` key reads as "the filter was not
+    running" when it means "the filter rejected nothing", and telling those two
+    apart is the whole point of counting. Plain ints, because a numpy integer
+    renders as `np.int64(4)` inside a printed event.
+    """
+    empty = {"accepted": 0, **{r: 0 for r in REJECT_REASONS}}
+    if len(df) == 0 or "reject_reason" not in df:
+        return empty
+    r = df["reject_reason"]
+    return {"accepted": int((r == "").sum()),
+            **{name: int((r == name).sum()) for name in REJECT_REASONS}}
 
 
 def roi_mask(gray: np.ndarray, cfg: PickingConfig,
@@ -328,15 +441,31 @@ def detect_floater_zones(frames, downscale: int = 2, step: int = 1,
     return list(zip(df.x, df.y))
 
 
-def drop_in_zones(df: pd.DataFrame, zones, radius_px: float) -> pd.DataFrame:
-    """Drop rows whose centre lies within radius_px of any floater zone."""
+def in_zones(df: pd.DataFrame, zones, radius_px: float) -> np.ndarray:
+    """Boolean array: does each row's centre fall inside any floater zone?
+
+    An object exactly at radius_px counts as inside, which is the complement of
+    the strict `>` that decided what to keep when this was only ever a filter.
+    """
+    hit = np.zeros(len(df), bool)
     if len(df) == 0 or not zones:
-        return df
-    keep = np.ones(len(df), bool)
+        return hit
     xy = df[['cX', 'cY']].values
     for zx, zy in zones:
-        keep &= np.hypot(xy[:, 0] - zx, xy[:, 1] - zy) > radius_px
-    return df[keep]
+        hit |= np.hypot(xy[:, 0] - zx, xy[:, 1] - zy) <= radius_px
+    return hit
+
+
+def drop_in_zones(df: pd.DataFrame, zones, radius_px: float) -> pd.DataFrame:
+    """Drop rows whose centre lies within radius_px of any floater zone.
+
+    The picking session goes through `label_rejections` instead, which records
+    the reason on the row rather than removing it. Kept for a caller that wants
+    the plain filter and no bookkeeping.
+    """
+    if len(df) == 0 or not zones:
+        return df
+    return df[~in_zones(df, zones, radius_px)]
 
 
 # ---------------------------------------------------------------------------

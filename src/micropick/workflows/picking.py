@@ -235,10 +235,21 @@ class PickingSession:
         self.cuboid_df = pd.DataFrame()
         self.pickable = pd.DataFrame()
         self.isolated = pd.DataFrame()
+        # how many boxes the detector returned for the current frame. Kept apart
+        # from len(cuboid_df) because contouring and the ROI drop rows before the
+        # table exists, and a frame where that happened to everything has to be
+        # tellable from one the filters emptied.
+        self._boxes_seen = 0
         self._choice: pd.DataFrame | None = None
         self._world: list[tuple[float, float]] = []
         self._shake_retries = 0
         self._empty_pickups = 0
+        # Which pass round the picking loop we are on, counted from 1 at the head
+        # of the cycle. Not the same thing as `_cycles_since_floater`, which is a
+        # countdown to the next clip and resets; this only ever increases, and it
+        # is what names a frame in the log. Bubbles come from pipetting, so a
+        # feature row is only interpretable next to the cycle it was measured in.
+        self._cycle = 0
         # due, not zero: the first cycle of a run must measure the floaters, and
         # counting up from zero silently skips the first `interval` cycles.
         self._cycles_since_floater = self.config.floater_check_interval
@@ -412,6 +423,25 @@ class PickingSession:
         return self._choice
 
     @property
+    def cycle(self) -> int:
+        """Which pass round the picking loop this is, counted from 1."""
+        return self._cycle
+
+    @property
+    def bubbles(self) -> pd.DataFrame:
+        """Detections the bubble filter recognised. Read-only.
+
+        The verdict itself, not `reject_reason == "bubble"`. A bubble that also
+        drifts is labelled a floater and one seen with the filter off is not
+        rejected at all, but in both cases what has to be visible on the dish is
+        that the object was recognised as a bubble.
+        """
+        df = self.cuboid_df
+        if len(df) == 0 or "is_bubble" not in df:
+            return pd.DataFrame()
+        return df[df.is_bubble]
+
+    @property
     def verify_radius_px(self) -> float:
         """Radius around a chosen position within which a detection still means
         the cuboid was not picked. `_count_misses` compares against this same
@@ -451,6 +481,7 @@ class PickingSession:
         """
         self._show(self._frame, cuboid_df=self.cuboid_df,
                    pickable=self.pickable, isolated=self.isolated,
+                   bubbles=self.bubbles,
                    chosen=self._choice, verify_radius=verify_radius)
 
     def _gate(self, pause, stop) -> None:
@@ -500,24 +531,104 @@ class PickingSession:
         return frame
 
     def _run_pipeline(self, frame) -> None:
+        """Measure the frame: one labelled table, and three views of it.
+
+        The three tables used to be a chain of filtered copies, which threw the
+        reason away - an object that dropped out was simply absent, and absent
+        for one of six reasons. Now every detection is labelled once and the
+        tables are selections on that label, so `cuboid_df` carries the whole
+        picture and `pickable` and `isolated` mean exactly what they meant
+        before: passed the windows and is not a floater (nor a bubble), and that
+        plus enough room from its neighbours.
+        """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         roi = vision.roi_mask(gray, self.config, self._one_d_ratio)
         boxes, confs = vision.detect_boxes(self.detector, frame, self.config)
-        df = vision.build_cuboid_df(gray, boxes, confs, roi_mask=roi,
-                                    pad=self.config.otsu_pad,
-                                    open_k=self.config.otsu_open_k)
+        df = vision.build_cuboid_df(
+            gray, boxes, confs, roi_mask=roi,
+            pad=self.config.otsu_pad, open_k=self.config.otsu_open_k,
+            bubble_core_r=self.config.bubble_core_r,
+            bubble_ring_window=self.config.bubble_ring_window,
+            bubble_min_area_px=self.config.bubble_min_area_px)
         df = vision.add_derived(df, self._size_ratio, self._one_d_ratio,
                                 self.config.circle_center)
-        self.cuboid_df = df
+        self._boxes_seen = len(boxes)
+
         if len(df) == 0:
+            self.cuboid_df = df
             self.pickable = df
             self.isolated = df
+            self._log_detections()
             return
-        self.pickable = df.loc[vision.select_pickable(df, self.config)].copy()
-        self.pickable = vision.drop_in_zones(self.pickable, self.floater_zones,
-                                             self.config.floater_zone_radius_px)
-        self.isolated = self.pickable.loc[
-            self.pickable.min_dist_mm > self.config.minimum_distance]
+
+        labels = vision.label_rejections(df, self.config, self.floater_zones)
+        for col in labels.columns:
+            df[col] = labels[col]
+        self.cuboid_df = df
+        self.pickable = df[df.reject_reason.isin(("", "crowded"))].copy()
+        self.isolated = df[df.reject_reason == ""].copy()
+        self._log_detections()
+
+    def _detection_summary(self) -> dict:
+        """What this frame showed and why each object was not used.
+
+        Goes on every event that follows a measurement, because the report an
+        operator reads is the printed event and nothing else - the status panel
+        on the frame is built by the caller, so counts cannot reach it.
+
+        `boxes` and `detected` are both here on purpose. Otsu, the contour test
+        and the ROI drop objects before the table exists, so the reasons sum to
+        `detected`, never to `boxes`; with only one of the two numbers a frame
+        where the contouring failed on everything is indistinguishable from a
+        frame the filters emptied. `unmeasured` is the same guard one level down:
+        if the features stopped being readable, "no bubbles" would otherwise be
+        indistinguishable from "the measurement never ran".
+        """
+        df = self.cuboid_df
+        n_bubbles = unmeasured = 0
+        if len(df) and "is_bubble" in df:
+            n_bubbles = int(df.is_bubble.sum())
+        if len(df) and "core_ratio" in df:
+            unmeasured = int(df.core_ratio.isna().sum())
+        return {"cycle": self._cycle, "boxes": self._boxes_seen,
+                "detected": len(df), "rejected": vision.reject_counts(df),
+                "bubbles": n_bubbles, "unmeasured": unmeasured}
+
+    def _log_detections(self) -> None:
+        """The bubble features, named by the frame they were measured on.
+
+        Bubbles are made by pipetting, so their share moves through a run; a
+        feature row is only interpretable next to which cycle and which frame it
+        came from and which well was being filled, and that is what makes "do
+        they build up after each aspiration?" answerable afterwards. `self.state`
+        is still the state being run at this point, so it names the frame without
+        anything having to be passed in.
+
+        One line per object, fields in a fixed order and the identity repeated on
+        every line: the logger takes a string, so re-setting the thresholds later
+        means parsing this back into a table, and a logger that stamps each call
+        would otherwise orphan the rows of a multi-line block.
+        """
+        if self.logger is None:
+            return
+        s = self._detection_summary()
+        stamp = (f"cycle={self._cycle} state={self.state.value} "
+                 f"target={self.routine.current}")
+        self._log(f"detections {stamp} boxes={s['boxes']} "
+                  f"detected={s['detected']} bubbles={s['bubbles']} "
+                  f"unmeasured={s['unmeasured']} rejected={s['rejected']}")
+
+        df = self.cuboid_df
+        if len(df) == 0 or "core_ratio" not in df:
+            return
+        # only the rows that were actually measured: an unreadable object
+        # contributes nothing to a re-tune, and `yolo_max_det` allows 600 a frame
+        for idx, r in df[df.core_ratio.notna()].iterrows():
+            self._log(f"bubble {stamp} idx={idx} area={r.area:.0f} "
+                      f"core={r.core_ratio:.4f} spec={r.spec_ratio:.4f} "
+                      f"med={r.mask_median:.1f} margin={r.margin:+.4f} "
+                      f"is_bubble={int(r.is_bubble)} "
+                      f"reject={r.reject_reason or '-'}")
 
     # -- states -------------------------------------------------------------
 
@@ -549,18 +660,26 @@ class PickingSession:
         self.cuboid_df = pd.DataFrame()
         self.pickable = pd.DataFrame()
         self.isolated = pd.DataFrame()
+        self._boxes_seen = 0
         self._choice = None
         self._show(self._frame)
         self.state = RobotState.ANALYZE_FRAME
-        return self._event("captured", "frame taken at the observation pose")
+        return self._event("captured", "frame taken at the observation pose",
+                           cycle=self._cycle)
 
     def _state_detect_floaters(self, pause, stop) -> PickEvent:
         """Head of the cycle. Measures which objects drift, before the frame
         that the pickup decision is made from is taken."""
+        # Counted here rather than at the frame because this state is the head of
+        # the cycle; incrementing anywhere else would create a second definition
+        # of what a cycle is. Both branches below count, since the clip being
+        # skipped does not make it any less a pass round the loop.
+        self._cycle += 1
         if self._cycles_since_floater < self.config.floater_check_interval:
             self._cycles_since_floater += 1
             self.state = RobotState.CAPTURE_FRAME
-            return self._event("floaters", "skipped, within interval")
+            return self._event("floaters", "skipped, within interval",
+                               cycle=self._cycle)
 
         # The clip is the dish seen from above, so the pose has to be right
         # first: this state is entered from the shake pose and, at the start of
@@ -572,9 +691,10 @@ class PickingSession:
             frames, min_area=self.config.floater_min_area,
             mad_k=self.config.floater_mad_k)
         self._cycles_since_floater = 0
-        self._log(f"floater check: {len(self.floater_zones)} zones")
+        self._log(f"floaters cycle={self._cycle}: "
+                  f"{len(self.floater_zones)} zones")
         self.state = RobotState.CAPTURE_FRAME
-        return self._event("floaters", "checked",
+        return self._event("floaters", "checked", cycle=self._cycle,
                            zones=len(self.floater_zones))
 
     def _grab_clip(self, duration, pause, stop) -> list[np.ndarray]:
@@ -594,6 +714,11 @@ class PickingSession:
         # drawn over a dish they have already left.
         self._choice = None
         self._run_pipeline(self._frame)
+        # On every exit below, not just the one that picks a batch: the case the
+        # counts exist to expose - a filter that discarded everything - leaves
+        # through the two that shake or hand back, and those are precisely the
+        # ones that used to report nothing.
+        summary = self._detection_summary()
 
         if self.routine.current is None:
             self.routine.next()
@@ -601,7 +726,8 @@ class PickingSession:
         if current is None:
             self._show_analysis()
             self.state = RobotState.COMPLETED
-            return self._event("completed", "routine already satisfied")
+            return self._event("completed", "routine already satisfied",
+                               **summary)
 
         if len(self.isolated) == 0:
             self._shake_retries += 1
@@ -612,10 +738,10 @@ class PickingSession:
                 return self._event("needs_operator",
                                    "no isolated cuboids after "
                                    f"{self._shake_retries} shakes",
-                                   retries=self._shake_retries)
+                                   retries=self._shake_retries, **summary)
             self.state = RobotState.AUTO_SHAKE
             return self._event("no_cuboids", "nothing isolated, will shake",
-                               retries=self._shake_retries)
+                               retries=self._shake_retries, **summary)
 
         self._shake_retries = 0
         remaining = self.routine.remaining(current)
@@ -626,7 +752,8 @@ class PickingSession:
         self._show_analysis()                   # after the choice, so it shows
         self.state = RobotState.APPROACH_TARGET
         return self._event("analyzed", "chose a batch",
-                           isolated=len(self.isolated), batch=len(self._choice))
+                           isolated=len(self.isolated),
+                           batch=len(self._choice), **summary)
 
     def _state_auto_shake(self, pause, stop) -> PickEvent:
         shake = self.profile.where("shake")
@@ -789,7 +916,9 @@ class PickingSession:
             else:
                 self.state = RobotState.TRANSFER_TO_WELL
         return self._event("verified", "checked the pickup",
-                           attempted=attempted, held=held, missed=attempted - held)
+                           attempted=attempted, held=held,
+                           missed=attempted - held,
+                           **self._detection_summary())
 
     def _count_misses(self) -> int:
         """A miss is a chosen position where a cuboid still sits. Checked

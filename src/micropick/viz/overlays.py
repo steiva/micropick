@@ -17,6 +17,15 @@ that are actually eligible to pick. White is added for the two things that are
 not a class of object but a decision: the cuboids chosen for this pickup, and
 the circle around each of them inside which `verify_pickup` looks for a
 detection to decide whether the cuboid actually left.
+
+Magenta is added for objects the bubble filter recognised. It has to be its own
+colour rather than red, which already means every detection: the filter's
+thresholds rest on eight crops with 13% of margin on one of the two features, so
+an operator has to be able to see at a glance whether it is discarding
+microtissues. A dish with no magenta on it and a dish whose every cuboid the
+filter ate must not look the same. It is drawn after the class colours for the
+same reason - with the filter switched off a recognised bubble is still in
+`pickable` and `isolated`, and the recognition is the thing worth seeing.
 """
 
 from __future__ import annotations
@@ -31,6 +40,7 @@ _ALL = (0, 0, 255)          # red
 _PICKABLE = (0, 255, 255)   # yellow
 _ISOLATED = (0, 255, 0)     # green
 _FLOATER = (0, 0, 255)      # red
+_BUBBLE = (255, 0, 255)     # magenta
 _CHOSEN = (255, 255, 255)   # white
 _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -113,7 +123,7 @@ def draw_status(frame, lines, color=_ISOLATED, org=(10, 40), line_h=40):
 
 
 def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
-             chosen=None, verify_radius=None, floater_zones=(),
+             bubbles=None, chosen=None, verify_radius=None, floater_zones=(),
              floater_radius=75, circle_center=None, circle_radius=None,
              status_lines=()) -> np.ndarray:
     """Return a copy of `frame` with the picking state drawn on it.
@@ -125,6 +135,11 @@ def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
     `verify_radius` its check radius in pixels (`verify_radius_px`); taking the
     radius from the session rather than recomputing it here is what keeps the
     drawn tolerance and the decided one the same number.
+
+    `bubbles` is what the bubble filter recognised (`PickingSession.bubbles`),
+    which is not the same set as what it rejected: a bubble that also drifts is
+    labelled a floater, and with the filter off nothing is rejected at all. What
+    the operator needs on the dish is that the object was recognised.
     """
     vis = frame.copy()
     if circle_center is not None and circle_radius is not None:
@@ -132,6 +147,9 @@ def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
     draw_contours(vis, cuboid_df, _ALL)
     draw_contours(vis, pickable, _PICKABLE)
     draw_contours(vis, isolated, _ISOLATED)
+    # after the class colours, because with the filter off a recognised bubble is
+    # still pickable and would be painted over by them
+    draw_contours(vis, bubbles, _BUBBLE)
     draw_floaters(vis, floater_zones, floater_radius)
     # the choice last: it is the decision, and it has to stay readable over the
     # class colours it sits on top of

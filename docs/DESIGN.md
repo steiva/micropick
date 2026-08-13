@@ -584,6 +584,7 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `hardware/labware` | custom definitions, upload, load |
 | `hardware/mock` | robot, camera, and a synthetic ArUco scene |
 | `core/vision/cuboids` | detection, per-box Otsu, shape filters, floaters |
+| `core/vision/bubbles` | separating a bubble from a solid on two optical features |
 | `workflows/calibrate_camera` | probe, plan, sweep, fit |
 | `workflows/calibrate_pipette` | tip offset against the crosshair disc |
 | `workflows/jog` | manual control, two input backends |
@@ -678,6 +679,55 @@ goes out once the run is certain to happen, after the preflight, and `close()`
 puts back the state that was found. A caller that leaves the window while the run
 continues does not call `close()`, and should not: the light belongs to the run,
 not to the window.
+
+### Bubbles, and why rejection is never silent
+
+Pipetting leaves air bubbles in the dish, YOLO boxes one as readily as a
+microtissue, and no shape window can help: a bubble is round, convex and
+symmetric, so it passes `circularity`, `solidity` and `radial_cv`. The separation
+is optical instead, on two features read off the contour Otsu already produces —
+a dark core against a bright rim, and a caustic. `core/vision/bubbles.py` has the
+physics.
+
+**The features are measured on every detection, whether or not filtering is on.**
+The thresholds come from four bubble and four cuboid crops, and on `spec_ratio`
+the gap is 13%: cuboids reach 1.41 against a threshold of 1.60. Eight samples do
+not fix a threshold, and the only way to replace them with numbers from this
+microscope is to accumulate features across real runs — for the objects that were
+kept as well as the ones that were dropped. Measuring only when the filter is
+enabled would guarantee that data never appears. `mask_median` is recorded
+alongside the two ratios because `spec_ratio` is a peak over a median and so moves
+with exposure; without it a drift in the illumination is silent.
+
+**A rejected object keeps its reason instead of disappearing.** The three tables
+used to be a chain of filtered copies, so an object that dropped out was merely
+absent, and absent for one of six reasons. Now every detection is labelled once
+and `pickable` and `isolated` are selections on that label. This is not tidiness:
+with 13% of margin, "there were no bubbles" and "the filter ate every cuboid" are
+both plausible, and they have to look different. They look different in three
+places — the reason on the row, magenta on the frame, and the counts on every
+event that follows a measurement, including the two exits that shake or hand back,
+which are how a frame the filter emptied actually leaves.
+
+**One reason per row, four tests per row.** The reasons are ordered and a row
+takes the first that applies, so they partition the detections and the counts add
+up; `boxes` is reported next to `detected` because contouring and the ROI drop
+objects before the table exists, and a frame where that happened to everything
+must not read as a frame the filter emptied. `bubble` is ordered before `floater`
+because a bubble drifts, so ordering floater first would label almost every bubble
+a floater and drive the bubble count to zero exactly when bubbles are the problem.
+The four underlying tests are kept as separate columns anyway: one object can fail
+several at once, so any single label undercounts something, and with the booleans
+present the order is a presentation choice that can change later without
+invalidating anything already recorded.
+
+**The filter ships enabled, and the doubt falls towards keeping the object.**
+`require_both` means a cuboid has to breach both features to be discarded, which
+is what makes the thin margin survivable; an unmeasurable object is never called a
+bubble, because the failure that costs a well is discarding a microtissue, not
+aspirating a bubble that was missed. If a real run shows the filter eating
+cuboids, `bubble_filter_enabled = False` stops the rejection while the features
+keep accumulating.
 
 ---
 

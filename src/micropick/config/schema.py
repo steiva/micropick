@@ -373,6 +373,30 @@ class PickingConfig(BaseModel):
     floater_zone_radius_px: int = 75
     floater_mad_k: float = 9.0
 
+    # ---------------------- bubble filter ----------------------
+    # A bubble passes every shape window above, so it has to be separated
+    # optically: a dark core against a bright rim, and a caustic. The physics and
+    # the provenance of the two thresholds are in core/vision/bubbles.py.
+    bubble_filter_enabled: bool = True
+                                       # gates the rejection only. The features
+                                       # are measured on every detection either
+                                       # way, because eight crops is not enough
+                                       # to fix the thresholds and only recorded
+                                       # features can replace them.
+    bubble_core_r: float = 0.30        # the "centre", in fractions of R
+    bubble_ring_window: tuple[float, float] = (0.40, 0.85)
+                                       # the rim it is compared against
+    bubble_max_core_ratio: float = 0.85   # cuboids measured >= 1.00
+    bubble_min_spec_ratio: float = 1.60   # cuboids measured <= 1.41, so 13% of
+                                       # margin. Watch the rejection counts on a
+                                       # real run before trusting this one.
+    bubble_min_area_px: int = 20       # below this the core is too few pixels to
+                                       # average; the object is left unjudged
+    bubble_require_both: bool = True   # AND of the two features. A cuboid has to
+                                       # breach both to be discarded, which is
+                                       # what makes the thin margin safe; OR
+                                       # would spend it twice.
+
     @computed_field
     @property
     def pickup_height(self) -> float:
@@ -392,12 +416,32 @@ class PickingConfig(BaseModel):
         return data
 
     @field_validator("cuboid_size_threshold", "aspect_ratio_window",
-                     "circularity_window")
+                     "circularity_window", "bubble_ring_window")
     @classmethod
     def _ordered(cls, v):
         if v[0] >= v[1]:
             raise ValueError(f"expected (min, max) with min < max, got {v}")
         return v
+
+    @model_validator(mode="after")
+    def _bubble_zones_nest(self):
+        """The core has to sit inside the rim, and the rim inside the object.
+
+        A cross-field constraint, so it cannot live in `_ordered`. Checked rather
+        than trusted because the two zones overlapping, or the rim reaching past
+        the contour, does not raise anywhere downstream: it silently returns a
+        core_ratio measured on the wrong pixels, which is indistinguishable from
+        a cuboid.
+        """
+        r0, r1 = self.bubble_ring_window
+        if not 0 < self.bubble_core_r <= r0:
+            raise ValueError(
+                f"expected 0 < bubble_core_r <= {r0} (the inner rim), "
+                f"got {self.bubble_core_r}")
+        if r1 > 1.0:
+            raise ValueError(
+                f"bubble_ring_window reaches past the contour: {r1} > 1.0")
+        return self
 
     # ---------------------- notebook convenience ----------------------
 
