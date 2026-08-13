@@ -82,7 +82,7 @@ def draw_chosen(frame, df, color=_CHOSEN, thickness=2, pad=4):
     return frame
 
 
-def draw_verify_zones(frame, df, radius_px, color=_CHOSEN, thickness=1):
+def draw_verify_zones(frame, df, radius_px, color=_CHOSEN, thickness=2):
     """The circle `verify_pickup` inspects around each chosen position.
 
     A detection left anywhere inside it counts the pickup as a miss, so this is
@@ -103,7 +103,7 @@ def draw_status(frame, lines, color=_ISOLATED, org=(10, 40), line_h=40):
     if not lines:
         return frame
     x, y0 = org
-    width = frame.shape[1]
+    width = frame.shape[1] // 5
     cv2.rectangle(frame, (0, 0), (width, y0 + line_h * len(lines)),
                   (0, 0, 0), -1)
     for i, text in enumerate(lines):

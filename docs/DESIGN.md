@@ -388,6 +388,22 @@ Because of that split there is exactly one place where the crop meets geometry:
 a point computed in sensor pixels and drawn on a cropped frame is shifted by the
 crop origin, which `center_crop_box` returns without needing a frame in hand.
 
+**The origin and the crop come from one call, because they were two and they
+disagreed.** `center_crop_box` answers with the centred *square* whatever it is
+asked, so at a crop of 1.0 it returns an origin of (250, 0) for a 2000×1500
+frame — the offset of a square that nobody cut. The session subtracted that
+origin from every ROI point while attaching the cropping transform only when the
+crop was not 1.0, and the profile, as written, asked for no crop at all. So every
+box was drawn 250 px — an eighth of the width — to the left of its cuboid, on a
+clip recorded whole. Measured on the bench recordings: the boxes sat 251 px
+(12.0 mm) from where the tip came down, the same distance in every clip, with no
+rotation and no growth toward the edges, while the matrix's own held-out error
+was 3 px. A pure translation is a shift of origin, never a bad matrix, and that
+is what it turned out to be. `_clip_view` now returns the origin, the recorded
+size and the transform together, so a crop of 1.0 says "whole frame" once
+instead of being guarded for separately at each end. After the fix the same
+recordings put the box 15 px (0.7 mm) from the tip, every box on the tip.
+
 ---
 
 ## 6. Configuration
@@ -611,25 +627,57 @@ IDLE; the state blocks inside `step()` rather than returning an event per poll,
 so a caller looping on `step()` does not spin. Which key means "go" stays in the
 notebook: the session only knows whether it has been told.
 
+**`NEEDS_OPERATOR` is idle with a different reason for waiting**, so it is the
+same state in everything that shows: it retracts, returns to the observation
+pose, shows a live picture and blocks on the same go-ahead. It used to return an
+event per call instead, which spun the caller and, because it never reached
+`_gate`, meant a stop raised there was never seen — the run could only be ended
+by first resuming it. Neither waiting state assigns the next state from
+`resume()`: the transition happens inside `step()` like every other one, so a key
+pressed on the display thread cannot move the session while the worker is
+mid-state.
+
 **`DETECT_FLOATERS` is the head of the cycle**, not a stage after the frame is
 taken. What floats is measured first and the decision frame is taken after,
 rather than 2.5 s before. The check is mandatory on the first cycle of a run and
 after every shake, since a shake is exactly what changes the answer; in between,
 `floater_check_interval` applies.
 
-**The display mode is a property of the state, not of the window.** `live_view`
-is true while the operator needs to watch the dish itself — before the run and
-during the floater clip, where the movement is the whole point — and false
-everywhere else, where the useful picture is the annotated frame the last
-decision was made from, held until the next one. A live stream during travel
-shows motion and says nothing. The session reports the mode and emits decision
-frames at two points, `ANALYZE_FRAME` (after the choice, so it is in the frame)
-and `VERIFY_PICKUP`; what to draw and when is still the caller's business.
+**The display mode is a property of the state, not of the window, and the
+picture travels with the event.** Every `PickEvent` carries a `PickView`: either
+"read the camera", in the three states where the operator is watching the dish
+itself (`IDLE`, `NEEDS_OPERATOR` and the floater clip, where the movement is the
+whole point), or the frame a decision was made from together with the overlays
+measured on *that* frame. A live stream during travel shows motion and says
+nothing, so in the other states it does not run at all.
 
-`choice` and `verify_radius_px` are public for the same reason: the overlays draw
-the chosen cuboids and the circle inside which the verify step looks for them,
-and `_count_misses` compares against that same radius, so what is drawn is what
-is decided.
+Handing the picture over rather than announcing a mode is what makes the held
+frame possible. A caller that reads the camera itself and draws the session's
+tables on top cannot hold anything: it necessarily draws contours over a newer
+picture than the one they were measured on, which is what the first bench runs
+showed. The rule for the caller is now one branch — show what you were given,
+touch the camera only when told to.
+
+Three states hand over a picture: `CAPTURE_FRAME`, the bare frame it just took,
+with the previous cycle's tables dropped so nothing stale is drawn on it;
+`ANALYZE_FRAME`, the same frame with the detections and a white box on the batch
+chosen, after the choice so it is in the picture; and `VERIFY_PICKUP`, the new
+frame with the circle inside which a surviving detection means the cuboid never
+left. The radius is `verify_radius_px`, the same number `_count_misses` compares
+against, so what is drawn is what is decided. Everywhere else the last of those
+stays up, unchanged, until the next one replaces it.
+
+**The observation pose and the rail light belong to the session.** Both are
+preparation for photographing the dish rather than steps an operator takes, so a
+GUI would otherwise have to repeat what the notebook does today, and a light left
+on puts highlights on the meniscus and shifts every threshold the detector was
+tuned at. The pose comes from `profile.where("observe")` like every other deck
+landmark, and it is needed on the way out of `NEEDS_OPERATOR` as much as at the
+start — two copies of that move would be two things to keep in step. The light
+goes out once the run is certain to happen, after the preflight, and `close()`
+puts back the state that was found. A caller that leaves the window while the run
+continues does not call `close()`, and should not: the light belongs to the run,
+not to the window.
 
 ---
 

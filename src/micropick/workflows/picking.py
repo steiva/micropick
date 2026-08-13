@@ -17,25 +17,34 @@ Pause and stop are `threading.Event` and are checked *between individual robot
 moves*, not only between states. A pause raised in the middle of a five-cuboid
 pickup takes effect at the next move, because `_gate` sits before every move.
 
-No windows, no keyboard, no printing. Frames leave through the `on_frame`
-callback; drawing belongs to `viz/overlays.py`, not here. Everything the session
-needs is passed to the constructor; there are no module globals.
+No windows, no keyboard, no printing. Frames leave on the event, as its `view`;
+drawing belongs to `viz/overlays.py`, not here. Everything the session needs is
+passed to the constructor; there are no module globals.
 
 The session starts idle and stays there until `start()` (or `resume()`, the same
 go-ahead under the name the operator already knows) is called: a run beginning
 by itself the moment the cell executes leaves nobody time to look at the dish.
 Which key means "go" is the caller's business; all the session knows is that it
-has not been told yet.
+has not been told yet. `NEEDS_OPERATOR` is that same wait for a different
+reason, so it is the same state in every respect that shows: the gantry returns
+to the observation pose, the picture is live, and the go-ahead and the stop both
+work exactly as they do in idle.
 
 The head of the picking cycle is `DETECT_FLOATERS`, not `CAPTURE_FRAME`: the
 frame a decision is made from has to be taken *after* the floaters are measured,
 not 2.5 s before. Every path back into the loop returns there.
 
-`live_view` says which picture the caller should show. During the floater clip
-the operator has to watch the dish move, so the display follows the camera;
-everywhere else the useful picture is the annotated frame the last decision was
-made from, held until the next one. The session only reports the mode; it does
-not know what a window is.
+Every event carries a `PickView`: either "read the camera" or the picture the
+last decision was made from, with the tables that were measured on *that* frame.
+A caller that draws its own live stream instead cannot hold a frame at all, and
+ends up drawing contours over a newer picture than the one they were measured
+on. The session says what to show and hands over the picture; it still does not
+know what a window is.
+
+The observation pose and the rail light belong to the session for the length of
+the run. Both are preparation for photographing the dish rather than steps an
+operator takes, the return to `observe` is needed from `NEEDS_OPERATOR` as well
+as at the start, and a light left on shifts every detection threshold.
 
 What this fixes from the old `TissuePickerFSM` (DESIGN section 11):
 - one source of truth for the current target: `routine.current`, never a second
@@ -75,9 +84,10 @@ import pandas as pd
 from ..core.vision import cuboids as vision
 from ..core.calibration.homography import Homography, HomographyError
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
-                                   require_ok, xyz)
+                                   require_ok, set_lights, xyz)
 
-__all__ = ["RobotState", "PickEvent", "PickingSession", "PickingError"]
+__all__ = ["RobotState", "PickEvent", "PickView", "PickingSession",
+           "PickingError"]
 
 
 class PickingError(RuntimeError):
@@ -107,13 +117,55 @@ class RobotState(Enum):
 _TERMINAL = {RobotState.COMPLETED, RobotState.CANCELED}
 
 # States whose picture is worth watching live rather than frozen: the operator is
-# looking at the dish itself, either before the run or while the floater clip
-# records the movement that identifies them.
-_LIVE = {RobotState.IDLE, RobotState.DETECT_FLOATERS}
+# looking at the dish itself, either while waiting to be let on with the run or
+# while the floater clip records the movement that identifies them. Everywhere
+# else the stream shows travel and says nothing, so it does not run.
+_LIVE = {RobotState.IDLE, RobotState.NEEDS_OPERATOR, RobotState.DETECT_FLOATERS}
 
 # How often the idle state looks to see whether it has been told to start. A step
 # of the waiting mechanism, not a parameter of the process, so it is not config.
 _IDLE_POLL_S = 0.1
+
+
+def _clip_view(camera) -> tuple[tuple[int, int], tuple[int, int], object]:
+    """Where the recorded frame sits in the sensor frame, and how to cut it out.
+
+    Returns (origin, size, transform), and returns all three together because
+    the origin subtracted from a point drawn on the clip and the crop applied to
+    the frame have to be the same thing. They were computed apart, and
+    `center_crop_box` answers with the centred *square* even at crop 1.0 — for a
+    2000x1500 frame that is an origin of (250, 0) — so at 1.0 the origin was
+    subtracted while no transform was attached, and every ROI box landed a
+    quarter of a frame height to the left of its cuboid on a clip that had never
+    been cropped at all. A crop of 1.0 means the whole frame; it is said here
+    once, rather than guarded for at each of the two places that need it.
+    """
+    frac = float(getattr(camera, "crop", 1.0))
+    w, h = camera.resolution
+    if frac >= 1.0:
+        return (0, 0), (w, h), None
+    x0, y0, side = vision.center_crop_box((h, w), frac)
+    return (x0, y0), (side, side), lambda f: vision.center_crop(f, frac)[0]
+
+
+@dataclass
+class PickView:
+    """What the caller should have on the screen while this state runs.
+
+    `live` means read the camera: the operator is watching the dish itself.
+    Otherwise `frame` is the picture the decision was made from and stays up,
+    unchanged, until the session hands over the next one. `overlays` are keyword
+    arguments for `viz.overlays.annotate`, and they belong to `frame` — the
+    tables in it were measured on that picture and no other.
+
+    The frame is handed over, not copied: `annotate` copies before it draws, so
+    a caller that goes through it cannot damage what the session is still using,
+    and a caller that draws directly must copy first.
+    """
+
+    live: bool
+    frame: np.ndarray | None = None
+    overlays: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -124,8 +176,11 @@ class PickEvent:
     kind: str
     message: str
     data: dict = field(default_factory=dict)
+    view: PickView | None = None
 
     def __str__(self) -> str:
+        # the view is deliberately absent: a frame and three detection tables
+        # printed once per transition bury the line that says what happened
         extra = f" {self.data}" if self.data else ""
         return f"[{self.state.value}] {self.kind}: {self.message}{extra}"
 
@@ -136,7 +191,7 @@ class PickingSession:
     def __init__(self, robot: Robot, camera: Camera, pixel_map, profile,
                  routine, detector, *, labware_id: str | None = None,
                  under_cam: Camera | None = None, clip_dir=None,
-                 on_frame=None, logger=None):
+                 logger=None):
         self.robot = robot
         self.camera = camera
         self.pixel_map = pixel_map
@@ -144,7 +199,6 @@ class PickingSession:
         self.routine = routine
         self.detector = detector
         self.labware_id = labware_id
-        self.on_frame = on_frame
         self.logger = logger
 
         self.config = profile.picking
@@ -172,6 +226,11 @@ class PickingSession:
         self.state = RobotState.IDLE
         self._started = False
         self._frame: np.ndarray | None = None
+        # the picture the last decision was made from, and the overlays measured
+        # on it; what a held view shows until the next decision replaces both
+        self._held_frame: np.ndarray | None = None
+        self._held_overlays: dict = {}
+        self._lights_before: bool | None = None
         self._gantry: np.ndarray | None = None
         self.cuboid_df = pd.DataFrame()
         self.pickable = pd.DataFrame()
@@ -195,7 +254,7 @@ class PickingSession:
         self._clip_dir = None
         self._recorder = None
         self._homography = None
-        self._clip_crop = (1.0, 0, 0)                  # frac, x0, y0
+        self._clip_crop = (0, 0)                       # origin of what it records
         self._clip_size = (0, 0)                       # what the clip records
         if clip_dir is not None:
             if under_cam is None:
@@ -205,15 +264,9 @@ class PickingSession:
             # The clip is a picture for a person, so it carries the camera's view
             # crop. The transform runs in the grab thread, once per frame, and
             # nothing else sees it: what the session measures stays whole.
-            frac = float(getattr(under_cam, "crop", 1.0))
-            w, h = under_cam.resolution
-            x0, y0, side = vision.center_crop_box((h, w), frac)
-            self._clip_crop = (frac, x0, y0)
-            self._clip_size = (side, side) if frac != 1.0 else (w, h)
+            self._clip_crop, self._clip_size, transform = _clip_view(under_cam)
             self._recorder = under_cam.record(
-                max_frames=self.config.clip_max_frames,
-                transform=(None if frac == 1.0
-                           else lambda f: vision.center_crop(f, frac)[0]))
+                max_frames=self.config.clip_max_frames, transform=transform)
             hcfg = profile.calibration.homography
             if hcfg is not None:
                 self._homography = Homography.from_config(hcfg)
@@ -222,6 +275,12 @@ class PickingSession:
         # that has not been acknowledged, or on a slot that does not hold this
         # routine's plate, rather than mid-plate with aspirate in the tip.
         self._preflight()
+
+        # Only once the run is going to happen: a session refused above leaves
+        # the bench lit as it found it. The rail LEDs put highlights on the
+        # meniscus and shift every threshold the detector was tuned at, so they
+        # go out for the length of the run and `close()` puts them back.
+        self._lights_before = set_lights(self.robot, False)
 
     def _preflight(self) -> None:
         routine = self.routine
@@ -256,10 +315,26 @@ class PickingSession:
         return path
 
     def close(self) -> None:
-        """Detach the recorder from the camera. Safe to call more than once."""
+        """Give back everything the session took. Safe to call more than once.
+
+        That is the recorder attached to the lower camera and the rail light it
+        darkened. A caller that leaves the window while the run continues does
+        *not* call this, and should not: the light belongs to the run, not to
+        the window.
+        """
         if self._recorder is not None and self._under_cam is not None:
             self._under_cam.detach(self._recorder)
             self._recorder = None
+        if self._lights_before:
+            set_lights(self.robot, True)
+        self._lights_before = None
+
+    def __enter__(self) -> PickingSession:
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        """So the light comes back on the way out of an error too."""
+        self.close()
 
     # -- public -------------------------------------------------------------
 
@@ -291,14 +366,15 @@ class PickingSession:
         One command covers both: the go-ahead out of IDLE and the retry out of
         NEEDS_OPERATOR, so the caller needs a single key. Both counters are
         cleared, since the operator has just had a chance to fix the dish.
+
+        The state itself is not assigned here. The transition happens inside
+        `step()` like every other one, so a go-ahead arriving from the display
+        thread cannot move the session while the worker thread is mid-state.
         """
-        if self.state is RobotState.IDLE:
-            self.start()
-            return
         if self.state is RobotState.NEEDS_OPERATOR:
             self._shake_retries = 0
             self._empty_pickups = 0
-            self.state = RobotState.DETECT_FLOATERS
+        self.start()
 
     @property
     def done(self) -> bool:
@@ -310,6 +386,24 @@ class PickingSession:
         last annotated decision frame is. The caller decides what to do with
         that; this only reports which one the state calls for."""
         return self.state in _LIVE
+
+    @property
+    def view(self) -> PickView:
+        """What to show while the current state runs.
+
+        Also what every event carries, so a caller that displays `event.view`
+        and reads the camera only when it says `live` needs to know nothing
+        about the state machine. Before the first frame is taken there is
+        nothing to hold, so the answer is the camera whatever the state.
+        """
+        base = {"floater_zones": self.floater_zones,
+                "floater_radius": self.config.floater_zone_radius_px,
+                "circle_center": self.config.circle_center,
+                "circle_radius": self.config.circle_radius}
+        if self.state in _LIVE or self._held_frame is None:
+            return PickView(live=True, overlays=base)
+        return PickView(live=False, frame=self._held_frame,
+                        overlays={**base, **self._held_overlays})
 
     @property
     def choice(self) -> pd.DataFrame | None:
@@ -327,15 +421,37 @@ class PickingSession:
     # -- helpers ------------------------------------------------------------
 
     def _event(self, kind: str, message: str, **data) -> PickEvent:
-        return PickEvent(self.state, kind, message, data)
+        # `self.state` is already the state being entered, so the view on the
+        # event is the picture to show while that state runs, not the one that
+        # was up while the transition happened.
+        return PickEvent(self.state, kind, message, data, self.view)
 
     def _log(self, message: str) -> None:
         if self.logger is not None:
             self.logger.log(message)
 
-    def _emit(self, frame) -> None:
-        if self.on_frame is not None:
-            self.on_frame(frame, self.cuboid_df)
+    def _show(self, frame, **overlays) -> None:
+        """Hold this frame, with the overlays measured on it, until the next.
+
+        Only the three states that take or decide from a picture call this. What
+        is passed here is what a held view shows for as long as the pipette is
+        travelling, so the pair has to be consistent: a frame with the previous
+        cycle's contours is worse than a bare one.
+        """
+        self._held_frame = frame
+        self._held_overlays = overlays
+
+    def _show_analysis(self, *, verify_radius: float | None = None) -> None:
+        """Hold the frame just measured, with everything read off it.
+
+        `verify_radius` is passed only after a pickup, where the circle is the
+        decision itself drawn: `_count_misses` calls a cuboid still inside it a
+        cuboid that never left. Before the pickup there is nothing to check yet
+        and a circle would only claim otherwise.
+        """
+        self._show(self._frame, cuboid_df=self.cuboid_df,
+                   pickable=self.pickable, isolated=self.isolated,
+                   chosen=self._choice, verify_radius=verify_radius)
 
     def _gate(self, pause, stop) -> None:
         """Checkpoint between two robot moves. Blocks while paused, raises on
@@ -347,6 +463,35 @@ class PickingSession:
                 if stop is not None and stop.is_set():
                     raise _Cancelled
                 pause.wait(0.05)
+
+    def _wait_for_operator(self, pause, stop) -> None:
+        """Stand at the observation pose until told to go on.
+
+        Shared by the two waiting states, which is the point: `NEEDS_OPERATOR`
+        is idle with a different reason, and anything either of them does that
+        the other does not is a difference the operator has to remember.
+
+        The retract comes before the travel because this is reached from the
+        dish as well as from a cold start: with the tip still down, crossing to
+        the observation pose drags it through whatever it was standing in.
+        """
+        self._gate(pause, stop)
+        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._gate(pause, stop)
+        move_to(self.robot, self._observe, min_z_height=self.config.dish_bottom)
+        while not self._started:
+            self._gate(pause, stop)
+            time.sleep(_IDLE_POLL_S)
+
+    def _hand_to_operator(self) -> None:
+        """Enter the waiting state, clearing the go-ahead it waits for.
+
+        Cleared here rather than in the handler: between this transition and the
+        next `step()` the operator can already have pressed the key, and a
+        handler that cleared the flag on the way in would swallow it.
+        """
+        self._started = False
+        self.state = RobotState.NEEDS_OPERATOR
 
     def _fresh_frame(self):
         frame = self.camera.read_after(time.monotonic())
@@ -377,19 +522,17 @@ class PickingSession:
     # -- states -------------------------------------------------------------
 
     def _state_idle(self, pause, stop) -> PickEvent:
-        """Wait for the go-ahead, then retract and enter the cycle.
+        """Take up the observation pose, wait for the go-ahead, enter the cycle.
+
+        The move comes first so that what the operator is looking at while they
+        decide is the dish, from the pose every later decision is made at.
 
         The wait blocks inside `step()` rather than returning an event per poll:
         a caller that loops on `step()` would otherwise spin, and there is
         nothing to report until something happens. `_gate` keeps the stop event
         working, so cancelling from idle behaves like cancelling anywhere else.
         """
-        while not self._started:
-            self._gate(pause, stop)
-            time.sleep(_IDLE_POLL_S)
-
-        self._gate(pause, stop)
-        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._wait_for_operator(pause, stop)
         self.state = RobotState.DETECT_FLOATERS
         return self._event("started", "operator started the run")
 
@@ -400,6 +543,14 @@ class PickingSession:
             time.sleep(self.config.capture_settle_s)
         self._frame = self._fresh_frame()
         self._gantry = np.array(xyz(self.robot)[:2])
+        # Nothing has been measured on this frame yet, and the tables still hold
+        # the last cycle's. Dropped rather than kept, so what goes up is a bare
+        # picture of the dish instead of contours over cuboids that have left.
+        self.cuboid_df = pd.DataFrame()
+        self.pickable = pd.DataFrame()
+        self.isolated = pd.DataFrame()
+        self._choice = None
+        self._show(self._frame)
         self.state = RobotState.ANALYZE_FRAME
         return self._event("captured", "frame taken at the observation pose")
 
@@ -438,7 +589,7 @@ class PickingSession:
         return frames
 
     def _state_analyze_frame(self, pause, stop) -> PickEvent:
-        # Dropped before the pipeline runs: the frame emitted below must carry
+        # Dropped before the pipeline runs: the frame shown below must carry
         # this cycle's choice or none at all, never the last cycle's cuboids
         # drawn over a dish they have already left.
         self._choice = None
@@ -448,16 +599,16 @@ class PickingSession:
             self.routine.next()
         current = self.routine.current
         if current is None:
-            self._emit(self._frame)
+            self._show_analysis()
             self.state = RobotState.COMPLETED
             return self._event("completed", "routine already satisfied")
 
         if len(self.isolated) == 0:
             self._shake_retries += 1
             self._log("no isolated cuboids in the working region")
-            self._emit(self._frame)
+            self._show_analysis()
             if self._shake_retries >= self.config.max_shake_retries:
-                self.state = RobotState.NEEDS_OPERATOR
+                self._hand_to_operator()
                 return self._event("needs_operator",
                                    "no isolated cuboids after "
                                    f"{self._shake_retries} shakes",
@@ -472,7 +623,7 @@ class PickingSession:
         want = max(1, min(want, len(self.isolated)))
         self._choice = (self.isolated.sample(n=want)
                         if len(self.isolated) > want else self.isolated)
-        self._emit(self._frame)                 # after the choice, so it shows
+        self._show_analysis()                   # after the choice, so it shows
         self.state = RobotState.APPROACH_TARGET
         return self._event("analyzed", "chose a batch",
                            isolated=len(self.isolated), batch=len(self._choice))
@@ -546,8 +697,9 @@ class PickingSession:
             self._choice[["cX", "cY"]].values, self._gantry,
             self.camera.resolution, self._under_cam.resolution)
 
-        _, x0, y0 = self._clip_crop            # the clip is cropped, the map is not
-        marks = under_px - np.array([x0, y0], dtype=float)
+        # The map answers in whole sensor pixels; the clip may be a crop of
+        # those. Same origin the recorder's transform cuts at, from `_clip_view`.
+        marks = under_px - np.array(self._clip_crop, dtype=float)
 
         # A box outside the recorded frame is drawn and never seen, which is how
         # the whole thing went unnoticed while the coordinates were in the wrong
@@ -604,7 +756,9 @@ class PickingSession:
         time.sleep(self.config.verify_settle_s)
         self._frame = self._fresh_frame()
         self._run_pipeline(self._frame)
-        self._emit(self._frame)
+        # the chosen rows are the ones from before the pickup, so on this frame
+        # they mark where each cuboid had to have gone from
+        self._show_analysis(verify_radius=self.verify_radius_px)
 
         attempted = len(self._choice)
         misses = self._count_misses()
@@ -676,7 +830,7 @@ class PickingSession:
         elif self._empty_pickups >= self.config.max_empty_pickups:
             # Cuboids keep being detected and keep not being caught: something
             # is wrong with the dish or the tip, and repeating cannot fix it.
-            self.state = RobotState.NEEDS_OPERATOR
+            self._hand_to_operator()
             return self._event("needs_operator",
                                "returned the volume; "
                                f"{self._empty_pickups} pickups in a row held "
@@ -743,8 +897,19 @@ class PickingSession:
                            target=str(current), volume=volume)
 
     def _state_needs_operator(self, pause, stop) -> PickEvent:
-        return self._event("needs_operator",
-                           "waiting for the operator; call resume() to retry")
+        """Idle again, for a different reason: stand at the observation pose and
+        wait to be told to retry.
+
+        The wait blocks, as idle's does. Returning an event per poll left the
+        caller spinning and, worse, never reached `_gate`, so a stop raised here
+        was not seen and the run could only be ended by first resuming it.
+        """
+        self._wait_for_operator(pause, stop)
+        # the operator has just had their hands in the dish; whatever was
+        # measured to float before that says nothing about it now
+        self._cycles_since_floater = self.config.floater_check_interval
+        self.state = RobotState.DETECT_FLOATERS
+        return self._event("resumed", "operator resumed the run")
 
     def _state_completed(self, pause, stop) -> PickEvent:
         self._log("picking finished")

@@ -107,6 +107,10 @@ class MockRobot:
         # can assert what volumes went where and how far a batch got before a
         # stop interrupted it
         self.calls: list[tuple] = []
+        # the rail LEDs. A real robot answers GET /robot/lights; this attribute
+        # is what lights_on() falls back to, so a workflow that darkens the bench
+        # and puts it back can be checked with nothing attached.
+        self.lights = True
         # a minimal run model so loaded_labware() can be exercised: labware
         # entries carry the same fields the real run reports
         self._run_labware: list[dict] = []
@@ -154,6 +158,7 @@ class MockRobot:
         self._pos = np.array([0.0, 0.0, 100.0])
 
     def toggle_lights(self, verbose=False):
+        self.lights = not self.lights
         self.calls.append(("toggle_lights",))
 
     def retract_axis(self, axis, verbose=False):

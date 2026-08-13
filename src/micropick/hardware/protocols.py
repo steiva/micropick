@@ -21,7 +21,8 @@ from typing import Any, Protocol, Sequence, runtime_checkable
 import numpy as np
 
 __all__ = ["Camera", "Robot", "xyz", "move_to", "move_relative", "goto_xy",
-           "MoveFailed", "preflight", "command_status", "require_ok"]
+           "MoveFailed", "preflight", "command_status", "require_ok",
+           "lights_on", "set_lights"]
 
 
 @runtime_checkable
@@ -235,6 +236,39 @@ def goto_xy(robot: Robot, x: float, y: float, *, tolerance_mm: float = 0.1,
         raise MoveFailed(f"asked for XY {_fmt(target)}, ended at "
                          f"{_fmt(reached[:2])} ({gap:.2f} mm off)")
     return reached
+
+
+def lights_on(robot: Robot) -> bool | None:
+    """State of the rail LEDs: True, False, or None if it cannot be read.
+
+    The wrapper offers only `toggle_lights`, which flips whatever it finds, so
+    anything that wants a *known* state has to read first. The read is GET
+    /robot/lights -> {"on": bool}; a backend without it (the mock) answers from a
+    `lights` attribute instead, and anything else answers None.
+    """
+    getter = getattr(robot, "get", None)
+    if callable(getter):
+        try:
+            import json
+            response = getter("lights", getattr(robot, "HEADERS", None))
+            return bool(json.loads(response.text)["on"])
+        except Exception:
+            return None
+    state = getattr(robot, "lights", None)
+    return None if state is None else bool(state)
+
+
+def set_lights(robot: Robot, on: bool) -> bool | None:
+    """Put the rail LEDs in a known state; return the state found before it.
+
+    None means the state could not be read, and then nothing is sent: a blind
+    toggle is a coin flip, and half the time it lights the bench it was meant to
+    darken. The return value is what a caller restores on the way out.
+    """
+    before = lights_on(robot)
+    if before is not None and before != on:
+        robot.toggle_lights()
+    return before
 
 
 def preflight(robot: Robot, *, probe_mm: float = 0.5, log=print) -> None:
