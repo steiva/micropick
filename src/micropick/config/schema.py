@@ -19,7 +19,11 @@ from typing import Annotated, Literal
 from pydantic import (AliasChoices, BaseModel, ConfigDict, Field,
                       computed_field, field_validator, model_validator)
 
-SCHEMA_VERSION = 2
+# 3: the variance-map floater fields were removed rather than deprecated, and
+# extra="forbid" makes an old picking.json fatal, so the version has to move with
+# them. A profile from 2 is corrected by deleting those five keys; there is
+# nothing to convert, since the numbers meant something else entirely.
+SCHEMA_VERSION = 3
 
 Vec2 = Annotated[list[float], Field(min_length=2, max_length=2)]
 Vec3 = Annotated[list[float], Field(min_length=3, max_length=3)]
@@ -280,12 +284,42 @@ class CameraHomography(BaseModel):
     measured_at: datetime | None = None
 
 
+class FloaterBaseline(BaseModel):
+    """The floater noise floor, measured once on cuboids known to be still.
+
+    A calibration like the pixel map, not a setting: it is what the detector
+    compares against, and it is the number that lets an empty dish answer "no
+    floaters" instead of labelling its own top class.
+
+    pad_frac and sigma_frac are the window geometry it was measured with, and
+    they are stored because the floor is only valid for that geometry — widening
+    the window lets neighbours in and raises the floor measurably. Keeping them
+    is what lets `Profile.floater_baseline()` refuse a baseline being used under
+    different parameters, which is the same failure the homography had when
+    nothing recorded the camera mode its pixels belonged to.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rms_p50_um: float
+    rms_p95_um: float
+    rms_max_um: float
+    n_objects: int
+    n_clips: int
+    window_s: float
+    n_frames: int
+    pad_frac: float
+    sigma_frac: float
+    measured_at: str
+
+
 class Calibration(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     pixel_map: PixelMap | None = None
     pipette_offset: PipetteOffset | None = None
     tip_target: TipTarget = Field(default_factory=lambda: TipTarget())
+    floater_baseline: FloaterBaseline | None = None
     homography: CameraHomography | None = None
 
     @property
@@ -367,11 +401,28 @@ class PickingConfig(BaseModel):
     max_radial_cv: float = 0.22        # symmetry: accepts both circle and square
 
     # ---------------------- floater detection ----------------------
-    floater_check_interval: int = 3    # recompute every N picking cycles
-    floater_clip_sec: float = 2.5
-    floater_min_area: int = 15
-    floater_zone_radius_px: int = 75
-    floater_mad_k: float = 9.0
+    # Centroid motion inside fixed per-object windows, scored against a noise
+    # floor measured once on still cuboids (core/vision/floaters.py). The
+    # variance-map detector this replaces had no such anchor: multi-Otsu always
+    # has a top class, so a still dish labelled itself.
+    #
+    # observe measures and records without acting on the answer, which is how a
+    # threshold earns trust on a real dish; enforce also keeps the flagged
+    # regions out of the candidates.
+    floater_mode: Literal["off", "observe", "enforce"] = "off"
+    floater_window_s: float = 2.0      # how long one measurement watches
+    floater_fps: float = 12.0          # frames taken during that window
+    # Window geometry. Both are measured optima, not tuning knobs: widening the
+    # window to 1.6 let neighbours in and raised the floor, and the Gaussian
+    # taper at 0.20 of the side beat a flat disc by 1.61 -> 1.22 um at p95. A
+    # baseline is only valid for the pair it was measured with.
+    floater_pad_frac: float = 1.2
+    floater_sigma_frac: float = 0.20
+    floater_k: float = 4.0             # threshold = k x the worst still object
+    floater_floor_um: float = 10.0     # ...but never below this
+    floater_interval_s: float = 15.0   # how often to re-measure
+    floater_horizon_s: float = 15.0    # how far a floater could drift by then,
+                                       # which is what sizes its exclusion zone
 
     # ---------------------- bubble filter ----------------------
     # A bubble passes every shape window above, so it has to be separated
@@ -458,7 +509,7 @@ class ProfileMeta(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[2] = SCHEMA_VERSION
+    schema_version: Literal[3] = SCHEMA_VERSION
     name: str
     created_at: datetime | None = None
     camera_label: str | None = None

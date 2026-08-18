@@ -153,6 +153,49 @@ class Profile:
         micropick.core.calibration.pixel_map.PixelMap to apply it."""
         return self.calibration.pixel_map
 
+    def floater_baseline(self):
+        """The stored noise floor as a runtime `floaters.Baseline`, or None.
+
+        Unlike `pixel_map`, which hands back the stored model and leaves
+        `PixelMap.from_config` to the caller, the conversion happens here:
+        `Baseline` is a plain dataclass with no constructor of its own, and
+        core/vision/floaters.py is deliberately free of anything that knows what
+        a profile is. The import is local for the same reason — config does not
+        depend on core at module level, and this is the one place it needs a
+        type from it.
+
+        Refuses a baseline measured with a different window geometry rather than
+        applying it. The floor is only the number it was measured to be for the
+        pad and taper it was measured at; a matrix used in the wrong camera mode
+        taught us what a calibration silently applied under changed parameters
+        costs.
+        """
+        stored = self.calibration.floater_baseline
+        if stored is None:
+            return None
+
+        cfg = self.picking
+        drift = [(name, was, now)
+                 for name, was, now in (("pad_frac", stored.pad_frac, cfg.floater_pad_frac),
+                                        ("sigma_frac", stored.sigma_frac, cfg.floater_sigma_frac))
+                 if abs(was - now) > 1e-9]
+        if drift:
+            detail = "; ".join(f"{n}: measured at {w:g}, configured {c:g}"
+                               for n, w, c in drift)
+            raise ProfileError(
+                f"profile {self.name!r} has a floater baseline measured with a "
+                f"different window geometry ({detail}). The noise floor does not "
+                f"carry across: either restore the values it was measured at, or "
+                f"re-measure the baseline."
+            )
+
+        from ..core.vision.floaters import Baseline
+        return Baseline(
+            rms_p50_um=stored.rms_p50_um, rms_p95_um=stored.rms_p95_um,
+            rms_max_um=stored.rms_max_um, n_objects=stored.n_objects,
+            n_clips=stored.n_clips, window_s=stored.window_s,
+            n_frames=stored.n_frames)
+
     def require_calibration(self):
         """Fail early with a useful message rather than at the first bad move."""
         if self.calibration.pixel_map is None:

@@ -583,8 +583,9 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `hardware/camera` | background capture, recorder, manager |
 | `hardware/labware` | custom definitions, upload, load |
 | `hardware/mock` | robot, camera, and a synthetic ArUco scene |
-| `core/vision/cuboids` | detection, per-box Otsu, shape filters, floaters |
+| `core/vision/cuboids` | detection, per-box Otsu, shape filters, rejection labels |
 | `core/vision/bubbles` | separating a bubble from a solid on two optical features |
+| `core/vision/floaters` | centroid motion against a measured noise floor |
 | `workflows/calibrate_camera` | probe, plan, sweep, fit |
 | `workflows/calibrate_pipette` | tip offset against the crosshair disc |
 | `workflows/jog` | manual control, two input backends |
@@ -640,15 +641,20 @@ mid-state.
 
 **`DETECT_FLOATERS` is the head of the cycle**, not a stage after the frame is
 taken. What floats is measured first and the decision frame is taken after,
-rather than 2.5 s before. The check is mandatory on the first cycle of a run and
-after every shake, since a shake is exactly what changes the answer; in between,
-`floater_check_interval` applies.
+rather than seconds before. The state is currently empty: the variance-map
+detector that ran there is gone, and `core/vision/floaters.py` has not been wired
+in yet, so `floater_mode` is `off` and anything else is refused when the session
+is constructed rather than after the gantry has parked. The order and the seam
+are kept because everything downstream already reads `floater_zones`, and
+because the rules the removed version enforced still hold: measure on the first
+cycle of a run, and again after anything that stirs the dish — a shake, or the
+operator's hands in it — with `floater_interval_s` governing the rest.
 
 **The display mode is a property of the state, not of the window, and the
 picture travels with the event.** Every `PickEvent` carries a `PickView`: either
 "read the camera", in the three states where the operator is watching the dish
-itself (`IDLE`, `NEEDS_OPERATOR` and the floater clip, where the movement is the
-whole point), or the frame a decision was made from together with the overlays
+itself (`IDLE`, `NEEDS_OPERATOR` and the floater measurement, where the movement
+is the whole point), or the frame a decision was made from together with the overlays
 measured on *that* frame. A live stream during travel shows motion and says
 nothing, so in the other states it does not run at all.
 

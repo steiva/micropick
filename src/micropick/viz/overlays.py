@@ -67,9 +67,16 @@ def draw_contours(frame, df, color, thickness=2):
     return frame
 
 
-def draw_floaters(frame, zones, radius, color=_FLOATER):
-    for zx, zy in zones or ():
-        cv2.circle(frame, (int(zx), int(zy)), int(radius), color, 2)
+def draw_floaters(frame, zones, color=_FLOATER):
+    """Each zone is (x, y, radius_px) and is drawn at its own size.
+
+    The radius is per zone because it is measured, not configured: it is how far
+    that floater could drift before the next reading, from the speed it was seen
+    to have. Drawing them all at one size would hide the difference between a
+    drifter and one trembling in place.
+    """
+    for zx, zy, radius_px in zones or ():
+        cv2.circle(frame, (int(zx), int(zy)), int(radius_px), color, 2)
         cv2.putText(frame, "floater", (int(zx) + 8, int(zy) - 8),
                     _FONT, 0.6, color, 2)
     return frame
@@ -124,7 +131,7 @@ def draw_status(frame, lines, color=_ISOLATED, org=(10, 40), line_h=40):
 
 def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
              bubbles=None, chosen=None, verify_radius=None, floater_zones=(),
-             floater_radius=75, circle_center=None, circle_radius=None,
+             circle_center=None, circle_radius=None,
              status_lines=()) -> np.ndarray:
     """Return a copy of `frame` with the picking state drawn on it.
 
@@ -150,7 +157,7 @@ def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
     # after the class colours, because with the filter off a recognised bubble is
     # still pickable and would be painted over by them
     draw_contours(vis, bubbles, _BUBBLE)
-    draw_floaters(vis, floater_zones, floater_radius)
+    draw_floaters(vis, floater_zones)
     # the choice last: it is the decision, and it has to stay readable over the
     # class colours it sits on top of
     draw_verify_zones(vis, chosen, verify_radius)

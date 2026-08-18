@@ -241,6 +241,10 @@ def label_rejections(df: pd.DataFrame, cfg: PickingConfig,
     an object that passed everything. Must run after `add_derived`, whose
     spacing and dish-distance columns two of the tests read.
 
+    `floater_zones` are `(x, y, radius_px)` circles, as `exclusion_zones`
+    produces them. Empty means the detector is not running, and no row can then
+    take the `floater` reason.
+
     A rejected object is meant to stay in the table wearing its reason rather
     than vanish from a filtered copy: without that, a frame with no bubbles and a
     frame whose cuboids were all eaten by the filter look identical, and at 13%
@@ -266,7 +270,7 @@ def label_rejections(df: pd.DataFrame, cfg: PickingConfig,
 
     shape_ok = np.asarray(select_pickable(df, cfg), dtype=bool)
     is_bubble = np.asarray(bubbles.select_bubbles(df, cfg), dtype=bool)
-    in_zone = in_zones(df, floater_zones, cfg.floater_zone_radius_px)
+    in_zone = in_zones(df, floater_zones)
     crowded = np.asarray(df.min_dist_mm <= cfg.minimum_distance, dtype=bool)
 
     tests = {"shape": ~shape_ok,
@@ -441,23 +445,29 @@ def detect_floater_zones(frames, downscale: int = 2, step: int = 1,
     return list(zip(df.x, df.y))
 
 
-def in_zones(df: pd.DataFrame, zones, radius_px: float) -> np.ndarray:
+def in_zones(df: pd.DataFrame, zones) -> np.ndarray:
     """Boolean array: does each row's centre fall inside any floater zone?
 
-    An object exactly at radius_px counts as inside, which is the complement of
+    A zone is `(x, y, radius_px)`. The radius belongs to the zone rather than to
+    the configuration because a floater earns its own: `floaters.exclusion_zones`
+    sizes each circle from the speed that floater was seen to have, so a drifter
+    gets a wide one and one trembling in place a narrow one. A single configured
+    radius could only be the worst case applied to all of them.
+
+    An object exactly at the radius counts as inside, which is the complement of
     the strict `>` that decided what to keep when this was only ever a filter.
     """
     hit = np.zeros(len(df), bool)
     if len(df) == 0 or not zones:
         return hit
     xy = df[['cX', 'cY']].values
-    for zx, zy in zones:
+    for zx, zy, radius_px in zones:
         hit |= np.hypot(xy[:, 0] - zx, xy[:, 1] - zy) <= radius_px
     return hit
 
 
-def drop_in_zones(df: pd.DataFrame, zones, radius_px: float) -> pd.DataFrame:
-    """Drop rows whose centre lies within radius_px of any floater zone.
+def drop_in_zones(df: pd.DataFrame, zones) -> pd.DataFrame:
+    """Drop rows whose centre lies inside any floater zone.
 
     The picking session goes through `label_rejections` instead, which records
     the reason on the row rather than removing it. Kept for a caller that wants
@@ -465,7 +475,7 @@ def drop_in_zones(df: pd.DataFrame, zones, radius_px: float) -> pd.DataFrame:
     """
     if len(df) == 0 or not zones:
         return df
-    return df[~in_zones(df, zones, radius_px)]
+    return df[~in_zones(df, zones)]
 
 
 # ---------------------------------------------------------------------------

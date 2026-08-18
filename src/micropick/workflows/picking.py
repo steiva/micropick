@@ -32,7 +32,8 @@ work exactly as they do in idle.
 
 The head of the picking cycle is `DETECT_FLOATERS`, not `CAPTURE_FRAME`: the
 frame a decision is made from has to be taken *after* the floaters are measured,
-not 2.5 s before. Every path back into the loop returns there.
+not seconds before. Every path back into the loop returns there. The state is
+empty at present — see it for what the measurement that goes there has to do.
 
 Every event carries a `PickView`: either "read the camera" or the picture the
 last decision was made from, with the tables that were measured on *that* frame.
@@ -118,8 +119,8 @@ _TERMINAL = {RobotState.COMPLETED, RobotState.CANCELED}
 
 # States whose picture is worth watching live rather than frozen: the operator is
 # looking at the dish itself, either while waiting to be let on with the run or
-# while the floater clip records the movement that identifies them. Everywhere
-# else the stream shows travel and says nothing, so it does not run.
+# while the floater measurement watches for movement. Everywhere else the stream
+# shows travel and says nothing, so it does not run.
 _LIVE = {RobotState.IDLE, RobotState.NEEDS_OPERATOR, RobotState.DETECT_FLOATERS}
 
 # How often the idle state looks to see whether it has been told to start. A step
@@ -245,15 +246,14 @@ class PickingSession:
         self._shake_retries = 0
         self._empty_pickups = 0
         # Which pass round the picking loop we are on, counted from 1 at the head
-        # of the cycle. Not the same thing as `_cycles_since_floater`, which is a
-        # countdown to the next clip and resets; this only ever increases, and it
-        # is what names a frame in the log. Bubbles come from pipetting, so a
-        # feature row is only interpretable next to the cycle it was measured in.
+        # of the cycle. Only ever increases, and it is what names a frame in the
+        # log. Bubbles come from pipetting, so a feature row is only
+        # interpretable next to the cycle it was measured in.
         self._cycle = 0
-        # due, not zero: the first cycle of a run must measure the floaters, and
-        # counting up from zero silently skips the first `interval` cycles.
-        self._cycles_since_floater = self.config.floater_check_interval
-        self.floater_zones: list[tuple[float, float]] = []
+        # (x, y, radius_px) circles that must not be picked from. Empty until the
+        # detector is wired in; `exclusion_zones` will fill it, and every consumer
+        # downstream — the rejection labels, the overlays — already reads it.
+        self.floater_zones: list[tuple[float, float, float]] = []
         self._deposit_volume = 0.0
         self._pending_transfer = False
         self._held = 0
@@ -294,6 +294,16 @@ class PickingSession:
         self._lights_before = set_lights(self.robot, False)
 
     def _preflight(self) -> None:
+        # Here rather than in DETECT_FLOATERS, so a configuration the session
+        # cannot honour is refused before anything moves. Raised from the state
+        # instead, the gantry would already be parked at the observation pose
+        # with the run apparently under way.
+        if self.config.floater_mode != "off":
+            raise PickingError(
+                f"floater_mode is {self.config.floater_mode!r}, but the detector "
+                f"in core/vision/floaters.py is not wired into the session yet; "
+                f"set it to 'off'")
+
         routine = self.routine
         from ..core.routine import RoutineError
         try:
@@ -408,7 +418,6 @@ class PickingSession:
         nothing to hold, so the answer is the camera whatever the state.
         """
         base = {"floater_zones": self.floater_zones,
-                "floater_radius": self.config.floater_zone_radius_px,
                 "circle_center": self.config.circle_center,
                 "circle_radius": self.config.circle_radius}
         if self.state in _LIVE or self._held_frame is None:
@@ -668,45 +677,27 @@ class PickingSession:
                            cycle=self._cycle)
 
     def _state_detect_floaters(self, pause, stop) -> PickEvent:
-        """Head of the cycle. Measures which objects drift, before the frame
-        that the pickup decision is made from is taken."""
-        # Counted here rather than at the frame because this state is the head of
-        # the cycle; incrementing anywhere else would create a second definition
-        # of what a cycle is. Both branches below count, since the clip being
-        # skipped does not make it any less a pass round the loop.
+        """Head of the cycle, and where the floater measurement will go.
+
+        Empty for now: the variance-map detector that used to run here has been
+        removed, and the one that replaces it (`core/vision/floaters.py`) is not
+        wired in yet. The state stays because the order is the point — what
+        floats has to be measured before the frame the pickup is decided from,
+        not 2.5 s after it — and because everything downstream already reads
+        `floater_zones`. `floater_mode` other than "off" is refused at
+        construction, so reaching here means there is nothing to do.
+
+        Two rules the removed version enforced, for whoever wires the new one:
+        a measurement is due at the first cycle of a run, and again after
+        anything that stirs the dish — a shake, or the operator's hands in it
+        between NEEDS_OPERATOR and resume. Both paths lead here, so the trigger
+        belongs in this state; `floater_interval_s` governs the rest.
+        """
+        # Counted here because this state is the head of the cycle; incrementing
+        # anywhere else would create a second definition of what a cycle is.
         self._cycle += 1
-        if self._cycles_since_floater < self.config.floater_check_interval:
-            self._cycles_since_floater += 1
-            self.state = RobotState.CAPTURE_FRAME
-            return self._event("floaters", "skipped, within interval",
-                               cycle=self._cycle)
-
-        # The clip is the dish seen from above, so the pose has to be right
-        # first: this state is entered from the shake pose and, at the start of
-        # a run, from wherever the gantry happened to be left.
-        self._gate(pause, stop)
-        move_to(self.robot, self._observe, min_z_height=self.config.dish_bottom)
-        frames = self._grab_clip(self.config.floater_clip_sec, pause, stop)
-        self.floater_zones = vision.detect_floater_zones(
-            frames, min_area=self.config.floater_min_area,
-            mad_k=self.config.floater_mad_k)
-        self._cycles_since_floater = 0
-        self._log(f"floaters cycle={self._cycle}: "
-                  f"{len(self.floater_zones)} zones")
         self.state = RobotState.CAPTURE_FRAME
-        return self._event("floaters", "checked", cycle=self._cycle,
-                           zones=len(self.floater_zones))
-
-    def _grab_clip(self, duration, pause, stop) -> list[np.ndarray]:
-        frames: list[np.ndarray] = []
-        end = time.monotonic() + duration
-        while time.monotonic() < end:
-            self._gate(pause, stop)
-            ret, frame = self.camera.read()
-            if not ret or frame is None:
-                raise PickingError("camera returned no frame during the clip")
-            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-        return frames
+        return self._event("floaters", "off", cycle=self._cycle)
 
     def _state_analyze_frame(self, pause, stop) -> PickEvent:
         # Dropped before the pipeline runs: the frame shown below must carry
@@ -770,9 +761,6 @@ class PickingSession:
         move_relative(self.robot, "x", -2)
         self._gate(pause, stop)
         move_relative(self.robot, "x", 2)
-        # a clip is mandatory after a shake: what floats has just been stirred,
-        # and the zones measured before it say nothing about the dish now.
-        self._cycles_since_floater = self.config.floater_check_interval
         self.state = RobotState.DETECT_FLOATERS
         return self._event("shaken", "shook the dish")
 
@@ -1034,9 +1022,6 @@ class PickingSession:
         was not seen and the run could only be ended by first resuming it.
         """
         self._wait_for_operator(pause, stop)
-        # the operator has just had their hands in the dish; whatever was
-        # measured to float before that says nothing about it now
-        self._cycles_since_floater = self.config.floater_check_interval
         self.state = RobotState.DETECT_FLOATERS
         return self._event("resumed", "operator resumed the run")
 
