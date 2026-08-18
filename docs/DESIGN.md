@@ -641,14 +641,26 @@ mid-state.
 
 **`DETECT_FLOATERS` is the head of the cycle**, not a stage after the frame is
 taken. What floats is measured first and the decision frame is taken after,
-rather than seconds before. The state is currently empty: the variance-map
-detector that ran there is gone, and `core/vision/floaters.py` has not been wired
-in yet, so `floater_mode` is `off` and anything else is refused when the session
-is constructed rather than after the gantry has parked. The order and the seam
-are kept because everything downstream already reads `floater_zones`, and
-because the rules the removed version enforced still hold: measure on the first
-cycle of a run, and again after anything that stirs the dish — a shake, or the
-operator's hands in it — with `floater_interval_s` governing the rest.
+rather than seconds before. `core/vision/floaters.py` runs there: one detection
+pass, then `floater_window_s` of frames reduced to three numbers per object per
+frame, scored against the profile's baseline. The schedule is a moment in time,
+not a count of cycles — a cycle lasts however long the last transfer took, while
+a floater covers `minimum_distance` in a measured 15 s — and anything that stirs
+the dish clears the stamp, so a shake or the operator's hands make the next
+measurement due immediately. `floater_mode` chooses whether the answer is only
+recorded (`observe`, which is how the threshold earns trust on a real dish) or
+also kept out of the candidates (`enforce`); a missing baseline or pixel map is
+refused when the session is constructed, rather than after the gantry has parked.
+
+A measurement that cannot be believed yields no exclusion at all, in either
+mode. It is the absence of information and not an instruction to discard
+everything: flagging the whole dish empties the candidate table, exhausts the
+shake retries and hangs the run, while a floater let through costs one empty
+pickup that `verify_pickup` already catches. For the same reason the frames of a
+clip interrupted by a pause are thrown away rather than scored short, and the
+zones of the previous reading are dropped rather than carried past the horizon
+they were sized for. Objects that could not be measured at all are held out of
+the candidates without being counted as floaters.
 
 **The display mode is a property of the state, not of the window, and the
 picture travels with the event.** Every `PickEvent` carries a `PickView`: either

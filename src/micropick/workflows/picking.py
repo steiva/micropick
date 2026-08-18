@@ -32,8 +32,11 @@ work exactly as they do in idle.
 
 The head of the picking cycle is `DETECT_FLOATERS`, not `CAPTURE_FRAME`: the
 frame a decision is made from has to be taken *after* the floaters are measured,
-not seconds before. Every path back into the loop returns there. The state is
-empty at present — see it for what the measurement that goes there has to do.
+not seconds before. Every path back into the loop returns there. It measures on
+a schedule in seconds rather than in cycles, because a cycle lasts however long
+the last transfer took while a floater drifts at a speed that has been measured;
+`floater_mode` decides whether the answer is only recorded or also acted on, and
+a measurement that cannot be believed produces no exclusion at all.
 
 Every event carries a `PickView`: either "read the camera" or the picture the
 last decision was made from, with the tables that were measured on *that* frame.
@@ -83,6 +86,7 @@ import numpy as np
 import pandas as pd
 
 from ..core.vision import cuboids as vision
+from ..core.vision import floaters
 from ..core.calibration.homography import Homography, HomographyError
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, set_lights, xyz)
@@ -215,14 +219,26 @@ class PickingSession:
         # position; where() raises with a helpful list if it is missing.
         self._observe = np.array(profile.where("observe"), dtype=float)
 
+        if self.pixel_map is None:
+            raise PickingError(
+                "the session has no pixel map; run the calibration sweep. "
+                "Said here because everything below reads a scale off it, and "
+                "the failure without this is an AttributeError one frame later")
+
         # The vision pipeline still takes scalar mm-per-pixel ratios. With the
         # pixel map the scale varies across the frame, so we take the local
         # value at the dish centre as the representative one; it is only used
         # for object sizing and neighbour spacing, not for targeting.
+        #
+        # Taken at the dish centre and nowhere else, the floater detector
+        # included: the map is a degree-3 polynomial, so asked outside the
+        # calibrated bounds — at pixel (0, 0), say — it extrapolates and answers
+        # with a plausible wrong number rather than refusing.
         cx, cy = self.config.circle_center
         mmpp = float(np.mean(self.pixel_map.mm_per_px(cx, cy)))
         self._one_d_ratio = mmpp
         self._size_ratio = mmpp * mmpp
+        self._um_per_px = mmpp * 1000.0          # what `floaters` measures in
 
         self.state = RobotState.IDLE
         self._started = False
@@ -250,10 +266,20 @@ class PickingSession:
         # log. Bubbles come from pipetting, so a feature row is only
         # interpretable next to the cycle it was measured in.
         self._cycle = 0
-        # (x, y, radius_px) circles that must not be picked from. Empty until the
-        # detector is wired in; `exclusion_zones` will fill it, and every consumer
-        # downstream — the rejection labels, the overlays — already reads it.
+        # (x, y, radius_px) circles that must not be picked from. Filled only by
+        # a trusted measurement under `floater_mode == "enforce"`: the moment
+        # this list is non-empty, `label_rejections` starts rejecting, which is
+        # exactly what `observe` must not do. Every consumer downstream — the
+        # rejection labels, the overlays — already reads it.
         self.floater_zones: list[tuple[float, float, float]] = []
+        # The last floater measurement, and when it was taken. The schedule is a
+        # moment, not a count of cycles: a cycle is however long the last pickup
+        # took, while a floater crosses `minimum_distance` in a fixed number of
+        # seconds. `None` means one is due now.
+        self._last_floater_s: float | None = None
+        self._floater_df: pd.DataFrame | None = None
+        self._floater_verdict: floaters.Verdict | None = None
+        self._floater_baseline: floaters.Baseline | None = None
         self._deposit_volume = 0.0
         self._pending_transfer = False
         self._held = 0
@@ -299,10 +325,18 @@ class PickingSession:
         # instead, the gantry would already be parked at the observation pose
         # with the run apparently under way.
         if self.config.floater_mode != "off":
-            raise PickingError(
-                f"floater_mode is {self.config.floater_mode!r}, but the detector "
-                f"in core/vision/floaters.py is not wired into the session yet; "
-                f"set it to 'off'")
+            from ..config.store import ProfileError
+            try:
+                self._floater_baseline = self.profile.floater_baseline()
+            except ProfileError as exc:      # measured at another window geometry
+                raise PickingError(str(exc)) from exc
+            if self._floater_baseline is None:
+                raise PickingError(
+                    f"floater_mode is {self.config.floater_mode!r}, but the "
+                    f"profile has no floater baseline. The threshold is an "
+                    f"absolute number of microns and means nothing without the "
+                    f"noise floor it is multiplied from: measure it on still "
+                    f"cuboids first, or set floater_mode to 'off'")
 
         routine = self.routine
         from ..core.routine import RoutineError
@@ -449,6 +483,24 @@ class PickingSession:
         if len(df) == 0 or "is_bubble" not in df:
             return pd.DataFrame()
         return df[df.is_bubble]
+
+    @property
+    def floater_table(self) -> pd.DataFrame | None:
+        """The last floater measurement, scored, or None if none has run.
+
+        One row per measurement window, `TABLE_COLUMNS` plus `is_floater` and
+        `state`. Here rather than on the event because `PickEvent.__str__`
+        prints its whole `data`, and a table of two hundred objects buries the
+        line that says what happened - the same reason the view is not in it.
+        The event carries the numbers a person reads; this carries the rest.
+        """
+        return self._floater_df
+
+    @property
+    def floater_verdict(self) -> floaters.Verdict | None:
+        """Whether the last measurement is to be believed, and why not. Its
+        `__str__` is one line and is what the log records."""
+        return self._floater_verdict
 
     @property
     def verify_radius_px(self) -> float:
@@ -677,27 +729,232 @@ class PickingSession:
                            cycle=self._cycle)
 
     def _state_detect_floaters(self, pause, stop) -> PickEvent:
-        """Head of the cycle, and where the floater measurement will go.
+        """Head of the cycle: watch the dish move before deciding from it.
 
-        Empty for now: the variance-map detector that used to run here has been
-        removed, and the one that replaces it (`core/vision/floaters.py`) is not
-        wired in yet. The state stays because the order is the point — what
-        floats has to be measured before the frame the pickup is decided from,
-        not 2.5 s after it — and because everything downstream already reads
-        `floater_zones`. `floater_mode` other than "off" is refused at
-        construction, so reaching here means there is nothing to do.
+        The order is the point — what floats has to be measured before the frame
+        the pickup is decided from, not 2.5 s after it — which is why this is a
+        state of its own ahead of `CAPTURE_FRAME` rather than a step inside it.
 
-        Two rules the removed version enforced, for whoever wires the new one:
-        a measurement is due at the first cycle of a run, and again after
-        anything that stirs the dish — a shake, or the operator's hands in it
-        between NEEDS_OPERATOR and resume. Both paths lead here, so the trigger
-        belongs in this state; `floater_interval_s` governs the rest.
+        `off` costs nothing, not even a frame: the state falls straight through.
+        `observe` measures and records without acting, which is how the
+        threshold earns trust on a real dish; `enforce` also keeps the flagged
+        regions out of the candidates. Both are refused at construction unless
+        the profile carries a baseline, so reaching here with a mode set means
+        the measurement can run.
+
+        A measurement that cannot be believed produces no zones at all. It is
+        the absence of information, not an instruction to discard everything:
+        marking the whole dish would empty the candidate table, exhaust the
+        shake retries and hang the run, while a floater let through costs one
+        empty pickup that `verify_pickup` already catches.
         """
-        # Counted here because this state is the head of the cycle; incrementing
-        # anywhere else would create a second definition of what a cycle is.
+        if self.config.floater_mode == "off":
+            return self._enter_capture("off")
+        if not self._floaters_due():
+            age = time.monotonic() - self._last_floater_s
+            return self._enter_capture("last measurement still current",
+                                       age_s=round(age, 1),
+                                       zones=len(self.floater_zones))
+
+        df, verdict = self._measure_floaters(pause, stop)
+        if df is None:
+            # A pause split the clip in two. Half a clip is not a short clip:
+            # the objects had time to move while nothing was watching, so the
+            # frames taken are dropped and the state is entered again. The cycle
+            # is deliberately not counted - nothing was decided.
+            return self._event("floaters", "clip dropped: paused mid-measurement")
+
+        self._last_floater_s = time.monotonic()
+        self._floater_df, self._floater_verdict = df, verdict
+        zones = self._floater_zones(df) if verdict.trusted else []
+        if self.config.floater_mode == "enforce":
+            # Assigned even when empty. The radius of a zone is how far its
+            # floater could have travelled by the next measurement, so the ones
+            # standing here have just expired; keeping them would be a circle
+            # aging silently, which is what `exclusion_zones` is written against.
+            self.floater_zones = zones
+        # The event first, because it is what counts the cycle: the measurement
+        # belongs to the cycle it heads, and that is the number the log line has
+        # to carry for the two records to be joinable afterwards.
+        event = self._enter_capture(
+            "measured" if verdict.trusted else "not trusted",
+            objects=verdict.n_objects, floaters=verdict.n_floaters,
+            unknown=verdict.n_unknown, threshold_um=round(verdict.threshold_um, 1),
+            median_rms_um=round(verdict.median_rms_um, 2),
+            trusted=verdict.trusted, zones=len(zones),
+            enforced=self.config.floater_mode == "enforce")
+        self._log_floaters(verdict, zones)
+        return event
+
+    def _enter_capture(self, message: str, **data) -> PickEvent:
+        """Leave the head of the cycle for the frame the decision is made from.
+
+        The cycle is counted here, in the one place every path out of this state
+        goes through; incrementing it anywhere else would create a second
+        definition of what a cycle is.
+        """
         self._cycle += 1
         self.state = RobotState.CAPTURE_FRAME
-        return self._event("floaters", "off", cycle=self._cycle)
+        return self._event("floaters", message, cycle=self._cycle, **data)
+
+    def _floaters_due(self) -> bool:
+        """Whether enough time has passed to measure again.
+
+        Elapsed time, not cycles: a cycle lasts however long the last pickup and
+        transfer took, while a floater covers ground at a speed that has been
+        measured — 76 to 140 um/s, so 15 s is one `minimum_distance`. Anything
+        that stirs the dish clears the stamp, which makes a measurement due
+        immediately.
+        """
+        return (self._last_floater_s is None
+                or time.monotonic() - self._last_floater_s
+                >= self.config.floater_interval_s)
+
+    def _measure_floaters(self, pause, stop):
+        """Watch the dish for `floater_window_s` and score what moved.
+
+        Returns (scored table, verdict), or (None, None) if a pause split the
+        clip and it was thrown away.
+
+        The detector runs exactly once, on the first frame. The list of objects
+        does not change over two seconds, and a second inference would cost more
+        than the whole rest of the measurement; the windows it produces are
+        fixed and deliberately do not follow their objects, since a floater
+        leaving its window is the strongest reading available.
+
+        Frames are never accumulated. Each one is reduced to three numbers per
+        window and released, so the cost is set by the number of objects rather
+        than by the length of the clip.
+        """
+        cfg = self.config
+        # The gantry arrives here from the shake pose and from the dish as well
+        # as from the observation pose, so neither the height nor the position
+        # can be assumed. Retract before travelling, or a tip still down is
+        # dragged through whatever it was standing in.
+        self._gate(pause, stop)
+        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._gate(pause, stop)
+        move_to(self.robot, self._observe, min_z_height=cfg.dish_bottom)
+        if cfg.capture_settle_s:
+            # A gantry that is still ringing moves every window's contents
+            # together; `classify` sees that as common motion and refuses the
+            # whole measurement, so the wait here buys back a whole clip.
+            time.sleep(cfg.capture_settle_s)
+
+        frame0 = self._fresh_frame()
+        boxes, confs = vision.detect_boxes(self.detector, frame0, cfg)
+        keep = floaters.merge_duplicates(boxes, confs, centre_frac=0.5)
+        wins = floaters.make_windows(boxes[keep], frame0.shape,
+                                     pad_frac=cfg.floater_pad_frac)
+        acc = floaters.MotionAccumulator(wins, warmup=3,
+                                         sigma_frac=cfg.floater_sigma_frac)
+
+        if wins:
+            period = 1.0 / cfg.floater_fps
+            t = time.monotonic()
+            acc.update(cv2.cvtColor(frame0, cv2.COLOR_BGR2GRAY), t)
+            t_end = t + cfg.floater_window_s
+            while time.monotonic() < t_end:
+                # Between frames, not only between states: two seconds is long
+                # enough that a stop checked at the state boundary would look
+                # ignored, and `_gate` is what makes it land here.
+                paused = pause is not None and pause.is_set()
+                self._gate(pause, stop)
+                if paused:
+                    return None, None
+                # Asking for a frame later than the last one read paces the clip
+                # and guarantees each one is new: the same frame counted twice
+                # reads as an object that did not move.
+                frame = self.camera.read_after(t + period)
+                t = time.monotonic()
+                acc.update(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), t)
+
+        # No windows is not a special case: the empty table classifies to an
+        # empty verdict that says so, and produces no zones.
+        return floaters.classify(acc.table(self._um_per_px),
+                                 self._floater_baseline,
+                                 k=cfg.floater_k, floor_um=cfg.floater_floor_um)
+
+    def _floater_zones(self, df: pd.DataFrame) -> list[tuple[float, float, float]]:
+        """The scored table -> circles that must not be picked from.
+
+        Two kinds, and they answer different questions. `exclusion_zones` sizes
+        a circle from the speed that floater was seen to have, which covers
+        where it will have drifted to by the next measurement. On top of that
+        every flagged object gets a circle over its own window: a floater is
+        rejected as itself and not only through a zone that its own drift may
+        have carried it out of.
+
+        Objects in the `unknown` state get the same small circle. They were not
+        measurable, so nothing says they are still - they must stay out of the
+        candidates, while remaining out of the floater count, which is what the
+        verdict reports. Position is the only link between the frame measured
+        here and the frame the pickup is decided from: the two detections are
+        independent, so a circle is the only thing that carries over.
+        """
+        zones = floaters.exclusion_zones(
+            df, self._um_per_px, horizon_s=self.config.floater_horizon_s)
+        if len(df) == 0:
+            return zones
+        own = df["is_floater"].to_numpy(bool) | (df["state"] == "unknown").to_numpy(bool)
+        for r in df[own].itertuples():
+            zones.append((float(r.x), float(r.y),
+                          float(min(r.win_w, r.win_h)) / 2.0))
+        return zones
+
+    def _cycle_stamp(self) -> str:
+        """Which pass round the loop a log line belongs to, repeated on every
+        line so a multi-line block can be parsed back into a table. No state
+        field, unlike `detections`: these records come from one state only."""
+        return f"cycle={self._cycle} target={self.routine.current}"
+
+    def _log_floaters(self, verdict, zones) -> None:
+        """One line per measurement."""
+        if self.logger is None:
+            return
+        df = self._floater_df
+        self._log(
+            f"floaters {self._cycle_stamp()} mode={self.config.floater_mode} "
+            f"objects={verdict.n_objects} floaters={verdict.n_floaters} "
+            f"unknown={verdict.n_unknown} threshold_um={verdict.threshold_um:.1f} "
+            f"median_rms_um={verdict.median_rms_um:.2f} "
+            f"common_um={verdict.common_um:.1f} drift={verdict.drift_ratio:.2f} "
+            f"trusted={int(verdict.trusted)} frames={df.attrs.get('n_frames', 0)} "
+            f"window_s={df.attrs.get('window_s', 0.0):.2f} zones={len(zones)} "
+            # last, and quoted: the only free-text field, so a naive split on
+            # spaces still recovers every number before it
+            f"note={verdict.note or '-'!r}")
+
+    def _log_floater_choice(self) -> None:
+        """The rms of every cuboid that went into a pickup.
+
+        Half of a pair: `verify_pickup` records whether the tip came back with
+        anything, and these lines say how much each of those cuboids had been
+        moving beforehand. Together, over enough runs, they are the curve of rms
+        against the chance of an empty pickup, which is what would let the
+        threshold be set from measurement rather than from `k` times a floor.
+
+        The two frames are detected independently, so the join is by position:
+        the nearest measured window, and how far away it was. A cuboid further
+        from any window than that window is wide is reported unmatched rather
+        than given someone else's number.
+        """
+        df = self._floater_df
+        if self.logger is None or self._choice is None or df is None or len(df) == 0:
+            return
+        age = time.monotonic() - self._last_floater_s
+        stamp = self._cycle_stamp()
+        xy = df[["x", "y"]].to_numpy(dtype=float)
+        for idx, r in self._choice.iterrows():
+            dist = np.hypot(xy[:, 0] - r.cX, xy[:, 1] - r.cY)
+            i = int(np.argmin(dist))
+            row = df.iloc[i]
+            matched = dist[i] <= min(row["win_w"], row["win_h"]) / 2.0
+            rms = float(row["rms_um"]) if matched else float("nan")
+            self._log(f"floater_pick {stamp} idx={idx} cX={r.cX:.0f} "
+                      f"cY={r.cY:.0f} rms_um={rms:.2f} "
+                      f"state={row['state'] if matched else 'unmatched'} "
+                      f"dist_px={dist[i]:.0f} age_s={age:.1f}")
 
     def _state_analyze_frame(self, pause, stop) -> PickEvent:
         # Dropped before the pipeline runs: the frame shown below must carry
@@ -740,6 +997,7 @@ class PickingSession:
         want = max(1, min(want, len(self.isolated)))
         self._choice = (self.isolated.sample(n=want)
                         if len(self.isolated) > want else self.isolated)
+        self._log_floater_choice()
         self._show_analysis()                   # after the choice, so it shows
         self.state = RobotState.APPROACH_TARGET
         return self._event("analyzed", "chose a batch",
@@ -761,6 +1019,9 @@ class PickingSession:
         move_relative(self.robot, "x", -2)
         self._gate(pause, stop)
         move_relative(self.robot, "x", 2)
+        # Whatever was measured before this described a dish that no longer
+        # exists, so the next cycle measures again whatever the interval says.
+        self._last_floater_s = None
         self.state = RobotState.DETECT_FLOATERS
         return self._event("shaken", "shook the dish")
 
@@ -1022,6 +1283,10 @@ class PickingSession:
         was not seen and the run could only be ended by first resuming it.
         """
         self._wait_for_operator(pause, stop)
+        # The operator has had their hands in the dish, as they were asked to,
+        # so the same rule as after a shake applies: measure again before
+        # deciding anything from it.
+        self._last_floater_s = None
         self.state = RobotState.DETECT_FLOATERS
         return self._event("resumed", "operator resumed the run")
 
