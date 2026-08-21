@@ -4,6 +4,10 @@ Split in two. JogController holds the rules: step sizes, limits, saved
 positions, undo. It touches no keyboard and no window, so it can be tested
 without either. The backends below turn key presses into calls on it.
 
+The window backend's layout is one table, `LAYOUT`, and both the dispatch and
+the on-screen help are derived from it. Written twice, as it was, the help said
+WASD long after the arrows were what anyone used.
+
 Limits let the robot escape
 ---------------------------
 The previous version refused any move whose target fell outside the working
@@ -25,7 +29,7 @@ from ..hardware.protocols import Robot, xyz
 from ..viz import window as window_fit
 
 __all__ = ["Limits", "MoveResult", "JogController", "jog_in_window",
-           "jog_with_hotkeys", "DEFAULT_STEPS"]
+           "jog_with_hotkeys", "DEFAULT_STEPS", "Key", "LAYOUT", "help_lines"]
 
 DEFAULT_STEPS = [0.01, 0.05, 0.1, 0.5, 1, 3, 5, 10, 30, 50]
 AXES = "xyz"
@@ -236,25 +240,81 @@ class JogController:
 # input backends
 # ---------------------------------------------------------------------------
 
-_WINDOW_HELP = [
-    "arrows / WASD  move x and y",
-    "q e            move z down and up",
-    "+ -            step size",
-    "space          save position",
-    "u              undo last step",
-    "h              hide or show this help",
-    "enter          finish",
-]
-
-# waitKeyEx returns platform-specific codes for the arrow keys
-_ARROWS = {
-    2490368: ("y", +1), 65362: ("y", +1), 63232: ("y", +1),      # up
-    2621440: ("y", -1), 65364: ("y", -1), 63233: ("y", -1),      # down
-    2424832: ("x", -1), 65361: ("x", -1), 63234: ("x", -1),      # left
-    2555904: ("x", +1), 65363: ("x", +1), 63235: ("x", +1),      # right
+# waitKeyEx reports a different code per platform for the keys that are not
+# characters; a character key is its own code. Aliases belong here too: "+" and
+# "=" are one key on most keyboards, and Enter arrives as either 13 or 10.
+_CODES = {
+    "left":  (65361, 63234, 2424832),          # GTK, macOS, Windows
+    "right": (65363, 63235, 2555904),
+    "up":    (65362, 63232, 2490368),
+    "down":  (65364, 63233, 2621440),
+    "PgUp":  (65365, 63276, 2162688),
+    "PgDn":  (65366, 63277, 2228224),
+    "enter": (13, 10),
+    "space": (32,),
+    "+":     (ord("+"), ord("=")),
+    "-":     (ord("-"), ord("_")),
 }
-_LETTERS = {"w": ("y", +1), "s": ("y", -1), "a": ("x", -1), "d": ("x", +1),
-            "q": ("z", -1), "e": ("z", +1)}
+
+
+@dataclass(frozen=True)
+class Key:
+    """One key of the window backend: what it is called, what it does, and the
+    line of help it belongs to. Keys sharing a `help` share one line."""
+
+    name: str
+    help: str
+    move: tuple[str, int] | None = None
+    command: str | None = None
+
+    @property
+    def codes(self) -> tuple[int, ...]:
+        listed = _CODES.get(self.name)
+        if listed is not None:
+            return listed
+        # a letter is typed in either case and means the same thing
+        return (ord(self.name.lower()), ord(self.name.upper()))
+
+
+# The layout, and the only place it exists. The on-screen help is generated from
+# it, so the two cannot drift apart - which they had, describing WASD and `q e`
+# for axes the operator drives with the arrows.
+#
+# Z is on PgUp and PgDn rather than on letters: they are the only keys whose
+# up-and-down meaning is not a convention someone has to be told.
+LAYOUT = (
+    Key("left",  "move x and y", move=("x", -1)),
+    Key("right", "move x and y", move=("x", +1)),
+    Key("up",    "move x and y", move=("y", +1)),
+    Key("down",  "move x and y", move=("y", -1)),
+    Key("PgUp",  "move z up",    move=("z", +1)),
+    Key("PgDn",  "move z down",  move=("z", -1)),
+    Key("+", "step size", command="step_up"),
+    Key("-", "step size", command="step_down"),
+    Key("space", "save position", command="save"),
+    Key("u", "undo last step", command="undo"),
+    Key("h", "hide or show this help", command="help"),
+    Key("enter", "finish", command="finish"),
+)
+
+_DISPATCH = {code: key for key in LAYOUT for code in key.codes}
+
+
+def help_lines(layout=LAYOUT) -> list[str]:
+    """The key list as it is drawn, built from the layout itself.
+
+    Keys that do the same kind of thing are named together on one line, in the
+    order they are declared: `left/right/up/down   move x and y`.
+    """
+    groups: list[tuple[str, list[str]]] = []
+    for key in layout:
+        if groups and groups[-1][0] == key.help:
+            groups[-1][1].append(key.name)
+        else:
+            groups.append((key.help, [key.name]))
+    names = ["/".join(n) for _, n in groups]
+    width = max(len(n) for n in names) + 2
+    return [n.ljust(width) + text for n, (text, _) in zip(names, groups)]
 
 
 def jog_in_window(controller: JogController, camera=None, *,
@@ -321,36 +381,41 @@ def jog_in_window(controller: JogController, camera=None, *,
                             scale, (0, 255, 0), 2)
             y += int(45 * scale)
             if show_help:
-                for line in _WINDOW_HELP:
+                for line in help_lines():
                     cv2.putText(frame, line, (20, y), cv2.FONT_HERSHEY_SIMPLEX,
                                 scale * 0.62, (0, 200, 0), 1)
                     y += int(30 * scale)
 
             view.show(frame)
+            # waitKeyEx, not waitKey: waitKey drops the high bits, and with them
+            # every key that is not a character - the arrows and PgUp/PgDn come
+            # back indistinguishable.
             key = cv2.waitKeyEx(20)
             if key == -1:
                 continue
 
-            action = _ARROWS.get(key)
-            char = chr(key & 0xFF).lower() if 0 <= (key & 0xFF) < 128 else ""
-            if action is None:
-                action = _LETTERS.get(char)
+            # The whole code first, the low byte only as a fallback: some builds
+            # return a character with modifier bits set, but masking first would
+            # read GTK's PgUp (65365) as 'U' and undo the last step instead.
+            binding = _DISPATCH.get(key) or _DISPATCH.get(key & 0xFF)
+            if binding is None:
+                continue
 
             result = None
-            if action is not None:
-                result = controller.move(*action)
-            elif char in "+=":
+            if binding.move is not None:
+                result = controller.move(*binding.move)
+            elif binding.command == "step_up":
                 message, msg_until = f"step {controller.step_up():g} mm", time.monotonic() + 1.2
-            elif char in "-_":
+            elif binding.command == "step_down":
                 message, msg_until = f"step {controller.step_down():g} mm", time.monotonic() + 1.2
-            elif char == " ":
+            elif binding.command == "save":
                 message = f"saved as {controller.save_position()}"
                 msg_until = time.monotonic() + 1.5
-            elif char == "u":
+            elif binding.command == "undo":
                 result = controller.undo()
-            elif char == "h":
+            elif binding.command == "help":
                 show_help = not show_help
-            elif key in (13, 10):
+            elif binding.command == "finish":
                 break
 
             if result is not None and not result.ok:
