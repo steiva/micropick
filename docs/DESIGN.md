@@ -54,6 +54,14 @@ They stay synchronous and blocking: a notebook calls them directly, a GUI runs
 them in a thread. Making the core async would serve the GUI and hurt the
 notebook, which is the interface actually in use.
 
+Two modules stand outside that rule and always have. `workflows/jog` drives the
+robot from a window's own key events, which is the point of it: keys read that
+way need no elevated permissions and cannot reach the robot while another
+application has focus. `viz/window` holds the one thing both it and the notebook
+need — a window sized to the aspect of the frame in it. Neither is imported by
+`core`, and both import `cv2` inside their functions, so the package still
+loads where there is no display at all.
+
 ---
 
 ## 3. Calibration
@@ -591,6 +599,7 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `workflows/jog` | manual control, two input backends |
 | `workflows/picking` | the pick-and-place state machine, one step at a time |
 | `viz/overlays` | drawing for the picking window, frame in, frame out |
+| `viz/window` | one window, sized to the aspect of the frame it shows |
 | `notebooks/01_robot_session.ipynb` | the whole session in one place |
 
 ---

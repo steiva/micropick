@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..hardware.protocols import Robot, xyz
+from ..viz import window as window_fit
 
 __all__ = ["Limits", "MoveResult", "JogController", "jog_in_window",
            "jog_with_hotkeys", "DEFAULT_STEPS"]
@@ -257,7 +258,7 @@ _LETTERS = {"w": ("y", +1), "s": ("y", -1), "a": ("x", -1), "d": ("x", +1),
 
 
 def jog_in_window(controller: JogController, camera=None, *,
-                  window: str = "jog", size=(1348, 1011),
+                  window: str = "jog", budget=window_fit.BUDGET,
                   overlay=None, title: str = ""):
     """Jog while watching the camera, using the window's own key events.
 
@@ -268,6 +269,8 @@ def jog_in_window(controller: JogController, camera=None, *,
 
     The camera's own view crop is applied here, since this is a window and
     nothing measured comes out of it. A camera with no crop set is unaffected.
+    `budget` is what the window may take up on screen; its shape comes from the
+    frame, which for a cropped camera is not the shape of the sensor.
 
     Returns the position at the moment Enter was pressed.
     """
@@ -277,8 +280,7 @@ def jog_in_window(controller: JogController, camera=None, *,
 
     crop = float(getattr(camera, "crop", 1.0)) if camera is not None else 1.0
 
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(window, *size)
+    view = window_fit.FrameWindow(window, budget=budget)
     show_help = True
     message = ""
     msg_until = 0.0
@@ -291,7 +293,10 @@ def jog_in_window(controller: JogController, camera=None, *,
                 if not ok:
                     frame = None
             if frame is None:
-                frame = np.zeros((size[1], size[0], 3), np.uint8)
+                # No camera, or none yet. The placeholder takes the budget's own
+                # shape: there is no frame to take an aspect from, and the window
+                # re-fits itself as soon as a real one arrives.
+                frame = np.zeros((budget[1], budget[0], 3), np.uint8)
             elif crop != 1.0:
                 frame = center_crop(frame, crop)[0].copy()
             else:
@@ -321,7 +326,7 @@ def jog_in_window(controller: JogController, camera=None, *,
                                 scale * 0.62, (0, 200, 0), 1)
                     y += int(30 * scale)
 
-            cv2.imshow(window, frame)
+            view.show(frame)
             key = cv2.waitKeyEx(20)
             if key == -1:
                 continue
@@ -353,7 +358,7 @@ def jog_in_window(controller: JogController, camera=None, *,
             elif result is not None and result.clamped:
                 message, msg_until = result.reason, time.monotonic() + 1.5
     finally:
-        cv2.destroyWindow(window)
+        view.close()
 
     return controller.position
 

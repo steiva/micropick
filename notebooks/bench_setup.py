@@ -51,6 +51,7 @@ from micropick.hardware.labware import loaded_labware              # noqa: E402
 from micropick.hardware.mock import MockRobot, open_mock_camera    # noqa: E402
 from micropick.hardware.protocols import goto_xy, move_to, xyz     # noqa: E402
 from micropick.viz import overlays                                 # noqa: E402
+from micropick.viz.window import FrameWindow, fit_size             # noqa: E402
 from micropick.workflows.calibrate_camera import calibrate_camera  # noqa: E402
 from micropick.workflows.calibrate_homography import calibrate_homography  # noqa: E402
 from micropick.workflows.calibrate_pipette import (TipDetector,    # noqa: E402
@@ -67,6 +68,7 @@ __all__ = [
     "LabwareError", "local_definitions", "resolve_definition", "labware",
     "loaded_labware", "rt", "Destination", "Routine", "RoutineError",
     "empty_plate_table", "plan_from_table", "vision", "overlays",
+    "FrameWindow", "fit_size",
     "PixelMap", "compare_degrees", "Homography", "calibrate_camera",
     "calibrate_pipette_offset", "calibrate_homography", "TipDetector",
     "CameraManager", "Recorder", "MockRobot", "open_mock_camera",
