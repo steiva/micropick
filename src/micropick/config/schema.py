@@ -176,6 +176,14 @@ class PipetteOffset(BaseModel):
     target is before looking for it, so an offset that is wrong by tens of
     millimetres puts the tip outside the lower camera's view and the run cannot
     recover.
+
+    under_resolution is the lower camera's mode the measurement was taken at.
+    Recorded for the same reason `CameraHomography` records its two modes: the
+    scale of everything read off that camera follows its resolution, and a
+    calibration taken at the wrong one is not wrong by a flag but by a factor.
+    The routine now refuses any other mode, so this says which one that was.
+    Optional so that a profile written before this change still loads; a manual
+    offset measured with a ruler has no camera mode at all.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -188,6 +196,8 @@ class PipetteOffset(BaseModel):
     residual_mm: float | None = None
     n_samples: int | None = None
     spread_mm: float | None = None
+    under_resolution: Annotated[list[int],
+                                Field(min_length=2, max_length=2)] | None = None
 
 
 class TipTarget(BaseModel):

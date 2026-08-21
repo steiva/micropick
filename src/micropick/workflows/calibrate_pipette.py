@@ -53,6 +53,37 @@ class TipCalibrationError(RuntimeError):
     pass
 
 
+def _expected_under_resolution(under_cam, given, profile) -> tuple[int, int]:
+    """The lower camera mode this calibration is defined at.
+
+    From the profile's own `CameraSpec`, never from a constant here: which mode
+    the module is calibrated at is an installation fact, and changing it should
+    be an edit to cameras.json rather than to this file. `given` overrides, for
+    a caller deliberately working at another mode.
+
+    Refuses to guess. Without a number to compare against there is no check, and
+    a check that quietly does not run is what let the calibration be taken at
+    the wrong mode in the first place.
+    """
+    if given is not None:
+        return tuple(int(v) for v in given)
+
+    label = getattr(under_cam, "label", None)
+    cameras = getattr(profile, "cameras", None) or {}
+    if profile is None or not cameras:
+        raise TipCalibrationError(
+            "the lower camera's calibrated resolution is unknown: pass the "
+            "profile, whose CameraSpec names it, or under_resolution "
+            "explicitly. The scale of everything measured through that camera "
+            "follows its mode, so the calibration is not run unchecked")
+    if label not in cameras:
+        raise TipCalibrationError(
+            f"the lower camera calls itself {label!r}, which is not a camera in "
+            f"profile {getattr(profile, 'name', '?')!r}; known: "
+            f"{', '.join(sorted(cameras)) or 'none'}")
+    return tuple(int(v) for v in cameras[label].default_resolution)
+
+
 # ---------------------------------------------------------------------------
 # detection
 # ---------------------------------------------------------------------------
@@ -301,6 +332,7 @@ def calibrate_pipette_offset(
         frames: int = 5, settle_s: float = 0.8,
         verify: bool = True, max_correction_mm: float = 40.0,
         tip_type: str | None = None, profile=None,
+        under_resolution: tuple[int, int] | None = None,
         manual_touch_up=None, log=print) -> OffsetResult:
     """Drive the tip onto the crosshair and record the offset that did it.
 
@@ -311,12 +343,39 @@ def calibrate_pipette_offset(
     profile, if given, is written to and saved: the offset, and the homography
     that came with it. Both are products of this one measurement, so keeping
     them together is what stops a profile ending up with one refreshed and the
-    other left from a previous tip.
+    other left from a previous tip. It also names the lower camera's calibrated
+    resolution, which is checked before anything moves.
+
+    under_resolution overrides that mode, for a caller who means to work at
+    another one. Without either, the routine refuses rather than run unchecked.
 
     manual_touch_up, if given, is called as f(robot, under_cam, view) after the
     automatic correction and should return once the operator is satisfied. Any
     movement it makes is included, since the offset is read from the final pose.
     """
+    # First, before the upper camera is even read and long before the gantry
+    # moves. Everything the lower camera measures is in its pixels, so its mode
+    # sets the scale of the result: the four outer crosshairs rescale mm/px, but
+    # the detector's centre tolerance is a fraction of the frame width and YOLO
+    # runs at a fixed imgsz either way, so a smaller mode is a quietly coarser
+    # calibration rather than a failed one. That is the failure this refuses:
+    # the same camera label is legitimately reopened at 2000x1500 for the
+    # picking clip, and nothing downstream can tell which mode produced a stored
+    # offset. Not a warning - a calibration taken at the wrong scale is wrong.
+    expected = _expected_under_resolution(under_cam, under_resolution, profile)
+    # The device's own read-back, not what was asked for: this camera is already
+    # known to accept settings it then ignores, which is why every control is
+    # verified rather than assumed (see ControlReport).
+    actual = tuple(int(v) for v in under_cam.resolution)
+    if actual != expected:
+        raise TipCalibrationError(
+            f"the tip calibration is defined at "
+            f"{expected[0]}x{expected[1]}, but the lower camera "
+            f"{getattr(under_cam, 'label', '?')!r} is running at "
+            f"{actual[0]}x{actual[1]}. Reopen it at the calibrated mode "
+            f"(cams.open(label) takes the profile's default) and run again; "
+            f"nothing has moved and nothing was saved")
+
     target = target or TipTarget()
     approach = np.asarray(target.approach_offset, dtype=float)
 
@@ -405,6 +464,9 @@ def calibrate_pipette_offset(
         residual_mm=None if np.isnan(residual_mm) else residual_mm,
         n_samples=under_view.n_frames,
         spread_mm=float(under_view.spread_px * under_view.mm_per_px),
+        # the mode the measurement was taken at, checked above and recorded here
+        # so a stored offset can be told apart from one taken at another scale
+        under_resolution=list(actual),
     )
 
     # --- free by-product: the upper-to-lower homography --------------------
