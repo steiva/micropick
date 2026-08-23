@@ -10,12 +10,10 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 
-from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import QApplication
 
 from . import theme
-from .theme.factory import (card, heading, primary_button,
-                            secondary_button)
+from .shell import MainWindow
 
 __all__ = ["Options", "create_app", "run"]
 
@@ -50,46 +48,9 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     return app
 
 
-def _window(options: Options) -> QWidget:
-    """The placeholder the shell replaces.
-
-    It shows what the command line was understood to mean, so the arguments are
-    visible rather than parsed and dropped.
-    """
-    window = QWidget()
-    window.setWindowTitle("micropick")
-    window.resize(1400, 900)
-
-    layout = QVBoxLayout(window)
-    layout.setContentsMargins(theme.SPACING * 4, theme.SPACING * 4,
-                              theme.SPACING * 4, theme.SPACING * 4)
-    layout.addStretch(1)
-
-    panel = card(window)
-    panel.layout().addWidget(heading("micropick", 1))
-    panel.layout().addWidget(QLabel(
-        f"profile: {options.profile or '(none)'}\n"
-        f"robot:   {'mock' if options.mock else 'real'}"))
-
-    # The two button styles, so that the theme is something to look at rather
-    # than something to take on trust. They go with the placeholder.
-    buttons = QHBoxLayout()
-    buttons.addWidget(primary_button("Primary"))
-    buttons.addWidget(secondary_button("Secondary"))
-    disabled = secondary_button("Disabled")
-    disabled.setEnabled(False)
-    buttons.addWidget(disabled)
-    buttons.addStretch(1)
-    panel.layout().addLayout(buttons)
-
-    layout.addWidget(panel)
-    layout.addStretch(1)
-    return window
-
-
 def run(options: Options) -> int:
     """Show the main window and run the event loop. Returns the exit code."""
     app = create_app()
-    window = _window(options)
+    window = MainWindow(options)
     window.show()
     return app.exec()

@@ -32,3 +32,18 @@ something rather than just at "the GUI".
   `qdarktheme` reads it through `darkdetect`, which is per-platform. Flip the
   OS setting with the application open. Expected failure if wrong: nothing
   changes, and `micropick.qss` is not the cause — it holds no colours.
+
+---
+
+## Commit 2 — application shell
+
+- [ ] **Navigation rows are not clipped and do not overlap.**
+  The row height is computed from the font's metrics, and the bench machine is
+  the only one running the intended font, so this is the only place the number
+  is what it will be in use. Expected failure if wrong: the selected row's
+  rounded highlight runs into the entry below it, which is what stylesheet
+  `padding` and `min-height` did before the height moved into `shell.py` —
+  qdarktheme's QProxyStyle paints those but does not measure them.
+
+Nothing else in this commit touches hardware: the status bar's three fields are
+static until the session owns them.
