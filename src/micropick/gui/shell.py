@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QMainWindow,
                                QStackedWidget, QStatusBar, QWidget)
 
 from . import log_bridge
-from .pages import calibration, log, manual, picking, profile
+from .pages import calibration, log, manual, picking, profile, routine
 from .session import MOCK_PROFILE_NAME, Session
 from .theme import SPACING
 
@@ -41,6 +41,7 @@ PAGES = (
     ("manual", manual.TITLE, manual.ManualPage),
     ("calibration", calibration.TITLE, calibration.CalibrationPage),
     ("picking", picking.TITLE, picking.PickingPage),
+    ("routine", routine.TITLE, routine.RoutinePage),
     ("log", log.TITLE, log.LogPage),
 )
 

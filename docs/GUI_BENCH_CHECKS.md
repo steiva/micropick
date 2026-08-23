@@ -271,3 +271,37 @@ static until the session owns them.
   The real model on a 2592×1944 frame is hundreds of milliseconds. Drag the
   window during Detect; it should keep repainting and the buttons stay greyed
   until it returns.
+
+---
+
+## Commit 10 — plate and routine
+
+- [ ] **`check_labware` passes against a plate the robot actually loaded.**
+  Connect, load the destination plate into its slot through the run, then
+  Check. The three outcomes were exercised on `MockRobot`; what the bench adds
+  is that `loaded_labware` parses the real run state the same way. Expected
+  failure: "slot N is empty" while a plate is plainly sitting there, which
+  means the plate was put on the deck by hand and never loaded into the run —
+  the robot only knows what it was told.
+
+- [ ] **The version note reads correctly on a stock definition.**
+  `ot2_api.load_labware` sends version 1 whatever the definition says, and most
+  stock definitions are v2 or above, so the mismatch line should appear and
+  should be labelled as ignored. Expected failure: no line at all, which would
+  mean the run reported the definition's own version and the reasoning behind
+  ignoring it needs revisiting.
+
+- [ ] **Resuming a real interrupted run demands confirmation once, and then
+  fills the right well.** Interrupt a run, reopen the routine, read the
+  summary, confirm, and check that the next well the session goes to is the one
+  the summary named. This is the whole safety story of DESIGN section 7 and it
+  cannot be rehearsed on mocks past the bookkeeping.
+
+- [ ] **A fresh plate of the same format is given a new routine, not a
+  confirmation.** The one case no software check can see. Worth walking through
+  once with the operator who will do it.
+
+- [ ] **The 1536 plate is legible on the bench monitor.**
+  Wells carry no printed name above 400 of them; the name is in the tooltip.
+  Confirm that hovering is enough to identify a well, or the threshold needs
+  raising.
