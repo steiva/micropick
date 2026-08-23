@@ -19,9 +19,26 @@ event is what `workflows` understands, and teaching them about Qt to run them
 from a window would be the wrong direction entirely.
 
 Signals cross the thread boundary; nothing else does. `progress` and `message`
-are emitted from the worker thread and Qt queues them onto the GUI thread, so a
-workflow's `on_progress` callback stays a plain function call and the widget it
-ends up changing is still only touched from the thread that owns it.
+are emitted from the worker thread, and a workflow's `on_progress` stays a
+plain function call on that thread.
+
+Connect a bound method, never a lambda
+--------------------------------------
+Qt decides a connection's thread from the **receiver object**. A slot that is a
+bound method of a QObject is queued onto that object's thread, which is what
+keeps a widget touched only from the thread that owns it. A lambda or a plain
+function has no receiver, so Qt connects it **directly** and runs it on the
+thread that emitted — here, the worker's. `worker.finished.connect(lambda _:
+self.refresh())` therefore repaints from the worker thread while
+`worker.finished.connect(self._done)` does not, and the two look identical at
+the call site. Connect bound methods.
+
+`request_cancel` is called, not connected
+-----------------------------------------
+It is an ordinary method, and the `threading.Event` behind it is what is safe
+to touch from anywhere. Connecting it as a slot does not work: after `start()`
+the worker lives in its own thread, whose event loop is blocked inside `run()`,
+so a queued invocation waits for the very call it is meant to interrupt.
 """
 
 from __future__ import annotations
@@ -31,17 +48,22 @@ import threading
 import traceback
 from typing import Any, Callable
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 
 __all__ = ["Worker"]
 
-# The names the workflows in this repository use. They are a convention rather
-# than a guess: `on_progress`, `cancel` and `log` are what `calibrate_camera`
-# and `run_sweep` declare, and a callable that declares none of them simply
-# receives none of them.
+# The names the workflows in this repository use: `calibrate_camera` and
+# `run_sweep` declare exactly these. They are a convention, so they are applied
+# only where the callable declares them.
 PROGRESS_ARG = "on_progress"
 CANCEL_ARG = "cancel"
 MESSAGE_ARG = "log"
+
+# Distinguishes "follow the convention" from "the caller named this parameter".
+# A name given outright is passed whatever the signature says, because the
+# caller knows something inspection does not; a name that came from the
+# convention is passed only when the callable declares it.
+AUTO = object()
 
 
 # Workers that are still running. A worker must outlive its thread, and the
@@ -64,47 +86,60 @@ class Worker(QObject):
     failed = Signal(str)
 
     def __init__(self, fn: Callable[..., Any], *args,
-                 progress_arg: str | None = PROGRESS_ARG,
-                 cancel_arg: str | None = CANCEL_ARG,
-                 message_arg: str | None = MESSAGE_ARG,
+                 progress_arg=AUTO, cancel_arg=AUTO, message_arg=AUTO,
                  parent: QObject | None = None, **kwargs):
-        """`*_arg` name the parameters to inject, for a callable that spells
-        them differently — `PickingSession.step` calls its cancellation `stop`.
-        Passing None suppresses one. A name the callable does not declare is
-        skipped rather than forced in, so the default names cost nothing at a
-        call site that has neither.
+        """`*_arg` name the parameters to inject.
+
+        Left alone they follow the convention above and are passed only to a
+        callable that declares them, so the defaults cost nothing at a call
+        site with neither — `Session.connect_robot()` takes no arguments at
+        all. Named outright they are passed regardless, which is how a callable
+        that spells one differently is driven: `PickingSession.step` calls its
+        cancellation `stop`. None suppresses one.
+
+        A name is never guessed onto a `**kwargs` signature. Forwarding `log`
+        into a callable that does not understand it produces a failure a long
+        way from here, and inspection cannot tell the two cases apart.
         """
         super().__init__(parent)
         self._fn = fn
         self._args = args
         self._kwargs = dict(kwargs)
-        self._names = {"progress": progress_arg, "cancel": cancel_arg,
-                       "message": message_arg}
+        self._names = {"progress": (progress_arg, PROGRESS_ARG),
+                       "cancel": (cancel_arg, CANCEL_ARG),
+                       "message": (message_arg, MESSAGE_ARG)}
         self.cancel = threading.Event()
         self._thread: QThread | None = None
 
     # -- what the callable is actually given --------------------------------
 
-    def _accepts(self, name: str | None) -> bool:
-        if name is None or name in self._kwargs:
-            return False
+    def _declares(self, name: str) -> bool:
         try:
             parameters = inspect.signature(self._fn).parameters
         except (TypeError, ValueError):      # builtins, C callables
             return False
-        if name in parameters:
-            return True
-        return any(p.kind is inspect.Parameter.VAR_KEYWORD
-                   for p in parameters.values())
+        return name in parameters
+
+    def _slot(self, which: str) -> str | None:
+        """The parameter to inject for one hook, or None."""
+        given, conventional = self._names[which]
+        if given is None:
+            return None
+        name = conventional if given is AUTO else given
+        if name in self._kwargs:             # the caller supplied their own
+            return None
+        if given is not AUTO:
+            return name
+        return name if self._declares(name) else None
 
     def _call_kwargs(self) -> dict:
         kwargs = dict(self._kwargs)
-        if self._accepts(self._names["progress"]):
-            kwargs[self._names["progress"]] = self._on_progress
-        if self._accepts(self._names["cancel"]):
-            kwargs[self._names["cancel"]] = self.cancel
-        if self._accepts(self._names["message"]):
-            kwargs[self._names["message"]] = self._on_message
+        values = {"progress": self._on_progress, "cancel": self.cancel,
+                  "message": self._on_message}
+        for which, value in values.items():
+            name = self._slot(which)
+            if name is not None:
+                kwargs[name] = value
         return kwargs
 
     # These are plain functions as far as the workflow is concerned; the signal
@@ -143,8 +178,15 @@ class Worker(QObject):
         self._thread = thread
         self.moveToThread(thread)
         thread.started.connect(self.run)
-        self.finished.connect(thread.quit)
-        self.failed.connect(thread.quit)
+        # DirectConnection, deliberately. The worker lives in `thread` and the
+        # QThread object lives in the thread that called start(), so an auto
+        # connection here is a queued one: quit() would be delivered by the
+        # caller's event loop. Anything that ends that loop and then waits -
+        # a test, a shutdown - is then waiting on the only thread that could
+        # have delivered the quit. QThread::quit is thread-safe, so running it
+        # where the signal is emitted is both correct and unblocking.
+        self.finished.connect(thread.quit, Qt.ConnectionType.DirectConnection)
+        self.failed.connect(thread.quit, Qt.ConnectionType.DirectConnection)
         thread.finished.connect(thread.deleteLater)
         # destroyed, not finished: deleteLater is processed on the thread that
         # owns the QThread object, which is the one that called start(), so by
@@ -155,7 +197,10 @@ class Worker(QObject):
         return thread
 
     def request_cancel(self) -> None:
-        """Ask the callable to stop. It stops where it chooses to look."""
+        """Ask the callable to stop. It stops where it chooses to look.
+
+        Call this; do not connect it to a signal. See the module docstring.
+        """
         self.cancel.set()
 
     @property
@@ -163,7 +208,15 @@ class Worker(QObject):
         return self._thread is not None and self._thread.isRunning()
 
     def wait(self, timeout_ms: int = 30_000) -> bool:
-        """Block until the thread ends. For shutdown and for tests."""
+        """Block until the thread ends. For shutdown and for tests.
+
+        A thread already deleted is a thread already finished: deleteLater only
+        runs once the thread has ended, so the deleted wrapper is an answer
+        rather than an error.
+        """
         if self._thread is None:
             return True
-        return self._thread.wait(timeout_ms)
+        try:
+            return self._thread.wait(timeout_ms)
+        except RuntimeError:
+            return True

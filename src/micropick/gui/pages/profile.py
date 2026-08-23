@@ -217,14 +217,20 @@ class ProfilePage(QWidget):
         if self._worker is not None and self._worker.running:
             return
         self._worker = worker
-        worker.message.connect(lambda text: log.info("%s", text))
-        worker.finished.connect(lambda _r: self._worker_done())
+        # Bound methods, not lambdas. Qt takes a connection's thread from the
+        # receiver object, and a lambda has none: it would be connected
+        # directly and would repaint this page from the worker's thread.
+        worker.message.connect(self._worker_said)
+        worker.finished.connect(self._worker_done)
         worker.failed.connect(self._worker_failed)
         log.info("%s", what)
         worker.start()
         self.refresh()
 
-    def _worker_done(self) -> None:
+    def _worker_said(self, text: str) -> None:
+        log.info("%s", text)
+
+    def _worker_done(self, _result=None) -> None:
         self._worker = None
         self.refresh()
 

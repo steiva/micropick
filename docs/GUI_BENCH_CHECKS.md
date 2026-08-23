@@ -118,3 +118,26 @@ static until the session owns them.
   `BackgroundCamera` reports the failure after fifty missed grabs. The view
   should keep the last frame and stop counting, not raise. Expected failure: a
   traceback in the log and a dead widget.
+
+---
+
+## Commit 5 — worker base
+
+- [ ] **Cancelling a real calibration sweep stops it between poses.**
+  `run_sweep` checks its `cancel` event between poses, not inside one, so the
+  gantry finishes the move it is making and then stops. Expected failure if the
+  event is not reaching it: the sweep runs to the end and the button did
+  nothing. That is the failure mode to watch for — cancellation that is
+  accepted visually and ignored underneath.
+
+- [ ] **Progress from a sweep counts real poses.**
+  The bar should advance once per pose, to the pose count `plan_sweep` reported
+  in the log, and reach it. Expected failure: a bar that stops short, which
+  means poses were skipped and the log will say why.
+
+- [ ] **A refused move on the bench arrives as text, not a crash.**
+  The robot answers 201 to commands it declines, so `MoveFailed` is raised by
+  `protocols.move_to` inside the worker. It should appear as one line in the
+  panel with the full traceback in the log, and the application should still be
+  running. Expected failure: the window disappears — an exception reaching a
+  QThread's `run()` is caught by nothing above it.
