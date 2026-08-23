@@ -194,3 +194,45 @@ static until the session owns them.
   the boxes, the circles and the panel should be in the same places and the
   same colours. Expected failure if the order were sorted somewhere: the white
   choice box or the magenta bubble outline hidden under a class colour.
+
+---
+
+## Commit 8 — camera calibration page
+
+- [ ] **The dictionary on step 2 is the one the marker was printed from.**
+  Nothing in the profile records it, so it is offered rather than assumed.
+  Expected failure if it is wrong: "marker not detected at the starting pose",
+  which looks exactly like bad lighting and is not.
+
+- [ ] **The sweep's held-out error lands near 24 µm at degree 3.**
+  That is the number from the first real sweep, DESIGN section 3. Compare with
+  degree 1 or 2 on the same data through `compare_degrees` if it does not:
+  identical numbers at 1 and 2 mean lens distortion is the only thing present,
+  and a difference there means something else is.
+
+- [ ] **Coverage reaches roughly 94 % × 95 % of the frame.**
+  The coverage plot shows it directly. Markedly less means the sweep was cut
+  short or poses were skipped, and the log says which.
+
+- [ ] **The residual plot separates one bad pose from a general drift.**
+  This is what the plot is for and mocks cannot produce it. One point far above
+  the rest is a pose to run again; the whole cloud lifting is a loose camera
+  mount or a focus ring that moved, and that is not fixed by repeating the
+  sweep.
+
+- [ ] **Cancelling mid-sweep leaves the stored pixel map untouched.**
+  Verified on mocks, but verify once here too: the profile is only written by
+  the button on step 4. Check `calibration.json` after a cancel — `pixel_map`
+  must be whatever it was before, and `history/` must have gained nothing.
+
+- [ ] **After any interrupted sweep, step 1 is done again before the next.**
+  The page says so. The gantry stops at the pose it reached and
+  `measure_scale` probes from wherever it stands, so a second attempt without
+  re-centring fails at the starting pose. Confirm the message appears and that
+  re-centring makes the next run work.
+
+- [ ] **The saved map is the map in use.**
+  After saving, reload the profile and jog to a pixel through the new map. The
+  recovered marker side in the report should also be within about half a
+  percent of the printed size — the fit never uses it, so agreement is
+  independent evidence.

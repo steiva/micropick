@@ -151,6 +151,14 @@ class FitReport:
     scale_centre_um: float
     scale_edge_um: float
 
+    # Per pose and per track, in micrometres, shape (n_poses, n_tracks). The
+    # mean and the max above cannot tell one pose that flew off from forty-nine
+    # drifting a little, and those are different faults with different
+    # remedies: the first is a sweep to repeat, the second a loose mount or a
+    # focus that moved. Optional and last, so nothing that builds a FitReport
+    # positionally is affected; the report is transient and never serialised.
+    resid_um: np.ndarray | None = None
+
     @property
     def scale_variation_pct(self) -> float:
         return 100.0 * (self.scale_edge_um / self.scale_centre_um - 1.0)
@@ -272,6 +280,7 @@ def fit_pixel_map(
         track_side_mm=side, coverage=bounds,
         coverage_frac=((bounds[2] - bounds[0]) / w, (bounds[3] - bounds[1]) / h),
         scale_centre_um=sc * 1000, scale_edge_um=se * 1000,
+        resid_um=resid * 1000,
     )
     config.holdout_mean_um = report.holdout_mean_um
     config.holdout_max_um = report.holdout_max_um
