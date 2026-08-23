@@ -1,0 +1,40 @@
+/* Layered on top of qdarktheme, not instead of it.
+ *
+ * NO COLOURS IN THIS FILE. qdarktheme paints with literals in its own
+ * stylesheet and installs a placeholder palette, so both palette(...) roles and
+ * its own template placeholders are dead here — see the note in __init__.py,
+ * which has the two reasons. Our widgets are described in terms qdarktheme
+ * already colours (QPushButton:default, QFrame[frameShape=Panel]) and this file
+ * adjusts nothing but geometry. Nothing here needs to follow the OS theme,
+ * because nothing here knows what colour it is.
+ *
+ * The numbers are theme.SPACING (8) and theme.RADIUS (8) and their multiples.
+ * Qt stylesheets have no variables, so those are kept in step by hand; they
+ * live in one file each.
+ */
+
+QPushButton#primary,
+QPushButton#secondary {
+    border-radius: 8px;
+    padding: 8px 16px;
+    min-height: 16px;
+}
+
+/* Colour, hover, pressed and disabled all come from qdarktheme's
+ * QPushButton:default rules, which primary_button() opts into. */
+QPushButton#primary { font-weight: 600; }
+
+QFrame#card {
+    border-radius: 8px;
+    padding: 0;
+}
+
+/* No blanket rule for the card's children. `QFrame#card > QWidget` outranks
+ * `QPushButton:default` on specificity, so clearing their background and border
+ * "for tidiness" erased the accent fill on every primary button inside a card
+ * and the outline on every secondary one. qdarktheme already makes labels
+ * transparent (QLabel:!window), which was the only thing that rule fixed. */
+
+QLabel#heading1 { font-size: 16pt; font-weight: 600; }
+QLabel#heading2 { font-size: 12pt; font-weight: 600; }
+QLabel#heading3 { font-size: 10pt; font-weight: 600; }

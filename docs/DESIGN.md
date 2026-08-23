@@ -758,7 +758,77 @@ keep accumulating.
 
 ---
 
-## 12. Conventions
+## 12. The GUI layer
+
+A PySide6 application under `src/micropick/gui/`, growing toward everything
+`notebooks/01_robot_session.ipynb` does today. It is the **same outer layer as
+the notebook**, not a new tier: it uses `config`, `core`, `hardware`,
+`workflows` and `viz`, and it adds windows, buttons and keys on top of them.
+
+Five rules, all of them there to keep that true.
+
+**Nothing below `gui` imports `gui`.** The dependency runs one way, so the
+package still installs, imports and tests with PySide6 absent. `gui` is an
+optional extra (`pip install -e ".[gui]"`) and deliberately does not pull in
+`ml`: driving the robot by hand should not require a training stack.
+
+**Only `gui/session.py` and `gui/workers/` touch `openapi.*`.** Pages reach the
+robot through the session and through workers. That is what makes `--mock` a
+single branch in one module rather than a condition repeated on every page —
+and `--mock` is not a debug switch but the mode the application is developed
+in, so everything the GUI does has to work in it.
+
+**No `cv2.imshow`, `cv2.namedWindow` or `cv2.waitKey` under `gui`.** OpenCV is
+an array library here; the window and the keys are Qt's. This is the third
+input backend after `jog_in_window` and `jog_with_hotkeys`, and it shares the
+controller with them rather than the loop.
+
+**Widgets are touched from the GUI thread only.** Workers emit signals; they do
+not reach into a page. Cancellation stays a `threading.Event`, never a Qt
+primitive, because the workflows below take one already and must not learn
+about Qt to be driven from here.
+
+**A blocking call goes to a worker.** `move_relative` blocks on HTTP, and in
+the GUI thread that is a freeze on every jog step. `gui/workers/base.py` is one
+class that runs any blocking callable on a `QThread`, translating the
+`on_progress(i, total)` and `log=` callbacks the workflows already take into
+signals. Those signatures are not adapted to Qt; the worker fits them.
+
+### Theme
+
+`gui/theme/` is the only module that knows what the application looks like.
+`qdarktheme` supplies the base stylesheet and follows the operating system's
+light/dark setting, with `micropick.qss` layered on through `additional_qss` —
+not by concatenating stylesheets, since "auto" re-applies the base on every OS
+theme change and would drop one set separately.
+
+**`micropick.qss` holds no colours.** The first attempt used `palette(...)`
+roles on the reasoning that a literal would be right in one mode and unreadable
+in the other. It is unreadable anyway, and rendering both themes is what showed
+it: `setup_theme` installs `load_palette(..., for_stylesheet=True)`, a
+placeholder palette whose `Window` and `Base` are the same grey in both themes,
+because everything qdarktheme actually shows is a literal inside its generated
+stylesheet. `palette(base)` therefore resolves against numbers that mean
+nothing and paints a dark card on a light background. Its own template
+placeholders are no use either — `additional_qss` is appended after the
+template is expanded.
+
+What works is to describe our widgets in terms qdarktheme already colours and
+keep our file to geometry: `primary_button` opts into `QPushButton:default`,
+which carries the accent and its hover, pressed and disabled variants (and is
+Qt's own convention for the accented button, so the look and the Enter key
+agree); a card is a `Panel`-shaped `QFrame`, the shape qdarktheme gives a
+raised surface to. Nothing then has to be kept in step with the theme, because
+nothing of ours knows what colour it is.
+
+Pages build themselves from `theme/factory.py` rather than constructing
+`QPushButton` directly. The point is not what the wrappers do but where they
+are: restyling means editing one module, and so does the next discovery of this
+kind.
+
+---
+
+## 13. Conventions
 
 Commits follow Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`,
 `chore`; imperative mood; first line under 50 characters; blank line before the
