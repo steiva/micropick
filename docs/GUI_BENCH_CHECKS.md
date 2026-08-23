@@ -85,3 +85,36 @@ static until the session owns them.
 - [ ] **A real profile's calibration state reads correctly.**
   The Profile page should show the degree, the pose count and the held-out
   error of the profile fitted on the bench, not "not calibrated".
+
+---
+
+## Commit 4 — camera view
+
+- [ ] **The upper camera at 2592×1944 holds thirty frames a second.**
+  The caption reports the rate from `frame_count`. On mocks it reads about 14,
+  but that is the synthetic scene rendering an ArUco warp per grab, not the
+  widget. Expected failure if the scaling path is wrong: a rate in the single
+  digits and a window that lags behind the gantry.
+
+- [ ] **The lower camera at 4000×3000 does not stall the window.**
+  This is the frame the whole design is for: 36 MB, reduced by `cv2.resize`
+  with INTER_AREA before it becomes a QImage. Drag the window while it is
+  live. Expected failure if the reduction is skipped or moved into
+  `paintEvent`: repaints in the hundreds of milliseconds, worst while resizing.
+
+- [ ] **The lower camera shows its crop and only its crop.**
+  The caption should read `2000×1000  crop 0.5` for a 2000×1500 sensor frame —
+  the centred square, not the whole field. Expected failure: the full sensor
+  frame on screen, which means `crop` was read as a sensor property rather than
+  a view one.
+
+- [ ] **The crosshair sits on what the pipette is over.**
+  Jog to a landmark and compare with where the tip comes down. This is the
+  check the transform cannot do for itself: it is arithmetic against the crop
+  origin, and the origin is the thing that was wrong for a whole run of the
+  machine — DESIGN section 5.
+
+- [ ] **A camera unplugged mid-view degrades quietly.**
+  `BackgroundCamera` reports the failure after fifty missed grabs. The view
+  should keep the last frame and stop counting, not raise. Expected failure: a
+  traceback in the log and a dead widget.
