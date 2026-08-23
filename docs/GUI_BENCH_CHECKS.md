@@ -182,3 +182,15 @@ static until the session owns them.
   With the upper camera live, step the gantry and watch the picture follow.
   Expected failure: the frame lags the motion by more than the move takes,
   which means the display is reading stale frames rather than the newest.
+
+---
+
+## Commit 7 — overlay geometry split from drawing
+
+- [ ] **A recorded clip looks the way it did before the split.**
+  The golden test pins one synthetic scene, bit for bit. What it cannot pin is
+  a real dish: contours from Otsu, a real dish circle, real status text. Record
+  one clip with the picking notebook and compare against a clip from before —
+  the boxes, the circles and the panel should be in the same places and the
+  same colours. Expected failure if the order were sorted somewhere: the white
+  choice box or the magenta bubble outline hidden under a class colour.
