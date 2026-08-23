@@ -17,6 +17,7 @@ from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QHBoxLayout, QPlainTextEdit, QVBoxLayout,
                                QWidget)
 
+from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import heading, secondary_button
 
@@ -30,8 +31,11 @@ MAX_LINES = 5000
 
 
 class LogPage(QWidget):
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
+        # Taken for the uniform page constructor; the log is fed by the
+        # logging handler rather than by asking the session for anything.
+        self.session = session
 
         self.view = QPlainTextEdit(self)
         self.view.setReadOnly(True)

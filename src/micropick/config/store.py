@@ -296,9 +296,19 @@ def _check_not_legacy(path: Path) -> None:
         )
 
 
-def load_profile(name: str) -> Profile:
-    path = profile_dir(name)
+def load_profile(name: str, *, directory: Path | None = None) -> Profile:
+    """Load a profile by name, or from a directory given outright.
+
+    `directory` names the profile's own folder and bypasses the profiles root.
+    A profile is a directory of JSON files and nothing about it requires living
+    under `profiles/`; the GUI keeps a scratch profile for its mock mode under
+    `outputs/`, where it cannot be mistaken for an installation. The naming
+    follows `config.labware`, which takes a `directory` for the same reason.
+    """
+    path = Path(directory) if directory is not None else profile_dir(name)
     if not path.is_dir():
+        if directory is not None:
+            raise ProfileError(f"no profile directory at {path}")
         known = list_profiles()
         raise ProfileError(
             f"no profile {name!r} under {paths.profiles_dir()}"
@@ -345,14 +355,18 @@ def load_profile(name: str) -> Profile:
 
 
 def create_profile(name: str, *, camera_label: str | None = None,
-                   notes: str = "", exist_ok: bool = False) -> Profile:
-    """Create a profile directory with defaults. Does not touch the robot."""
-    path = profile_dir(name)
+                   notes: str = "", exist_ok: bool = False,
+                   directory: Path | None = None) -> Profile:
+    """Create a profile directory with defaults. Does not touch the robot.
+
+    `directory` overrides the location, as in `load_profile`.
+    """
+    path = Path(directory) if directory is not None else profile_dir(name)
     if path.exists():
         _check_not_legacy(path)
         if not exist_ok:
             raise ProfileError(f"profile {name!r} already exists at {path}")
-        return load_profile(name)
+        return load_profile(name, directory=directory)
 
     profile = Profile(
         meta=ProfileMeta(name=name, camera_label=camera_label, notes=notes,

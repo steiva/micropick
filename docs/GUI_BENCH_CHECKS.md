@@ -47,3 +47,41 @@ something rather than just at "the GUI".
 
 Nothing else in this commit touches hardware: the status bar's three fields are
 static until the session owns them.
+
+---
+
+## Commit 3 — session
+
+- [ ] **Connect brings the robot up in the right order.**
+  `create_run()`, then the custom definitions, then `load_pipette()`. The log
+  shows all three with the run id and the count of definitions. Expected
+  failure if the order is wrong: the connect appears to succeed and the first
+  jog step fails instead, because nothing that moves the robot works before a
+  run and a pipette exist — DESIGN section 9.
+
+- [ ] **The definitions in `labware/` reach the run.**
+  The log line says how many were uploaded and names them. Expected failure if
+  wrong: `LabwareError` with the directory it looked in, and no connection —
+  deliberately, since a run without them cannot load a plate.
+
+- [ ] **The window does not freeze while connecting.**
+  The robot is on the other end of HTTP. Drag the window during the connect;
+  it should keep repainting, and Connect should be greyed out until the log
+  says the pipette is loaded. Expected failure if the worker is bypassed: the
+  window stops responding for the length of the round trip.
+
+- [ ] **Both real cameras open at the resolutions in the profile.**
+  The log line reports what was actually opened, and the lower camera should
+  report its view crop. Expected failure: `CameraError` naming the requested
+  and the delivered resolution — the camera refuses to resize rather than
+  invalidating the pixel map silently.
+
+- [ ] **Closing the window parks the axis and releases the devices.**
+  Watch the gantry: `leftZ` retracts. Afterwards no python process holds the
+  cameras — reopening the application should find them free. Expected failure:
+  a second launch reports the device is busy, which means a grab thread
+  outlived the window.
+
+- [ ] **A real profile's calibration state reads correctly.**
+  The Profile page should show the degree, the pose count and the held-out
+  error of the profile fitted on the bench, not "not calibrated".
