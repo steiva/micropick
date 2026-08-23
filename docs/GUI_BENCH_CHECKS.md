@@ -141,3 +141,44 @@ static until the session owns them.
   panel with the full traceback in the log, and the application should still be
   running. Expected failure: the window disappears — an exception reaching a
   QThread's `run()` is caught by nothing above it.
+
+---
+
+## Commit 6 — manual control
+
+- [ ] **A held arrow does not queue moves.**
+  Hold an arrow key down for a few seconds and let go. The gantry should stop
+  when the key is released, not keep stepping. `JogController.busy` is what
+  refuses the second move; the page only greys the controls out to show it.
+  Expected failure: the robot keeps travelling after the key is up, which means
+  something is bypassing the controller.
+
+- [ ] **PgUp and PgDn move Z and nothing else scrolls.**
+  The panel is deliberately not a scroll area and the saved-positions list is
+  NoFocus. Expected failure: the panel scrolls and Z does not move, or the list
+  selection jumps.
+
+- [ ] **The shortcuts do not reach the robot from another window.**
+  Put another application in front and press the arrow keys. Nothing should
+  move. This is the whole reason `jog_in_window` was preferred over the global
+  hotkeys, and `WidgetWithChildrenShortcut` is what carries it here.
+
+- [ ] **A soft limit reads as text, and the robot can come back.**
+  Jog into the X limit: the panel says refused or clamped, no dialog appears,
+  and the next step in the opposite direction works. Expected failure: every
+  direction refused once outside the box, which is the trap DESIGN section 4
+  describes and `JogController.allowed` avoids.
+
+- [ ] **Home and Retract Z ask first, and the gantry does what was confirmed.**
+  Both are one confirmation away and neither is undoable. Watch the axis.
+
+- [ ] **"Remember in profile" survives a restart.**
+  Name a real deck landmark, close the application, reopen it, and check that
+  `positions.json` in the profile holds it. This is the path a taught pose
+  takes before a calibration or a picking run reads it back with
+  `profile.where`.
+
+- [ ] **The camera view keeps up while jogging.**
+  With the upper camera live, step the gantry and watch the picture follow.
+  Expected failure: the frame lags the motion by more than the move takes,
+  which means the display is reading stale frames rather than the newest.

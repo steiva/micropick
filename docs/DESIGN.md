@@ -826,6 +826,35 @@ Pages build themselves from `theme/factory.py` rather than constructing
 are: restyling means editing one module, and so does the next discovery of this
 kind.
 
+### Manual control is a third backend, not a third layout
+
+`gui/pages/manual.py` drives the same `JogController` as `jog_in_window` and
+`jog_with_hotkeys`, and takes its keys from `jog.LAYOUT` and its on-screen help
+from `jog.help_lines`. `LAYOUT` exists because those two had drifted and the
+help described WASD for axes the operator drove with the arrows; a third
+arrangement invented here would be that drift again with an extra window in it.
+So Z is on PgUp and PgDn, as everywhere else, and there is no WASD.
+
+The mapping from a layout key to a Qt key is a table checked against `LAYOUT`
+at import, and a key with no entry is an error rather than a skipped binding —
+otherwise the generated help lists a key, and a labelled button offers it, and
+neither does anything. The one entry with no counterpart here is `enter`, which
+ends the cv2 window's loop; this page has no loop, so it is named in `UNBOUND`
+with that reason and filtered out of the help rather than quietly dropped.
+
+Two consequences of PgUp and PgDn being an axis: the control panel is not a
+`QScrollArea`, which would take those keys for scrolling before the shortcut
+saw them, and the saved-positions list is `NoFocus` for the same reason. The
+shortcuts are `WidgetWithChildrenShortcut`, so they reach the robot only while
+this page has focus — which is the argument for `jog_in_window` over the global
+hotkeys, kept.
+
+Every step goes through a worker, because `move_relative` blocks on HTTP.
+`JogController` already refuses a second move while one is in flight, which is
+what stops a held arrow queueing moves that keep running after the key is
+released; the page disables its controls to show that, and neither repeats the
+guard nor works around it.
+
 ---
 
 ## 13. Conventions
