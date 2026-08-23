@@ -48,6 +48,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTransform
 from PySide6.QtWidgets import QWidget
 
 from ...core.vision.cuboids import center_crop_box
+from . import overlay_painter
 from .frame import to_qimage
 
 __all__ = ["CameraView"]
@@ -94,6 +95,7 @@ class CameraView(QWidget):
         self._fps = 0.0
         self._fps_at = time.monotonic()
         self._fps_count = 0
+        self._overlay: list = []
 
         self._timer = QTimer(self)
         self._timer.setInterval(max(1, 1000 // REFRESH_HZ))
@@ -151,6 +153,18 @@ class CameraView(QWidget):
         self._live = True
         self._fps_at = time.monotonic()
         self._fps_count = getattr(self._camera, "frame_count", 0)
+
+    def set_overlay_items(self, primitives) -> None:
+        """Draw these over the picture, in **sensor** coordinates.
+
+        They come from `viz.overlays.items`, which is also what the cv2
+        renderer takes, so the same list drawn either way lands in the same
+        place. Nothing is drawn into the frame: at 4000x3000 that is 36 MB of
+        copy per repaint, and the overlay would then be resampled along with
+        the picture instead of staying a crisp line over it.
+        """
+        self._overlay = list(primitives or ())
+        self.update()
 
     @property
     def transform(self) -> QTransform:
@@ -293,6 +307,8 @@ class CameraView(QWidget):
 
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.drawImage(self._box, self._image)
+        if self._overlay:
+            overlay_painter.paint(painter, self._overlay, self._transform)
         self._draw_crosshair(painter, self._box)
         self._draw_caption(painter)
         painter.end()

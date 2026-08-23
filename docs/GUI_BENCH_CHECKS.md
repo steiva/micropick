@@ -236,3 +236,38 @@ static until the session owns them.
   recovered marker side in the report should also be within about half a
   percent of the printed size — the fit never uses it, so agreement is
   independent evidence.
+
+---
+
+## Commit 9 — detector service
+
+- [ ] **The real weights load, and the interface stops saying "stand-in".**
+  Put `cuboid_bbox_v4-11_best.pt` (or whatever the current file is) in
+  `ml_models/`, pick it in the chooser, Load. The detector line must read
+  `model: <filename>`. Expected failure: `FileNotFoundError` naming the
+  directory it looked in. The stand-in is offered last in the list on purpose,
+  so it cannot become the default on a bench that has weights.
+
+- [ ] **A stand-in result is never mistaken for a real one.**
+  Load the stand-in on a real dish frame and confirm the note appears in both
+  the detector card and the result card. This is the check that matters most
+  here: the two results look identical on screen and only the label separates
+  them.
+
+- [ ] **On a frame from the real upper camera the map is used, not refused.**
+  A frame captured at the resolution the pixel map was fitted at should come
+  back classified — pickable, isolated, bubble counts — rather than
+  "detections only". If it says the map was fitted at another size, the camera
+  is running in a different mode from the calibration, which is DESIGN section
+  3 and is a real problem, not a display one.
+
+- [ ] **The overlay lands on the cuboids.**
+  Compare the QPainter overlay against the same frame put through
+  `overlays.annotate` in the notebook. Same colours in the same places. A
+  systematic shift is the crop origin again — the failure that put every box
+  251 px from its cuboid for a whole run.
+
+- [ ] **Inference does not freeze the window.**
+  The real model on a 2592×1944 frame is hundreds of milliseconds. Drag the
+  window during Detect; it should keep repainting and the buttons stay greyed
+  until it returns.

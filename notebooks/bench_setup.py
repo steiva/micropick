@@ -45,6 +45,8 @@ from micropick.core.routine import (Destination, Routine,          # noqa: E402
                                     RoutineError, empty_plate_table,
                                     plan_from_table)
 from micropick.core.vision import cuboids as vision                # noqa: E402
+from micropick.core.vision.standin import (StandInDetector,        # noqa: E402
+                                            blob_boxes)
 from micropick.hardware import labware                             # noqa: E402
 from micropick.hardware.camera import CameraManager, Recorder      # noqa: E402
 from micropick.hardware.labware import loaded_labware              # noqa: E402
@@ -77,7 +79,8 @@ __all__ = [
     # helpers defined below
     "require", "verdict", "show", "heatmap", "load_profile", "connect_robot",
     "open_cameras", "bench_dir", "bench_frame_path", "bench_clip_path",
-    "ensure_bench_data", "load_bench_clip", "blob_boxes", "BENCH_BLOBS",
+    "ensure_bench_data", "load_bench_clip", "blob_boxes", "StandInDetector",
+    "BENCH_BLOBS",
     "REPO_ROOT", "Profile", "stub_pixel_map", "stub_profile", "mock_session",
 ]
 
@@ -275,24 +278,9 @@ def load_bench_clip() -> list:
 
 
 # ---------------------------------------------------------------------------
-# a stand-in detector, for check 4 when the real YOLO weights are absent
+# a stand-in detector, for checks when the real YOLO weights are absent
 # ---------------------------------------------------------------------------
 
-def blob_boxes(gray, *, min_area: int = 40):
-    """Bounding boxes of bright blobs, as (boxes_xyxy, confidences).
-
-    A crude threshold-and-contour finder, NOT the trained model. It lets the
-    Otsu/shape/selection half of the pipeline run at a desk when the cuboid YOLO
-    weights are not installed; the check states plainly that it was used.
-    """
-    _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    boxes = []
-    for c in contours:
-        if cv2.contourArea(c) < min_area:
-            continue
-        x, y, w, h = cv2.boundingRect(c)
-        boxes.append([x, y, x + w, y + h])
-    if not boxes:
-        return np.zeros((0, 4), np.float32), np.zeros((0,), np.float32)
-    return np.array(boxes, np.float32), np.ones(len(boxes), np.float32)
+# Re-exported, not defined here. It is a pure function of an array and lives in
+# core/vision/standin.py, where the GUI can reach it too; a copy in this file
+# was a copy nothing but a notebook could import.
