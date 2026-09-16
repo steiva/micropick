@@ -4,9 +4,17 @@ Everything here goes through the session. The page knows which buttons exist
 and what state they should be in; it does not know whether the robot behind
 them is an HTTP client or a mock, and it never opens a device itself.
 
-The two slow calls — connecting and opening a camera — run in a `Worker`. An
-HTTP round trip to the robot and a camera warm-up are both seconds, and in the
-GUI thread each of them is a frozen window.
+The slow calls — probing the robot, bringing a run up, opening a camera — run
+in a `Worker`. An HTTP round trip and a camera warm-up are both seconds, and in
+the GUI thread each of them is a frozen window.
+
+Bringing the robot up is a decision, not a button. The robot may already hold a
+run from before this application started, and if it was never powered off that
+run is the one to carry on with — its pipette, its labware, its offsets. Or it
+may hold nothing, or a finished run. The session can find out which; it cannot
+know whether yesterday's run is stale or today's work in progress, so what it
+found is shown here and the operator chooses. A new run always ends in a home,
+because nothing moves until it has, and that is not a thing to leave to memory.
 """
 
 from __future__ import annotations
@@ -14,8 +22,8 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QMessageBox,
+                               QVBoxLayout, QWidget)
 
 from ...config.store import LegacyProfileError, list_profiles
 from ..session import MOCK_PROFILE_NAME, Session
@@ -154,6 +162,26 @@ class ProfilePage(QWidget):
         row.addWidget(self.disconnect_button)
         row.addStretch(1)
         box.layout().addLayout(row)
+
+        # What the probe found, and the two ways on from it. A block on the
+        # page rather than a dialog: the text has to be read, and a dialog's
+        # default button is the thing that gets pressed without reading.
+        self.run_found = QLabel()
+        self.run_found.setWordWrap(True)
+        self.run_found.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.run_found)
+
+        # Both secondary; setDefault below picks which one carries the accent.
+        self.adopt_button = secondary_button("Continue with this run", self)
+        self.adopt_button.clicked.connect(self._adopt)
+        self.new_run_button = secondary_button("New run + home", self)
+        self.new_run_button.clicked.connect(self._new_run)
+        choice = QHBoxLayout()
+        choice.addWidget(self.adopt_button)
+        choice.addWidget(self.new_run_button)
+        choice.addStretch(1)
+        box.layout().addLayout(choice)
         return box
 
     def _cameras_card(self) -> QWidget:
@@ -198,9 +226,33 @@ class ProfilePage(QWidget):
             self._show_error(str(exc))
 
     def _connect(self) -> None:
+        """Probe only. What happens next is the operator's, below."""
         self._clear_error()
-        self._run(Worker(self.session.connect_robot),
-                  "connecting the robot")
+        self._run(Worker(self.session.probe_robot), "probing the robot")
+
+    def _adopt(self) -> None:
+        self._clear_error()
+        self._run(Worker(self.session.adopt_run),
+                  "carrying on with the robot's current run")
+
+    def _new_run(self) -> None:
+        """Ends in a home, so it asks: the gantry travels to its limits on
+        every axis, and a hand in the deck is the failure this dialog is for."""
+        state = self.session.run_state
+        detail = ("The robot will create a new run, load the pipette and then "
+                  "home: the gantry moves to its limits on all three axes. "
+                  "Keep hands and labware clear.")
+        if state is not None and state.reusable:
+            detail += (f"\n\nThe current run {state.run_id} will be left "
+                       f"behind, with its labware and offsets.")
+        answer = QMessageBox.question(
+            self, "New run and home", detail,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer is not QMessageBox.StandardButton.Yes:
+            return
+        self._clear_error()
+        self._run(Worker(self.session.new_run), "new run, then home")
 
     def open_camera(self, label: str) -> None:
         self._clear_error()
@@ -285,9 +337,27 @@ class ProfilePage(QWidget):
         self.chooser.setEnabled(not busy)
 
         connected = session.robot is not None
+        probed = session.run_state is not None and not connected
         self.robot_state.setText(f"State: {session.robot_state}")
-        self.connect_button.setEnabled(not connected and not busy)
-        self.disconnect_button.setEnabled(connected and not busy)
+        self.connect_button.setEnabled(session.run_state is None and not busy)
+        self.disconnect_button.setEnabled(
+            session.run_state is not None and not busy)
+
+        state = session.run_state
+        self.run_found.setVisible(probed)
+        self.adopt_button.setVisible(probed)
+        self.new_run_button.setVisible(probed)
+        if probed:
+            self.run_found.setText(
+                "Found: " + state.describe() + ("" if state.reusable else
+                 "\nOnly a new run is possible."))
+            self.adopt_button.setEnabled(state.reusable and not busy)
+            self.new_run_button.setEnabled(not busy)
+            # Carrying on is the expected case when the robot was left on, so
+            # it is the accented button; when it is not possible, the only
+            # way forward takes the accent instead.
+            self.adopt_button.setDefault(state.reusable)
+            self.new_run_button.setDefault(not state.reusable)
 
         for row in self._camera_rows:
             row.refresh(busy)

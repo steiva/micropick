@@ -305,3 +305,36 @@ static until the session owns them.
   Wells carry no printed name above 400 of them; the name is in the tooltip.
   Confirm that hovering is enough to identify a well, or the threshold needs
   raising.
+
+---
+
+## Commit 11 — robot bring-up as a decision
+
+- [ ] **Connect on a robot left powered on finds its run.**
+  The block should name the run id, `idle`, the pipette and every slot the run
+  holds. "Continue with this run" then makes the manual page live without any
+  gantry movement. Expected failure: "no current run" while the Opentrons app
+  shows one — `get_all_runs` is paged to the last 20 and the current one should
+  always be in it; if it is not, that is worth a look before anything else.
+
+- [ ] **Continue on a run without a pipette loads one.**
+  Create a run from the Opentrons app without a pipette, then Connect here and
+  Continue. The log should say the pipette was loaded, and a jog step works.
+
+- [ ] **The reusable statuses are right.**
+  `idle`, `running` and `paused` are assumed to take setup commands; stopped,
+  failed and succeeded are assumed not to. Confirm on at least one finished
+  run: Connect should say "only a new run is possible", and if instead a
+  finished run still accepts commands, `REUSABLE_STATUSES` in
+  `gui/session.py` is the one place to widen.
+
+- [ ] **New run + home homes.**
+  Watch the gantry go to all three limits. Afterwards a jog step works
+  immediately. Expected failure if the order were wrong: a run with a pipette
+  that refuses every move with no visible reason - the state this method
+  exists to make impossible.
+
+- [ ] **`create_run` timing appears in the log.**
+  Each new run logs "run … created in N s". Create several in a row on a robot
+  left on and read the numbers back: this is the slowdown that was an
+  impression, made into a series.

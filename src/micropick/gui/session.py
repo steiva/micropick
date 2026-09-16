@@ -16,8 +16,11 @@ with no event loop at all.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Before anything that resolves a path. `paths` reads MICROPICK_ROOT at call
@@ -40,11 +43,13 @@ from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              PickingConfig, ProfileMeta)
 from ..hardware import labware                      # noqa: E402
 from ..hardware.camera import CameraManager         # noqa: E402
+from ..hardware.labware import LoadedLabware        # noqa: E402
 from ..hardware.mock import (MarkerScene, MockRobot,  # noqa: E402
                              open_scene_camera)
 from ..workflows.jog import Limits                  # noqa: E402
 
-__all__ = ["Session", "SessionError", "MOCK_PROFILE_NAME"]
+__all__ = ["Session", "SessionError", "RunState", "MOCK_PROFILE_NAME",
+           "REUSABLE_STATUSES"]
 
 log = logging.getLogger(__name__)
 
@@ -52,8 +57,60 @@ MOCK_PROFILE_NAME = "mock"
 
 # Robot states, as the status bar shows them.
 DISCONNECTED = "not connected"
+PROBED = "connected, no run chosen"
 CONNECTED = "connected"
 MOCK = "mock"
+
+# A run in one of these can still take setup commands, so it can be carried
+# on with. Anything else - stopped, failed, succeeded - is a record of a run,
+# not a run, and the only thing to do with it is start a new one.
+REUSABLE_STATUSES = ("idle", "running", "paused")
+
+
+@dataclass
+class RunState:
+    """What the robot said when asked what it is doing.
+
+    Read-only: probing adopts nothing and moves nothing. The decision of what to
+    do with it belongs to the operator, because the one fact that decides it -
+    whether the robot was left running on purpose or is stale from yesterday -
+    is not on the robot.
+    """
+
+    run_id: str | None = None
+    status: str | None = None
+    has_pipette: bool = False
+    labware: dict[str, LoadedLabware] = field(default_factory=dict)
+
+    @property
+    def exists(self) -> bool:
+        return self.run_id is not None
+
+    @property
+    def reusable(self) -> bool:
+        return self.exists and self.status in REUSABLE_STATUSES
+
+    def describe(self) -> str:
+        if not self.exists:
+            return "no current run on the robot"
+        slots = ", ".join(f"slot {s}: {lw.load_name}"
+                          for s, lw in sorted(self.labware.items())) or "no labware"
+        pipette = "pipette loaded" if self.has_pipette else "no pipette"
+        return (f"run {self.run_id}, status {self.status}, {pipette}; {slots}"
+                + ("" if self.reusable else
+                   f" - a {self.status} run cannot take commands"))
+
+
+def _run_state(api) -> RunState:
+    """The current run from `get_all_runs`, which both the wrapper and the
+    mock answer in the same shape. Nothing is adopted here."""
+    data = json.loads(api.get_all_runs().text)["data"]
+    current = next((run for run in data if run.get("current")), None)
+    if current is None:
+        return RunState()
+    return RunState(run_id=current.get("id"), status=current.get("status"),
+                    has_pipette=bool(current.get("pipettes")),
+                    labware=labware.loaded_labware(api))
 
 
 class SessionError(RuntimeError):
@@ -95,7 +152,14 @@ class Session(QObject):
         super().__init__(parent)
         self.options = options
         self.profile: store.Profile | None = None
+        # `_api` is the connection; `robot` is the same object once it has a
+        # run and a pipette and can be told to move. Pages that move things
+        # look at `robot`, so a probed-but-undecided connection cannot be
+        # driven by accident.
+        self._api = None
         self.robot = None
+        self.run_state: RunState | None = None
+        self.run_origin: str | None = None       # "reused" or "new"
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
 
@@ -108,8 +172,12 @@ class Session(QObject):
     @property
     def robot_state(self) -> str:
         if self.robot is None:
-            return DISCONNECTED
-        return MOCK if self.mock else CONNECTED
+            return PROBED if self._api is not None else DISCONNECTED
+        base = MOCK if self.mock else CONNECTED
+        run = self.run_state.run_id if self.run_state else None
+        if run and self.run_origin:
+            return f"{base}, run {run} ({self.run_origin})"
+        return base
 
     @property
     def open_cameras(self) -> list[str]:
@@ -175,42 +243,117 @@ class Session(QObject):
         self.profile_changed.emit(self.profile)
 
     # -- robot ---------------------------------------------------------------
+    #
+    # Bringing the robot up is three blocking steps with a decision in the
+    # middle, not one call. The robot may already hold a run - it was in use
+    # before this application started, and if it was never powered off that run
+    # is the one to carry on with - or it may hold none, or a finished one. Which
+    # of those is the case is on the robot; what to do about it is not, so the
+    # session probes, reports, and waits to be told.
 
-    def connect_robot(self):
-        """Bring up a robot ready to move. Blocking: run it in a Worker.
+    def probe_robot(self) -> RunState:
+        """Connect and ask what the robot is doing. Blocking; moves nothing.
 
-        Nothing that moves the robot works before `create_run()` and
-        `load_pipette()` — not even `get_position` — and custom definitions
-        have to be uploaded into every run, after each `create_run`. That order
-        is DESIGN section 9 and it is the whole content of this method.
+        Constructing the wrapper costs no network; `get_all_runs` is the one
+        request. The result is kept on the session and nothing is adopted: the
+        wrapper's own `get_run_info` would set run_id and endpoints as a side
+        effect of looking, and looking must not commit to anything.
         """
-        if self.robot is not None:
-            return self.robot
+        if self._api is None:
+            if self.mock:
+                self._api = MockRobot()
+            else:
+                from opentrons_api import ot2_api
+                self._api = ot2_api.OpentronsAPI()
+        state = _run_state(self._api)
+        self.run_state = state
+        log.info("robot probed: %s", state.describe())
+        self.robot_state_changed.emit(self.robot_state)
+        return state
 
+    def adopt_run(self):
+        """Carry on with the run the robot already has. Blocking; moves nothing.
+
+        `get_run_info` is what adopts it - run_id, pipette_id, the labware map
+        and the endpoints - so it is called here and only here. Definitions are
+        re-uploaded because uploads are per run and idempotent; a pipette is
+        loaded only if the run has none.
+        """
+        state = self._require_probe()
+        if not state.reusable:
+            raise SessionError(
+                f"the robot's current run cannot be carried on with: "
+                f"{state.describe()}. Start a new run instead.")
+
+        if not self.mock:
+            self._api.get_run_info()
+            uploaded = labware.ensure_definitions(self._api, verbose=False)
+            log.info("uploaded %d custom definitions into run %s",
+                     len(uploaded), state.run_id)
+            if not state.has_pipette:
+                self._api.load_pipette()
+                log.info("pipette %s loaded into run %s",
+                         self._api.PIPETTE, state.run_id)
+        self._ready("reused")
+        return self.robot
+
+    def new_run(self):
+        """A fresh run, and then home. Blocking; **moves the gantry**.
+
+        Homing is part of this and not a separate button because nothing moves
+        after a new run until the robot has been homed, and a run created
+        without it is a robot that refuses every command with no visible reason.
+        The four steps are one method so that state cannot exist.
+
+        create_run is timed and logged: on a robot left powered on it has been
+        seen to take longer with each run created, and a number in the log is
+        how that stops being an impression.
+        """
+        self._require_probe()
         if self.mock:
-            # No create_run and no load_pipette: MockRobot has neither, and
-            # calling them would be pretending the mock is an HTTP client.
-            robot = MockRobot()
-            from ..hardware.protocols import xyz
-            log.info("mock robot at %s",
-                     tuple(round(v, 1) for v in xyz(robot)))
+            self._api.home_robot()
+            self.run_state = _run_state(self._api)
+            log.info("mock homed")
         else:
-            from opentrons_api import ot2_api
-
-            log.info("connecting to the robot")
-            api = ot2_api.OpentronsAPI()
-            api.create_run()
-            log.info("run %s created", api.run_id)
-            uploaded = labware.ensure_definitions(api, verbose=False)
+            started = time.monotonic()
+            self._api.create_run(verbose=False)
+            log.info("run %s created in %.1f s", self._api.run_id,
+                     time.monotonic() - started)
+            uploaded = labware.ensure_definitions(self._api, verbose=False)
             log.info("uploaded %d custom definitions: %s",
                      len(uploaded), ", ".join(sorted(uploaded)) or "none")
-            api.load_pipette()
-            log.info("pipette %s loaded", api.PIPETTE)
-            robot = api
+            self._api.load_pipette(verbose=False)
+            log.info("pipette %s loaded", self._api.PIPETTE)
+            log.info("homing")
+            self._api.home_robot(verbose=False)
+            log.info("homed")
+            self.run_state = _run_state(self._api)
+        self._ready("new")
+        return self.robot
 
-        self.robot = robot
+    def refresh_run_state(self) -> RunState:
+        """Re-read what the run holds, after labware was loaded or moved."""
+        if self._api is None:
+            raise SessionError("not connected")
+        self.run_state = _run_state(self._api)
+        return self.run_state
+
+    def _require_probe(self) -> RunState:
+        if self._api is None or self.run_state is None:
+            raise SessionError("probe the robot first")
+        return self.run_state
+
+    def _ready(self, origin: str) -> None:
+        self.robot = self._api
+        self.run_origin = origin
         self.robot_state_changed.emit(self.robot_state)
-        return robot
+
+    def connect_robot(self):
+        """The whole sequence with the default decision made: carry on with a
+        reusable run, otherwise start one. For callers with no operator to ask,
+        such as a test; the profile page asks."""
+        state = self.probe_robot()
+        return self.adopt_run() if state.reusable else self.new_run()
 
     def disconnect_robot(self) -> None:
         """Let go of the robot. Does not home it and does not end the run.
@@ -218,10 +361,12 @@ class Session(QObject):
         A run left open is resumable; a run ended by closing a window is not,
         and the operator did not ask for that.
         """
-        if self.robot is None:
+        if self._api is None:
             return
-        self._retract()
-        self.robot = None
+        if self.robot is not None:
+            self._retract()
+        self._api = self.robot = None
+        self.run_state = self.run_origin = None
         log.info("released the robot")
         self.robot_state_changed.emit(self.robot_state)
 
@@ -310,6 +455,7 @@ class Session(QObject):
                 log.warning("could not close camera %r: %s", label, exc)
         if self.robot is not None:
             self._retract()
-            self.robot = None
-            self.robot_state_changed.emit(self.robot_state)
+        self._api = self.robot = None
+        self.run_state = self.run_origin = None
+        self.robot_state_changed.emit(self.robot_state)
         log.info("session closed")
