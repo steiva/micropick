@@ -18,7 +18,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import qtawesome as qta
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QMainWindow,
                                QStackedWidget, QStatusBar, QToolButton,
                                QWidget)
@@ -28,6 +28,7 @@ from .pages import (calibration, labware, log, manual, picking, profile,
                     routine)
 from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
+from .widgets.feed_window import FeedWindow
 from .workers import Worker
 
 if TYPE_CHECKING:                       # app imports this module; annotations
@@ -73,11 +74,23 @@ class StatusBar(QStatusBar):
     third is not the second: no tip, a tip on, and *could not tell*.
     """
 
+    # A click on a camera button; carries the label.
+    camera_clicked = Signal(str)
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._profile = QLabel()
         self._robot = QLabel()
-        self._cameras = QLabel()
+
+        # One button per camera of the profile, a window with its feed on
+        # click. From here rather than from a page, because a camera is
+        # opened on the Profile page and looked at everywhere else.
+        self._cameras = QWidget()
+        self._camera_row = QHBoxLayout(self._cameras)
+        self._camera_row.setContentsMargins(SPACING, 0, SPACING, 0)
+        self._camera_row.setSpacing(SPACING // 2)
+        self._camera_buttons: dict[str, QToolButton] = {}
+        self._open_cameras: list[str] = []
 
         self._tip_icon = QLabel()
         self._tip = QLabel()
@@ -111,8 +124,34 @@ class StatusBar(QStatusBar):
     def show_robot(self, state: str) -> None:
         self._robot.setText(f"robot: {state}")
 
-    def show_cameras(self, labels: list[str]) -> None:
-        self._cameras.setText(f"cameras: {', '.join(labels) or 'none'}")
+    def set_camera_labels(self, labels: list[str]) -> None:
+        """The profile's cameras, one button each. Called on profile change."""
+        for button in self._camera_buttons.values():
+            self._camera_row.removeWidget(button)
+            button.deleteLater()
+        self._camera_buttons = {}
+        for label in labels:
+            button = QToolButton()
+            button.setAutoRaise(True)
+            button.setText(label)
+            button.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            button.clicked.connect(lambda _c=False, name=label:
+                                   self.camera_clicked.emit(name))
+            self._camera_row.addWidget(button)
+            self._camera_buttons[label] = button
+        self.show_cameras(self._open_cameras)
+
+    def show_cameras(self, open_labels: list[str]) -> None:
+        """Which of them are open: the icon says, the click opens either way."""
+        self._open_cameras = list(open_labels)
+        for label, button in self._camera_buttons.items():
+            is_open = label in open_labels
+            button.setIcon(qta.icon("mdi6.camera", color=TIP_ON) if is_open
+                           else qta.icon("mdi6.camera-outline"))
+            button.setToolTip(f"{label}: open - click to show its feed" if is_open
+                              else f"{label}: closed - click to open it and show "
+                                   f"its feed")
 
     def show_tip(self, tip: Tip | None) -> None:
         """None: no run, so there is nothing to say. Otherwise the record."""
@@ -206,9 +245,7 @@ class MainWindow(QMainWindow):
         self.status = StatusBar()
         self.setStatusBar(self.status)
 
-        self.session.profile_changed.connect(
-            lambda profile: self.status.show_profile(
-                profile.name if profile is not None else None))
+        self.session.profile_changed.connect(self._on_profile_changed)
         self.session.robot_state_changed.connect(self.status.show_robot)
         self.session.camera_opened.connect(self._show_cameras)
         self.session.camera_closed.connect(self._show_cameras)
@@ -216,6 +253,9 @@ class MainWindow(QMainWindow):
         self.session.lights_changed.connect(self.status.show_lights)
         self.status.lights.clicked.connect(self._toggle_lights)
         self._lights_worker: Worker | None = None
+        self.status.camera_clicked.connect(self._show_feed)
+        self._feeds: dict[str, FeedWindow] = {}
+        self._feed_workers: dict[str, Worker] = {}
         self.status.show_robot(self.session.robot_state)
 
         # Installed before anything is loaded, so a failure during start-up
@@ -254,8 +294,57 @@ class MainWindow(QMainWindow):
 
     # -- display -------------------------------------------------------------
 
-    def _show_cameras(self, _label: str) -> None:
+    def _on_profile_changed(self, profile) -> None:
+        self.status.show_profile(profile.name if profile is not None else None)
+        self.status.set_camera_labels(
+            sorted(profile.cameras) if profile is not None else [])
+
+    def _show_cameras(self, label: str) -> None:
         self.status.show_cameras(self.session.open_cameras)
+        # A camera that was closed on the Profile page has no feed to show.
+        camera = self.session.camera(label)
+        window = self._feeds.get(label)
+        if window is not None:
+            if camera is None:
+                window.hide()
+            window.view.set_camera(camera)
+
+    # -- feed windows --------------------------------------------------------
+
+    def _show_feed(self, label: str) -> None:
+        """The feed in its window; the camera opened first if it is not."""
+        camera = self.session.camera(label)
+        if camera is not None:
+            self._feed(label).show_camera(camera)
+            return
+        if label in self._feed_workers and self._feed_workers[label].running:
+            return
+        worker = Worker(self.session.open_camera, label)
+        worker.label = label
+        self._feed_workers[label] = worker
+        # Bound methods, not lambdas: Qt queues them onto this thread, and
+        # a lambda would build the window on the worker's.
+        worker.finished.connect(self._feed_opened)
+        worker.failed.connect(self._feed_failed)
+        _log.info("opening camera %r for its feed window", label)
+        worker.start()
+
+    def _feed_opened(self, camera) -> None:
+        label = self.sender().label
+        self._feed_workers.pop(label, None)
+        self._feed(label).show_camera(camera)
+
+    def _feed_failed(self, reason: str) -> None:
+        label = self.sender().label
+        self._feed_workers.pop(label, None)
+        _log.error("could not open camera %r: %s", label, reason)
+
+    def _feed(self, label: str) -> FeedWindow:
+        window = self._feeds.get(label)
+        if window is None:
+            window = FeedWindow(label, self)
+            self._feeds[label] = window
+        return window
 
     def _show_tip(self, tip) -> None:
         self.status.show_tip(tip if self.session.robot is not None else None)

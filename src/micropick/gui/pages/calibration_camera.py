@@ -42,7 +42,8 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading, primary_button, secondary_button
+from ..theme.factory import (card, combo_box, heading, primary_button,
+                             scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
@@ -124,7 +125,6 @@ class CameraCalibration(QWidget):
                             machine_controls=False, parent=page)
 
         panel = QWidget(page)
-        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
@@ -132,7 +132,7 @@ class CameraCalibration(QWidget):
         box = card(panel)
         box.layout().addWidget(heading("Camera", 2))
         row = QHBoxLayout()
-        self.camera_choice = QComboBox(panel)
+        self.camera_choice = combo_box(panel)
         self.camera_choice.currentTextChanged.connect(self._show_camera)
         row.addWidget(self.camera_choice, 1)
         box.layout().addLayout(row)
@@ -149,7 +149,7 @@ class CameraCalibration(QWidget):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(SPACING)
         body.addWidget(self.view, 1)
-        body.addWidget(panel)
+        body.addWidget(scroll_column(panel, PANEL_WIDTH))
         return page
 
     # -- step 2: parameters --------------------------------------------------

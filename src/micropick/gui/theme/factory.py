@@ -15,12 +15,14 @@ Nothing here knows about the session, the robot or a camera. These are widgets.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import (QFrame, QLabel, QPushButton, QVBoxLayout,
-                               QWidget)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QComboBox, QFrame, QLabel, QPushButton,
+                               QScrollArea, QVBoxLayout, QWidget)
 
 from . import SPACING
 
-__all__ = ["primary_button", "secondary_button", "card", "heading"]
+__all__ = ["primary_button", "secondary_button", "card", "heading",
+           "combo_box", "scroll_column"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -72,3 +74,50 @@ def heading(text: str, level: int = 1, parent: QWidget | None = None) -> QLabel:
     label = QLabel(text, parent)
     label.setObjectName(f"heading{level}")
     return label
+
+
+class _WheelSafeComboBox(QComboBox):
+    """A combo box the wheel does not turn.
+
+    Inside a scrolling column the wheel means "scroll", and a combo box that
+    also took it would change the jog step - or the camera - under a hand
+    that was scrolling past. The dropdown and the keyboard still work.
+    """
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
+def combo_box(parent: QWidget | None = None) -> QComboBox:
+    """A combo box for a panel that may scroll. See _WheelSafeComboBox."""
+    return _WheelSafeComboBox(parent)
+
+
+def scroll_column(inner: QWidget, width: int) -> QScrollArea:
+    """A side panel that scrolls vertically when the window is too short.
+
+    The panels beside a camera view stack several cards, and their minimum
+    height added up to more than a 1080-line screen has under a taskbar;
+    Qt then refused the window's geometry and the bottom of the panel was
+    off screen with no way to reach it. Wrapped like this the column has no
+    minimum height of its own, and the window can be as short as the screen.
+
+    Takes no focus, and its viewport neither, so the keys over it still
+    belong to the jog panel's shortcuts: PageUp and PageDown are the Z axis
+    on these pages, and a scroll area with focus would page instead. The
+    width is the panel's plus a scrollbar, so the cards do not change size
+    when the bar comes and goes.
+    """
+    area = QScrollArea()
+    area.setObjectName("column")
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setWidgetResizable(True)
+    area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    area.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    area.viewport().setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    inner.setMinimumWidth(width)
+    inner.setMaximumWidth(width)
+    area.setFixedWidth(width + area.verticalScrollBar().sizeHint().width())
+    area.setWidget(inner)
+    return area

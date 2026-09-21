@@ -30,6 +30,11 @@ into an exception, so the routine ends before it saves. Between Start and
 Accept the routine is not cancellable — it is a handful of moves and a few
 seconds of detection — and the log says which of those it is doing.
 
+**The routine ends with the Z axis retracted**, as the notebook's cell does
+after printing the result: the tip is at the module height over the disc,
+and every next move starts by going somewhere else. An aborted or failed run
+leaves the gantry where it stopped, so what happened can be seen.
+
 **The profile is written by the workflow, on Accept.** `calibrate_pipette_offset`
 saves the offset and the by-product homography together when given the
 profile, and it is given the profile here because Accept is the operator
@@ -57,7 +62,8 @@ from ...hardware.protocols import move_to, xyz
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading, primary_button, secondary_button
+from ..theme.factory import (card, combo_box, heading, primary_button,
+                             scroll_column, secondary_button)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.jog_panel import JogPanel
@@ -149,7 +155,6 @@ class PipetteCalibration(QWidget):
                             machine_controls=False, parent=page)
 
         panel = QWidget(page)
-        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
@@ -158,7 +163,7 @@ class PipetteCalibration(QWidget):
         box.layout().addWidget(heading("Calibration disc", 2))
         row = QHBoxLayout()
         row.addWidget(QLabel("Upper camera"))
-        self.over_choice = QComboBox(panel)
+        self.over_choice = combo_box(panel)
         self.over_choice.currentTextChanged.connect(self._show_over)
         row.addWidget(self.over_choice, 1)
         box.layout().addLayout(row)
@@ -189,7 +194,7 @@ class PipetteCalibration(QWidget):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(SPACING)
         body.addWidget(self.view, 1)
-        body.addWidget(panel)
+        body.addWidget(scroll_column(panel, PANEL_WIDTH))
         return page
 
     # -- step 2: starting point ----------------------------------------------
@@ -272,7 +277,6 @@ class PipetteCalibration(QWidget):
         self.run_view = CameraView(page)
 
         panel = QWidget(page)
-        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
@@ -322,7 +326,7 @@ class PipetteCalibration(QWidget):
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(SPACING)
         body.addWidget(self.run_view, 1)
-        body.addWidget(panel)
+        body.addWidget(scroll_column(panel, PANEL_WIDTH))
         return page
 
     # -- step 4: result ------------------------------------------------------
@@ -496,6 +500,11 @@ class PipetteCalibration(QWidget):
                 current_offset=current, frames=frames, verify=verify,
                 tip_type=tip_type, profile=profile, manual_touch_up=touch_up,
                 log=log)
+            # As the notebook does once the offset is saved: the tip is at
+            # the module height over the disc, and the next thing anyone
+            # does is drive somewhere else.
+            log("retracting leftZ")
+            robot.retract_axis("leftZ", verbose=False)
             return result, standin
 
         worker = Worker(job)

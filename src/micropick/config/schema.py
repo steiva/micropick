@@ -139,6 +139,15 @@ class CameraSpec(BaseModel):
     middle of a field that is mostly empty; the old code applied the same crop
     inside the grab loop, where it leaked into the detections and the
     homography.
+
+    backend is which OpenCV capture backend opens the device; None is
+    OpenCV's default, Media Foundation on Windows. It is per camera because
+    the drivers differ per device: on the bench the Arducam's motorised
+    focus is set fine through Media Foundation but reads back as 1 whatever
+    it is, so the read-back check reports it rejected and nothing built on
+    "does this camera have a focus" can see it. Through DirectShow the same
+    lens reads back what was set, at the same frame rate. The name is
+    lower-case and is the OpenCV constant without its prefix.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -150,6 +159,7 @@ class CameraSpec(BaseModel):
     fourcc: str | None = "MJPG"
     controls: dict[str, float | str] = Field(default_factory=dict)
     crop: float = Field(default=1.0, gt=0.0, le=1.0)
+    backend: Literal["dshow", "msmf", "v4l2", "avfoundation", "any"] | None = None
     notes: str = ""
 
     @model_validator(mode="after")

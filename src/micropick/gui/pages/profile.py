@@ -68,11 +68,20 @@ class _CameraRow(QWidget):
         self.name = QLabel(text)
         self.button = secondary_button("Open", self)
         self.button.clicked.connect(self._toggle)
+        # Controls tuned on a feed - the lower camera's focus slider - live
+        # on the device until this writes them into cameras.json. A separate
+        # act on purpose: trying a focus is not deciding on it.
+        self.save_button = secondary_button("Save controls", self)
+        self.save_button.setToolTip(
+            "Write this camera's current control values (focus, exposure…) "
+            "into the profile, so the next open starts from them.")
+        self.save_button.clicked.connect(self._save_controls)
 
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.name)
         row.addStretch(1)
+        row.addWidget(self.save_button)
         row.addWidget(self.button)
 
     def _toggle(self) -> None:
@@ -81,12 +90,27 @@ class _CameraRow(QWidget):
         else:
             self.page.close_camera(self.label)
 
+    def _save_controls(self) -> None:
+        try:
+            written = self.page.session.save_camera_controls(self.label)
+        except Exception as exc:                     # noqa: BLE001
+            self.page._show_error(str(exc))
+            return
+        self.page._show_error(
+            f"{self.label}: saved " + ", ".join(f"{k}={v:g}" for k, v in written.items())
+            if written else
+            f"{self.label}: nothing to save - the profile names no numeric "
+            f"control for this camera that the device took.")
+
     def refresh(self, busy: bool) -> None:
-        is_open = self.page.session.camera(self.label) is not None
+        camera = self.page.session.camera(self.label)
+        is_open = camera is not None
         self.button.setText("Close" if is_open else "Open")
         # Closing is instant and safe while something else is opening; opening
         # is not, so only that half waits.
         self.button.setEnabled(is_open or not busy)
+        applied = getattr(getattr(camera, "controls", None), "applied", {}) or {}
+        self.save_button.setVisible(is_open and bool(applied))
 
 
 class ProfilePage(QWidget):

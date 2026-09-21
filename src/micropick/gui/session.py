@@ -173,6 +173,10 @@ def _mock_cameras() -> dict[str, CameraSpec]:
         "under": CameraSpec(device_name="mock-under",
                             default_resolution=[2000, 1500],
                             resolutions=[[2000, 1500]], crop=0.5,
+                            # A motorised focus like the real module's, so
+                            # the focus slider exists here too. The scene
+                            # ignores it; the control round-trips.
+                            controls={"autofocus": 0, "focus": 500},
                             notes="synthetic ArUco scene"),
     }
 
@@ -701,6 +705,8 @@ class Session(QObject):
         # crop is a view property carried by the camera, applied where a person
         # looks and nowhere else. The mock keeps the same contract.
         camera.crop = float(spec.crop)
+        if spec.controls:
+            camera.set_controls(dict(spec.controls))
         return camera
 
     def close_camera(self, label: str) -> None:
@@ -717,6 +723,36 @@ class Session(QObject):
     def camera(self, label: str):
         """The open camera with this label, or None. Never opens one."""
         return self._open.get(label)
+
+    def save_camera_controls(self, label: str) -> dict[str, float]:
+        """Write the open camera's live control values into the profile.
+
+        Only controls the profile already names are written, and only the
+        numeric ones: `auto_exposure` is a word in the profile and a number
+        on the device, and a focus tuned on the feed is exactly the value
+        that should survive the next open. Returns what was written.
+        """
+        if self.profile is None:
+            raise SessionError("no profile to save camera controls into")
+        camera = self._open.get(label)
+        if camera is None:
+            raise SessionError(f"camera {label!r} is not open")
+        spec = self.profile.cameras.get(label)
+        if spec is None:
+            raise SessionError(f"profile {self.profile.name!r} has no camera "
+                               f"{label!r}")
+        written: dict[str, float] = {}
+        for name, value in camera.controls.applied.items():
+            if name in spec.controls and not isinstance(spec.controls[name], str):
+                spec.controls[name] = float(value)
+                written[name] = float(value)
+        if written:
+            self.profile.save_cameras()
+            log.info("camera %r controls saved to profile %r: %s", label,
+                     self.profile.name,
+                     ", ".join(f"{k}={v:g}" for k, v in written.items()))
+            self.profile_changed.emit(self.profile)
+        return written
 
     # -- teardown ------------------------------------------------------------
 

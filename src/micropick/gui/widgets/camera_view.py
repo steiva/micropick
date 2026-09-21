@@ -35,6 +35,25 @@ therefore drawn by QPainter in widget space rather than into a 36 MB array, and
 they are positioned with the coordinates detection actually produced, which are
 always in whole-sensor pixels — the crop is a property of the view and applies
 where a person looks and nowhere else.
+
+Zoom is a view property too
+---------------------------
+The wheel zooms about the cursor and a double click resets. Zooming changes
+nothing but the transform: the frame handed to detection is the whole sensor
+frame as before, and at 4x on a 4000 px frame the widget does not resample
+16000 px — only the part of the frame that is on screen is cut out and scaled
+to the widget, so the cost stays what the widget's size makes it.
+
+On the picture, two small controls
+----------------------------------
+A crosshair toggle, on by default for a camera whose label does not say
+"under" and off for one that does: the crosshair marks the reference pixel of
+the upper camera, and on the lower camera it sits over the crosshair disc the
+operator is trying to see. And a focus slider, only for a camera whose driver
+took a `focus` control at open — the lower camera has a motorised lens and its
+focus is set from the profile, which is the wrong place to be tuning it by
+trial. The slider sets it on the device live and reads it back; the profile is
+written from the Profile page, deliberately a separate act.
 """
 
 from __future__ import annotations
@@ -43,9 +62,10 @@ import time
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QPointF, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTransform
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QSlider,
+                               QWidget)
 
 from ...core.vision.cuboids import center_crop_box
 from . import overlay_painter
@@ -72,6 +92,17 @@ CROSSHAIR_ARM = 30
 
 FPS_WINDOW_S = 0.5
 
+ZOOM_MIN, ZOOM_MAX = 1.0, 16.0
+ZOOM_STEP = 1.25                 # per wheel notch
+
+# UVC focus ranges differ by device; this covers the ones seen here (the
+# Arducam takes 0-1023). A value outside is still shown, clamped.
+FOCUS_RANGE = (0, 1023)
+FOCUS_SETTLE_MS = 60             # coalesce slider moves into one set()
+
+# The label of a camera whose crosshair is off unless asked for.
+UNDER_WORD = "under"
+
 
 class CameraView(QWidget):
     """Shows one camera. Owns no device and closes nothing."""
@@ -97,10 +128,72 @@ class CameraView(QWidget):
         self._fps_count = 0
         self._overlay: list = []
 
+        # Zoom about a point: the view pixel that sits at the widget's centre.
+        self._zoom = 1.0
+        self._centre: tuple[float, float] | None = None
+        self._shown = QRect()                     # where the image lands
+
+        # Remembered per camera label, so a choice made on one feed of the
+        # lower camera holds on every other feed of it.
+        self._crosshair_choice: dict[str, bool] = {}
+        self._build_controls()
+
         self._timer = QTimer(self)
         self._timer.setInterval(max(1, 1000 // REFRESH_HZ))
         self._timer.timeout.connect(self._tick)
         self._timer.start()
+
+    def _build_controls(self) -> None:
+        """The two controls that sit on the picture. Children of the widget,
+        laid out by hand in resizeEvent: the picture underneath is drawn by
+        paintEvent and has no layout to join."""
+        self.crosshair_box = QCheckBox("crosshair", self)
+        self.crosshair_box.setChecked(True)
+        # Neither control takes keyboard focus: the keys over a feed belong
+        # to the jog panel, and a slider with focus that also stepped on
+        # the arrows would be two things moving on one key.
+        self.crosshair_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.crosshair_box.toggled.connect(self._crosshair_toggled)
+        self.crosshair_box.setStyleSheet(
+            f"QCheckBox {{ color: rgb({CAPTION_FG.red()},{CAPTION_FG.green()},"
+            f"{CAPTION_FG.blue()}); background: rgba(0,0,0,140); "
+            f"padding: 4px 6px; border-radius: 4px; }}")
+
+        self.focus_row = QWidget(self)
+        row = QHBoxLayout(self.focus_row)
+        row.setContentsMargins(6, 2, 6, 2)
+        row.setSpacing(6)
+        self.focus_label = QLabel("focus", self.focus_row)
+        self.focus_slider = QSlider(Qt.Orientation.Horizontal, self.focus_row)
+        self.focus_slider.setRange(*FOCUS_RANGE)
+        self.focus_slider.setSingleStep(1)
+        self.focus_slider.setPageStep(10)
+        self.focus_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # The wheel over the slider steps the focus, not the zoom: the
+        # slider takes the event before the view sees it.
+        self.focus_slider.valueChanged.connect(self._focus_moved)
+        self.focus_value = QLabel("", self.focus_row)
+        self.focus_value.setMinimumWidth(70)
+        row.addWidget(self.focus_label)
+        row.addWidget(self.focus_slider, 1)
+        row.addWidget(self.focus_value)
+        self.focus_row.setStyleSheet(
+            f"QLabel {{ color: rgb({CAPTION_FG.red()},{CAPTION_FG.green()},"
+            f"{CAPTION_FG.blue()}); }} "
+            f"QWidget#focusrow {{ background: rgba(0,0,0,140); "
+            f"border-radius: 4px; }}")
+        self.focus_row.setObjectName("focusrow")
+        self.focus_row.setAutoFillBackground(False)
+        self.focus_row.hide()
+
+        self._focus_timer = QTimer(self)
+        self._focus_timer.setSingleShot(True)
+        self._focus_timer.setInterval(FOCUS_SETTLE_MS)
+        self._focus_timer.timeout.connect(self._apply_focus)
+        self._focus_pending: int | None = None
+        # Both appear with a camera; without one there is only the placeholder.
+        self.crosshair_box.hide()
+        self._place_controls()
 
     # -- what it is showing --------------------------------------------------
 
@@ -118,7 +211,124 @@ class CameraView(QWidget):
         self._fps = 0.0
         self._fps_count = getattr(camera, "frame_count", 0) if camera else 0
         self._fps_at = time.monotonic()
+        self._zoom = 1.0
+        self._centre = None
+        self._sync_controls()
         self.update()
+
+    # -- the controls on the picture -----------------------------------------
+
+    def _label(self) -> str:
+        return str(getattr(self._camera, "label", "") or "")
+
+    def _sync_controls(self) -> None:
+        """Crosshair from memory or from the label; focus slider from the
+        device, and only when the device took a focus at open."""
+        label = self._label()
+        wanted = self._crosshair_choice.get(
+            label, UNDER_WORD not in label.lower())
+        self.crosshair_box.blockSignals(True)
+        self.crosshair_box.setChecked(wanted)
+        self.crosshair_box.blockSignals(False)
+        self.crosshair_box.setVisible(self._camera is not None)
+
+        controls = getattr(self._camera, "controls", None)
+        applied = getattr(controls, "applied", {}) or {}
+        has_focus = "focus" in applied and hasattr(self._camera, "set_controls")
+        self.focus_row.setVisible(has_focus)
+        if has_focus:
+            current = self._camera.get_control("focus")
+            value = int(round(current if current is not None else applied["focus"]))
+            self.focus_slider.blockSignals(True)
+            self.focus_slider.setValue(max(FOCUS_RANGE[0], min(FOCUS_RANGE[1], value)))
+            self.focus_slider.blockSignals(False)
+            self.focus_value.setText(str(value))
+        self._place_controls()
+
+    @property
+    def crosshair(self) -> bool:
+        return self.crosshair_box.isChecked()
+
+    @crosshair.setter
+    def crosshair(self, on: bool) -> None:
+        self.crosshair_box.setChecked(bool(on))
+
+    def _crosshair_toggled(self, on: bool) -> None:
+        if self._camera is not None:
+            self._crosshair_choice[self._label()] = bool(on)
+        self.update()
+
+    def _focus_moved(self, value: int) -> None:
+        """Coalesced: a drag produces dozens of values a second and the
+        device takes one control transfer at a time."""
+        self._focus_pending = int(value)
+        self.focus_value.setText(f"{value} …")
+        self._focus_timer.start()
+
+    def _apply_focus(self) -> None:
+        value, self._focus_pending = self._focus_pending, None
+        if value is None or self._camera is None:
+            return
+        report = self._camera.set_controls({"focus": value})
+        if "focus" in report.rejected:
+            asked, got = report.rejected["focus"]
+            self.focus_value.setText(f"{got:g} (asked {asked:g})")
+        else:
+            self.focus_value.setText(f"{report.applied.get('focus', value):g}")
+
+    def _place_controls(self) -> None:
+        margin = 8
+        hint = self.crosshair_box.sizeHint()
+        self.crosshair_box.move(self.width() - hint.width() - margin, margin)
+        self.crosshair_box.resize(hint)
+        height = self.focus_row.sizeHint().height()
+        width = min(360, max(200, self.width() - 2 * margin))
+        self.focus_row.setGeometry(margin, self.height() - height - margin,
+                                   width, height)
+
+    # -- zoom ----------------------------------------------------------------
+
+    @property
+    def zoom(self) -> float:
+        return self._zoom
+
+    def wheelEvent(self, event) -> None:
+        if self._image is None:
+            return
+        notches = event.angleDelta().y() / 120.0
+        if not notches:
+            return
+        factor = ZOOM_STEP ** notches
+        new = max(ZOOM_MIN, min(ZOOM_MAX, self._zoom * factor))
+        if new == self._zoom:
+            return
+        # Keep the view pixel under the cursor where it is.
+        cursor = event.position()
+        scale_old = self._box.width() / max(1, self._view_size[0])
+        px = (cursor.x() - self._box.x()) / scale_old
+        py = (cursor.y() - self._box.y()) / scale_old
+        scale_new = scale_old * new / self._zoom
+        self._zoom = new
+        if new == ZOOM_MIN:
+            self._centre = None
+        else:
+            # The view pixel at the widget centre, with the cursor pinned.
+            centre = self.rect().center()
+            self._centre = (px + (centre.x() - cursor.x()) / scale_new,
+                            py + (centre.y() - cursor.y()) / scale_new)
+        self._dirty = True
+        self._rebuild()
+        self.update()
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        if self._zoom != ZOOM_MIN:
+            self._zoom = ZOOM_MIN
+            self._centre = None
+            self._dirty = True
+            self._rebuild()
+            self.update()
+        super().mouseDoubleClickEvent(event)
 
     @property
     def live(self) -> bool:
@@ -236,25 +446,78 @@ class CameraView(QWidget):
         view, x0, y0 = self._view_of(frame)
         height, width = view.shape[:2]
         box = self._fit(width, height)
-        self._box = box
         self._view_size = (width, height)
 
-        if width > RESIZE_ABOVE * max(1, box.width()):
+        if self._zoom != ZOOM_MIN:
+            box = self._zoomed(box, width, height)
+        self._box = box
+        scale = box.width() / width
+
+        # Only what is on screen is resampled. At zoom 1 that is the whole
+        # frame to the box; zoomed in it is the visible part of the frame to
+        # the widget, which costs the same whatever the zoom.
+        shown_rect = box.intersected(self.rect())
+        if shown_rect.isEmpty():
+            shown_rect = box
+        sx0 = int((shown_rect.x() - box.x()) / scale)
+        sy0 = int((shown_rect.y() - box.y()) / scale)
+        sx1 = min(width, int(np.ceil((shown_rect.right() + 1 - box.x()) / scale)))
+        sy1 = min(height, int(np.ceil((shown_rect.bottom() + 1 - box.y()) / scale)))
+        part = view[sy0:sy1, sx0:sx1]
+        # The rect the cut-out lands on, in whole widget pixels, so that the
+        # image's edge and the cut-out's edge are the same pixel.
+        target = QRect(int(round(box.x() + sx0 * scale)),
+                       int(round(box.y() + sy0 * scale)),
+                       max(1, int(round((sx1 - sx0) * scale))),
+                       max(1, int(round((sy1 - sy0) * scale))))
+        self._shown = target
+
+        pw = part.shape[1]
+        if pw > RESIZE_ABOVE * max(1, target.width()):
             # INTER_AREA is the correct filter for a large reduction, and it
             # also lands the array contiguous, which to_qimage requires.
-            shown = cv2.resize(view, (box.width(), box.height()),
+            shown = cv2.resize(part, (target.width(), target.height()),
                                interpolation=cv2.INTER_AREA)
+        elif self._zoom != ZOOM_MIN and pw < target.width():
+            # Enlarging: linear, so pixels read as pixels rather than as
+            # blur, and it lands contiguous like the reduction does.
+            shown = cv2.resize(part, (target.width(), target.height()),
+                               interpolation=cv2.INTER_LINEAR)
         else:
             # A crop is a slice and so is not contiguous. This is the one path
             # where the copy is real, and it is a small frame by construction.
-            shown = view if view.flags["C_CONTIGUOUS"] else np.ascontiguousarray(view)
+            shown = part if part.flags["C_CONTIGUOUS"] else np.ascontiguousarray(part)
 
         self._image = to_qimage(shown)
-        scale = box.width() / width
         self._transform = (QTransform()
                            .translate(box.x(), box.y())
                            .scale(scale, scale)
                            .translate(-x0, -y0))
+
+    def _zoomed(self, base: QRect, width: int, height: int) -> QRect:
+        """The fitted box enlarged by the zoom and placed so that `_centre`
+        sits at the widget's centre, then clamped so no edge of the frame
+        leaves a gap while the frame is larger than the widget."""
+        scale = base.width() / width * self._zoom
+        w, h = width * scale, height * scale
+        if self._centre is None:
+            self._centre = (width / 2.0, height / 2.0)
+        cx, cy = self._centre
+        centre = self.rect().center()
+        x = centre.x() - cx * scale
+        y = centre.y() - cy * scale
+        avail = self.rect()
+        if w >= avail.width():
+            x = min(avail.x(), max(avail.x() + avail.width() - w, x))
+        else:
+            x = avail.x() + (avail.width() - w) / 2
+        if h >= avail.height():
+            y = min(avail.y(), max(avail.y() + avail.height() - h, y))
+        else:
+            y = avail.y() + (avail.height() - h) / 2
+        # Write the clamp back, so the next wheel starts from where we are.
+        self._centre = ((centre.x() - x) / scale, (centre.y() - y) / scale)
+        return QRectF(x, y, w, h).toRect()
 
     def _fit(self, width: int, height: int) -> QRect:
         """The largest rectangle of the frame's aspect that fits, centred."""
@@ -272,6 +535,7 @@ class CameraView(QWidget):
         super().resizeEvent(event)
         # The cached scale is only right for one widget size.
         self._rebuild()
+        self._place_controls()
 
     # -- only while it is on screen ------------------------------------------
 
@@ -306,10 +570,11 @@ class CameraView(QWidget):
             return
 
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-        painter.drawImage(self._box, self._image)
+        painter.drawImage(self._shown, self._image)
         if self._overlay:
             overlay_painter.paint(painter, self._overlay, self._transform)
-        self._draw_crosshair(painter, self._box)
+        if self.crosshair_box.isChecked():
+            self._draw_crosshair(painter, self._box)
         self._draw_caption(painter)
         painter.end()
 
@@ -332,6 +597,8 @@ class CameraView(QWidget):
         crop = float(getattr(self._camera, "crop", 1.0)) if self._camera else 1.0
         if crop != 1.0:
             parts.append(f"crop {crop:g}")
+        if self._zoom != ZOOM_MIN:
+            parts.append(f"zoom {self._zoom:.2g}×")
         parts.append("held" if not self._live else f"{self._fps:.0f} fps")
 
         painter.setFont(QFont(self.font().family(), 10))

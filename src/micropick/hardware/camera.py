@@ -53,6 +53,16 @@ class CameraError(RuntimeError):
 # silently ignored.
 _AUTO_EXPOSURE = {"manual": (0.25, 1), "auto": (0.75, 3)}
 
+# CameraSpec.backend, spelled for cv2.VideoCapture. "any" is OpenCV's own
+# CAP_ANY, which is what a spec that names nothing gets too.
+_BACKENDS = {
+    "dshow": cv2.CAP_DSHOW,
+    "msmf": cv2.CAP_MSMF,
+    "v4l2": cv2.CAP_V4L2,
+    "avfoundation": cv2.CAP_AVFOUNDATION,
+    "any": cv2.CAP_ANY,
+}
+
 _CONTROL_PROPS = {
     "autofocus": cv2.CAP_PROP_AUTOFOCUS,
     "focus": cv2.CAP_PROP_FOCUS,
@@ -388,6 +398,34 @@ class BackgroundCamera:
 
         self._cap.release()
 
+    # -- controls, while open ------------------------------------------------
+
+    def set_controls(self, controls: dict) -> ControlReport:
+        """Change controls on the open device and report what took.
+
+        The same `apply_controls` as at open, so a value is read back and
+        compared rather than trusted; `controls` is updated with what took,
+        which is what a profile write-back reads. The grab thread keeps
+        reading meanwhile: a UVC control transfer is independent of the
+        frame stream, and the drivers seen here accept a set() during one.
+        """
+        report = apply_controls(self._cap, controls)
+        self.controls.applied.update(report.applied)
+        for name in report.applied:
+            self.controls.rejected.pop(name, None)
+        self.controls.rejected.update(report.rejected)
+        return report
+
+    def get_control(self, name: str) -> float | None:
+        """The device's current value for a named control, or None."""
+        prop = _CONTROL_PROPS.get(name)
+        if prop is None:
+            return None
+        try:
+            return float(self._cap.get(prop))
+        except Exception:                        # noqa: BLE001
+            return None
+
     # -- reading ------------------------------------------------------------
 
     def read(self) -> tuple[bool, np.ndarray | None]:
@@ -548,7 +586,15 @@ class CameraManager:
                 f"{allowed}. Add it there if the camera supports it."
             )
 
-        cap = (cv2.VideoCapture(device.index, self.backend) if self.backend
+        # The spec's backend first, then the manager's, then OpenCV's own
+        # choice. Per camera because the drivers differ per device; see
+        # CameraSpec.backend for the one that made this necessary.
+        named = spec.get("backend")
+        if named is not None and named not in _BACKENDS:
+            raise CameraError(f"{label}: unknown capture backend {named!r}; "
+                              f"known: {', '.join(_BACKENDS)}")
+        backend = _BACKENDS[named] if named is not None else self.backend
+        cap = (cv2.VideoCapture(device.index, backend) if backend
                else cv2.VideoCapture(device.index))
         if not cap.isOpened():
             raise CameraError(f"{label}: could not open {device}")
@@ -575,7 +621,8 @@ class CameraManager:
 
         if verbose:
             print(f"{label}: {device}  {wanted[0]}x{wanted[1]}"
-                  + (f"  view crop {cam.crop:g}" if cam.crop != 1.0 else ""))
+                  + (f"  view crop {cam.crop:g}" if cam.crop != 1.0 else "")
+                  + (f"  via {cap.getBackendName()}" if named else ""))
             if merged:
                 print(f"  {report}".replace("\n", "\n  "))
         return cam

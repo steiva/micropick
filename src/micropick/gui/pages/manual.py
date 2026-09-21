@@ -7,12 +7,11 @@ is the arrangement and the choice of which open camera to watch.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading
+from ..theme.factory import card, combo_box, heading, scroll_column
 from ..widgets.camera_view import CameraView
 from ..widgets.jog_panel import JogPanel
 
@@ -34,7 +33,6 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
 
         panel = QWidget(self)
-        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
@@ -44,7 +42,7 @@ class ManualPage(QWidget):
         body = QHBoxLayout()
         body.setSpacing(SPACING)
         body.addWidget(self.view, 1)
-        body.addWidget(panel)
+        body.addWidget(scroll_column(panel, PANEL_WIDTH))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
@@ -60,7 +58,7 @@ class ManualPage(QWidget):
         box = card(self)
         row = QHBoxLayout()
         row.addWidget(QLabel("Camera"))
-        self.camera_choice = QComboBox(self)
+        self.camera_choice = combo_box(self)
         self.camera_choice.currentTextChanged.connect(self._show_camera)
         row.addWidget(self.camera_choice, 1)
         box.layout().addLayout(row)

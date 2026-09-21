@@ -49,3 +49,10 @@ QListWidget#nav::item {
 QLabel#heading1 { font-size: 16pt; font-weight: 600; }
 QLabel#heading2 { font-size: 12pt; font-weight: 600; }
 QLabel#heading3 { font-size: 10pt; font-weight: 600; }
+
+/* A scrolling side column is a layout device, not a surface: no frame, and
+ * the page's own background shows through it. */
+QScrollArea#column, QScrollArea#column > QWidget > QWidget {
+    background: transparent;
+    border: none;
+}

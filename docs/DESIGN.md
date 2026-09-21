@@ -374,10 +374,21 @@ for a property they do not support, which would make the read-back check pass
 on a control that was silently ignored.
 
 **Known unresolved:** on the bench, the 20MP U3 camera accepts neither
-`CAP_PROP_AUTO_EXPOSURE` nor `CAP_PROP_EXPOSURE` through the default backend.
-Worth retrying with `cv2.CAP_DSHOW`, and `CameraSpec` has a `backend` field
-ready for it. Auto-exposure hunting when the gantry moves from a bright area to
-a dark one is the symptom to watch for.
+`CAP_PROP_AUTO_EXPOSURE` nor `CAP_PROP_EXPOSURE` through the default backend,
+and not through DirectShow either (tried: the read-back is -1 whatever is
+set). Auto-exposure hunting when the gantry moves from a bright area to a
+dark one is the symptom to watch for.
+
+The backend does matter for the Arducam's focus, and `CameraSpec.backend`
+exists for it. Through Media Foundation, OpenCV's default on Windows, a
+`set` of the focus reaches the lens - DirectShow reads back the value it
+set - but a `get` answers 1 whatever the lens is doing, so the read-back
+check reports the control rejected, and the focus slider on the feed, which
+exists only for a camera whose focus verified, never appears. Through
+DirectShow the same device reads back what was set, at the same 14 fps at
+4000×3000; the bench profile names `"backend": "dshow"` for that camera and
+nothing else changes. Not a global switch: the upper camera is left on the
+default, where it was measured.
 
 ### The crop is a view, not a frame
 

@@ -194,3 +194,19 @@ def test_lights_are_read_on_connect_and_set_explicitly(session):
     assert session.lights is True
     assert session.robot.calls.count(("toggle_lights",)) == 2
     assert seen == [False, False, False, True]
+
+
+# -- camera controls ---------------------------------------------------------
+
+def test_camera_controls_are_written_back_only_where_the_profile_names_them(session):
+    session.load_profile("mock")
+    session.open_camera("under")
+    camera = session.camera("under")
+    assert camera.controls.applied.get("focus") == 500.0     # from the spec
+    camera.set_controls({"focus": 777, "gain": 3})
+    written = session.save_camera_controls("under")
+    assert written == {"autofocus": 0.0, "focus": 777.0}    # gain: not in the spec
+    assert session.profile.cameras["under"].controls["focus"] == 777.0
+    reloaded = session.load_profile("mock")
+    assert reloaded.cameras["under"].controls["focus"] == 777.0
+    session.close_camera("under")

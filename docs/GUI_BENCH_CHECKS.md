@@ -441,3 +441,44 @@ static until the session owns them.
   Open the lower camera at 2000×1500 (the picking clip's mode) and Start:
   `TipCalibrationError` about the calibrated mode, and the gantry has not
   moved. This is the check DESIGN section 3 says cost a whole run in silence.
+
+- [ ] **The Z axis is retracted when the calibration completes.**
+  After Accept, the log ends with "retracting leftZ" and the tip is at the
+  top of its travel, not over the disc. After Abort it is not.
+
+## Commit 14 — the feed: zoom, crosshair, focus
+
+- [ ] **The wheel zooms about the cursor on every feed, at full frame rate.**
+  On the lower camera at 4000×3000, zoom to 16× on a crosshair: the fps in
+  the caption does not drop, because only the visible cut-out is resampled.
+  Double-click resets. Expected failure: the frame rate halving at high
+  zoom, which would mean the whole frame is being enlarged.
+
+- [ ] **The lower camera's focus moves the lens live.**
+  On the lower feed the focus slider shows the profile's value (920 on the
+  bench). Drag it: the picture goes in and out of focus as it moves, and the
+  number is what the device reads back. Then on the Profile page, "Save
+  controls" writes it to cameras.json, and the next open starts from it.
+  Expected failure: "asked N, got M" beside the slider, which means the
+  driver ignored the set - the same check `apply_controls` makes at open.
+
+- [ ] **The crosshair is off on the lower camera and on on the upper.**
+  Open both and switch between them on Manual control: the tick follows
+  the camera. Tick it on the lower feed, switch away and back: the choice
+  holds.
+
+- [ ] **The window fits the bench screen, maximised and with the taskbar.**
+  Maximise on the 1920×1080 display: no `QWindowsWindow::setGeometry`
+  warning in the console, and the bottom of every side panel is reachable,
+  by the bar or the wheel, on Manual control, both calibration tabs and
+  Routine. The panels' minimum height used to add up to 1144 lines, more
+  than the screen has under a taskbar, and Qt refused the geometry. Over a
+  scrolled panel PgUp still moves Z and the wheel never turns the step
+  combo.
+
+- [ ] **A camera's feed opens from the status bar on any page.**
+  On the Profile page, with nothing open, click the lower camera's button
+  in the status bar: the camera opens (the icon fills) and its feed appears
+  in a window of its own, crosshair off, focus slider at the bottom. Close
+  the window: the camera stays open. Close the camera on the Profile page:
+  the window goes away. The window keeps its size and place between shows.

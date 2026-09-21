@@ -34,7 +34,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import (QComboBox, QFileDialog, QHBoxLayout,
+from PySide6.QtWidgets import (QFileDialog, QHBoxLayout,
                                QInputDialog, QLabel, QPlainTextEdit, QSpinBox,
                                QVBoxLayout, QWidget)
 
@@ -44,7 +44,8 @@ from ...core.routine import STRATEGIES, Destination, Routine, RoutineError
 from ...hardware.labware import loaded_labware
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading, primary_button, secondary_button
+from ..theme.factory import (card, combo_box, heading, primary_button,
+                             scroll_column, secondary_button)
 from ..widgets.plate_view import PlateView
 from ..workers import Worker
 
@@ -76,7 +77,6 @@ class RoutinePage(QWidget):
         self.plate.well_clicked.connect(self._well_clicked)
 
         panel = QWidget(self)
-        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
@@ -89,7 +89,7 @@ class RoutinePage(QWidget):
         body = QHBoxLayout()
         body.setSpacing(SPACING)
         body.addWidget(self.plate, 1)
-        body.addWidget(panel)
+        body.addWidget(scroll_column(panel, PANEL_WIDTH))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
@@ -106,7 +106,7 @@ class RoutinePage(QWidget):
     def _plate_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Plate", 2))
-        self.definition = QComboBox(self)
+        self.definition = combo_box(self)
         box.layout().addWidget(self.definition)
 
         row = QHBoxLayout()
@@ -136,7 +136,7 @@ class RoutinePage(QWidget):
         self.per_well.setValue(1)
         row.addWidget(self.per_well)
         row.addWidget(QLabel("Order"))
-        self.strategy = QComboBox(self)
+        self.strategy = combo_box(self)
         self.strategy.addItems(STRATEGIES)
         self.strategy.setCurrentText("by_column")
         row.addWidget(self.strategy, 1)

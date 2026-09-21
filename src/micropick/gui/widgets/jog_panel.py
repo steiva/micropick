@@ -55,15 +55,16 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QComboBox, QGridLayout, QHBoxLayout,
-                               QInputDialog, QLabel, QListWidget, QMessageBox,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
+                               QLabel, QListWidget, QMessageBox, QVBoxLayout,
+                               QWidget)
 
 from ...workflows.jog import (DEFAULT_STEPS, LAYOUT, JogController,
                               help_lines)
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading, primary_button, secondary_button
+from ..theme.factory import (card, combo_box, heading, primary_button,
+                             secondary_button)
 from ..workers import Worker
 
 __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND"]
@@ -138,9 +139,9 @@ class JogPanel(QWidget):
         self._shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
 
-        # Deliberately not a QScrollArea. PageUp and PageDown are the Z axis
-        # here, and a scroll area would take them for scrolling before the
-        # shortcut ever saw them.
+        # Not a scroll area itself. The page that hosts it may put it in one
+        # (theme.factory.scroll_column), which takes no focus, so PageUp and
+        # PageDown - the Z axis - still reach the window-level shortcuts.
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
@@ -201,7 +202,7 @@ class JogPanel(QWidget):
 
         step = QHBoxLayout()
         step.addWidget(QLabel("Step"))
-        self.step_choice = QComboBox(self)
+        self.step_choice = combo_box(self)
         for value in DEFAULT_STEPS:
             self.step_choice.addItem(f"{value:g} mm", value)
         self.step_choice.currentIndexChanged.connect(self._step_chosen)
