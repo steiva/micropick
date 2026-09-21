@@ -46,9 +46,12 @@ from ..hardware.camera import CameraManager         # noqa: E402
 from ..hardware.labware import LoadedLabware        # noqa: E402
 from ..hardware.mock import (MarkerScene, MockRobot,  # noqa: E402
                              open_scene_camera)
+from ..hardware import tips                          # noqa: E402
+from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
+                                  set_lights)
 from ..workflows.jog import Limits                  # noqa: E402
 
-__all__ = ["Session", "SessionError", "RunState", "MOCK_PROFILE_NAME",
+__all__ = ["Session", "SessionError", "RunState", "Tip", "MOCK_PROFILE_NAME",
            "REUSABLE_STATUSES"]
 
 log = logging.getLogger(__name__)
@@ -113,6 +116,39 @@ def _run_state(api) -> RunState:
                     labware=labware.loaded_labware(api))
 
 
+@dataclass(frozen=True)
+class Tip:
+    """The tip on the pipette, as the robot's command log has it.
+
+    `attached` None means the log could not be read, and the difference
+    between "no tip" and "do not know" is the whole point: nothing that moves
+    the gantry should treat the second as the first. `slot` and `well` are
+    where the tip came from when the log said and that rack is still in a
+    slot; a tip from labware since moved off the deck has neither.
+    """
+
+    attached: bool | None
+    slot: str | None = None
+    well: str | None = None
+
+    @classmethod
+    def unknown(cls) -> "Tip":
+        return cls(attached=None)
+
+    @property
+    def returnable(self) -> bool:
+        return bool(self.attached) and self.slot is not None and self.well is not None
+
+    def describe(self) -> str:
+        if self.attached is None:
+            return "tip: unknown"
+        if not self.attached:
+            return "no tip"
+        where = (f" from slot {self.slot} {self.well}"
+                 if self.returnable else "")
+        return "TIP ON" + where
+
+
 class SessionError(RuntimeError):
     """Something was asked of the session that it cannot do yet."""
 
@@ -144,6 +180,18 @@ def _mock_cameras() -> dict[str, CameraSpec]:
 class Session(QObject):
     profile_changed = Signal(object)
     robot_state_changed = Signal(str)
+    # The run's labware map was re-read; carries the RunState. Separate from
+    # robot_state_changed because loading a plate changes nothing in the
+    # status bar and everything on the deck.
+    labware_changed = Signal(object)
+    # What the robot's record says is on the pipette; carries a Tip. Re-read
+    # from the run's command log after connect and after every tip command,
+    # never inferred from what this application asked for: a tip picked up
+    # from a notebook is in that log too, and a tip nobody knows about is
+    # the first way the robot crashes.
+    tip_changed = Signal(object)
+    # The rail lights, as last read from the robot; carries bool or None.
+    lights_changed = Signal(object)
     camera_opened = Signal(str)
     camera_closed = Signal(str)
     error = Signal(str)
@@ -160,6 +208,8 @@ class Session(QObject):
         self.robot = None
         self.run_state: RunState | None = None
         self.run_origin: str | None = None       # "reused" or "new"
+        self.tip = Tip.unknown()                 # see tip_changed
+        self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
 
@@ -336,7 +386,226 @@ class Session(QObject):
         if self._api is None:
             raise SessionError("not connected")
         self.run_state = _run_state(self._api)
+        self.labware_changed.emit(self.run_state)
         return self.run_state
+
+    # -- labware -------------------------------------------------------------
+    #
+    # The robot only knows what it was told. A plate put on the deck by hand
+    # is invisible to the run, and a plate loaded into the run and then taken
+    # away by hand is still there as far as every move_to_well is concerned.
+    # These two are the telling; both are blocking, both move nothing.
+
+    def load_labware(self, definition, slot: int):
+        """Tell the run that `definition` sits in `slot`. Blocking; moves
+        nothing. Returns the LoadedLabware entry the run reports back.
+
+        A custom definition is uploaded first. Uploads are per run and
+        idempotent, so this repeats what connect did rather than trusting
+        that it happened - a file added to labware/ after the connect is the
+        case that trust gets wrong.
+
+        An occupied slot is emptied first with move_labware('offDeck'): the
+        robot refuses to load over labware it believes is there, and the
+        operator asking for a plate in slot 5 has already decided what is in
+        slot 5. Both steps are logged so the run's history reads as it went.
+        """
+        self._require_robot()
+        slot = int(slot)
+        if not 1 <= slot <= 11:
+            raise SessionError(f"slot {slot} is not a deck slot (1-11; 12 is "
+                               f"the fixed trash)")
+        current = self.run_state.labware.get(str(slot)) if self.run_state else None
+        if current is not None:
+            self._move_off_deck(current)
+        if definition.source == "local" and not self.mock:
+            # The mock has no run to upload into and accepts any load name.
+            labware.upload_definition(self._api, definition)
+            log.info("uploaded %s into run %s", definition.load_name,
+                     getattr(self._api, "run_id", "?"))
+        labware.load_labware(self._api, definition.load_name, slot,
+                             namespace=definition.namespace,
+                             version=definition.version, verbose=False)
+        log.info("loaded %s (%s) into slot %d", definition.load_name,
+                 definition.namespace, slot)
+        state = self.refresh_run_state()
+        entry = state.labware.get(str(slot))
+        if entry is None:
+            raise SessionError(
+                f"the run accepted {definition.load_name!r} for slot {slot} "
+                f"but does not report it there afterwards")
+        return entry
+
+    def unload_labware(self, slot: int) -> None:
+        """move_labware('offDeck') for whatever the run holds in `slot`.
+        Blocking; moves nothing. A slot the run thinks is empty is a no-op
+        with a log line, not an error: the operator's intent is met."""
+        self._require_robot()
+        current = self.run_state.labware.get(str(int(slot))) if self.run_state else None
+        if current is None:
+            log.info("slot %s already holds nothing in the run", slot)
+            return
+        self._move_off_deck(current)
+        self.refresh_run_state()
+
+    def _move_off_deck(self, entry: LoadedLabware) -> None:
+        self._api.move_labware(entry.labware_id, "offDeck", verbose=False)
+        log.info("moved %s out of slot %s (off deck)", entry.load_name,
+                 entry.slot)
+
+    def _require_robot(self) -> None:
+        if self.robot is None:
+            raise SessionError("no run to load labware into: connect the "
+                               "robot on the Profile page first")
+
+    # -- tips ----------------------------------------------------------------
+    #
+    # Four acts, all blocking and all of them **moving the gantry** except
+    # the drop in place. The robot's answer to each is checked with
+    # require_ok, because a tip command it declines is answered 201 like one
+    # it performed. After each one the tip is re-read from the robot rather
+    # than assumed from the command that was sent.
+
+    def read_tip(self) -> Tip:
+        """Ask the robot what is on the pipette. Blocking; moves nothing.
+
+        From the run's command log (`hardware.tips.tip_state`), which is the
+        robot's own record and covers a tip picked up from a notebook or the
+        Opentrons app in the same run. A log that cannot be read leaves the
+        answer unknown, which is reported as such and never as "no tip".
+        """
+        self._require_robot()
+        if self.mock:
+            held = getattr(self._api, "tip", None)
+            state = (tips.TipState(True, held[0], held[1]) if held
+                     else tips.TipState(False))
+        else:
+            try:
+                state = tips.tip_state(self._api, self.run_state.run_id)
+            except Exception as exc:                 # noqa: BLE001
+                log.warning("could not read the tip state: %s", exc)
+                state = tips.TipState.unknown()
+        slot = well = None
+        if state.attached and state.labware_id:
+            for entry in (self.run_state.labware if self.run_state else {}).values():
+                if entry.labware_id == state.labware_id:
+                    slot, well = entry.slot, state.well
+        tip = Tip(state.attached, slot, well)
+        if tip != self.tip:
+            log.info("robot reports: %s", tip.describe())
+        self.tip = tip
+        self.tip_changed.emit(tip)
+        return tip
+
+    def pick_up_tip(self, slot, well: str) -> None:
+        """Take a tip from `well` of the rack in `slot`. Moves the gantry.
+
+        Refused outright when the robot's record shows a tip already on, or
+        cannot be read: a second tip pressed onto the first is a crash into
+        the rack, and "unknown" is not "none". The slot has to hold a tip
+        rack as far as the definition says (`isTiprack`), which is the same
+        flag the robot decides on.
+        """
+        entry = self._labware_in(slot)
+        if self.tip.attached is None:
+            self.read_tip()
+        if self.tip.attached:
+            raise SessionError(f"the robot reports a tip on the pipette "
+                               f"({self.tip.describe()}); drop it first")
+        if self.tip.attached is None:
+            raise SessionError("the robot's tip state could not be read, and "
+                               "a tip is not picked up over an unknown one")
+        definition = labware.resolve_definition(entry.load_name)
+        if not definition.is_tiprack:
+            raise SessionError(f"slot {slot} holds {entry.load_name}, which is "
+                               f"not a tip rack")
+        if well not in definition.wells:
+            raise SessionError(f"{entry.load_name} has no well {well!r}")
+        try:
+            require_ok(self._api.pick_up_tip(entry.labware_id, well, verbose=False),
+                       f"pick up tip from slot {slot} {well}")
+            log.info("picked up a tip from slot %s %s", slot, well)
+        finally:
+            self.read_tip()
+
+    def drop_tip_in_place(self) -> None:
+        """Let go of the tip where the pipette is. Moves nothing but the
+        ejector."""
+        self._require_robot()
+        try:
+            require_ok(self._api.drop_tip_in_place(verbose=False),
+                       "drop tip in place")
+            log.info("dropped the tip in place")
+        finally:
+            self.read_tip()
+
+    def drop_tip_in_trash(self) -> None:
+        """Drop the tip into the fixed trash. Moves the gantry to slot 12.
+
+        The trash is an addressable area on this robot software, not
+        labware, so this is `moveToAddressableAreaForDropTip` and then
+        `dropTipInPlace` (`hardware.tips.drop_tip_in_trash`).
+        """
+        self._require_robot()
+        try:
+            if self.mock:
+                self._api.move_to_trash()
+                self._api.drop_tip_in_place()
+            else:
+                tips.drop_tip_in_trash(self._api)
+            log.info("dropped the tip in the trash")
+        finally:
+            self.read_tip()
+
+    def return_tip(self) -> None:
+        """Put the tip back into the well the robot's record says it came
+        from. Moves the gantry. Refused when the record has no rack for it."""
+        self._require_robot()
+        if not self.tip.returnable:
+            raise SessionError("the robot's record has no rack to return this "
+                               f"tip to ({self.tip.describe()}); use the "
+                               "trash or drop it in place")
+        slot, well = self.tip.slot, self.tip.well
+        entry = self._labware_in(slot)
+        try:
+            require_ok(self._api.drop_tip(entry.labware_id, well, verbose=False),
+                       f"return tip to slot {slot} {well}")
+            log.info("returned the tip to slot %s %s", slot, well)
+        finally:
+            self.read_tip()
+
+    def _labware_in(self, slot) -> LoadedLabware:
+        self._require_robot()
+        entry = self.run_state.labware.get(str(slot)) if self.run_state else None
+        if entry is None:
+            raise SessionError(f"the run holds nothing in slot {slot}")
+        return entry
+
+    def _forget_tip(self) -> None:
+        self.tip = Tip.unknown()
+        self.tip_changed.emit(self.tip)
+
+    # -- lights --------------------------------------------------------------
+
+    def read_lights(self) -> bool | None:
+        """The rail lights as the robot reports them. Blocking."""
+        if self._api is None:
+            raise SessionError("not connected")
+        self.lights = lights_on(self._api)
+        self.lights_changed.emit(self.lights)
+        return self.lights
+
+    def set_lights(self, on: bool) -> None:
+        """Lights on or off, whatever they were. Blocking; moves nothing."""
+        if self._api is None:
+            raise SessionError("not connected")
+        set_lights(self._api, bool(on))
+        log.info("lights %s", "on" if on else "off")
+        self.read_lights()
+
+    def toggle_lights(self) -> None:
+        state = self.read_lights()
+        self.set_lights(not state)
 
     def _require_probe(self) -> RunState:
         if self._api is None or self.run_state is None:
@@ -347,6 +616,13 @@ class Session(QObject):
         self.robot = self._api
         self.run_origin = origin
         self.robot_state_changed.emit(self.robot_state)
+        # Asked, not assumed. A run carried on from before this application
+        # started may have a tip on it, and that is the one to know about.
+        self.read_tip()
+        try:
+            self.read_lights()
+        except Exception as exc:                     # noqa: BLE001
+            log.warning("could not read the lights: %s", exc)
 
     def connect_robot(self):
         """The whole sequence with the default decision made: carry on with a
@@ -367,6 +643,9 @@ class Session(QObject):
             self._retract()
         self._api = self.robot = None
         self.run_state = self.run_origin = None
+        self._forget_tip()
+        self.lights = None
+        self.lights_changed.emit(None)
         log.info("released the robot")
         self.robot_state_changed.emit(self.robot_state)
 
@@ -457,5 +736,8 @@ class Session(QObject):
             self._retract()
         self._api = self.robot = None
         self.run_state = self.run_origin = None
+        self._forget_tip()
+        self.lights = None
+        self.lights_changed.emit(None)
         self.robot_state_changed.emit(self.robot_state)
         log.info("session closed")

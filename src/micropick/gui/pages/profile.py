@@ -249,7 +249,10 @@ class ProfilePage(QWidget):
             self, "New run and home", detail,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
-        if answer is not QMessageBox.StandardButton.Yes:
+        # `==`, not `is`: PySide6 hands the answer back as a plain int on
+        # some builds, and an identity test against the enum member is then
+        # always false - the button did nothing and logged nothing.
+        if answer != QMessageBox.StandardButton.Yes:
             return
         self._clear_error()
         self._run(Worker(self.session.new_run), "new run, then home")

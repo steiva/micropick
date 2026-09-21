@@ -179,4 +179,3 @@ def load_labware(api, load_name: str, slot: int, *,
         return api.load_labware(load_name, slot, **kwargs)
     except TypeError:
         return api.load_labware(load_name, slot, namespace=namespace)
- 

@@ -29,8 +29,8 @@ class ManualPage(QWidget):
         self.session = session
 
         self.view = CameraView(self)
-        # The host is this page, so the arrow keys work while the eye and the
-        # focus are on the picture rather than on the buttons.
+        # The host is this page: its shortcuts are window-wide while the page
+        # is showing, and go quiet with it.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
 
         panel = QWidget(self)

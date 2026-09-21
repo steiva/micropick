@@ -158,10 +158,19 @@ static until the session owns them.
   NoFocus. Expected failure: the panel scrolls and Z does not move, or the list
   selection jumps.
 
+- [ ] **The keys drive the robot from anywhere in the window.**
+  On the manual page, click the page list on the left, then the camera combo,
+  then the picture, and press an arrow after each click. The gantry steps
+  every time and the page never changes. Expected failure: the arrow moves
+  the selection in the page list, or does nothing until a button on the panel
+  is clicked first. The shortcuts are `WindowShortcut` and the page list is
+  `NoFocus`, which together are what makes this true.
+
 - [ ] **The shortcuts do not reach the robot from another window.**
   Put another application in front and press the arrow keys. Nothing should
   move. This is the whole reason `jog_in_window` was preferred over the global
-  hotkeys, and `WidgetWithChildrenShortcut` is what carries it here.
+  hotkeys, and `WindowShortcut` (not an application-wide or global one) is
+  what carries it here.
 
 - [ ] **A soft limit reads as text, and the robot can come back.**
   Jog into the X limit: the panel says refused or clamped, no dialog appears,
@@ -338,3 +347,97 @@ static until the session owns them.
   Each new run logs "run … created in N s". Create several in a row on a robot
   left on and read the numbers back: this is the slowdown that was an
   impression, made into a series.
+
+## Commit 12 — labware page
+
+- [ ] **A stock tip rack loads into its slot and the deck shows it.**
+  Connect, open Labware, click slot 10, choose "Opentrons OT-2 96 Tip Rack
+  300 µL", Load. The slot fills and names the rack; the log has "loaded
+  opentrons_96_tiprack_300ul (opentrons) into slot 10". Re-read changes
+  nothing. Expected failure: the robot answers with an error for a load name
+  it does not have, which would mean the installed `opentrons-shared-data`
+  is newer than the robot's software.
+
+- [ ] **A custom plate loads on a run that was adopted, not created.**
+  Connect to a robot left on with its run, then load the Greiner 1536 into a
+  slot. The definition is uploaded by the page itself before loading, so this
+  works whether or not the connect uploaded it. Expected failure: "the robot
+  rejected …" from `upload_definition`, whose text carries the robot's own
+  reason.
+
+- [ ] **Replace empties the slot first, and Remove empties it.**
+  Load a plate into slot 5, choose another and press "Replace in slot 5": the
+  log shows the move off deck and then the load, and the slot shows the new
+  plate. Remove (off deck) leaves the slot empty on the deck and in the run.
+  Then check on the Routine page: `check_labware` sees the same state.
+
+- [ ] **What the page shows is what the robot reports.**
+  Load a plate through the Opentrons app or a notebook while this page is
+  open; press Re-read. The plate appears. The page has no memory of its own,
+  so there is nothing to go stale but the last read.
+
+- [ ] **The status bar knows about a tip this application never picked up.**
+  Pick up a tip from the notebook (or the Opentrons app), then Connect here
+  and carry on with the run. The bar shows "TIP ON" in amber before anything
+  is clicked, and the Labware page's Pick up tip is greyed out. Expected
+  failure: "no tip" with a tip plainly on the pipette - which would mean the
+  command log is not being read from the end, or the pick-up was in a
+  different run than the one carried on with.
+
+- [ ] **A tip comes off the rack and goes into the trash.**
+  With a rack in slot 10 selected, choose A1 and Pick up tip: the gantry goes
+  to A1, presses on, the bar turns amber, the card says "from slot 10 A1"
+  and the chooser has moved on to B1. Pick up tip is now disabled. Drop in
+  trash: the gantry moves over the fixed trash at slot 12 and the tip drops
+  into the bin; the bar reads "no tip". Expected failure: the robot declines
+  `moveToAddressableAreaForDropTip`, whose error text will name the area it
+  wanted; `fixedTrash` is the OT-2's on software 7.1 and later.
+
+- [ ] **The lights button switches the rails and shows what the robot said.**
+  Click the bulb in the status bar: the rails go off, the icon goes hollow.
+  Click again: on, and amber. Then switch them from the Opentrons app and
+  Connect again: the bulb shows the robot's state, not the last click.
+
+- [ ] **The tip calibration switches the lights on.**
+  Leave the rails off after a picking run and start the pipette offset
+  calibration from the notebook: the log says "rail lights were off:
+  switching them on" before the upper camera is read, and they stay on
+  afterwards. Expected failure: a `TipCalibrationError` about the lights,
+  which means /robot/lights could not be read or the toggle did nothing.
+
+- [ ] **Return to rack puts the tip back where it came from.**
+  Pick up from C1, jog somewhere on Manual control, come back, Return: the
+  tip goes into C1, not A1. Drop in place with no tip on reads as a refusal
+  in the card, with the robot's own words, and nothing moves.
+
+## Commit 13 — pipette offset calibration
+
+- [ ] **A profile taught from the notebook is picked up as it is.**
+  With `tip_calib` in positions.json from the notebook, step 1 shows the
+  stored position and "Go to stored position" drives there at the module
+  height. Expected failure: the gantry arriving somewhere else, which would
+  mean the page and the notebook disagree on the name or the z.
+
+- [ ] **The whole run, with the touch-up, matches the notebook's numbers.**
+  Pick up a tip, open both cameras at the profile's default modes, run with
+  the profile's offset as the start. The log reads as the notebook's output
+  does — crosshair found, residual in px and mm, "after correction the tip
+  is N um from the crosshair" — then the touch-up block appears with the
+  lower camera live and the step at 0.05 mm. Nudge, Accept: the result
+  screen's offset is where the gantry ended up, `calibration.json` carries
+  it with `method: auto+manual` and the homography, and the status line on
+  the Profile page shows the new offset.
+
+- [ ] **Abort during the touch-up saves nothing.**
+  Start, wait for the touch-up, Abort. The log says so, `calibration.json`
+  is unchanged (compare its mtime), and the gantry stays where it was.
+
+- [ ] **No tip, no run.**
+  Drop the tip and open step 3: Start is greyed and the checks name the
+  reason. Pick one up on the Labware page and the check clears without
+  leaving the tab.
+
+- [ ] **The lower camera at the wrong mode is refused before anything moves.**
+  Open the lower camera at 2000×1500 (the picking clip's mode) and Start:
+  `TipCalibrationError` about the calibrated mode, and the gantry has not
+  moved. This is the check DESIGN section 3 says cost a whole run in silence.

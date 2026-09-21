@@ -12,10 +12,15 @@ same act, and a second D-pad would be a second place for the step list and the
 soft limits to drift.
 
 `shortcut_host` is the widget the key bindings are registered on, normally the
-page: `WidgetWithChildrenShortcut` then covers the camera view beside the panel
-as well, which is where the operator is looking. They are disabled while the
-panel is hidden, because two pages each holding one would otherwise both claim
-the arrow keys and leave Qt to guess between them.
+page. They are `WindowShortcut`: while the panel is on screen the keys reach
+the robot from anywhere in the window, whatever has focus — the camera view,
+the page list on the left, a combo box that was just clicked. The cv2 window
+behaves the same way, and it is what an operator with one hand on the keyboard
+and eyes on the picture expects; a shortcut that works only while the right
+widget has focus is one that silently stops working after a click somewhere
+else. They are disabled while the panel is hidden, because two pages each
+holding one would otherwise both claim the arrow keys and leave Qt to guess
+between them.
 
 The layout is jog's, not a new one
 ----------------------------------
@@ -279,21 +284,21 @@ class JogPanel(QWidget):
     def _install_shortcuts(self, host: QWidget) -> None:
         """One shortcut per Qt spelling of every bound key in the layout.
 
-        Registered on `host` rather than on the panel, so they also fire when
-        the focus is on the camera view beside it.
-
-        WidgetWithChildrenShortcut: these reach the robot while that host has
-        focus and nowhere else. A global hotkey would drive it from whatever
-        application the operator happened to be typing in, which is the reason
-        `jog_in_window` exists in preference to `jog_with_hotkeys`.
+        WindowShortcut: these reach the robot from anywhere in this window
+        while the host is visible, and from no other window. A global hotkey
+        would drive it from whatever application the operator happened to be
+        typing in, which is the reason `jog_in_window` exists in preference
+        to `jog_with_hotkeys`. Widgets that need a key for themselves still
+        get it: Qt asks the focus widget first, and a line edit or a spin box
+        keeps the characters it edits with. A plain button or a list does not
+        ask, so the arrow keys belong to the gantry even with focus there.
         """
         for key in LAYOUT:
             if key.command in UNBOUND:
                 continue
             for code in KEY_TO_QT[key.name]:
                 shortcut = QShortcut(QKeySequence(code), host)
-                shortcut.setContext(
-                    Qt.ShortcutContext.WidgetWithChildrenShortcut)
+                shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
                 if key.move is not None:
                     axis, direction = key.move
                     shortcut.activated.connect(
@@ -390,7 +395,15 @@ class JogPanel(QWidget):
                 "where the robot is."):
             return
         robot, controller = self.session.robot, self.controller
-        self._run(Worker(lambda: (robot.home_robot(), controller.status())))
+
+        def job():
+            # None, not the HTTP response: _job_done reads the first item as
+            # a MoveResult, and a home has no clamp or refusal to report.
+            robot.home_robot(verbose=False)
+            log.info("homed")
+            return None, controller.status()
+
+        self._run(Worker(job))
 
     def _retract(self) -> None:
         if not self._confirm(
@@ -412,7 +425,26 @@ class JogPanel(QWidget):
             self, title, detail,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
-        return answer is QMessageBox.StandardButton.Yes
+        # `==`, not `is`: the answer can come back as a plain int (the profile
+        # page has the same note), and `is` never matches it.
+        return answer == QMessageBox.StandardButton.Yes
+
+    # -- for the pages that host one -----------------------------------------
+
+    @property
+    def busy(self) -> bool:
+        """A step is in flight. A page that reads the pose after the operator
+        is done should wait for this to clear first."""
+        return self._busy()
+
+    def set_step(self, value: float) -> None:
+        """Choose the step from outside, e.g. 0.05 mm for a touch-up. A value
+        not in the list is still set on the controller; the chooser then
+        shows nothing selected rather than the wrong number."""
+        if self.controller is None:
+            return
+        self.controller.step = float(value)
+        self._set_step(float(value))
 
     # -- the worker ----------------------------------------------------------
 
@@ -546,8 +578,11 @@ class JogPanel(QWidget):
         usable = enabled and self.controller is not None
         for widget in self._movers:
             widget.setEnabled(usable)
+        # Only while on screen: a robot connect enables every panel, and a
+        # window-wide shortcut on a hidden page would compete with the one on
+        # the page that is showing. hideEvent keeps this true afterwards.
         for shortcut in self._shortcuts:
-            shortcut.setEnabled(usable)
+            shortcut.setEnabled(usable and self.isVisible())
         self.goto_button.setEnabled(usable and self.saved.count() > 0)
 
     def showEvent(self, event) -> None:

@@ -826,6 +826,91 @@ Pages build themselves from `theme/factory.py` rather than constructing
 are: restyling means editing one module, and so does the next discovery of this
 kind.
 
+### The deck is told, not remembered
+
+`gui/pages/labware.py` is where the run learns what is on the deck: a slot is
+clicked, a definition is chosen, and the session issues `load_labware` — or
+`move_labware('offDeck')` for what was there. The catalogue is the two places
+`config.labware` already reads, the custom files in `labware/` (uploaded into
+the run before loading; the upload is idempotent, so it is repeated here rather
+than trusted to have happened at connect) and the stock definitions from
+`opentrons-shared-data`, which the robot holds already.
+
+The page keeps no record of what it asked for. After every load or unload the
+session re-reads the run (`refresh_run_state`) and the deck is drawn from
+that, because the run state is the only thing `move_to_well` will act on and a
+page that remembered its own version would be the one place the two could
+disagree. It is the same rule `Routine.check_labware` follows from the other
+side. Loading into an occupied slot empties it first, in one job and with both
+steps logged: the robot refuses to load over labware it believes is there, and
+an operator asking for a plate in slot 5 has already decided what is in slot 5.
+
+Tips live on the same page, because a tip comes from a rack in a slot. Pick
+up, drop in place, drop in the trash, return to the rack: four session
+methods, each wrapper call checked with `require_ok`, since a tip command
+the robot declines is answered 201 like one it performed.
+
+**The tip is the robot's answer, never this application's note.** A tip is
+the first reason the robot crashes into something: it adds fifty-odd
+millimetres to the pipette, and a move planned without it drives that length
+into whatever is below. The case that does it is an operator who believes
+the robot knows about a tip it does not, or the reverse — a tip picked up
+from a notebook, a drop that was declined and not noticed. So the session
+does not remember what it asked for. `Session.read_tip` asks the robot,
+after connect and after every tip command, and the answer is a `Tip` with
+three states, of which the third is not the second: no tip, a tip on, and
+*could not tell*. An OT-2 has no tip sensor and `/instruments` reports
+none; the run's command log is the robot's own record, and
+`hardware.tips.tip_state` walks it backwards to the last tip command that
+succeeded, whoever issued it. Everything gates on that record both ways —
+no pick-up over a tip, no drop without one, nothing at all while it is
+unknown — and the status bar shows it on every page, in the one colour the
+shell owns.
+
+The trash needed a decision, and the first one was wrong. Robot software
+from 7.1 on does not put the OT-2's fixed trash into a run created over
+HTTP, and it cannot be loaded into one either: slot 12 "is not provided by
+the deck configuration". The trash is an *addressable area*, `fixedTrash`,
+and a tip goes into it with `moveToAddressableAreaForDropTip` and then
+`dropTipInPlace`. `ot2_api` has no method for the first, so
+`hardware.tips.drop_tip_in_trash` posts it. The lights are on the same bar,
+because a picking run leaves them off and the next thing an operator wants
+is to see the deck; and the pipette tip calibration switches them on itself
+before the upper camera looks, since a crosshair in the dark is not found.
+
+### The pipette offset is the notebook's section 4, with the operator in the loop
+
+`gui/pages/calibration.py` is two tabs, camera and pipette, in the order they
+have to happen in: the offset is measured through the pixel map the sweep
+produces. `calibration_pipette.py` drives `workflows.calibrate_pipette` with
+nothing changed in it, and the four steps are the notebook's cells: teach or
+confirm the disc position, name the starting offset, run, read.
+
+Three decisions. **The disc position is the profile's `tip_calib`**, the
+notebook's name, so a profile taught from either works in the other; with
+none stored the page is the jog panel and a Remember button, with one it is
+"go there" and "re-teach from here", and the run drives there itself first
+as the notebook does. **The routine needs a tip and asks the robot** —
+`Session.tip`, the command-log record — and is refused on anything but "a
+tip is on", because an offset measured with no tip sends every pick to the
+wrong place and looks like a number. **The manual touch-up is
+`jog_in_window` with Qt in the loop**: the workflow calls `manual_touch_up`
+from its thread and reads the final pose when it returns, so the callback
+emits a signal, the GUI shows the lower camera and a 0.05 mm jog panel, and
+Accept releases a `threading.Event`; Abort releases it with a flag that
+becomes an exception before anything is saved. The profile is written by
+the workflow on that return — Accept is the operator looking at the tip on
+the crosshair, which is the act the camera tab's Save button is — and
+skipping the touch-up saves the automatic result, as `manual_touch_up=None`
+does in the notebook.
+
+In `--mock` there is no disc and no model, so `gui/tip_detector.py` has a
+stand-in that fabricates the two views from the gantry pose with a fixed
+error built in. The routine's arithmetic runs unchanged on it and the saved
+offset is the starting one plus that error plus any nudge, which the result
+screen says in so many words; a stand-in that produced a plausible number
+without saying so would be the worst thing on the page.
+
 ### Manual control is a third backend, not a third layout
 
 `gui/pages/manual.py` drives the same `JogController` as `jog_in_window` and
@@ -844,10 +929,14 @@ with that reason and filtered out of the help rather than quietly dropped.
 
 Two consequences of PgUp and PgDn being an axis: the control panel is not a
 `QScrollArea`, which would take those keys for scrolling before the shortcut
-saw them, and the saved-positions list is `NoFocus` for the same reason. The
-shortcuts are `WidgetWithChildrenShortcut`, so they reach the robot only while
-this page has focus — which is the argument for `jog_in_window` over the global
-hotkeys, kept.
+saw them, and the saved-positions list is `NoFocus` for the same reason — as
+is the page list in the window's shell, which otherwise took the arrows for
+its own selection and changed the page where a step in Y was meant. The
+shortcuts are `WindowShortcut`, active while the panel is on screen and
+whatever has focus, and disabled with the panel when its page is hidden so
+the two panels never compete for a key. That is still one window and not the
+whole desktop — the argument for `jog_in_window` over the global hotkeys,
+kept.
 
 Every step goes through a worker, because `move_relative` blocks on HTTP.
 `JogController` already refuses a second move while one is in flight, which is

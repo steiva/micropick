@@ -1,7 +1,7 @@
 """The window everything else sits in.
 
 A list on the left and a stack on the right, assembled by hand rather than from
-a structural framework: the navigation is five fixed entries and a framework
+a structural framework: the navigation is a handful of fixed entries and a framework
 would decide the window's shape, the page lifecycle and the theme along with
 it. Those are exactly the three things this application needs to keep.
 
@@ -17,14 +17,18 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize
+import qtawesome as qta
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QMainWindow,
-                               QStackedWidget, QStatusBar, QWidget)
+                               QStackedWidget, QStatusBar, QToolButton,
+                               QWidget)
 
 from . import log_bridge
-from .pages import calibration, log, manual, picking, profile, routine
-from .session import MOCK_PROFILE_NAME, Session
+from .pages import (calibration, labware, log, manual, picking, profile,
+                    routine)
+from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
+from .workers import Worker
 
 if TYPE_CHECKING:                       # app imports this module; annotations
     from .app import Options            # are strings, so the cycle is only a
@@ -38,6 +42,7 @@ _log = logging.getLogger(__name__)
 # rest of the application reaches a page; the title is what is on screen.
 PAGES = (
     ("profile", profile.TITLE, profile.ProfilePage),
+    ("labware", labware.TITLE, labware.LabwarePage),
     ("manual", manual.TITLE, manual.ManualPage),
     ("calibration", calibration.TITLE, calibration.CalibrationPage),
     ("picking", picking.TITLE, picking.PickingPage),
@@ -47,13 +52,25 @@ PAGES = (
 
 NAV_WIDTH = 200
 
+# The one colour this shell owns. A tip on the pipette is the first reason
+# the robot crashes into something, and the indicator that says so has to be
+# seen from across the room, on every page, in either theme - which is what
+# the palette cannot promise and a fixed amber can.
+TIP_ON = "#f0a030"
+ICON_PX = 18
+
 
 class StatusBar(QStatusBar):
-    """Profile, robot and cameras, permanently visible.
+    """Profile, robot, cameras, the tip and the lights, permanently visible.
 
     Permanent widgets rather than `showMessage`: a transient message is
-    replaced by the next one, and these three answer "what is this application
+    replaced by the next one, and these answer "what is this application
     currently attached to", which is never a transient question.
+
+    The tip indicator shows the robot's record, not this application's: it
+    is set from `Session.tip_changed`, which is re-read from the run's command
+    log after connect and after every tip command. Three states, and the
+    third is not the second: no tip, a tip on, and *could not tell*.
     """
 
     def __init__(self, parent: QWidget | None = None):
@@ -61,11 +78,32 @@ class StatusBar(QStatusBar):
         self._profile = QLabel()
         self._robot = QLabel()
         self._cameras = QLabel()
-        for label in (self._profile, self._robot, self._cameras):
-            self.addPermanentWidget(label)
+
+        self._tip_icon = QLabel()
+        self._tip = QLabel()
+        tip = QWidget()
+        row = QHBoxLayout(tip)
+        row.setContentsMargins(SPACING, 0, SPACING, 0)
+        row.setSpacing(SPACING // 2)
+        row.addWidget(self._tip_icon)
+        row.addWidget(self._tip)
+
+        # Checkable, so the bulb's own state is the robot's last answer and a
+        # click asks for the other one. Not connected to anything here: the
+        # window wires it to the session through a worker.
+        self.lights = QToolButton()
+        self.lights.setCheckable(True)
+        self.lights.setAutoRaise(True)
+        self.lights.setToolTip("Rail lights")
+
+        for widget in (self._profile, self._robot, self._cameras, tip,
+                       self.lights):
+            self.addPermanentWidget(widget)
         self.show_profile(None)
         self.show_robot("not connected")
         self.show_cameras([])
+        self.show_tip(None)
+        self.show_lights(None)
 
     def show_profile(self, name: str | None) -> None:
         self._profile.setText(f"profile: {name or 'none'}")
@@ -75,6 +113,47 @@ class StatusBar(QStatusBar):
 
     def show_cameras(self, labels: list[str]) -> None:
         self._cameras.setText(f"cameras: {', '.join(labels) or 'none'}")
+
+    def show_tip(self, tip: Tip | None) -> None:
+        """None: no run, so there is nothing to say. Otherwise the record."""
+        if tip is None:
+            self._tip_icon.clear()
+            self._tip.setText("")
+            self._tip_icon.setToolTip("")
+            return
+        if tip.attached:
+            icon = qta.icon("mdi6.eyedropper", color=TIP_ON)
+            self._tip.setText(f"<b style='color:{TIP_ON}'>{tip.describe()}</b>")
+            hint = "The robot reports a tip on the pipette. Every move is " \
+                   "that much lower than it looks."
+        elif tip.attached is None:
+            icon = qta.icon("mdi6.help-circle-outline", color=TIP_ON)
+            self._tip.setText(f"<b style='color:{TIP_ON}'>tip: unknown</b>")
+            hint = "The robot's tip state could not be read. Re-read it on " \
+                   "the Labware page before moving anything."
+        else:
+            icon = qta.icon("mdi6.eyedropper-off")
+            self._tip.setText("no tip")
+            hint = "The robot reports no tip on the pipette."
+        self._tip_icon.setPixmap(icon.pixmap(ICON_PX, ICON_PX))
+        self._tip_icon.setToolTip(hint)
+        self._tip.setToolTip(hint)
+
+    def show_lights(self, on: bool | None) -> None:
+        """None: not connected, or not readable; the button is then off."""
+        self.lights.setEnabled(on is not None)
+        self.lights.blockSignals(True)
+        self.lights.setChecked(bool(on))
+        self.lights.blockSignals(False)
+        if on is None:
+            self.lights.setIcon(qta.icon("mdi6.lightbulb-outline"))
+            self.lights.setToolTip("Rail lights: not connected")
+        elif on:
+            self.lights.setIcon(qta.icon("mdi6.lightbulb-on", color=TIP_ON))
+            self.lights.setToolTip("Rail lights are on. Click to switch off.")
+        else:
+            self.lights.setIcon(qta.icon("mdi6.lightbulb-off-outline"))
+            self.lights.setToolTip("Rail lights are off. Click to switch on.")
 
 
 class MainWindow(QMainWindow):
@@ -88,6 +167,10 @@ class MainWindow(QMainWindow):
         self.nav.setObjectName("nav")
         self.nav.setFixedWidth(NAV_WIDTH)
         self.nav.setUniformItemSizes(True)
+        # The mouse chooses pages; the keyboard drives the robot. A list with
+        # focus takes the arrow keys for its own selection, and on the manual
+        # page that is a page change where a step in Y was meant.
+        self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.stack = QStackedWidget()
 
         # Row height in Python rather than in the stylesheet. qdarktheme
@@ -129,6 +212,10 @@ class MainWindow(QMainWindow):
         self.session.robot_state_changed.connect(self.status.show_robot)
         self.session.camera_opened.connect(self._show_cameras)
         self.session.camera_closed.connect(self._show_cameras)
+        self.session.tip_changed.connect(self._show_tip)
+        self.session.lights_changed.connect(self.status.show_lights)
+        self.status.lights.clicked.connect(self._toggle_lights)
+        self._lights_worker: Worker | None = None
         self.status.show_robot(self.session.robot_state)
 
         # Installed before anything is loaded, so a failure during start-up
@@ -169,6 +256,33 @@ class MainWindow(QMainWindow):
 
     def _show_cameras(self, _label: str) -> None:
         self.status.show_cameras(self.session.open_cameras)
+
+    def _show_tip(self, tip) -> None:
+        self.status.show_tip(tip if self.session.robot is not None else None)
+
+    def _toggle_lights(self, checked: bool) -> None:
+        """The click asks for the state the button now shows; the robot's
+        answer, through lights_changed, is what the button settles on."""
+        if self._lights_worker is not None and self._lights_worker.running:
+            self.status.show_lights(self.session.lights)
+            return
+        if self.session.robot is None:
+            return
+        self.status.lights.setEnabled(False)
+        worker = Worker(self.session.set_lights, checked)
+        self._lights_worker = worker
+        worker.finished.connect(self._lights_done)
+        worker.failed.connect(self._lights_failed)
+        worker.start()
+
+    def _lights_done(self, _result=None) -> None:
+        self._lights_worker = None
+        self.status.show_lights(self.session.lights)
+
+    def _lights_failed(self, reason: str) -> None:
+        self._lights_worker = None
+        _log.error("lights: %s", reason)
+        self.status.show_lights(self.session.lights)
 
     def show_page(self, name: str) -> None:
         """Bring a page to the front by name, keeping the list in step."""

@@ -79,3 +79,32 @@ def test_hardware_reexports_still_work():
     from micropick.hardware import labware as hw
     assert hw.LabwareDefinition is labware.LabwareDefinition
     assert callable(hw.list_definitions) and callable(hw.load_definition)
+
+
+@requires_shared_data
+def test_shared_definitions_lists_the_catalogue():
+    stock = labware.shared_definitions()
+    # Whatever the installed version ships, the OT-2 tip racks are in it, and
+    # every entry is the newest version of its own load name.
+    assert "opentrons_96_tiprack_300ul" in stock
+    assert all(name == d.load_name and d.source == "shared"
+               for name, d in stock.items())
+    assert stock["opentrons_96_tiprack_300ul"].category == "tipRack"
+    single = labware.shared_definition("opentrons_96_tiprack_300ul")
+    assert stock["opentrons_96_tiprack_300ul"].version == single.version
+
+
+def test_category_is_read_and_optional(tmp_path):
+    data = _write_def(tmp_path, "plain")
+    assert labware.local_definitions(tmp_path)["plain"].category == ""
+    data["metadata"]["displayCategory"] = "wellPlate"
+    (tmp_path / "plain.json").write_text(json.dumps(data))
+    assert labware.local_definitions(tmp_path)["plain"].category == "wellPlate"
+
+
+def test_is_tiprack_reads_the_parameter(tmp_path):
+    data = _write_def(tmp_path, "rack")
+    assert labware.local_definitions(tmp_path)["rack"].is_tiprack is False
+    data["parameters"]["isTiprack"] = True
+    (tmp_path / "rack.json").write_text(json.dumps(data))
+    assert labware.local_definitions(tmp_path)["rack"].is_tiprack is True

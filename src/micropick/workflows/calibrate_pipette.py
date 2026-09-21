@@ -41,8 +41,8 @@ import numpy as np
 from ..config.schema import CameraHomography, PipetteOffset, TipTarget
 from ..core.calibration.homography import HomographyError, HomographyReport
 from ..core.calibration.pixel_map import PixelMap
-from ..hardware.protocols import (Camera, Robot, move_relative,
-                                  move_to, xyz)
+from ..hardware.protocols import (Camera, Robot, lights_on, move_relative,
+                                  move_to, set_lights, xyz)
 from .calibrate_homography import homography_from_views
 
 __all__ = ["Detection", "PatternView", "TipDetector", "OffsetResult",
@@ -378,6 +378,22 @@ def calibrate_pipette_offset(
 
     target = target or TipTarget()
     approach = np.asarray(target.approach_offset, dtype=float)
+
+    # --- lights on, and known to be on --------------------------------------
+    # The upper camera finds the crosshair by the rail lights, and a picking
+    # run leaves them off. Checked and switched rather than assumed, and left
+    # on afterwards: the calibration does not own the lights, it needs them.
+    before = lights_on(robot)
+    if before is None:
+        log("warning: the rail lights cannot be read; make sure they are on")
+    elif not before:
+        log("rail lights were off: switching them on for the calibration")
+        set_lights(robot, True)
+        if lights_on(robot) is not True:
+            raise TipCalibrationError(
+                "the rail lights are off and could not be switched on; the "
+                "upper camera cannot find the crosshair without them")
+        time.sleep(settle_s)             # let the exposure settle
 
     # --- upper camera: where is the crosshair, in robot coordinates ---------
     log("upper camera: locating the crosshair")
