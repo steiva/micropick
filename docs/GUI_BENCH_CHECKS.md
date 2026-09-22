@@ -596,3 +596,33 @@ static until the session owns them.
   tab's step 1 shows Move open and Positions folded; the check tab the
   other way round. Each opens on its triangle and stays open while the page
   does.
+
+## Commit 19 — planning a plate with the mouse
+
+- [ ] **The plate list is what the deck holds, and nothing else.**
+  Load a tip rack and a plate from the Labware page, then open Routine: the
+  list offers the plate by slot and not the tip rack, and the mini deck
+  shows both where they are. Click the plate's slot on the deck and it is
+  the one in the list. Expected failure: a plate offered that is not on the
+  deck, which is what the old list of every definition in `labware/` did.
+
+- [ ] **All four ways of selecting work on the real plate.**
+  Click a well; Ctrl-click three more; drag a box over a block; click a
+  column number and then a row letter. Shift takes away by any of them. The
+  selection is the white ring, and the count in the box does not change as
+  the selection does.
+
+- [ ] **A count goes into every selected well at once.**
+  Select a column, set 3: every well in it reads 3. Select two of them, set
+  0: they leave the plan and read their names again. The line under the
+  buttons says how many are selected, what they hold, and what the plan
+  adds up to.
+
+- [ ] **A 384 and a 1536 are both plannable.**
+  On the 384 the numbers still fit; on the 1536 the wells are dots with no
+  numbers, and the row and column headers are the only way to select a line
+  - which is what they are for. Both create a routine whose summary counts
+  what was planned.
+
+- [ ] **Routine comes before Picking in the list on the left.**
+  And the plan made here is the one the Picking page's run delivers into.

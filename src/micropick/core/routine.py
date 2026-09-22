@@ -35,7 +35,7 @@ import pandas as pd
 
 from ..config.labware import LabwareDefinition, resolve_definition
 
-__all__ = ["Destination", "Routine", "RoutineError", "STRATEGIES",
+__all__ = ["grid_labels", "Destination", "Routine", "RoutineError", "STRATEGIES",
            "empty_plate_table", "plan_from_table"]
 
 # OT-2 addressable slots. Slot 12 is the fixed trash, never a destination.
@@ -68,6 +68,17 @@ def _row_of(name: str) -> str:
 def _col_of(name: str, fallback: int) -> object:
     m = _NAME.match(name)
     return int(m.group(2)) if m else fallback
+
+
+def grid_labels(ordering: list[list[str]]) -> tuple[list[str], list]:
+    """The row and column labels of a plate, from its ordering.
+
+    Public because the GUI draws the same grid and must not parse well
+    names itself: `int(well[1:])` is how the old code found a column, and it
+    broke on the first plate with a two-letter row. One parser, here.
+    """
+    rows, cols, _, _ = _grid(ordering)
+    return rows, cols
 
 
 def _grid(ordering: list[list[str]]):

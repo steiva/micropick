@@ -46,8 +46,11 @@ PAGES = (
     ("labware", labware.TITLE, labware.LabwarePage),
     ("manual", manual.TITLE, manual.ManualPage),
     ("calibration", calibration.TITLE, calibration.CalibrationPage),
-    ("picking", picking.TITLE, picking.PickingPage),
+    # Routine before Picking: the plan is what a run picks into, and an
+    # operator who meets the pages in order meets them in the order the
+    # work happens.
     ("routine", routine.TITLE, routine.RoutinePage),
+    ("picking", picking.TITLE, picking.PickingPage),
     ("log", log.TITLE, log.LogPage),
 )
 

@@ -270,3 +270,29 @@ def test_modules_survive_a_reconnect(app, tmp_path, monkeypatch):
     s.set_deck_modules([])
     assert s.robot.slot_offsets["data"] == []
     s.shutdown()
+
+
+# -- what a routine may deliver into ------------------------------------------
+
+def test_the_routine_page_offers_only_what_can_be_delivered_into(app, session,
+                                                                 monkeypatch):
+    """A tip rack has wells and an ordering like a plate. Delivering a
+    cuboid into one is a mistake nothing downstream would catch, so the
+    Routine page's list is filtered by the definition's own category."""
+    from micropick.gui.pages import routine as routine_page
+
+    session.load_labware(definition("opentrons_96_tiprack_300ul"), 10)
+    session.load_labware(definition("corning_96_wellplate_360ul_flat"), 5)
+    session.load_labware(definition("nest_12_reservoir_15ml"), 2)
+
+    class _Page:
+        session = None
+    page = _Page()
+    page.session = session
+    offered = routine_page.RoutinePage._loaded_plates(page)
+    slots = {slot: load_name for slot, load_name, _ in offered}
+    assert "10" not in slots                       # the tip rack
+    assert slots["5"] == "corning_96_wellplate_360ul_flat"
+    assert slots["2"] == "nest_12_reservoir_15ml"   # a reservoir is a target
+    # Sorted by slot, so the list reads like the deck.
+    assert [slot for slot, _, _ in offered] == ["2", "5"]

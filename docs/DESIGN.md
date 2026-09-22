@@ -805,6 +805,54 @@ class that runs any blocking callable on a `QThread`, translating the
 `on_progress(i, total)` and `log=` callbacks the workflows already take into
 signals. Those signatures are not adapted to Qt; the worker fits them.
 
+### Planning a plate: selecting and planning are two acts
+
+The plate map used to have one gesture. A click toggled a well into the plan
+with whatever the spin box held, so "these twelve wells, three objects each"
+was not something an operator could say: it was twelve clicks with the box on
+3, and changing one's mind about the count meant doing it again. A 384 or a
+1536 made that arithmetic obvious.
+
+So the mouse now changes the **selection** and nothing else - a click
+replaces it, Ctrl adds, Shift removes, a dragged box takes what its marquee
+encloses, and a row letter or a column number takes the whole line with the
+same three modifiers - and the count is applied to whatever is selected. One
+rule, `PlateView._apply`, for clicks, boxes and headers, so the three cannot
+drift apart.
+
+The spin box does **not** follow the selection. It was made to, and that was
+wrong twice over: the count is already written inside each planned well, so
+the box has nothing to report, and a box that reset itself to the well just
+clicked made a value impossible to apply to a second group. It holds the
+value being applied and keeps it.
+
+The drawing carries three things at once because the operator asks three
+questions of one picture: a faint outline is unplanned, an accent outline is
+planned with its count inside, the fill is how much has arrived, and over
+all of them a white ring is the selection - white being a decision rather
+than a class of thing, as in `viz.overlays`.
+
+The labels come from `core.routine.grid_labels`, the parser the planning
+table already uses. The view parses no well names: `int(well[1:])` is how the
+old code found a column and it broke on the first plate with a two-letter
+row.
+
+### The destination is a plate the robot already has
+
+It used to be any definition in `labware/`, with a slot typed in beside it,
+so a routine could name a plate that was not on the deck in a slot that held
+a tip rack, and nothing found out until the first well move. The list is the
+run's own labware, filtered by the definition's `displayCategory`: a tip
+rack, the trash and an adapter are not destinations, a reservoir and a tube
+rack are. Beside it is the same `DeckView` the Labware page draws, because
+"which one is the destination" is a question about the deck and is answered
+by pointing at it. The deck shows the profile's modules with the meaning
+they have on the other page - a raised floor - and nothing else, since one
+mark with two meanings is a picture that needs a legend.
+
+Routine comes before Picking in the navigation for the same reason the plan
+comes before the run.
+
 ### Saved positions are the profile's, and only the profile's
 
 There were two. `JogController.saved` is an in-memory dict with generated
