@@ -210,3 +210,63 @@ def test_camera_controls_are_written_back_only_where_the_profile_names_them(sess
     reloaded = session.load_profile("mock")
     assert reloaded.cameras["under"].controls["focus"] == 777.0
     session.close_camera("under")
+
+
+# -- deck modules -------------------------------------------------------------
+#
+# The profile's modules reach the wrapper at connect and attach to labware
+# at load; the run is read back for labware that went in without them.
+
+from micropick.config.schema import DeckModule                # noqa: E402
+
+PLATFORM = DeckModule(slots=[5, 8, 9], offset=[0.0, 0.0, 64.2], name="platform")
+
+
+def test_modules_are_registered_at_connect_and_attach_at_load(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    s = Session(Options(mock=True))
+    s.load_profile("mock")
+    s.set_deck_modules([PLATFORM])
+    s.probe_robot()
+    s.new_run()
+    assert s.robot.slot_offsets["data"] == [{"slots": [5, 8, 9], "offset": (0.0, 0.0, 64.2)}]
+    on_module = s.load_labware(definition("corning_96_wellplate_360ul_flat"), 5)
+    off_module = s.load_labware(definition("opentrons_96_tiprack_300ul"), 10)
+    assert on_module.offset == (0.0, 0.0, 64.2)
+    assert off_module.offset is None
+    assert s.deck_problems() == []
+    s.shutdown()
+
+
+def test_labware_loaded_before_the_module_is_a_problem_until_reloaded(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    s = Session(Options(mock=True))
+    s.load_profile("mock")
+    s.probe_robot()
+    s.new_run()
+    s.load_labware(definition("corning_96_wellplate_360ul_flat"), 5)   # no module yet
+    s.set_deck_modules([PLATFORM])
+    (problem,) = s.deck_problems()
+    assert problem.slot == "5" and problem.applied is None
+    assert "hit the module" in problem.describe()
+    s.reload_labware(5)
+    assert s.deck_problems() == []
+    assert s.run_state.labware["5"].offset == (0.0, 0.0, 64.2)
+    # A different offset than the profile's is a problem too.
+    s.set_deck_modules([DeckModule(slots=[5], offset=[0.0, 0.0, 70.0])])
+    assert s.deck_problems()[0].applied == (0.0, 0.0, 64.2)
+    s.shutdown()
+
+
+def test_modules_survive_a_reconnect(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    s = Session(Options(mock=True))
+    s.load_profile("mock")
+    s.set_deck_modules([PLATFORM])
+    s.probe_robot(); s.new_run()
+    s.disconnect_robot()
+    s.probe_robot(); s.adopt_run()
+    assert len(s.robot.slot_offsets["data"]) == 1        # replaced, not doubled
+    s.set_deck_modules([])
+    assert s.robot.slot_offsets["data"] == []
+    s.shutdown()

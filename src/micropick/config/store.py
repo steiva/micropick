@@ -31,7 +31,8 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from .. import paths
-from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, PickingConfig,
+from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, DeckConfig,
+                     PickingConfig,
                      ProfileMeta)
 
 __all__ = ["Profile", "ProfileError", "LegacyProfileError",
@@ -42,6 +43,7 @@ CALIBRATION_FILE = "calibration.json"
 PICKING_FILE = "picking.json"
 CAMERAS_FILE = "cameras.json"
 POSITIONS_FILE = "positions.json"
+DECK_FILE = "deck.json"
 HISTORY_DIR = "history"
 KEEP_HISTORY = 10
 
@@ -133,13 +135,17 @@ class Profile:
 
     def __init__(self, meta: ProfileMeta, calibration: Calibration,
                  picking: PickingConfig, cameras: dict[str, CameraSpec],
-                 positions: dict[str, tuple[float, float, float]], path: Path):
+                 positions: dict[str, tuple[float, float, float]], path: Path,
+                 deck: DeckConfig | None = None):
         self.meta = meta
         self.calibration = calibration
         self.picking = picking
         self.cameras = cameras
         self.positions = positions
         self.path = path
+        # Optional in the signature so a profile built in a test or in the
+        # mock needs no deck; an installation without deck.json has none.
+        self.deck = deck if deck is not None else DeckConfig()
 
     # -- convenience --------------------------------------------------------
 
@@ -217,6 +223,10 @@ class Profile:
         self.save_picking()
         self.save_cameras()
         self.save_positions()
+        self.save_deck()
+
+    def save_deck(self) -> None:
+        _write_model(self.path / DECK_FILE, self.deck)
 
     def save_meta(self) -> None:
         _write_model(self.path / META_FILE, self.meta)
@@ -351,7 +361,12 @@ def load_profile(name: str, *, directory: Path | None = None) -> Profile:
                 raise ProfileError(f"{pos_path}: position {name!r} is not x, y, z")
             positions[name] = tuple(float(v) for v in value)
 
-    return Profile(meta, calibration, picking, cameras, positions, path)
+    deck_path = path / DECK_FILE
+    deck = (_validate(DeckConfig, _read_json(deck_path), deck_path)
+            if deck_path.is_file() else DeckConfig())
+
+    return Profile(meta, calibration, picking, cameras, positions, path,
+                   deck=deck)
 
 
 def create_profile(name: str, *, camera_label: str | None = None,

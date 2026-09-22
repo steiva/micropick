@@ -49,8 +49,15 @@ def create_app(argv: list[str] | None = None) -> QApplication:
 
 
 def run(options: Options) -> int:
-    """Show the main window and run the event loop. Returns the exit code."""
+    """Show the main window and run the event loop. Returns the exit code.
+
+    Maximised rather than `show()`: every page here is a camera view beside
+    a panel of cards, and both want the room. Maximised and not true full
+    screen, because the title bar and the taskbar are how an operator gets
+    to the notebook and the Opentrons app while the robot is running, and a
+    window that hides them is a window that has to be fought.
+    """
     app = create_app()
     window = MainWindow(options)
-    window.show()
+    window.showMaximized()
     return app.exec()

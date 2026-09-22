@@ -22,7 +22,7 @@ import numpy as np
 
 from .. import paths
 from ..hardware.protocols import xyz
-from ..workflows.calibrate_pipette import PatternView, TipDetector
+from ..workflows.calibrate_pipette import Detection, PatternView, TipDetector
 
 __all__ = ["load_tip_detector", "StandInTipDetector", "STANDIN_ERROR_MM",
            "STANDIN_NOTE"]
@@ -56,6 +56,20 @@ class StandInTipDetector:
         self.error = np.asarray(error_mm, dtype=float)
         self.mm_per_px = mm_per_px
         self._anchor: np.ndarray | None = None
+
+    def detect(self, frame) -> list[Detection]:
+        """The five crosshairs of a disc at the frame's centre, invented.
+
+        The check page asks for points rather than a whole view, and in
+        --mock there is no disc to find. These are laid out like a real
+        one so the page's geometry, its clicking and its arithmetic are
+        exercised; they are not a measurement and the page says so.
+        """
+        height, width = frame.shape[:2]
+        centre = np.array([width / 2.0, height / 2.0])
+        r = min(width, height) / 5.0
+        offsets = [(0.0, 0.0), (r, 0.0), (-r, 0.0), (0.0, r), (0.0, -r)]
+        return [Detection("point", centre + np.array(o), 0.9) for o in offsets]
 
     def view(self, camera, *, spacing_mm: float, frames: int = 5,
              need_tip: bool = False, **_ignored) -> PatternView:

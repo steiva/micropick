@@ -92,6 +92,19 @@ class StatusBar(QStatusBar):
         self._camera_buttons: dict[str, QToolButton] = {}
         self._open_cameras: list[str] = []
 
+        # The deck hazard: labware in a module slot without the module's
+        # offset, which is a crash on the first well move. Hidden until
+        # there is one; then amber, on every page, until it is fixed.
+        self._deck_icon = QLabel()
+        self._deck = QLabel()
+        self._deck_box = QWidget()
+        deck_row = QHBoxLayout(self._deck_box)
+        deck_row.setContentsMargins(SPACING, 0, SPACING, 0)
+        deck_row.setSpacing(SPACING // 2)
+        deck_row.addWidget(self._deck_icon)
+        deck_row.addWidget(self._deck)
+        self._deck_box.hide()
+
         self._tip_icon = QLabel()
         self._tip = QLabel()
         tip = QWidget()
@@ -109,8 +122,8 @@ class StatusBar(QStatusBar):
         self.lights.setAutoRaise(True)
         self.lights.setToolTip("Rail lights")
 
-        for widget in (self._profile, self._robot, self._cameras, tip,
-                       self.lights):
+        for widget in (self._profile, self._robot, self._cameras,
+                       self._deck_box, tip, self.lights):
             self.addPermanentWidget(widget)
         self.show_profile(None)
         self.show_robot("not connected")
@@ -152,6 +165,22 @@ class StatusBar(QStatusBar):
             button.setToolTip(f"{label}: open - click to show its feed" if is_open
                               else f"{label}: closed - click to open it and show "
                                    f"its feed")
+
+    def show_deck_problems(self, problems: list) -> None:
+        """Slots holding labware without their module's offset; [] hides."""
+        if not problems:
+            self._deck_box.hide()
+            return
+        slots = ", ".join(p.slot for p in problems)
+        self._deck_icon.setPixmap(
+            qta.icon("mdi6.alert", color=TIP_ON).pixmap(ICON_PX, ICON_PX))
+        self._deck.setText(f"<b style='color:{TIP_ON}'>DECK: slot{'s' if len(problems) > 1 else ''} "
+                           f"{slots} without module offset</b>")
+        hint = ("\n".join(p.describe() for p in problems)
+                + "\nFix it on the Labware page before any well move.")
+        self._deck_icon.setToolTip(hint)
+        self._deck.setToolTip(hint)
+        self._deck_box.show()
 
     def show_tip(self, tip: Tip | None) -> None:
         """None: no run, so there is nothing to say. Otherwise the record."""
@@ -250,6 +279,9 @@ class MainWindow(QMainWindow):
         self.session.camera_opened.connect(self._show_cameras)
         self.session.camera_closed.connect(self._show_cameras)
         self.session.tip_changed.connect(self._show_tip)
+        self.session.labware_changed.connect(self._show_deck_problems)
+        self.session.profile_changed.connect(self._show_deck_problems)
+        self.session.robot_state_changed.connect(self._show_deck_problems)
         self.session.lights_changed.connect(self.status.show_lights)
         self.status.lights.clicked.connect(self._toggle_lights)
         self._lights_worker: Worker | None = None
@@ -345,6 +377,9 @@ class MainWindow(QMainWindow):
             window = FeedWindow(label, self)
             self._feeds[label] = window
         return window
+
+    def _show_deck_problems(self, _arg=None) -> None:
+        self.status.show_deck_problems(self.session.deck_problems())
 
     def _show_tip(self, tip) -> None:
         self.status.show_tip(tip if self.session.robot is not None else None)

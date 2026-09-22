@@ -524,6 +524,67 @@ class PickingConfig(BaseModel):
         return self.model_dump()
 
 
+class DeckModule(BaseModel):
+    """Something bolted to the deck that the robot does not know about.
+
+    The picking platform and the tip calibration module sit in slots and
+    raise whatever labware is put on them; the robot's own model of the deck
+    has the slot's floor where it always was. Without being told, it plans
+    every well move 64 mm too low and drives the tip into the module. The
+    telling is a labware offset on the run: `ot2_api.add_slot_offsets`
+    registers it per slot, and `load_labware` attaches it to each labware
+    loaded there afterwards - *afterwards* is the word, which is why this is
+    in the profile and registered at connect rather than typed in a cell.
+
+    `offset` is the labware's displacement from the slot's own origin, in
+    the deck frame; a module that only raises the plate is (0, 0, height).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    slots: Annotated[list[Annotated[int, Field(ge=1, le=11)]], Field(min_length=1)]
+    offset: Vec3
+    name: str = ""
+
+    @property
+    def height_mm(self) -> float:
+        return float(self.offset[2])
+
+    def describe(self) -> str:
+        slots = ", ".join(str(s) for s in self.slots)
+        x, y, z = self.offset
+        where = f"({x:+g}, {y:+g}, {z:+g}) mm" if (x or y) else f"+{z:g} mm"
+        return f"slot{'s' if len(self.slots) > 1 else ''} {slots}: {where}" \
+               + (f" - {self.name}" if self.name else "")
+
+
+class DeckConfig(BaseModel):
+    """deck.json: the modules on this installation's deck."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    modules: list[DeckModule] = Field(default_factory=list)
+
+    def module_for(self, slot) -> DeckModule | None:
+        wanted = int(slot)
+        for module in self.modules:
+            if wanted in module.slots:
+                return module
+        return None
+
+    @model_validator(mode="after")
+    def _one_module_per_slot(self):
+        seen: dict[int, int] = {}
+        for index, module in enumerate(self.modules):
+            for slot in module.slots:
+                if slot in seen:
+                    raise ValueError(
+                        f"slot {slot} is claimed by two modules; a slot can "
+                        f"carry one offset")
+                seen[slot] = index
+        return self
+
+
 class ProfileMeta(BaseModel):
     """profile.json. Read first, before anything else in the directory."""
 

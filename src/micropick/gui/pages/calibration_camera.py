@@ -24,6 +24,34 @@ declares: `on_progress` becomes the bar, `log` becomes lines in the panel and
 in the application log, and `cancel` is the same `threading.Event` the workflow
 has always taken. No adapter, and `workflows/calibrate_camera` learns nothing
 about Qt.
+
+Step 1 watches for the marker while the operator puts it down
+-------------------------------------------------------------
+Placing the marker is done by eye, and the one thing the eye cannot check is
+whether the camera sees it: a marker face down, or printed through the back
+of the paper, is mirrored, and a mirrored marker is in no dictionary at all.
+Undetected looks the same as badly lit. So while step 1 is on screen the
+frame on the widget is passed to `gui.marker_watch` a few times a second,
+and what it finds is drawn over the picture — the outline it was detected
+by, its own top edge, its first corner — with the id and which way up it is.
+Not detected is reported as loudly as detected, with what it could be.
+
+The detection runs in a `Worker` like any blocking call: 16 ms a frame at
+2592x1944, four times that when the marker is not where it was expected and
+the other dictionaries are tried. It reads the frame the view is already
+showing rather than the camera, so what is drawn belongs to the picture it
+is drawn on.
+
+Step 3 draws what the sweep itself is tracking
+----------------------------------------------
+`calibrate_camera` already offers `on_frame(frame, corners, i, total)` at
+every pose, and those corners are the ones being fitted — not a second
+detection run beside it, which could disagree with the fit and would be
+worse than nothing. The callback runs on the worker's thread, so it emits a
+signal and the drawing happens here; the frame it is handed is dropped,
+because the view is showing the live camera and what matters is where the
+sweep believes the marker is. A pose where the tracker saw nothing draws
+nothing, which is the pose worth noticing.
 """
 
 from __future__ import annotations
@@ -33,13 +61,15 @@ import logging
 import cv2
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QPalette
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QPlainTextEdit, QProgressBar, QSpinBox,
                                QStackedWidget, QVBoxLayout, QWidget)
 
+from ...viz import markers
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
+from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
@@ -56,16 +86,16 @@ log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 420
 
-# The dictionary the marker was printed from. Offered rather than assumed:
-# nothing in the profile records it, `MarkerScene` renders 6X6_250, and a
-# detector built on the wrong dictionary finds nothing at all — which looks
-# exactly like bad lighting.
-DICTIONARIES = {
-    "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-    "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
-    "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
-    "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11,
-}
+# The dictionaries live in `gui.marker_watch`, which is the other user of
+# them: the live watch on step 1 tries every one of them, and the combo on
+# step 2 offers the same list. Re-exported so nothing that imported it from
+# here breaks.
+__all__ += ["DICTIONARIES"]
+
+# How often step 1 looks for the marker. Three times a second is faster than
+# a hand moves a marker and a twentieth of what the detection costs, so the
+# grab loop and the view keep the rest.
+WATCH_MS = 330
 
 STEPS = ("Centre the marker", "Parameters", "Sweep", "Report")
 
@@ -78,11 +108,19 @@ LIMIT_PEN = (235, 128, 80)       # orange
 
 
 class CameraCalibration(QWidget):
+    # Emitted from the sweep's thread with the corners it just tracked, or
+    # None for a pose where the marker was not seen. A signal, so the
+    # drawing happens on the thread that owns the widget.
+    pose_tracked = Signal(object)
+
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
         self._result = None                  # (pmap, report, sweep)
+        self._watch = MarkerWatch()
+        self._watch_worker: Worker | None = None
+        self._sighting = None
 
         self.stack = QStackedWidget(self)
         self.stack.addWidget(self._centre_step())
@@ -107,6 +145,12 @@ class CameraCalibration(QWidget):
         layout.addWidget(self.step_label)
         layout.addWidget(self.stack, 1)
         layout.addLayout(footer)
+
+        self.pose_tracked.connect(self._draw_tracked)
+
+        self._watch_timer = QTimer(self)
+        self._watch_timer.setInterval(WATCH_MS)
+        self._watch_timer.timeout.connect(self._watch_tick)
 
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)
@@ -142,6 +186,22 @@ class CameraCalibration(QWidget):
             "is only valid for them.")
         note.setWordWrap(True)
         box.layout().addWidget(note)
+        column.addWidget(box)
+
+        box = card(panel)
+        box.layout().addWidget(heading("Marker", 2))
+        self.marker_state = QLabel("waiting for a frame…")
+        self.marker_state.setWordWrap(True)
+        self.marker_state.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.marker_state)
+        # Appears only when the marker is found under a dictionary other than
+        # the one the sweep is set to: one click rather than a trip to step 2
+        # and back, and it says which one it is changing to.
+        self.use_dictionary_button = secondary_button("", panel)
+        self.use_dictionary_button.clicked.connect(self._use_found_dictionary)
+        self.use_dictionary_button.hide()
+        box.layout().addWidget(self.use_dictionary_button)
         column.addWidget(box)
         column.addWidget(self.jog, 1)
 
@@ -183,6 +243,8 @@ class CameraCalibration(QWidget):
 
         self.dictionary = QComboBox(page)
         self.dictionary.addItems(DICTIONARIES)
+        # The live watch on step 1 reports against whatever is chosen here.
+        self.dictionary.currentTextChanged.connect(lambda _t: self._refresh())
 
         for label, widget, hint in (
                 ("Marker side", self.marker_side,
@@ -311,6 +373,67 @@ class CameraCalibration(QWidget):
         widget.showGrid(x=True, y=True, alpha=0.2)
         return widget
 
+    # -- watching for the marker ---------------------------------------------
+
+    def _watch_tick(self) -> None:
+        """One look, if there is something to look at and nothing in flight."""
+        if not self.isVisible() or self.stack.currentIndex() != 0:
+            return
+        if self._watch_worker is not None and self._watch_worker.running:
+            return
+        frame = self.view.held_frame
+        if frame is None:
+            return
+        watch, wanted = self._watch, self.dictionary.currentText()
+        worker = Worker(watch.look, frame, wanted)
+        self._watch_worker = worker
+        # Bound methods, not lambdas: Qt takes a connection's thread from the
+        # receiver, and these touch the view.
+        worker.finished.connect(self._watch_done)
+        worker.failed.connect(self._watch_failed)
+        worker.start()
+
+    def _watch_done(self, sighting) -> None:
+        if self.sender() is not self._watch_worker:
+            return
+        self._watch_worker = None
+        self._sighting = sighting
+        self.view.set_overlay_items(sighting.items())
+        self._show_sighting()
+
+    def _watch_failed(self, reason: str) -> None:
+        if self.sender() is not self._watch_worker:
+            return
+        self._watch_worker = None
+        self._sighting = None
+        self.view.set_overlay_items([])
+        self.marker_state.setText(reason)
+        self.use_dictionary_button.hide()
+
+    def _show_sighting(self) -> None:
+        sighting = self._sighting
+        if sighting is None:
+            self.marker_state.setText(
+                "Open a camera to see whether the marker is detected."
+                if self._camera() is None else "waiting for a frame…")
+            self.use_dictionary_button.hide()
+            return
+        self.marker_state.setText(sighting.describe())
+        wrong = sighting.found and not sighting.as_asked
+        self.use_dictionary_button.setVisible(wrong)
+        if wrong:
+            self.use_dictionary_button.setText(f"Use {sighting.dictionary}")
+
+    def _use_found_dictionary(self) -> None:
+        """Set step 2's dictionary to the one the marker was found in."""
+        if self._sighting is None or not self._sighting.found:
+            return
+        index = self.dictionary.findText(self._sighting.dictionary)
+        if index >= 0:
+            self.dictionary.setCurrentIndex(index)
+            log.info("dictionary set to %s, where the marker was found",
+                     self._sighting.dictionary)
+
     # -- running -------------------------------------------------------------
 
     def _camera(self):
@@ -337,11 +460,13 @@ class CameraCalibration(QWidget):
                      f"{self.marker_side.value():g} mm")
 
         # calibrate_camera declares on_progress, cancel and log, so the worker
-        # passes all three without an adapter.
+        # passes all three without an adapter. on_frame is named outright,
+        # because it is this page's and not the convention's.
         worker = Worker(calibrate_camera, self.session.robot, camera, detector,
                         marker_side_mm=self.marker_side.value(),
                         grid_n=self.grid_n.value(),
-                        degree=self.degree.value())
+                        degree=self.degree.value(),
+                        on_frame=self._on_pose)
         self._worker = worker
         worker.progress.connect(self._on_progress)
         worker.message.connect(self._on_message)
@@ -349,6 +474,28 @@ class CameraCalibration(QWidget):
         worker.failed.connect(self._on_failed)
         worker.start()
         self._refresh()
+
+    def _on_pose(self, frame, corners, index, total) -> None:
+        """The sweep's own hook, on the sweep's own thread. Emits and returns.
+
+        The frame is not carried across: the view is already showing the
+        live camera, and a 15 MB array per pose in Qt's event queue is the
+        mistake `CameraView` exists to avoid.
+        """
+        self.pose_tracked.emit(None if corners is None else np.asarray(corners))
+
+    def _draw_tracked(self, corners) -> None:
+        if corners is None:
+            self.run_view.set_overlay_items([])
+            return
+        self.run_view.set_overlay_items(
+            markers.items(corners, self._sweep_marker_id(),
+                          label=f"tracked  ·  {markers.orientation(corners)}"))
+
+    def _sweep_marker_id(self) -> int | None:
+        """What step 1 saw, if it saw anything: the sweep adopts the marker
+        nearest the centre and does not report which id that was."""
+        return getattr(self._sighting, "marker_id", None)
 
     def _cancel(self) -> None:
         if self._worker is None or not self._worker.running:
@@ -371,6 +518,7 @@ class CameraCalibration(QWidget):
     def _on_finished(self, result) -> None:
         self._worker = None
         self._result = result
+        self.run_view.set_overlay_items([])
         pmap, report, sweep = result
         self._append("fit complete")
         log.info("camera calibration fitted:\n%s", report)
@@ -393,6 +541,7 @@ class CameraCalibration(QWidget):
         do it.
         """
         self._worker = None
+        self.run_view.set_overlay_items([])
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
         # A cancellation is not a failure and reads as one if it is not named.
@@ -511,6 +660,9 @@ class CameraCalibration(QWidget):
         self.next_button.setEnabled(index < self.stack.count() - 1 and not running)
         self.next_button.setVisible(index < self.stack.count() - 1)
 
+        if index == 0:
+            self._show_sighting()
+
         ready = self.session.robot is not None and self._camera() is not None
         self.start_button.setEnabled(ready and not running)
         self.cancel_button.setEnabled(running)
@@ -540,7 +692,19 @@ class CameraCalibration(QWidget):
         camera = self.session.camera(label) if label else None
         self.view.set_camera(camera)
         self.run_view.set_camera(camera)
+        # Last frame's marker belongs to last frame's camera.
+        self._sighting = None
+        self.view.set_overlay_items([])
+        self._show_sighting()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._refresh_cameras()
+        self._watch_timer.start()
+
+    def hideEvent(self, event) -> None:
+        """A page nobody is looking at does not detect. The worker in flight
+        is left to finish; its result lands on a hidden widget and costs one
+        repaint that never happens."""
+        self._watch_timer.stop()
+        super().hideEvent(event)

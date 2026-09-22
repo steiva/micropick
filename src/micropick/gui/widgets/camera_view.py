@@ -108,6 +108,12 @@ class CameraView(QWidget):
     """Shows one camera. Owns no device and closes nothing."""
 
     frame_shown = Signal()
+    # A left click on the picture, in **sensor** pixels: the same
+    # coordinates detection produces and `transform` maps, so a page can
+    # compare a click with a detection without knowing about zoom or crop.
+    # Not emitted for a click outside the picture, or on the controls that
+    # sit over it - those are widgets and take their own clicks.
+    clicked = Signal(float, float)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -320,6 +326,16 @@ class CameraView(QWidget):
         self._rebuild()
         self.update()
         event.accept()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self._image is not None:
+            position = event.position()
+            if self._shown.contains(position.toPoint()):
+                inverse, ok = self._transform.inverted()
+                if ok:
+                    point = inverse.map(position)
+                    self.clicked.emit(point.x(), point.y())
+        super().mousePressEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
         if self._zoom != ZOOM_MIN:

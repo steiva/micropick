@@ -805,6 +805,25 @@ class that runs any blocking callable on a `QThread`, translating the
 `on_progress(i, total)` and `log=` callbacks the workflows already take into
 signals. Those signatures are not adapted to Qt; the worker fits them.
 
+### A wrapped paragraph in a side panel
+
+`theme.factory.scroll_column` and `theme.factory.card` share one bug
+between them, and it is worth naming because it eats exactly the text that
+matters. A word-wrapped `QLabel` answers `minimumSizeHint` with about one
+line: wrapping means it can be any height, so its *minimum* is small. A
+`QScrollArea` with `widgetResizable` sizes its widget to the viewport
+unless the minimum says otherwise, so the labels are given one line each
+and the rest is clipped - with no scrollbar, because as far as the scroll
+area is concerned everything fits.
+
+Two halves fix it. `card()` enables `heightForWidth` on the card's size
+policy, which Qt does not infer from the layout, so the column above it
+asks how tall the card needs to be at this width. `_ScrollColumn` keeps the
+inner widget's minimum height at what its layout answers, remeasuring on a
+zero-timer after any layout change - deferred because a label's new text
+reaches its own geometry before it reaches the layouts above it, and asked
+in the handler the column answers with the height the old text needed.
+
 ### Theme
 
 `gui/theme/` is the only module that knows what the application looks like.
@@ -856,6 +875,29 @@ side. Loading into an occupied slot empties it first, in one job and with both
 steps logged: the robot refuses to load over labware it believes is there, and
 an operator asking for a plate in slot 5 has already decided what is in slot 5.
 
+**Deck modules are a fact in the profile, not a command to remember.** The
+picking platform and the calibration module raise the labware in slots 5, 8
+and 9 by 64.2 mm, and the robot's deck model has the slot floor where it
+always was; a well move planned without that is a tip driven into the
+module. The notebook told the wrapper once per session -
+`add_slot_offsets([5, 8, 9], (0, 0, 64.2))` - and the wrapper attaches a
+labware offset to each labware loaded *afterwards*. That word is the whole
+hazard: the cell forgotten, or run after the plate was loaded, or a run
+carried on from a session that never ran it, all look fine until the first
+well move. So `deck.json` names the modules (`DeckModule`: slots, offset,
+name), `Session.register_deck_modules` puts them on the wrapper at every
+connect before anything can be loaded, and the Labware page edits them.
+
+The check runs the other way too, because registering is only half. The
+run reports the offset on every labware it holds (`LoadedLabware.offset`,
+from the run's `labwareOffsets`), and `Session.deck_problems` compares that
+with the profile: labware in a module slot with no offset, or another one,
+is a `DeckProblem`. It is drawn in the hazard amber on the deck, named in
+the Deck modules card with the one button that fixes it - load it again, so
+the offset attaches - and shown in the status bar on every page until it is
+gone. Loading through the page cannot produce one; a notebook or an adopted
+run can, and that is the case this exists for.
+
 Tips live on the same page, because a tip comes from a rack in a slot. Pick
 up, drop in place, drop in the trash, return to the rack: four session
 methods, each wrapper call checked with `require_ok`, since a tip command
@@ -888,6 +930,65 @@ and a tip goes into it with `moveToAddressableAreaForDropTip` and then
 because a picking run leaves them off and the next thing an operator wants
 is to see the deck; and the pipette tip calibration switches them on itself
 before the upper camera looks, since a crosshair in the dark is not found.
+
+### Step 1 of the camera calibration shows what the detector sees
+
+Putting the marker under the camera is done by eye, and the one thing the
+eye cannot check is the one that matters. A marker lying face down, or
+printed through the back of the paper, reaches the camera **mirrored**, and
+a mirrored marker is in no ArUco dictionary at all - it is not "harder to
+detect", it is absent. On screen that is indistinguishable from bad
+lighting, a wrong dictionary, or a marker just out of frame, and the sweep
+only says so at its first pose, minutes later, as "marker not detected at
+the starting pose".
+
+So while step 1 is on screen the frame the view is already showing is
+passed to `gui.marker_watch` about three times a second, in a `Worker`, and
+what it finds is drawn over the picture by `viz.markers` - the outline it
+was detected by, the marker's own top edge, its first corner, its id and
+which way up it is. The overlay is `overlays.Item` primitives like every
+other, so the QPainter renderer draws them and a notebook could draw the
+same list with cv2.
+
+Two decisions inside it. **Every dictionary is tried, not only the chosen
+one**, because a marker found under another one is a fact worth a sentence
+and a button rather than a silence that looks like every other silence; the
+extra three detections cost 50 ms and only when the first finds nothing.
+And **not detected is reported as loudly as detected**: the card names the
+mirrored case first, since it is the one an operator cannot otherwise
+diagnose, and the other possibilities after it. Drawing nothing is the
+answer, and the answer needs words.
+
+### The check tab is the notebook's `click_to_go`
+
+Two calibrations can each be internally excellent and jointly wrong: the map
+is fitted against its own held-out poses, the offset against its own
+crosshair, and neither knows about a focus ring that moved between them or a
+tip that is not the tip the offset was measured with. `pages/
+calibration_check.py` is the third tab and the check on both together - the
+operator clicks a crosshair on the picture and the pipette goes there.
+
+It keeps the notebook's three pieces. The click **snaps to the nearest
+detection** within 60 px rather than using the cursor's pixel, because
+hitting a pixel with a mouse is not a thing and the detector's box centre is
+sub-pixel. The target is `pixel_to_robot` as the notebook defines it,
+`pmap.to_robot(u, v, gantry)` plus the profile's offset, with the pose read
+next to the frame rather than after it. And after the move the **same
+crosshair is found again from the new pose** and its deck coordinate
+recomputed: it should be the same point, and the difference is the map
+disagreeing with itself across the field, accumulated as a mean and a
+maximum in micrometres. That last one is the reason the notebook cell
+exists - the field is measured against itself, with no ruler and no second
+instrument.
+
+One thing is not the notebook's. Clicking a picture moves the gantry, so it
+does not until "Click to move" is switched on, and it is off again every
+time the tab is opened; with it off a click reports the coordinates and
+nothing moves, which is the notebook's `move=False`. The Z is the
+notebook's 67 mm, on screen and editable, because it is the number that
+decides whether the tip clears the calibration module. Nothing here writes
+to the profile: a check that recorded its own disagreement would be a
+calibration, and if it reads badly the answer is to calibrate again.
 
 ### The pipette offset is the notebook's section 4, with the operator in the loop
 

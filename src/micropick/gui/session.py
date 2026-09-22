@@ -40,7 +40,8 @@ from PySide6.QtCore import QObject, Signal          # noqa: E402
 from .. import paths                                # noqa: E402
 from ..config import store                          # noqa: E402
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
-                             PickingConfig, ProfileMeta)
+                             DeckConfig, DeckModule, PickingConfig,
+                             ProfileMeta)
 from ..hardware import labware                      # noqa: E402
 from ..hardware.camera import CameraManager         # noqa: E402
 from ..hardware.labware import LoadedLabware        # noqa: E402
@@ -51,8 +52,8 @@ from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..workflows.jog import Limits                  # noqa: E402
 
-__all__ = ["Session", "SessionError", "RunState", "Tip", "MOCK_PROFILE_NAME",
-           "REUSABLE_STATUSES"]
+__all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
+           "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
 
 log = logging.getLogger(__name__)
 
@@ -147,6 +148,31 @@ class Tip:
         where = (f" from slot {self.slot} {self.well}"
                  if self.returnable else "")
         return "TIP ON" + where
+
+
+@dataclass(frozen=True)
+class DeckProblem:
+    """Labware the run holds in a module slot without the module's offset.
+
+    The one deck mistake that ends in a crash: the robot believes the plate
+    sits on the slot floor, 64 mm below where it is, and drives the tip
+    into the module on the first well move. It is found by comparing the
+    profile's modules with the offsets the run reports on each labware, and
+    fixed by loading the labware again - the offset attaches at load.
+    """
+
+    slot: str
+    load_name: str
+    expected: tuple[float, float, float]
+    applied: tuple[float, float, float] | None
+
+    def describe(self) -> str:
+        have = ("no offset" if self.applied is None else
+                f"offset ({self.applied[0]:+g}, {self.applied[1]:+g}, "
+                f"{self.applied[2]:+g})")
+        return (f"slot {self.slot}: {self.load_name} was loaded with {have}, "
+                f"but the profile puts a module of +{self.expected[2]:g} mm "
+                f"there. A well move will hit the module. Load it again.")
 
 
 class SessionError(RuntimeError):
@@ -462,6 +488,72 @@ class Session(QObject):
             raise SessionError("no run to load labware into: connect the "
                                "robot on the Profile page first")
 
+    # -- deck modules --------------------------------------------------------
+    #
+    # The picking platform and the calibration module raise the labware in
+    # their slots by an amount the robot's deck model does not have. The
+    # profile says which slots and by how much; the wrapper is told at every
+    # connect and attaches the offset to each labware loaded afterwards; and
+    # the run is read back to find labware that was loaded without it.
+
+    def register_deck_modules(self) -> list[DeckModule]:
+        """Tell the wrapper the profile's modules. Blocking on nothing: the
+        table is client-side, and it reaches the robot per load."""
+        if self._api is None:
+            return []
+        modules = list(self.profile.deck.modules) if self.profile else []
+        # Replaced, not appended: the wrapper refuses a slot list it already
+        # has, and a reconnect or an edit must not fight the old table.
+        self._api.slot_offsets = {"data": []}
+        for module in modules:
+            self._api.add_slot_offsets(list(module.slots), tuple(module.offset))
+        if modules:
+            log.info("deck modules registered for loading: %s",
+                     "; ".join(m.describe() for m in modules))
+        return modules
+
+    def deck_problems(self) -> list[DeckProblem]:
+        """Labware the run holds in a module slot without that module's
+        offset. From the last run state read; nothing is asked here."""
+        if self.robot is None or self.run_state is None or self.profile is None:
+            return []
+        problems = []
+        for slot, entry in sorted(self.run_state.labware.items()):
+            module = self.profile.deck.module_for(slot)
+            if module is None:
+                continue
+            expected = tuple(float(v) for v in module.offset)
+            applied = entry.offset
+            if applied is None or any(abs(a - e) > 0.05
+                                      for a, e in zip(applied, expected)):
+                problems.append(DeckProblem(slot, entry.load_name, expected,
+                                            applied))
+        return problems
+
+    def reload_labware(self, slot) -> LoadedLabware:
+        """Load again what the run holds in `slot`, so the module offset
+        attaches. Moves nothing; the labware goes off deck and comes back
+        with a new id."""
+        entry = self._labware_in(slot)
+        definition = labware.resolve_definition(entry.load_name)
+        return self.load_labware(definition, int(slot))
+
+    def set_deck_modules(self, modules: list[DeckModule]) -> None:
+        """Replace the profile's modules and save; re-register if connected.
+        The run's labware is judged again afterwards, since what counts as
+        a problem just changed."""
+        if self.profile is None:
+            raise SessionError("no profile to save deck modules into")
+        self.profile.deck = DeckConfig(modules=list(modules))
+        self.profile.save_deck()
+        log.info("deck modules saved to profile %r: %s", self.profile.name,
+                 "; ".join(m.describe() for m in modules) or "none")
+        if self._api is not None:
+            self.register_deck_modules()
+        self.profile_changed.emit(self.profile)
+        if self.run_state is not None:
+            self.labware_changed.emit(self.run_state)
+
     # -- tips ----------------------------------------------------------------
     #
     # Four acts, all blocking and all of them **moving the gantry** except
@@ -619,6 +711,10 @@ class Session(QObject):
     def _ready(self, origin: str) -> None:
         self.robot = self._api
         self.run_origin = origin
+        # Before anything is loaded through this session: the offset attaches
+        # to labware at load time, so a module registered later is a module
+        # the plates already on the deck know nothing about.
+        self.register_deck_modules()
         self.robot_state_changed.emit(self.robot_state)
         # Asked, not assumed. A run carried on from before this application
         # started may have a tip on it, and that is the one to know about.

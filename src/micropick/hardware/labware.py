@@ -40,6 +40,23 @@ class LoadedLabware:
     version: int
     namespace: str
     labware_id: str
+    # The labware offset the run applied to this labware, from the run's
+    # own labwareOffsets list, or None when none was attached. This is how
+    # a deck module the robot was told about shows up - and how one it was
+    # not told about does not.
+    offset: tuple[float, float, float] | None = None
+
+
+def _offset_vectors(run: dict) -> dict[str, tuple[float, float, float]]:
+    out = {}
+    for entry in run.get("labwareOffsets", []) or []:
+        vector = entry.get("vector") or {}
+        try:
+            out[entry["id"]] = (float(vector["x"]), float(vector["y"]),
+                                float(vector["z"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
 
 
 def _parse_run_labware(run_data: list) -> dict[str, LoadedLabware]:
@@ -53,6 +70,7 @@ def _parse_run_labware(run_data: list) -> dict[str, LoadedLabware]:
     for run in run_data:
         if not run.get("current"):
             continue
+        offsets = _offset_vectors(run)
         for lw in run.get("labware", []):
             location = lw.get("location")
             if not isinstance(location, dict) or "slotName" not in location:
@@ -64,7 +82,8 @@ def _parse_run_labware(run_data: list) -> dict[str, LoadedLabware]:
             out[str(location["slotName"])] = LoadedLabware(
                 slot=str(location["slotName"]),
                 load_name=lw.get("loadName", parts[1] if len(parts) == 3 else ""),
-                version=version, namespace=namespace, labware_id=lw.get("id", ""))
+                version=version, namespace=namespace, labware_id=lw.get("id", ""),
+                offset=offsets.get(lw.get("offsetId")))
     return out
 
 

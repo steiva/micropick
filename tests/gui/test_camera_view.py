@@ -15,7 +15,7 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, QPointF, Qt                      # noqa: E402
-from PySide6.QtGui import QWheelEvent                               # noqa: E402
+from PySide6.QtGui import QMouseEvent, QWheelEvent                  # noqa: E402
 from PySide6.QtWidgets import QApplication                          # noqa: E402
 
 from micropick.gui.widgets.camera_view import ZOOM_MAX, CameraView  # noqa: E402
@@ -65,6 +65,14 @@ def _wheel(app, view, pos, notches):
                         QPoint(0, int(120 * notches)), Qt.MouseButton.NoButton,
                         Qt.KeyboardModifier.NoModifier,
                         Qt.ScrollPhase.NoScrollPhase, False)
+    app.sendEvent(view, event)
+    app.processEvents()
+
+
+def _click(app, view, point):
+    event = QMouseEvent(QMouseEvent.Type.MouseButtonPress, point,
+                        view.mapToGlobal(point), Qt.MouseButton.LeftButton,
+                        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
     app.sendEvent(view, event)
     app.processEvents()
 
@@ -121,4 +129,48 @@ def test_focus_slider_only_for_a_camera_with_a_focus(app):
     view._apply_focus()
     assert focused.sets == [{"focus": 640}]
     assert view.focus_value.text() == "640"
+    view.close()
+
+
+def test_a_click_reports_the_sensor_pixel_under_it(app):
+    """The check page compares a click with a detection, and detections are
+    in sensor pixels: the view is the only thing that knows about the
+    widget's scale, its letterbox and the camera's crop."""
+    view = _view(app, _Camera("over", (800, 600)))
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    # Send the click where a known sensor pixel is drawn, and expect that
+    # pixel back.
+    # Not the outermost pixel: it maps to the drawn rectangle's own edge,
+    # where a rounded widget coordinate can land a pixel outside it. A
+    # crosshair that close to the frame edge is outside the map's coverage
+    # anyway.
+    for sensor in [(400.0, 300.0), (120.0, 90.0), (780.0, 20.0)]:
+        point = view.transform.map(QPointF(*sensor))
+        _click(app, view, point)
+        assert seen, f"no click reported for {sensor}"
+        assert abs(seen[-1][0] - sensor[0]) < 2 and abs(seen[-1][1] - sensor[1]) < 2
+    view.close()
+
+
+def test_a_click_survives_zoom_and_crop(app):
+    view = _view(app, _Camera("under", (800, 600), crop=0.5))
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    _wheel(app, view, QPointF(view.width() * 0.4, view.height() * 0.6), 3)
+    assert view.zoom > 1.0
+    # A cropped view shows the centred square, so pick a pixel inside it.
+    sensor = (400.0, 300.0)
+    point = view.transform.map(QPointF(*sensor))
+    _click(app, view, point)
+    assert seen and abs(seen[-1][0] - sensor[0]) < 2 and abs(seen[-1][1] - sensor[1]) < 2
+    view.close()
+
+
+def test_a_click_outside_the_picture_is_not_a_click_on_it(app):
+    view = _view(app, _Camera("over", (800, 200)))     # letterboxed top and bottom
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    _click(app, view, QPointF(view.width() / 2, 2.0))
+    assert seen == []
     view.close()

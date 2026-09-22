@@ -41,6 +41,20 @@ that go through other pages - jog on Manual control, then come back and drop
 - and a dialog would have to be dismissed to get there and reopened to
 finish. The controls stay where the rack is.
 
+**Deck modules are the one thing here that ends in a crash if forgotten.**
+The picking platform and the calibration module raise the labware in their
+slots by an amount the robot's deck model does not have; without being told,
+it plans every well move 64 mm too low. The telling is a labware offset,
+attached at load time to each labware loaded *after* the offset was
+registered - which is why it is not a command to remember but a fact in the
+profile (`deck.json`), registered by the session at every connect. What this
+page adds is the check the other way round: the run reports the offset on
+every labware it holds, and a plate in a module slot without one is drawn
+in the hazard colour on the deck, named in the Deck modules card with a
+button to load it again, and flagged in the status bar on every page. That
+is the case that was one forgotten cell away in the notebook: a plate loaded
+before the offsets, or a run carried on from a session that never set them.
+
 Loading and unloading are HTTP and go to a `Worker` like every blocking call.
 Neither moves the gantry; picking up a tip and dropping it in the trash or
 the rack do.
@@ -51,15 +65,17 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit,
-                               QListWidget, QListWidgetItem, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem,
+                               QVBoxLayout, QWidget)
 
 from ...config.labware import (LabwareDefinition, LabwareError,
                                local_definitions, shared_definitions)
+from ...config.schema import DeckModule
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading, primary_button, secondary_button
+from ..theme.factory import (card, combo_box, heading, primary_button,
+                             scroll_column, secondary_button)
 from ..widgets.deck_view import TRASH_SLOT, DeckView
 from ..workers import Worker
 
@@ -87,10 +103,10 @@ class LabwarePage(QWidget):
         self.deck.slot_clicked.connect(self._slot_clicked)
 
         panel = QWidget(self)
-        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
+        column.addWidget(self._modules_card())
         column.addWidget(self._slot_card())
         column.addWidget(self._tip_card())
         column.addWidget(self._definitions_card(), 1)
@@ -98,7 +114,7 @@ class LabwarePage(QWidget):
         body = QHBoxLayout()
         body.setSpacing(SPACING)
         body.addWidget(self.deck, 1)
-        body.addWidget(panel)
+        body.addWidget(scroll_column(panel, PANEL_WIDTH))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
@@ -114,6 +130,61 @@ class LabwarePage(QWidget):
         self._refresh()
 
     # -- construction --------------------------------------------------------
+
+    def _modules_card(self) -> QWidget:
+        """First on the panel, because it is the one that prevents a crash."""
+        box = card(self)
+        box.layout().addWidget(heading("Deck modules", 2))
+        self.modules_state = QLabel()
+        self.modules_state.setWordWrap(True)
+        self.modules_state.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.modules_state)
+
+        # The hazard, when there is one: its own label so it can be bold and
+        # amber, and a button that does the one thing that fixes it.
+        self.hazard = QLabel()
+        self.hazard.setWordWrap(True)
+        self.hazard.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.hazard.hide()
+        box.layout().addWidget(self.hazard)
+        self.reload_button = primary_button("Load again with the offset", self)
+        self.reload_button.clicked.connect(self._reload_problems)
+        self.reload_button.hide()
+        box.layout().addWidget(self.reload_button)
+
+        self.modules_list = QListWidget(self)
+        self.modules_list.setMaximumHeight(72)
+        self.modules_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        box.layout().addWidget(self.modules_list)
+
+        row = QHBoxLayout()
+        self.module_slots = QLineEdit(self)
+        self.module_slots.setPlaceholderText("slots, e.g. 5, 8, 9")
+        self.module_slots.setMaximumWidth(120)
+        self.module_height = QDoubleSpinBox(self)
+        self.module_height.setRange(-200.0, 200.0)
+        self.module_height.setDecimals(2)
+        self.module_height.setSingleStep(0.1)
+        self.module_height.setSuffix(" mm")
+        self.module_height.setToolTip("how much the module raises the labware")
+        self.module_name = QLineEdit(self)
+        self.module_name.setPlaceholderText("name (optional)")
+        row.addWidget(self.module_slots)
+        row.addWidget(self.module_height)
+        row.addWidget(self.module_name, 1)
+        box.layout().addLayout(row)
+        buttons = QHBoxLayout()
+        self.add_module_button = secondary_button("Add module", self)
+        self.add_module_button.clicked.connect(self._add_module)
+        self.remove_module_button = secondary_button("Remove selected", self)
+        self.remove_module_button.clicked.connect(self._remove_module)
+        buttons.addWidget(self.add_module_button)
+        buttons.addWidget(self.remove_module_button)
+        buttons.addStretch(1)
+        box.layout().addLayout(buttons)
+        return box
 
     def _slot_card(self) -> QWidget:
         box = card(self)
@@ -156,7 +227,7 @@ class LabwarePage(QWidget):
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Well"))
-        self.tip_well = QComboBox(self)
+        self.tip_well = combo_box(self)
         self.tip_well.setMinimumWidth(80)
         row.addWidget(self.tip_well)
         self.pick_button = primary_button("Pick up tip", self)
@@ -189,6 +260,9 @@ class LabwarePage(QWidget):
         box.layout().addWidget(self.filter)
 
         self.definitions = QListWidget(self)
+        # Tall enough to browse in: the column scrolls, so the list need not
+        # shrink to make room for the cards above it.
+        self.definitions.setMinimumHeight(260)
         self.definitions.currentItemChanged.connect(
             lambda _cur, _prev: self._refresh())
         self.definitions.itemDoubleClicked.connect(lambda _item: self._load())
@@ -318,6 +392,52 @@ class LabwarePage(QWidget):
         self._run(Worker(self.session.return_tip),
                   f"returning the tip to slot {tip.slot} {tip.well}")
 
+    # -- deck modules --------------------------------------------------------
+
+    def _add_module(self) -> None:
+        profile = self.session.profile
+        if profile is None:
+            return
+        text = self.module_slots.text().replace(";", ",").replace(" ", ",")
+        try:
+            slots = sorted({int(part) for part in text.split(",") if part})
+            if not slots:
+                raise ValueError("no slots")
+            module = DeckModule(slots=slots,
+                                offset=[0.0, 0.0, self.module_height.value()],
+                                name=self.module_name.text().strip())
+            self.session.set_deck_modules(list(profile.deck.modules) + [module])
+        except Exception as exc:                     # noqa: BLE001
+            self._say(f"not added: {exc}")
+            return
+        self.module_slots.clear()
+        self.module_name.clear()
+
+    def _remove_module(self) -> None:
+        profile = self.session.profile
+        row = self.modules_list.currentRow()
+        if profile is None or row < 0:
+            return
+        modules = list(profile.deck.modules)
+        del modules[row]
+        self.session.set_deck_modules(modules)
+
+    def _reload_problems(self) -> None:
+        """Load again every labware the run holds without its module's
+        offset, one after the other in one job."""
+        problems = self.session.deck_problems()
+        if not problems or self._busy() or self.session.robot is None:
+            return
+        session = self.session
+
+        def job():
+            for problem in problems:
+                session.reload_labware(problem.slot)
+
+        self._say("")
+        self._run(Worker(job), "loading again with the module offset: slots "
+                  + ", ".join(p.slot for p in problems))
+
     def _reread(self) -> None:
         if self._busy() or self.session.robot is None:
             return
@@ -400,11 +520,51 @@ class LabwarePage(QWidget):
         session = self.session
         busy = self._busy()
         connected = session.robot is not None
+        profile = session.profile
         state = session.run_state
         held = state.labware if (connected and state is not None) else {}
 
         self.deck.set_labware({slot: self._describe(entry)
                                for slot, entry in held.items()})
+
+        # -- deck modules
+        modules = list(profile.deck.modules) if profile is not None else []
+        self.deck.set_modules({str(slot): f"module +{m.height_mm:g} mm"
+                               for m in modules for slot in m.slots})
+        problems = session.deck_problems()
+        self.deck.set_problems({p.slot: p.describe() for p in problems})
+        current_rows = [self.modules_list.item(i).text()
+                        for i in range(self.modules_list.count())]
+        wanted_rows = [m.describe() for m in modules]
+        if current_rows != wanted_rows:
+            self.modules_list.clear()
+            self.modules_list.addItems(wanted_rows)
+        if profile is None:
+            self.modules_state.setText("No profile loaded.")
+        elif not modules:
+            self.modules_state.setText(
+                "No modules in the profile. If anything on the deck raises "
+                "the labware in its slot - the picking platform, the "
+                "calibration module - add it here, or the robot will plan "
+                "its well moves to the slot floor and hit it.")
+        elif connected:
+            self.modules_state.setText(
+                "Registered for loading: every labware loaded into these "
+                "slots from now on carries the module's offset.")
+        else:
+            self.modules_state.setText(
+                "Registered on the wrapper at connect; the offset attaches "
+                "to labware as it is loaded.")
+        if problems:
+            self.hazard.setText(
+                "<b style='color:#f0a030'>"
+                + "<br>".join(p.describe() for p in problems) + "</b>")
+        self.hazard.setVisible(bool(problems))
+        self.reload_button.setVisible(bool(problems))
+        self.reload_button.setEnabled(bool(problems) and not busy)
+        self.add_module_button.setEnabled(profile is not None and not busy)
+        self.remove_module_button.setEnabled(
+            profile is not None and not busy and bool(modules))
 
         definition = self.chosen_definition()
         entry = held.get(self._slot) if self._slot is not None else None

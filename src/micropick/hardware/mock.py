@@ -114,7 +114,11 @@ class MockRobot:
         # a minimal run model so loaded_labware() can be exercised: labware
         # entries carry the same fields the real run reports
         self._run_labware: list[dict] = []
+        self._run_offsets: list[dict] = []
         self._lw_counter = 0
+        # ot2_api's client-side table of slot offsets, same shape, so the
+        # session registers deck modules on the mock as on the wrapper.
+        self.slot_offsets = {"data": []}
         self.labware_dct: dict[str, str | None] = {str(i): None for i in range(1, 12)}
         # (labware_id, well) of the tip on the pipette, or None. Refusals
         # mirror the engine's: no picking up over a tip, no dropping without.
@@ -217,15 +221,39 @@ class MockRobot:
 
     # -- labware run model (mirrors the wrapper enough for loaded_labware) ----
 
+    def add_slot_offsets(self, slot_names, offset):
+        for entry in self.slot_offsets["data"]:
+            if entry["slots"] == list(slot_names):
+                raise ValueError(f"Offsets for slots {slot_names} already exist.")
+        self.slot_offsets["data"].append({"slots": list(slot_names),
+                                          "offset": tuple(offset)})
+
+    def get_offset_for_slot(self, slot):
+        for entry in self.slot_offsets["data"]:
+            if int(slot) in entry["slots"]:
+                return entry["offset"]
+        return None
+
     def load_labware(self, load_name, slot_name, namespace="opentrons",
                      version=1, verbose=False):
         self._lw_counter += 1
         lw_id = f"lw{self._lw_counter}"
-        self._run_labware.append({
+        entry = {
             "id": lw_id, "loadName": load_name,
             "definitionUri": f"{namespace}/{load_name}/{version}",
             "location": {"slotName": str(slot_name)},
-        })
+        }
+        # As the wrapper does: an offset registered for the slot is attached
+        # to the run and referenced by the labware, so the run reports it.
+        offset = self.get_offset_for_slot(slot_name)
+        if offset is not None:
+            offset_id = f"off{len(self._run_offsets) + 1}"
+            self._run_offsets.append({
+                "id": offset_id, "definitionUri": entry["definitionUri"],
+                "location": {"slotName": str(slot_name)},
+                "vector": {"x": offset[0], "y": offset[1], "z": offset[2]}})
+            entry["offsetId"] = offset_id
+        self._run_labware.append(entry)
         self.labware_dct[str(slot_name)] = lw_id
         self.calls.append(("load_labware", load_name, str(slot_name)))
         return lw_id
@@ -245,7 +273,8 @@ class MockRobot:
     def get_all_runs(self):
         payload = {"data": [{"id": "mock-run", "current": True, "status": "idle",
                              "pipettes": [{"id": "mock-pip"}],
-                             "labware": self._run_labware}],
+                             "labware": self._run_labware,
+                             "labwareOffsets": self._run_offsets}],
                    "meta": {"totalLength": 1}}
         return type("_Resp", (), {"text": __import__("json").dumps(payload)})()
 

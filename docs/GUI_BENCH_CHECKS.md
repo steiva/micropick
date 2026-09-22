@@ -482,3 +482,85 @@ static until the session owns them.
   in a window of its own, crosshair off, focus slider at the bottom. Close
   the window: the camera stays open. Close the camera on the Profile page:
   the window goes away. The window keeps its size and place between shows.
+
+## Commit 15 — deck modules
+
+- [ ] **The profile's modules reach the run without a cell being run.**
+  `profiles/lab_main/deck.json` carries slots 5, 8, 9 at +64.2 mm, the
+  notebook's `add_slot_offsets`. Connect, load the destination plate into
+  slot 5 from the Labware page, then `GET /runs/<id>`: the labware carries
+  an `offsetId` and the run's `labwareOffsets` has a vector of z 64.2 for
+  slot 5. Move to A1 top: the tip stops above the plate on the platform,
+  not 64 mm into it. Expected failure: no offsetId, which would mean the
+  wrapper's table was empty at load - the session registers it in `_ready`,
+  so look for a connect that did not go through it.
+
+- [ ] **A plate loaded from the notebook without the offset is flagged.**
+  From the notebook, `load_labware` a plate into slot 5 with no offsets set,
+  then Connect here and carry on with the run. The deck shows slot 5 in
+  amber with the module band, the Deck modules card names it, the status
+  bar reads "DECK: slot 5 without module offset" on every page. "Load again
+  with the offset" clears all three, and the run shows the new labware with
+  its offset.
+
+## Commit 16 — the marker on the feed
+
+- [ ] **The marker is outlined the moment the camera sees it.**
+  On step 1 with the upper camera open, slide the marker into the frame:
+  a green outline, a yellow edge along its top, a white dot on its first
+  corner, and "id N · as printed". Turn it a quarter turn: the caption
+  follows and the dot moves with the marker's corner. Expected failure: an
+  outline that lags the picture by more than about a third of a second,
+  which would mean the watch is reading the camera rather than the frame
+  the view is showing.
+
+- [ ] **A marker face down is named as such.**
+  Put the marker down the wrong way up, or hold a sheet with the marker
+  printed on the far side. Nothing is drawn, and the card says a mirrored
+  marker is in no dictionary. This is the check the whole thing exists for:
+  before it, this looked exactly like bad lighting.
+
+- [ ] **A marker from another dictionary is found and offered.**
+  Hold up a 4X4 marker with the sweep set to DICT_6X6_250: it is outlined,
+  the card says which dictionary it is really in, and one click sets step 2
+  to it. Expected failure: nothing drawn at all, which would mean the other
+  dictionaries are not being tried.
+
+- [ ] **Nothing on that page costs the sweep anything.**
+  Start the sweep from step 3 and watch the frame rate in the caption: the
+  watch stops when step 1 is not the page on screen, so the sweep has the
+  camera to itself.
+
+## Commit 17 — the sweep's overlay, the check tab, a maximised window
+
+- [ ] **The sweep draws the marker it is tracking, pose by pose.**
+  Start the sweep and watch: at each pose the outline lands on the marker
+  and the caption reads "tracked". These are the corners being fitted, not
+  a second detection, so a pose where the outline does not appear is a pose
+  the tracker missed - and the log says the same thing a moment later.
+  Expected failure: an outline that stays where the marker was two poses
+  ago, which would mean `on_frame` is being called with stale corners.
+
+- [ ] **The check tab drives the tip to a crosshair, and the tip is there.**
+  With both calibrations saved and a tip on, open Check, Detect: every
+  crosshair on the disc is circled green, the map's reference pixel is a
+  red cross, anything outside the fitted area is grey. Switch on "Click to
+  move" and click one. The tip arrives over it at z 67 - look at it, that
+  is the whole point of the tab. Expected failure: the tip lands beside the
+  crosshair by a consistent amount in one direction, which is the pipette
+  offset being stale rather than the map being wrong.
+
+- [ ] **The map's consistency figure is in the tens of micrometres.**
+  Click four or five crosshairs across the field. The mean should be near
+  the sweep's own held-out error (about 24 µm at degree 3); a figure in
+  millimetres means the map and the camera no longer agree - focus, zoom or
+  mode - and the sweep needs running again.
+
+- [ ] **Nothing moves until it is armed.**
+  With "Click to move" off, clicking a crosshair prints the target and the
+  gantry does not move. Leave the tab and come back: it is off again.
+
+- [ ] **The window opens maximised on the bench display.**
+  `micropick-gui` fills the screen without being dragged, and the title bar
+  and taskbar are still there - the notebook and the Opentrons app have to
+  be reachable while a run is going.
