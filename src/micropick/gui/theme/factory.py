@@ -17,12 +17,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtWidgets import (QComboBox, QFrame, QLabel, QPushButton,
-                               QScrollArea, QVBoxLayout, QWidget)
+                               QScrollArea, QToolButton, QVBoxLayout, QWidget)
 
 from . import SPACING
 
 __all__ = ["primary_button", "secondary_button", "card", "heading",
-           "combo_box", "scroll_column"]
+           "combo_box", "scroll_column", "Section"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -151,10 +151,36 @@ class _ScrollColumn(QScrollArea):
         layout = self._inner.layout()
         if layout is None:
             return
+        self._fit_labels()
+        # invalidate, not merely activate: a layout caches the height it
+        # computed for a width, and the labels just changed theirs.
+        layout.invalidate()
         layout.activate()
         wanted = layout.heightForWidth(self._inner_width)
         if wanted > 0 and wanted != self._inner.minimumHeight():
             self._inner.setMinimumHeight(wanted)
+
+    def _fit_labels(self) -> None:
+        """Give every wrapped label a minimum height that is its own text.
+
+        The column's total height being right is not enough: a `QVBoxLayout`
+        distributing more than it needs hands each item its `sizeHint`, and
+        a word-wrapped label's size hint is the height of a line or two at
+        some width of the layout's choosing, not the height the text takes
+        at the width it actually got. The card keeps the smaller number and
+        the sentence is cut off inside it - with no scrollbar, because the
+        column above fits.
+
+        A minimum is the one thing a box layout will not take away, and it
+        is set from the width the label has right now, so a narrower window
+        recomputes it rather than staying tall.
+        """
+        for label in self._inner.findChildren(QLabel):
+            if not label.wordWrap() or label.width() <= 0 or label.isHidden():
+                continue
+            wanted = label.heightForWidth(label.width())
+            if wanted > 0 and wanted != label.minimumHeight():
+                label.setMinimumHeight(wanted)
 
 
 def scroll_column(inner: QWidget, width: int) -> QScrollArea:
@@ -189,3 +215,73 @@ def scroll_column(inner: QWidget, width: int) -> QScrollArea:
     area.setWidget(inner)
     area._fit_height()
     return area
+
+
+class Section(QFrame):
+    """A card whose contents fold away behind its title.
+
+    For the panels that carry more controls than any one job needs. The jog
+    panel is the case: centring a marker wants the D-pad and nothing else,
+    the tip calibration wants neither it nor the saved positions most of the
+    time, and the check page wants the positions above all. Rather than
+    three panels, or a panel that guesses, each section folds and each page
+    says which ones it wants folded to begin with.
+
+    Collapsed is a real collapse: the body is hidden, so it contributes no
+    height and no minimum, which is what keeps a folded panel short on a
+    1080-line screen. The arrow is the whole affordance, so the title is a
+    flat button across the card rather than a label with a control beside
+    it - there is nothing else in the row to click by mistake.
+
+    Contents go into `body`, which has a vertical layout already spaced
+    like a card's.
+    """
+
+    def __init__(self, title: str, *, collapsed: bool = False,
+                 parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("card")
+        self.setFrameShape(QFrame.Shape.Panel)
+        policy = self.sizePolicy()
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+        self.toggle = QToolButton(self)
+        self.toggle.setObjectName("sectionToggle")
+        self.toggle.setText(title)
+        self.toggle.setCheckable(True)
+        self.toggle.setChecked(not collapsed)
+        self.toggle.setAutoRaise(True)
+        self.toggle.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        # No keyboard focus: over these panels the arrows are the gantry's,
+        # and a focused toggle would take space and Enter as well.
+        self.toggle.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.toggle.setSizePolicy(self.toggle.sizePolicy().horizontalPolicy(),
+                                  self.toggle.sizePolicy().verticalPolicy())
+        self.toggle.toggled.connect(self._toggled)
+
+        self.body = QWidget(self)
+        body_layout = QVBoxLayout(self.body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(SPACING)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(SPACING * 2, SPACING, SPACING * 2, SPACING * 2)
+        outer.setSpacing(SPACING)
+        outer.addWidget(self.toggle)
+        outer.addWidget(self.body)
+
+        self._toggled(self.toggle.isChecked())
+
+    def _toggled(self, shown: bool) -> None:
+        self.toggle.setArrowType(Qt.ArrowType.DownArrow if shown
+                                 else Qt.ArrowType.RightArrow)
+        self.body.setVisible(shown)
+
+    @property
+    def collapsed(self) -> bool:
+        return not self.toggle.isChecked()
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        self.toggle.setChecked(not collapsed)

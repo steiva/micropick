@@ -165,8 +165,11 @@ class CameraCalibration(QWidget):
         self.view = CameraView(page)
         # No Home and no Retract here: homing halfway through centring the
         # marker throws away the pose the sweep is about to be planned around.
+        # Centring the marker is the D-pad; the stored positions are not
+        # part of it, so they start folded.
         self.jog = JogPanel(self.session, shortcut_host=page,
-                            machine_controls=False, parent=page)
+                            machine_controls=False, collapsed=("positions",),
+                            parent=page)
 
         panel = QWidget(page)
         column = QVBoxLayout(panel)

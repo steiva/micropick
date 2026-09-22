@@ -56,3 +56,20 @@ QScrollArea#column, QScrollArea#column > QWidget > QWidget {
     background: transparent;
     border: none;
 }
+
+/* A Section's title is a button so the whole row folds it; it should read
+ * as the heading it replaces. Colour still comes from qdarktheme's
+ * QToolButton rules. */
+QToolButton#sectionToggle {
+    font-size: 12pt;
+    font-weight: 600;
+    padding: 2px 0;
+    border: none;
+    background: transparent;
+}
+
+/* Checkable, because the check is what the arrow draws - but an expanded
+ * section is not a pressed button, and qdarktheme fills a checked one. */
+QToolButton#sectionToggle:checked {
+    background: transparent;
+}

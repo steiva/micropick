@@ -805,6 +805,38 @@ class that runs any blocking callable on a `QThread`, translating the
 `on_progress(i, total)` and `log=` callbacks the workflows already take into
 signals. Those signatures are not adapted to Qt; the worker fits them.
 
+### Saved positions are the profile's, and only the profile's
+
+There were two. `JogController.saved` is an in-memory dict with generated
+names, emptied on every disconnect, and it was what the jog panel's list
+showed; `profile.positions` is on disk, named by the operator, and is what
+`tip_calib` lives in and what everything else reads. The visible list was
+the useless one, and beside it sat a "Remember in profile" button writing
+to the other.
+
+The panel now shows `profile.positions`, with each pose's coordinates
+beside its name, and saving, renaming and deleting all write there. A pose
+taught by the pipette calibration, or by the notebook, appears in the list
+and can be driven to - which is the point of having named it. Deleting asks
+first, because a name is what other pages drive to and a missing one stops
+them.
+
+Undo moved to the Move section and is called "Undo step". Under a list of
+saved poses, a button marked "Undo" reads as undoing the saving; it
+reverses the last jog step, and next to the D-pad that is what it looks
+like.
+
+### Sections fold, and each page says which
+
+Four pages hold a jog panel and none of them needs all of it. Centring a
+marker is the D-pad; the tip calibration normally drives to a stored pose
+and never jogs; the check page wants the stored poses above everything.
+`theme.factory.Section` is a card whose body folds behind its title, and
+`JogPanel(collapsed=(...))` names the sections a page wants folded to begin
+with - refusing a name that is not one, since that is a typo rather than a
+new section. A folded body is hidden, not empty, so it costs no height on a
+short screen.
+
 ### A wrapped paragraph in a side panel
 
 `theme.factory.scroll_column` and `theme.factory.card` share one bug
@@ -816,13 +848,23 @@ unless the minimum says otherwise, so the labels are given one line each
 and the rest is clipped - with no scrollbar, because as far as the scroll
 area is concerned everything fits.
 
-Two halves fix it. `card()` enables `heightForWidth` on the card's size
+Three parts fix it. `card()` enables `heightForWidth` on the card's size
 policy, which Qt does not infer from the layout, so the column above it
 asks how tall the card needs to be at this width. `_ScrollColumn` keeps the
 inner widget's minimum height at what its layout answers, remeasuring on a
 zero-timer after any layout change - deferred because a label's new text
 reaches its own geometry before it reaches the layouts above it, and asked
 in the handler the column answers with the height the old text needed.
+
+And the third, which the first two did not cover: a `QVBoxLayout` with room
+to spare hands each item its **size hint**, and a wrapped label's size hint
+is a line or two at a width of the layout's own choosing rather than the
+height its text takes at the width it got. The column was tall enough and
+the card inside it still short by a line. So the same refit gives every
+wrapped label a *minimum* height equal to its own text at its own current
+width - a minimum being the one thing a box layout will not take back -
+and recomputes it from the current width, so a narrower window does not
+leave it tall.
 
 ### Theme
 

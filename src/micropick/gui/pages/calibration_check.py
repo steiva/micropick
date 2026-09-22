@@ -18,12 +18,23 @@ thing, and the detector's box centre is sub-pixel. The target is
 gantry)` plus the profile's pipette offset — and it is printed before
 anything moves.
 
-**Whether the map agrees with itself across the field.** After the move the
-same crosshair is detected again, from the new gantry pose, and its deck
-coordinate recomputed. The two should be the same point; the difference is
-the map's consistency, in micrometres, accumulated over the session as a
-mean and a maximum. This is the notebook's `history`, and it needs no ruler
-and no second instrument — the field is measured against itself.
+**The way back.** The camera sits some sixty millimetres from the tip, so
+the move that puts the tip over a crosshair takes the disc out of the
+camera's view: after one check there is nothing left to detect and nothing
+to click. The jog panel is therefore part of this page, with the profile's
+positions open — drive back to the pose the crosshairs were seen from, in
+one double click, and detect again. The notebook's `click_to_go` had the
+same problem and answered it with a right click bound to
+`profile.where("tip_calib")`; this is that, without the binding being
+invisible.
+
+The notebook also recomputed the crosshair's deck coordinate after each
+move and accumulated the difference as the map's consistency. That is not
+here, and for the same reason: from the new pose the camera is not looking
+at the disc, so the figure was being computed from whatever the detector
+found instead. The map's own held-out error is the number that says how
+good it is; this page says whether the tip arrives where the picture
+promised.
 
 **That nothing moves by accident.** Clicking the picture moves the gantry,
 so it does not until "Click to move" is on, and it is off every time the
@@ -57,6 +68,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
+from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
 
 __all__ = ["CalibrationCheck", "SNAP_PX", "DEFAULT_Z_MM"]
@@ -88,10 +100,15 @@ class CalibrationCheck(QWidget):
         self._worlds = np.empty((0, 2))       # their deck coordinates
         self._outside = np.empty((0, 2))      # detected, not covered
         self._chosen: int | None = None
-        self._drifts: list[float] = []
 
         self.view = CameraView(self)
         self.view.clicked.connect(self._clicked)
+        # The way back to where the crosshairs were visible. Positions open
+        # and Move folded: the usual act here is returning to a stored pose,
+        # not jogging by hand.
+        self.jog = JogPanel(session, shortcut_host=self,
+                            machine_controls=False, collapsed=("move",),
+                            parent=self)
 
         panel = QWidget(self)
         column = QVBoxLayout(panel)
@@ -99,7 +116,7 @@ class CalibrationCheck(QWidget):
         column.setSpacing(SPACING)
         column.addWidget(self._target_card())
         column.addWidget(self._move_card())
-        column.addWidget(self._report_card(), 1)
+        column.addWidget(self.jog, 1)
 
         body = QHBoxLayout(self)
         body.setContentsMargins(0, SPACING, 0, 0)
@@ -163,10 +180,14 @@ class CalibrationCheck(QWidget):
         self.armed = QCheckBox("Click to move", self)
         self.armed.toggled.connect(lambda _on: self._refresh())
         box.layout().addWidget(self.armed)
-        armed_note = QLabel(
-            "With this on, a click on a crosshair drives the tip there at the "
-            "Z above. With it off a click only reports the coordinates. It is "
-            "off again every time this tab is opened.")
+        # One line. The card below it is the way back to the crosshairs, and
+        # a paragraph here pushes that off the bottom of the column.
+        self.armed.setToolTip(
+            "With this on, a click on a crosshair drives the tip there at "
+            "the Z above. With it off a click only reports the coordinates. "
+            "It is off again every time this tab is opened.")
+        armed_note = QLabel("A click on a crosshair then drives the tip there. "
+                            "Off again every time this tab is opened.")
         armed_note.setWordWrap(True)
         box.layout().addWidget(armed_note)
 
@@ -181,34 +202,18 @@ class CalibrationCheck(QWidget):
         self.retract_button = secondary_button("Retract Z", self)
         self.retract_button.clicked.connect(self._retract)
         box.layout().addWidget(self.retract_button)
-        return box
-
-    def _report_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Map consistency", 2))
-        note = QLabel(
-            "After each move the same crosshair is found again from the new "
-            "pose and its deck coordinate recomputed. It should be the same "
-            "point; the difference is the map disagreeing with itself across "
-            "the field. Nothing here is written to the profile.")
-        note.setWordWrap(True)
-        box.layout().addWidget(note)
-
-        self.summary = QLabel("no moves yet")
-        self.summary.setWordWrap(True)
-        box.layout().addWidget(self.summary)
 
         self.log_view = QPlainTextEdit(self)
         self.log_view.setReadOnly(True)
         self.log_view.setMaximumBlockCount(500)
-        self.log_view.setMinimumHeight(140)
+        # Bounded both ways: what it has to say is three lines, and left to
+        # grow it pushes the jog panel - the way back to the crosshairs -
+        # off the bottom of the column.
+        self.log_view.setMinimumHeight(70)
+        self.log_view.setMaximumHeight(100)
         self.log_view.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        box.layout().addWidget(self.log_view, 1)
-
-        self.reset_button = secondary_button("Reset statistics", self)
-        self.reset_button.clicked.connect(self._reset)
-        box.layout().addWidget(self.reset_button)
+        box.layout().addWidget(self.log_view)
         return box
 
     # -- the calibration under test ------------------------------------------
@@ -321,13 +326,10 @@ class CalibrationCheck(QWidget):
         if not self.armed.isChecked():
             self._say("not moving: switch on \"Click to move\" first.")
             return
-        self._go(target, world)
+        self._go(target)
 
-    def _go(self, target, world) -> None:
+    def _go(self, target) -> None:
         robot, z = self.session.robot, float(self.z.value())
-        camera, profile = self._camera(), self.session.profile
-        pmap = PixelMap.from_config(profile.pixel_map)
-        detector = self._detector
 
         def job(log):
             # XY first, as relative travel, then the Z: the robot refuses a
@@ -337,43 +339,17 @@ class CalibrationCheck(QWidget):
             goto_xy(robot, float(target[0]), float(target[1]))
             move_to(robot, (float(target[0]), float(target[1]), z),
                     min_z_height=1.0)
-            time.sleep(0.4)
-            # The same crosshair from the new pose. Matching by deck
-            # coordinate rather than by index: the detector's order is not
-            # stable and the point nearest the old world position is the
-            # one that was driven to.
-            gantry = np.array(xyz(robot)[:2])
-            frame = camera.read_after(time.monotonic())
-            found = [d.xy for d in detector.detect(frame)
-                     if getattr(d, "label", "point") == "point"]
-            inside, outside, worlds = [], [], []
-            for point in found:
-                if pmap.covers(*point):
-                    inside.append(point)
-                    worlds.append(pmap.to_robot(point[0], point[1], gantry))
-                else:
-                    outside.append(point)
-            inside = np.array(inside).reshape(-1, 2)
-            worlds = np.array(worlds).reshape(-1, 2)
-            drift = None
-            if len(worlds):
-                same = int(np.argmin(np.linalg.norm(worlds - world, axis=1)))
-                drift = float(np.linalg.norm(worlds[same] - world))
-                log(f"  the same crosshair from the new pose: "
-                    f"{worlds[same].round(3)}, {drift * 1000:.0f} um from "
-                    f"{np.asarray(world).round(3)}")
-            else:
-                log("  no crosshair from the new pose: nothing to compare")
-            return inside, worlds, np.array(outside).reshape(-1, 2), drift
+            log("  there. Look at the tip; the crosshairs are out of the "
+                "camera's view from here, so go back before detecting again.")
 
         self._run(Worker(job), "moving to the crosshair", self._moved)
 
-    def _moved(self, payload) -> None:
-        points, worlds, outside, drift = payload
-        self._points, self._worlds, self._outside = points, worlds, outside
+    def _moved(self, _payload=None) -> None:
+        # Nothing is re-detected: from over the crosshair the camera is
+        # looking somewhere else entirely, and a detection from here would
+        # be of whatever happened to be under it.
+        self._points = self._worlds = self._outside = np.empty((0, 2))
         self._chosen = None
-        if drift is not None:
-            self._drifts.append(drift)
         self._redraw()
         self._refresh()
 
@@ -383,11 +359,6 @@ class CalibrationCheck(QWidget):
         robot = self.session.robot
         self._run(Worker(lambda: robot.retract_axis("leftZ", verbose=False)),
                   "retracting leftZ", lambda _r: self._refresh())
-
-    def _reset(self) -> None:
-        self._drifts.clear()
-        self.log_view.clear()
-        self._refresh()
 
     # -- the worker ------------------------------------------------------------
 
@@ -447,7 +418,6 @@ class CalibrationCheck(QWidget):
         self._detector = None
         self._points = self._worlds = self._outside = np.empty((0, 2))
         self._chosen = None
-        self._drifts.clear()
         self._redraw()
         self._refresh()
 
@@ -457,7 +427,6 @@ class CalibrationCheck(QWidget):
         self.detect_button.setEnabled(not busy and not problems)
         self.armed.setEnabled(not busy and not problems)
         self.retract_button.setEnabled(not busy and self.session.robot is not None)
-        self.reset_button.setEnabled(not busy and bool(self._drifts))
         self.z.setEnabled(not busy)
 
         if problems:
@@ -481,26 +450,6 @@ class CalibrationCheck(QWidget):
                          "arithmetic is real; the crosshairs are not.")
             self.state.setText(text)
 
-        if self._drifts:
-            values = np.array(self._drifts)
-            text = (f"{len(values)} move{'s' if len(values) != 1 else ''}: mean "
-                    f"{values.mean() * 1000:.0f} µm, max "
-                    f"{values.max() * 1000:.0f} µm.")
-            if self._standin:
-                # The stand-in invents its crosshairs at the frame's centre,
-                # so "the same crosshair from the new pose" is a different
-                # point on the deck and the figure is the move's own length.
-                # Said here as well as on the other card: a number this
-                # large left unexplained is worse than no number.
-                text += (" Stand-in detector: this is the distance the gantry "
-                         "moved, not a map error. Nothing here is a "
-                         "measurement until the real weights are in place.")
-            else:
-                text += (" The sweep's own held-out error is the number to "
-                         "compare this with.")
-            self.summary.setText(text)
-        else:
-            self.summary.setText("no moves yet")
 
     # -- cameras ----------------------------------------------------------------
 

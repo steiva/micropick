@@ -151,8 +151,12 @@ class PipetteCalibration(QWidget):
     def _position_step(self) -> QWidget:
         page = QWidget(self)
         self.view = CameraView(page)
+        # Both folded: the ordinary run is "go to the stored position" and
+        # never touches either. They are one click away when the disc has
+        # moved and the position has to be taught again.
         self.jog = JogPanel(self.session, shortcut_host=page,
-                            machine_controls=False, parent=page)
+                            machine_controls=False,
+                            collapsed=("move", "positions"), parent=page)
 
         panel = QWidget(page)
         column = QVBoxLayout(panel)
@@ -175,9 +179,11 @@ class PipetteCalibration(QWidget):
         box.layout().addWidget(self.position_state)
 
         buttons = QHBoxLayout()
-        self.goto_button = secondary_button("Go to stored position", panel)
+        # Short: three buttons' worth of words do not fit a panel this
+        # wide, and the sentence above already says what is stored.
+        self.goto_button = secondary_button("Go there", panel)
         self.goto_button.clicked.connect(self._goto)
-        self.remember_button = primary_button("Remember this position", panel)
+        self.remember_button = primary_button("Teach here", panel)
         self.remember_button.clicked.connect(self._remember)
         buttons.addWidget(self.goto_button)
         buttons.addWidget(self.remember_button)
@@ -307,8 +313,12 @@ class PipetteCalibration(QWidget):
             f"ends the calibration with nothing saved.")
         note.setWordWrap(True)
         self.touch_box.layout().addWidget(note)
+        # Move open: nudging the tip onto the crosshair is the whole of this
+        # block. Positions folded: nothing here is a place to return to.
         self.touch_jog = JogPanel(self.session, shortcut_host=page,
-                                 machine_controls=False, parent=self.touch_box)
+                                  machine_controls=False,
+                                  collapsed=("positions",),
+                                  parent=self.touch_box)
         self.touch_box.layout().addWidget(self.touch_jog)
         row = QHBoxLayout()
         self.accept_button = primary_button("Accept", panel)
@@ -627,7 +637,7 @@ class PipetteCalibration(QWidget):
                 f"No {POSITION_NAME} in the profile. Jog the disc's central "
                 f"crosshair under the camera crosshair at the working height "
                 f"(module height {self._module_height():g} mm), then Remember.")
-            self.remember_button.setText("Remember this position")
+            self.remember_button.setText("Teach this position")
         else:
             self.position_state.setText(
                 f"Stored {POSITION_NAME}: "
@@ -635,7 +645,7 @@ class PipetteCalibration(QWidget):
                 f"calibration drives here first. Go there to check the disc "
                 f"is still under the camera, or re-teach it from where the "
                 f"gantry stands now.")
-            self.remember_button.setText("Re-teach from here")
+            self.remember_button.setText("Re-teach here")
         self.goto_button.setEnabled(connected and stored is not None and not busy)
         self.remember_button.setEnabled(connected and profile is not None and not busy)
 

@@ -322,6 +322,22 @@ class Session(QObject):
                  tuple(round(float(v), 2) for v in position), self.profile.name)
         self.profile_changed.emit(self.profile)
 
+    def forget(self, name: str) -> None:
+        """Drop a named position from the profile."""
+        if self.profile is None:
+            raise SessionError("no profile is loaded")
+        self.profile.forget(name)
+        log.info("forgot position %r in profile %r", name, self.profile.name)
+        self.profile_changed.emit(self.profile)
+
+    def rename_position(self, old: str, new: str) -> None:
+        if self.profile is None:
+            raise SessionError("no profile is loaded")
+        self.profile.rename(old, new)
+        log.info("renamed position %r to %r in profile %r", old, new,
+                 self.profile.name)
+        self.profile_changed.emit(self.profile)
+
     # -- robot ---------------------------------------------------------------
     #
     # Bringing the robot up is three blocking steps with a decision in the

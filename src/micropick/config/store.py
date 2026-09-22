@@ -255,6 +255,27 @@ class Profile:
         self.save_positions()
         return self.positions[name]
 
+    def forget(self, name: str) -> None:
+        """Drop a named pose. Missing is not an error: the caller asked for
+        it to be gone and it is gone."""
+        if self.positions.pop(name, None) is not None:
+            self.save_positions()
+
+    def rename(self, old: str, new: str) -> tuple[float, float, float]:
+        """Rename a pose, keeping its coordinates. Refuses to overwrite:
+        two positions with one name is how the wrong one gets driven to."""
+        if old not in self.positions:
+            raise ProfileError(f"profile {self.name!r} has no position {old!r}")
+        new = new.strip()
+        if not new:
+            raise ProfileError("a position needs a name")
+        if new != old and new in self.positions:
+            raise ProfileError(f"profile {self.name!r} already has a position "
+                               f"{new!r}")
+        self.positions[new] = self.positions.pop(old)
+        self.save_positions()
+        return self.positions[new]
+
     def where(self, name: str) -> tuple[float, float, float]:
         try:
             return self.positions[name]

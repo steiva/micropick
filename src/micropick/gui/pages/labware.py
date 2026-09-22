@@ -236,18 +236,22 @@ class LabwarePage(QWidget):
         row.addStretch(1)
         box.layout().addLayout(row)
 
+        # Two rows, not three in one: at this panel's width three buttons
+        # get about 120 px each and "Drop in trash" needs 150, so the words
+        # were cut in half. The return button carries the well's name when
+        # there is one, which is longer still, so it has a row to itself.
         drops = QHBoxLayout()
         self.drop_place_button = secondary_button("Drop in place", self)
         self.drop_place_button.clicked.connect(self._drop_in_place)
         self.drop_trash_button = secondary_button("Drop in trash", self)
         self.drop_trash_button.clicked.connect(self._drop_in_trash)
+        drops.addWidget(self.drop_place_button)
+        drops.addWidget(self.drop_trash_button)
+        box.layout().addLayout(drops)
+
         self.return_button = secondary_button("Return to rack", self)
         self.return_button.clicked.connect(self._return)
-        for button in (self.drop_place_button, self.drop_trash_button,
-                       self.return_button):
-            drops.addWidget(button)
-        drops.addStretch(1)
-        box.layout().addLayout(drops)
+        box.layout().addWidget(self.return_button)
         return box
 
     def _definitions_card(self) -> QWidget:

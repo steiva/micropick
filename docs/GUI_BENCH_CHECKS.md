@@ -564,3 +564,35 @@ static until the session owns them.
   `micropick-gui` fills the screen without being dragged, and the title bar
   and taskbar are still there - the notebook and the Opentrons app have to
   be reachable while a run is going.
+
+## Commit 18 — positions that are worth having, panels that fold
+
+- [ ] **A saved position survives everything and can be driven to.**
+  On Manual control, jog somewhere, "Save this position…", name it. The row
+  shows the name and its three coordinates. Restart the application and it
+  is still there; select it and Go to, and the gantry returns. Expected
+  failure: an empty list after a restart, which was the old behaviour -
+  that list was the controller's own, in memory, and went with the
+  connection.
+
+- [ ] **Rename and delete do what they say.**
+  Rename one: the row changes and stays selected. Delete one: it asks
+  first, naming the position and its coordinates. `positions.json` in the
+  profile matches the list after both.
+
+- [ ] **`tip_calib` appears in the list and driving to it works.**
+  The pose the pipette calibration taught is a position like any other.
+  Driving to it from here should put the disc back under the camera - the
+  same place "Go there" on the pipette tab goes.
+
+- [ ] **The check page can get back to the crosshairs.**
+  Detect, click a crosshair with "Click to move" on, look at the tip over
+  it. The crosshairs are now out of the camera's view, as they must be.
+  Double click the stored pose in Positions: the gantry returns and Detect
+  finds them again.
+
+- [ ] **The panels fold where they should.**
+  The pipette tab's step 1 shows Move and Positions folded; the camera
+  tab's step 1 shows Move open and Positions folded; the check tab the
+  other way round. Each opens on its triangle and stays open while the page
+  does.
