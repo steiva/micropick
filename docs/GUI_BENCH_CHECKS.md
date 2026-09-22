@@ -626,3 +626,36 @@ static until the session owns them.
 
 - [ ] **Routine comes before Picking in the list on the left.**
   And the plan made here is the one the Picking page's run delivers into.
+
+## Commit 20 — the dish, measured before the run
+
+- [ ] **The camera is open when the page appears.**
+  Open Picking, Manual control, either calibration tab or Check with no
+  camera open: the upper camera opens itself and the picture is there. Unplug
+  it and try again: the page says why once and does not try again until the
+  Profile page's button is pressed - watch for a page that becomes slow to
+  open, which would mean it is retrying.
+
+- [ ] **"Go to the dish" goes to the dish.**
+  Jog until the dish fills the frame, Teach here, drive somewhere else, then
+  Go to the dish: the same view comes back. `dish` appears in the jog
+  panel's positions like any other pose.
+
+- [ ] **The analysis counts what a run would pick.**
+  With the real weights loaded, Analyse the dish: the overlay is the picking
+  window's own - red for every detection, yellow for pickable, green for
+  isolated - and the histogram shows the population against the size
+  window. Compare the "N of M inside" figure with what the first batch of a
+  run actually picks up; they should be the same order of number. Expected
+  failure: an empty histogram with detections on the picture, which means
+  the pixel map and the camera mode disagree and the sizes are in no unit.
+
+- [ ] **Moving the size window moves the count.**
+  Picking settings…, change `cuboid_size_threshold`, Save: the band on the
+  plot moves and the count under it changes without re-analysing. Saved into
+  `picking.json`, which is what a run reads.
+
+- [ ] **The settings form has everything and refuses nothing silently.**
+  Filter for a field you know is in the schema; it is there. Put a window in
+  the wrong order and Save: pydantic's own message appears and the dialog
+  stays open.

@@ -270,6 +270,40 @@ class Session(QObject):
         # knows nothing about where the numbers came from.
         return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, 150.0))
 
+    @property
+    def upper_camera_label(self) -> str | None:
+        """The camera the pixel map belongs to, by name.
+
+        `ProfileMeta.camera_label` is where an installation records it, and
+        it is the only non-guess available: the map, the detector and every
+        pixel-to-deck conversion are that camera's. Falling back to a label
+        that does not say "under" is a guess and says so by being last.
+        """
+        profile = self.profile
+        if profile is None:
+            return None
+        named = profile.meta.camera_label
+        if named and named in profile.cameras:
+            return named
+        for label in sorted(profile.cameras):
+            if "under" not in label.lower():
+                return label
+        return None
+
+    @property
+    def lower_camera_label(self) -> str | None:
+        """The other one. This rig has two cameras and the upper one is
+        named in the profile, so the lower one is what is left."""
+        profile = self.profile
+        if profile is None:
+            return None
+        upper = self.upper_camera_label
+        others = [label for label in sorted(profile.cameras) if label != upper]
+        if not others:
+            return None
+        under = [label for label in others if "under" in label.lower()]
+        return (under or others)[0]
+
     def uses_mock_profile(self) -> bool:
         return self.profile is not None and self.profile.path == mock_profile_dir()
 

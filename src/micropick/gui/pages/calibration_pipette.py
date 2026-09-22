@@ -60,6 +60,7 @@ from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import move_to, xyz
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
+from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
@@ -112,6 +113,7 @@ class PipetteCalibration(QWidget):
         self._standin = False
         self._gate = threading.Event()
         self._aborted = False
+        self.opener = CameraOpener(session, self)
 
         self.stack = QStackedWidget(self)
         self.stack.addWidget(self._position_step())
@@ -724,4 +726,8 @@ class PipetteCalibration(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        # Both: the upper camera finds the disc and the lower one measures
+        # the tip, and the routine refuses to start without either.
+        self.opener.ensure(self.session.upper_camera_label)
+        self.opener.ensure(self.session.lower_camera_label)
         self._refresh_cameras()

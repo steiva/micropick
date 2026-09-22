@@ -68,6 +68,7 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
                                QStackedWidget, QVBoxLayout, QWidget)
 
 from ...viz import markers
+from ..auto_camera import CameraOpener
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
 from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
@@ -119,6 +120,7 @@ class CameraCalibration(QWidget):
         self._worker: Worker | None = None
         self._result = None                  # (pmap, report, sweep)
         self._watch = MarkerWatch()
+        self.opener = CameraOpener(session, self)
         self._watch_worker: Worker | None = None
         self._sighting = None
 
@@ -702,6 +704,8 @@ class CameraCalibration(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        # The sweep is this camera's, so arriving here is asking for it.
+        self.opener.ensure(self.session.upper_camera_label)
         self._refresh_cameras()
         self._watch_timer.start()
 

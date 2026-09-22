@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
+from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import card, combo_box, heading, scroll_column
@@ -27,6 +28,7 @@ class ManualPage(QWidget):
         super().__init__(parent)
         self.session = session
 
+        self.opener = CameraOpener(session, self)
         self.view = CameraView(self)
         # The host is this page: its shortcuts are window-wide while the page
         # is showing, and go quiet with it.
@@ -80,4 +82,7 @@ class ManualPage(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        # Jogging is done by eye through this camera; without it the page is
+        # a D-pad and a blank rectangle.
+        self.opener.ensure(self.session.upper_camera_label)
         self._refresh_cameras()

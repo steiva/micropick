@@ -805,6 +805,53 @@ class that runs any blocking callable on a `QThread`, translating the
 `on_progress(i, total)` and `log=` callbacks the workflows already take into
 signals. Those signatures are not adapted to Qt; the worker fits them.
 
+### Picking: measure the dish before committing the robot to it
+
+The page used to be a file dialog and a detector. What it is now is the
+four things that have to be true before a run is worth starting, and all of
+them are the run's own: the camera over the dish, the pose it is looked at
+from, the settings the run reads, and one frame put through the detector
+with the answer laid out.
+
+**The histogram is about `cuboid_size_threshold`.** That window decides what
+a run will pick, and it is two numbers in a file; on a real dish it is also
+the difference between a run that fills a plate and one that finds nothing,
+and nothing on screen said which. The plot is every detection's diameter
+with the window drawn over it and the count inside it in words - "31 of 48
+are inside 250-500 µm, 14 smaller, 3 bigger" - so an operator who sees the
+population sitting to the left of the window knows what to change and by
+how much before the gantry moves. Bars inside the window are a second
+series rather than a recolouring: a bar is inside or it is not, and the eye
+should not have to compare a shade with the band behind it.
+
+**The settings form is generated from `PickingConfig`.** Forty-odd fields
+that change; a hand-written form would be a second list of them and the
+field it forgot would be the one wanted at two in the morning. The names,
+the order, the types and the defaults come from `model_fields`, nothing is
+validated in the widgets, and the values are handed back to the model so
+that pydantic's own words are what an out-of-order window produces. The
+cost is the prose: the schema explains itself in comments, and a comment is
+not data, so a row carries its type and default in a tooltip and a filter
+box is what makes forty rows usable.
+
+**The dish pose is `dish` in the profile**, beside `tip_calib`, taught and
+driven to the same way - the gantry has to be somewhere particular for the
+dish to be in frame, and that is an installation's fact rather than a run's.
+
+### The camera a page needs opens itself
+
+`MainWindow._start` still reaches for no hardware: an application that opens
+devices because it was launched does it at the wrong moment eventually. But
+arriving at a page whose whole content is one camera's picture *is* the
+request to see it, and making the operator go back to the Profile page for
+it is a step with no decision in it. `gui.auto_camera.CameraOpener` holds
+the policy in one place: once per label, never two at a time, never again
+after a failure until something forgets it - without that last rule, a page
+with an unplugged camera is a multi-second blocking open every time it is
+looked at. Which camera is "the upper one" is `ProfileMeta.camera_label`,
+the only non-guess available, since the map and the detector are that
+camera's; the lower one is the other of the two.
+
 ### Planning a plate: selecting and planning are two acts
 
 The plate map used to have one gesture. A click toggled a well into the plan

@@ -62,6 +62,7 @@ from PySide6.QtWidgets import (QCheckBox, QDoubleSpinBox, QHBoxLayout, QLabel,
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import goto_xy, move_to, xyz
 from ...viz import markers
+from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
@@ -100,6 +101,7 @@ class CalibrationCheck(QWidget):
         self._worlds = np.empty((0, 2))       # their deck coordinates
         self._outside = np.empty((0, 2))      # detected, not covered
         self._chosen: int | None = None
+        self.opener = CameraOpener(session, self)
 
         self.view = CameraView(self)
         self.view.clicked.connect(self._clicked)
@@ -479,4 +481,5 @@ class CalibrationCheck(QWidget):
         super().showEvent(event)
         # Disarmed on every entry, however it was left.
         self.armed.setChecked(False)
+        self.opener.ensure(self.session.upper_camera_label)
         self._refresh_cameras()
