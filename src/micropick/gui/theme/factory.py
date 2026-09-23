@@ -140,6 +140,22 @@ class _ScrollColumn(QScrollArea):
         self._fit_timer.timeout.connect(self._fit_height)
         inner.installEventFilter(self)
 
+    def set_outer_width(self, width: int) -> None:
+        """Change the column's width, scrollbar included.
+
+        Still one number at a time, which is all `heightForWidth` needs: a
+        page that gives its panel whatever the picture leaves over calls
+        this on resize, and the labels are measured again at the new width.
+        """
+        inner = max(1, int(width) - self.verticalScrollBar().sizeHint().width())
+        if inner == self._inner_width:
+            return
+        self._inner_width = inner
+        self._inner.setMinimumWidth(inner)
+        self._inner.setMaximumWidth(inner)
+        self.setFixedWidth(int(width))
+        self._fit_timer.start()
+
     def eventFilter(self, obj, event) -> bool:
         if obj is self._inner and event.type() in (
                 QEvent.Type.LayoutRequest, QEvent.Type.Resize,

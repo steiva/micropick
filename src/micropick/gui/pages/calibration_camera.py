@@ -76,6 +76,7 @@ from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
+from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
 
@@ -214,8 +215,8 @@ class CameraCalibration(QWidget):
         body = QHBoxLayout(page)
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(SPACING)
-        body.addWidget(self.view, 1)
-        body.addWidget(scroll_column(panel, PANEL_WIDTH))
+        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
+                       1)
         return page
 
     # -- step 2: parameters --------------------------------------------------
@@ -320,8 +321,7 @@ class CameraCalibration(QWidget):
         body = QHBoxLayout(page)
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(SPACING)
-        body.addWidget(self.run_view, 1)
-        body.addWidget(panel)
+        body.addWidget(FeedRow(self.run_view, panel), 1)
         return page
 
     # -- step 4: report ------------------------------------------------------

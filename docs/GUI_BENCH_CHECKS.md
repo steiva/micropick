@@ -711,3 +711,24 @@ static until the session owns them.
 
 - [ ] **The Profile page fits in two columns.**
   Installation and Robot side by side, Cameras and Models under them.
+
+## Commit 22 — tabs that open into the page, a 4:3 picture, a quieter crosshair
+
+- [ ] **The chosen tab opens into its page, in both themes.**
+  Flip the OS between light and dark with the window open: the strip is
+  the raised surface, the chosen tab is the page's own colour and there is
+  no line between them. Pages have no title of their own any more; the tab
+  is the title.
+
+- [ ] **The picture is as wide as its shape, and the panel gets the rest.**
+  Maximise the window on the bench display: the upper camera's picture is
+  4:3 with no black bands, and the panel beside it is wider than before.
+  Switch Manual control to the lower camera (square crop): the picture
+  narrows and the panel widens. In a small window the panel keeps its
+  designed width and the picture is letterboxed instead. Watch for wrapped
+  text cut off in the panel after a resize - the column measures its labels
+  again at each new width.
+
+- [ ] **The crosshair is thin, white and see-through.**
+  On a bright dish and on a dark one it is visible and does not hide what
+  it is aimed at.

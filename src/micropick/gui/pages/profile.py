@@ -200,7 +200,6 @@ class ProfilePage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addWidget(heading(TITLE, 1))
 
         grid = QGridLayout()
         grid.setSpacing(SPACING)

@@ -14,6 +14,7 @@ from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import card, combo_box, heading, scroll_column
 from ..widgets.camera_view import CameraView
+from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 
 __all__ = ["ManualPage"]
@@ -44,13 +45,12 @@ class ManualPage(QWidget):
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
-        body.addWidget(self.view, 1)
-        body.addWidget(scroll_column(panel, PANEL_WIDTH))
+        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
+                       1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addWidget(heading(TITLE, 1))
         layout.addLayout(body, 1)
 
         session.camera_opened.connect(self._refresh_cameras)

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QPlainTextEdit, QVBoxLayout,
 
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import heading, secondary_button
+from ..theme.factory import secondary_button
 
 __all__ = ["LogPage"]
 
@@ -50,7 +50,6 @@ class LogPage(QWidget):
         self.clear_button.clicked.connect(self.view.clear)
 
         header = QHBoxLayout()
-        header.addWidget(heading(TITLE, 1))
         header.addStretch(1)
         header.addWidget(self.clear_button)
 

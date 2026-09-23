@@ -12,6 +12,12 @@ the two that are used whenever they are needed rather than in sequence:
 manual control and the log. A column down the side used to hold them all and
 cost the pages 200 px of width for seven words.
 
+The chosen tab opens into its page, as a browser's does. The strip the tabs
+sit on is qdarktheme's raised surface (a `Panel` frame, like a card); the
+chosen tab has the window's own background, from qdarktheme's QWidget rule,
+so it reads as the top of the page below it and the page needs no title of
+its own. No colour is named here, for the reason `theme/__init__` gives.
+
 `PAGES` is the only place the order and the names exist. The tab and the
 stacked widget are built from the same row in one pass, so the entry an
 operator clicks and the page that appears cannot come apart — the mistake
@@ -26,7 +32,7 @@ from typing import TYPE_CHECKING
 
 import qtawesome as qta
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QMainWindow,
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QStackedWidget, QStatusBar, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -70,6 +76,52 @@ PAGES = (
 # the palette cannot promise and a fixed amber can.
 TIP_ON = "#f0a030"
 ICON_PX = 18
+
+
+class NavTab(QWidget):
+    """One page's tab: a title that is clicked.
+
+    A plain widget with a styled background rather than a QToolButton,
+    because qdarktheme pins every tool button's background to transparent
+    and the chosen tab has to carry the window's. `selected` is a dynamic
+    property for the stylesheet to match on.
+    """
+
+    clicked = Signal()
+
+    def __init__(self, title: str, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("navTab")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # The mouse chooses pages; the keyboard drives the robot.
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.label = QLabel(title, self)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.label)
+        self.setProperty("selected", False)
+
+    def text(self) -> str:
+        return self.label.text()
+
+    def isChecked(self) -> bool:
+        return bool(self.property("selected"))
+
+    def setChecked(self, on: bool) -> None:
+        if self.isChecked() == bool(on):
+            return
+        self.setProperty("selected", bool(on))
+        # A dynamic property is not watched: the style is reapplied by hand.
+        for widget in (self, self.label):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+        self.update()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class StatusBar(QStatusBar):
@@ -243,51 +295,44 @@ class MainWindow(QMainWindow):
         self.resize(1400, 900)
 
         self.stack = QStackedWidget()
-        # One exclusive group across both ends of the row, so choosing a tab
-        # on the right clears the one on the left. The id is the page's index
-        # in the stack.
-        self.nav = QButtonGroup(self)
-        self.nav.setExclusive(True)
-        self.tabs: dict[str, QToolButton] = {}
+        self.tabs: dict[str, NavTab] = {}
 
         self.session = Session(options, parent=self)
 
-        tab_row = QHBoxLayout()
-        tab_row.setContentsMargins(0, 0, 0, 0)
-        tab_row.setSpacing(SPACING // 2)
-        aside: list[QToolButton] = []
+        # The strip: a Panel frame, so qdarktheme gives it the raised
+        # surface; the tabs sit on its bottom edge and the page starts
+        # directly under it.
+        self.strip = QFrame()
+        self.strip.setObjectName("tabStrip")
+        self.strip.setFrameShape(QFrame.Shape.Panel)
+        tab_row = QHBoxLayout(self.strip)
+        tab_row.setContentsMargins(SPACING, SPACING, SPACING, 0)
+        tab_row.setSpacing(2)
+        aside: list[NavTab] = []
         self.pages: dict[str, QWidget] = {}
         for name, title, page_class, group in PAGES:
             page = page_class(self.session)
             self.pages[name] = page
             setattr(self, f"{name}_page", page)
-            tab = QToolButton()
-            tab.setObjectName("navTab")
-            tab.setText(title)
-            tab.setCheckable(True)
-            tab.setAutoRaise(True)
-            # The mouse chooses pages; the keyboard drives the robot. A tab
-            # with focus takes Space for itself, and on the manual page that
-            # is a page change where a jog key was meant.
-            tab.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            self.nav.addButton(tab, self.stack.addWidget(page))
+            self.stack.addWidget(page)
+            tab = NavTab(title)
+            tab.clicked.connect(lambda name=name: self.show_page(name))
             self.tabs[name] = tab
             if group == ASIDE:
                 aside.append(tab)
             else:
-                tab_row.addWidget(tab)
+                tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)
         tab_row.addStretch(1)
         for tab in aside:
-            tab_row.addWidget(tab)
+            tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)
 
-        self.nav.idClicked.connect(self.stack.setCurrentIndex)
         self.show_page(PAGES[0][0])
 
         central = QWidget()
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(SPACING, SPACING, SPACING, SPACING)
-        layout.setSpacing(SPACING // 2)
-        layout.addLayout(tab_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(self.strip)
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
@@ -430,5 +475,6 @@ class MainWindow(QMainWindow):
 
     def show_page(self, name: str) -> None:
         """Bring a page to the front by name, keeping the tabs in step."""
-        self.tabs[name].setChecked(True)
+        for other, tab in self.tabs.items():
+            tab.setChecked(other == name)
         self.stack.setCurrentWidget(self.pages[name])

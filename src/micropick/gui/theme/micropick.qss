@@ -35,17 +35,29 @@ QFrame#card {
  * and the outline on every secondary one. qdarktheme already makes labels
  * transparent (QLabel:!window), which was the only thing that rule fixed. */
 
-/* The page tabs along the top of the window. Checkable tool buttons, so the
- * chosen one is filled by qdarktheme's QToolButton:checked rule; only the
- * size and the weight are ours. */
-QToolButton#navTab {
-    padding: 6px 16px;
-    border-radius: 8px;
-    font-size: 11pt;
+/* The page tabs, browser style. The strip is a Panel frame and takes
+ * qdarktheme's raised surface; a tab that is not chosen is transparent over
+ * it, and the chosen one keeps qdarktheme's QWidget background - the
+ * window's - so it opens into the page under it. Square below, round above.
+ * No colour is named: `transparent` is the absence of one. */
+QFrame#tabStrip {
+    border: none;
+    border-radius: 0;
+    padding: 0;
 }
 
-QToolButton#navTab:checked {
-    font-weight: 600;
+QWidget#navTab {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+QWidget#navTab[selected="false"] {
+    background: transparent;
+}
+
+QWidget#navTab QLabel {
+    padding: 8px 18px;
+    font-size: 11pt;
 }
 
 QLabel#heading1 { font-size: 16pt; font-weight: 600; }

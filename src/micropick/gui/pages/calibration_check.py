@@ -69,6 +69,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
+from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
 
@@ -124,8 +125,8 @@ class CalibrationCheck(QWidget):
         body = QHBoxLayout(self)
         body.setContentsMargins(0, SPACING, 0, 0)
         body.setSpacing(SPACING)
-        body.addWidget(self.view, 1)
-        body.addWidget(scroll_column(panel, PANEL_WIDTH))
+        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
+                       1)
 
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)

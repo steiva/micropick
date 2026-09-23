@@ -35,3 +35,8 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 Text about the camera or the run (resolution, fps, zoom, robot status, gantry
 position) is drawn by `CameraView` in widget pixels as semi-transparent
 boxes over the picture, never into the frame and never as a separate panel.
+
+A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
+picture gets the width its frame shape needs (4:3 for the upper camera),
+the panel the rest, within 1-2x its designed width. Pages carry no title;
+the tab along the top is the title.

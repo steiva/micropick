@@ -119,7 +119,6 @@ class LabwarePage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addWidget(heading(TITLE, 1))
         layout.addLayout(body, 1)
 
         session.robot_state_changed.connect(self._on_robot_changed)

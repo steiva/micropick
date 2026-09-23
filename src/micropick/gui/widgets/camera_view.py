@@ -88,11 +88,16 @@ CAPTION_BG = QColor(0, 0, 0, 140)
 CAPTION_FG = QColor(235, 235, 235)
 CAPTION_PAD = 6
 CAPTION_GAP = 6
-# Red, as in jog_in_window, so the marker means the same thing in both.
-CROSSHAIR = QColor(230, 60, 60)
+# White, thin and translucent: a reference to aim with, not a mark on the
+# dish. Solid red hid the few pixels it was being aimed at and read as
+# one of the detection colours.
+CROSSHAIR = QColor(255, 255, 255, 150)
+CROSSHAIR_WIDTH = 1
 CROSSHAIR_ARM = 30
 
 FPS_WINDOW_S = 0.5
+
+DEFAULT_ASPECT = 4 / 3           # the upper camera, 2592x1944
 
 ZOOM_MIN, ZOOM_MAX = 1.0, 16.0
 ZOOM_STEP = 1.25                 # per wheel notch
@@ -110,6 +115,9 @@ class CameraView(QWidget):
     """Shows one camera. Owns no device and closes nothing."""
 
     frame_shown = Signal()
+    # The shape of what is shown changed - another camera, another crop.
+    # `FeedRow` listens, so the picture's share of the page follows it.
+    aspect_changed = Signal()
     # A left click on the picture, in **sensor** pixels: the same
     # coordinates detection produces and `transform` maps, so a page can
     # compare a click with a detection without knowing about zoom or crop.
@@ -416,6 +424,13 @@ class CameraView(QWidget):
         self.update()
 
     @property
+    def aspect(self) -> float:
+        """Width over height of what is shown; the upper camera's 4:3
+        until there is a frame to measure."""
+        width, height = self._view_size
+        return width / height if width > 0 and height > 0 else DEFAULT_ASPECT
+
+    @property
     def transform(self) -> QTransform:
         """Sensor pixels to widget pixels. Identity while nothing is shown."""
         return QTransform(self._transform)
@@ -485,7 +500,9 @@ class CameraView(QWidget):
         view, x0, y0 = self._view_of(frame)
         height, width = view.shape[:2]
         box = self._fit(width, height)
-        self._view_size = (width, height)
+        if (width, height) != self._view_size:
+            self._view_size = (width, height)
+            self.aspect_changed.emit()
 
         if self._zoom != ZOOM_MIN:
             box = self._zoomed(box, width, height)
@@ -627,7 +644,7 @@ class CameraView(QWidget):
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
 
     def _draw_crosshair(self, painter: QPainter, box: QRect) -> None:
-        painter.setPen(QPen(CROSSHAIR, 2))
+        painter.setPen(QPen(CROSSHAIR, CROSSHAIR_WIDTH))
         cx, cy = box.center().x(), box.center().y()
         painter.drawLine(cx - CROSSHAIR_ARM, cy, cx + CROSSHAIR_ARM, cy)
         painter.drawLine(cx, cy - CROSSHAIR_ARM, cx, cy + CROSSHAIR_ARM)

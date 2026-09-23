@@ -19,7 +19,6 @@ from PySide6.QtWidgets import QTabWidget, QVBoxLayout, QWidget
 
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import heading
 from . import calibration_camera, calibration_check, calibration_pipette
 
 __all__ = ["CalibrationPage"]
@@ -44,5 +43,4 @@ class CalibrationPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addWidget(heading(TITLE, 1))
         layout.addWidget(self.tabs, 1)
