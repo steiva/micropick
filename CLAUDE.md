@@ -50,6 +50,9 @@ that list too.
 
 Robot commands from a page with a jog panel go through
 `JogPanel.run_job`, never a worker of the page's own, so they cannot overlap
-a key press. Moves across the deck raise the tip first
-(`workflows.manual.raise_tip`). Click-to-move is off on every entry to the
+a key press. Moves across the deck are one force_direct
+move_to_coordinates at 1 mm under the Z measured after a retract
+(`workflows.manual.raise_tip`, `travel_z`): with a long tip the robot does
+nothing for a moveToCoordinates at the retracted height itself. A retract
+is only repeated when the tip is below that travel height. Click-to-move is off on every entry to the
 tab.

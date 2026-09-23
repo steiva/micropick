@@ -4,25 +4,29 @@ What Manual control does with a click, and the liquid handling beside it,
 with no Qt in it: every function takes the robot and the numbers and blocks,
 so a page runs them in a worker and a notebook can call them directly.
 
-The tip travels high
---------------------
-Any move across the deck starts with the tip at the top of its travel. The
-top is not a number in the profile - it depends on the tip that is fitted,
-which changes the Z the robot reports - so it is measured: retract once, read
-Z, and remember it (`raise_tip`). Before every later move Z is read again,
-and if the tip is below the top, it is retracted first. One read per move is
-cheaper than a retract per move, and a retract per move is the only other
-way to be sure.
+The tip travels high - but not at the very top
+-----------------------------------------------
+Any move across the deck is made with the tip near the top of its travel.
+The top is not a number in the profile - it depends on the tip that is
+fitted, which changes the Z the robot reports - so it is measured: retract
+once, read Z, and remember it (`raise_tip`).
+
+The travel itself is at `TRAVEL_BELOW_TOP_MM` under that top, not at it.
+With a long tip the robot accepts a moveToCoordinates at the retracted
+height and does nothing - the refusal `goto_xy` was written around - and a
+millimetre lower it moves normally. So before each move Z is read: at the
+travel height or above, the move goes ahead; below it, the axis is
+retracted first. One read per move is cheaper than a retract per move.
 
 Then one straight line
 ----------------------
-With the tip up, the travel is a single `move_to_coordinates` with
-`force_direct`: the gantry goes diagonally to the target at the height it
-is at, instead of an axis at a time (`goto_xy`, the calibration sweep's
-way) or up-over-down (the robot's own arc planning, which would undo the
-point of having raised the tip). A tip target then comes straight down.
-`move_to` reads the pose back and raises if the robot declined the move,
-so a refusal is a message, not a gantry that silently stayed put.
+The travel is a single `move_to_coordinates` with `force_direct`: the
+gantry goes diagonally to the target at the travel height, instead of an
+axis at a time (`goto_xy`, the calibration sweep's way) or up-over-down
+(the robot's own arc planning, which would undo the point of having raised
+the tip). A tip target then comes straight down. `move_to` reads the pose
+back and raises if the robot declined the move, so a refusal is a message,
+not a gantry that silently stayed put.
 
 Two targets, one map
 --------------------
@@ -42,27 +46,35 @@ import numpy as np
 from ..hardware.protocols import Robot, move_to, require_ok, xyz
 from .jog import AXES, Limits
 
-__all__ = ["RAISED_TOL_MM", "WELL_LEVELS", "raise_tip", "camera_target",
+__all__ = ["TRAVEL_BELOW_TOP_MM", "WELL_LEVELS", "raise_tip",
+           "travel_z", "camera_target",
            "tip_target", "unreachable", "drive_camera", "drive_tip",
            "drive_to_well", "aspirate", "dispense"]
 
 # The robot's names for where in a well an offset is measured from.
 WELL_LEVELS = ("top", "center", "bottom")
 
-# How far below the measured top the tip may be and still count as raised:
-# the reported Z wanders by hundredths after a retract, and a retract for
-# that would be a retract before every move.
-RAISED_TOL_MM = 0.5
+# The travel height, under the measured top: see "The tip travels high".
+TRAVEL_BELOW_TOP_MM = 1.0
+
+# The reported Z wanders by hundredths; a tip that far under the travel
+# height is still at it.
+READ_TOL_MM = 0.05
 
 
-def raise_tip(robot: Robot, z_top: float | None, *, log=None,
-              tol: float = RAISED_TOL_MM) -> float:
-    """Make sure the tip is at the top of its travel; return that top.
+def travel_z(z_top: float) -> float:
+    """The height a move across the deck is made at."""
+    return z_top - TRAVEL_BELOW_TOP_MM
+
+
+def raise_tip(robot: Robot, z_top: float | None, *, log=None) -> float:
+    """Make sure the tip is at the travel height or above; return the top.
 
     With `z_top` unknown, retract and measure it. Otherwise read Z and retract
-    only if the tip is below the top by more than `tol`.
+    only if the tip is below the travel height.
     """
-    if z_top is not None and xyz(robot)[2] >= z_top - tol:
+    if (z_top is not None
+            and xyz(robot)[2] >= travel_z(z_top) - READ_TOL_MM):
         return z_top
     if log is not None:
         log("retracting leftZ")
@@ -95,11 +107,12 @@ def unreachable(limits: Limits, position) -> str:
 
 
 def drive_camera(robot: Robot, xy, z_top: float | None, *, log=None) -> float:
-    """The tip up, then the gantry to `xy`. Returns the known top."""
+    """The tip up, then the gantry to `xy` at the travel height. Returns
+    the known top."""
     z_top = raise_tip(robot, z_top, log=log)
     if log is not None:
         log(f"camera to ({xy[0]:.2f}, {xy[1]:.2f})")
-    _straight(robot, xy, xyz(robot)[2])
+    _straight(robot, xy, travel_z(z_top))
     return z_top
 
 
@@ -109,7 +122,7 @@ def drive_tip(robot: Robot, xy, z: float, z_top: float | None, *,
     z_top = raise_tip(robot, z_top, log=log)
     if log is not None:
         log(f"tip to ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}")
-    _straight(robot, xy, xyz(robot)[2])
+    _straight(robot, xy, travel_z(z_top))
     _straight(robot, xy, z)
     return z_top
 

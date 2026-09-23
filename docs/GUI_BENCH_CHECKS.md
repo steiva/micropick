@@ -789,11 +789,14 @@ static until the session owns them.
 
 ## Commit 24 — straight moves, a well to put a cuboid in, pickups in two clicks
 
-- [ ] **Click-moves go in one straight line.**
-  Click far across the picture: the gantry travels diagonally in one move,
-  not X then Y. With a long tip fitted, watch for the old refusal of
-  moveToCoordinates at the tip's height - it now arrives as an error under
-  the position ("asked for ..., ended at ...") rather than as nothing.
+- [ ] **Click-moves go in one straight line, 1 mm under the top.**
+  Click far across the picture with a long tip fitted: the first click
+  retracts, then the gantry travels diagonally in one move at 1 mm under
+  the retracted Z (the position box shows it). Further clicks go without a
+  retract. After a tip move has lowered the tip, the next click retracts
+  again. Expected failure: "asked for ..., ended at ..." under the position,
+  which would mean the robot refuses moveToCoordinates at the travel height
+  too and TRAVEL_BELOW_TOP_MM needs to be larger.
 
 - [ ] **Go to well reaches the well at the chosen level.**
   Load a plate on the Labware page; it appears in the Well card. Choose a
