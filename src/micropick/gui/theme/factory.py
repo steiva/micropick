@@ -217,13 +217,37 @@ class _ScrollColumn(QScrollArea):
         A minimum is the one thing a box layout will not take away, and it
         is set from the width the label has right now, so a narrower window
         recomputes it rather than staying tall.
+
+        The height is measured on a stand-in label, not the label itself:
+        QLabel.heightForWidth counts the label's own minimum height, so
+        asked directly a label that once held a paragraph answers with the
+        paragraph's height for ever after, and a status line that went from
+        long to short sat in the middle of a tall empty box.
         """
         for label in self._inner.findChildren(QLabel):
             if not label.wordWrap() or label.width() <= 0 or label.isHidden():
                 continue
-            wanted = label.heightForWidth(label.width())
+            wanted = _text_height(label, label.width())
             if wanted > 0 and wanted != label.minimumHeight():
                 label.setMinimumHeight(wanted)
+
+
+_MEASURE: QLabel | None = None
+
+
+def _text_height(label: QLabel, width: int) -> int:
+    """The height `label`'s text needs at `width`, whatever its minimum."""
+    global _MEASURE
+    if _MEASURE is None:
+        _MEASURE = QLabel()
+        _MEASURE.setWordWrap(True)
+    _MEASURE.setFont(label.font())
+    _MEASURE.setTextFormat(label.textFormat())
+    _MEASURE.setMargin(label.margin())
+    _MEASURE.setIndent(label.indent())
+    _MEASURE.setContentsMargins(label.contentsMargins())
+    _MEASURE.setText(label.text())
+    return _MEASURE.heightForWidth(width)
 
 
 def scroll_column(inner: QWidget, width: int) -> QScrollArea:
