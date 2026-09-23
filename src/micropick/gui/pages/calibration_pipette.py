@@ -51,10 +51,9 @@ import time
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox,
-                               QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-                               QPlainTextEdit, QSpinBox, QStackedWidget,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QLabel,
+                               QLineEdit, QMessageBox, QPlainTextEdit,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
@@ -63,8 +62,9 @@ from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+from ..theme.factory import (card, combo_box, double_spin_box, heading,
+                             primary_button, scroll_column, secondary_button,
+                             spin_box)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.feed_row import FeedRow
@@ -221,8 +221,8 @@ class PipetteCalibration(QWidget):
         self.offset_note.setWordWrap(True)
         box.layout().addWidget(self.offset_note)
 
-        self.dx = QDoubleSpinBox(page)
-        self.dy = QDoubleSpinBox(page)
+        self.dx = double_spin_box(page)
+        self.dy = double_spin_box(page)
         for spin in (self.dx, self.dy):
             spin.setRange(-300.0, 300.0)
             spin.setDecimals(3)
@@ -230,7 +230,7 @@ class PipetteCalibration(QWidget):
             spin.setSuffix(" mm")
         self.tip_type = QLineEdit(page)
         self.tip_type.setPlaceholderText("e.g. vwr_200ul_xl")
-        self.frames = QSpinBox(page)
+        self.frames = spin_box(page)
         self.frames.setRange(1, 30)
         self.frames.setValue(7)
         self.verify = QCheckBox("verify after the correction", page)

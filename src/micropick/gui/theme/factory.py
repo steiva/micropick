@@ -16,13 +16,15 @@ Nothing here knows about the session, the robot or a camera. These are widgets.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtWidgets import (QComboBox, QFrame, QLabel, QPushButton,
-                               QScrollArea, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
+                               QPushButton, QScrollArea, QSpinBox, QToolButton,
+                               QVBoxLayout, QWidget)
 
 from . import SPACING
 
 __all__ = ["primary_button", "secondary_button", "card", "heading",
-           "combo_box", "scroll_column", "Section"]
+           "combo_box", "spin_box", "double_spin_box", "scroll_column",
+           "Section"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -100,6 +102,31 @@ class _WheelSafeComboBox(QComboBox):
 def combo_box(parent: QWidget | None = None) -> QComboBox:
     """A combo box for a panel that may scroll. See _WheelSafeComboBox."""
     return _WheelSafeComboBox(parent)
+
+
+class _WheelSafeSpinBox(QSpinBox):
+    """A spin box the wheel does not turn, for the combo box's reason - and
+    here the number is often a Z the tip is about to be sent to."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
+class _WheelSafeDoubleSpinBox(QDoubleSpinBox):
+    """See _WheelSafeSpinBox."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
+def spin_box(parent: QWidget | None = None) -> QSpinBox:
+    """An integer field the mouse wheel leaves alone."""
+    return _WheelSafeSpinBox(parent)
+
+
+def double_spin_box(parent: QWidget | None = None) -> QDoubleSpinBox:
+    """A decimal field the mouse wheel leaves alone."""
+    return _WheelSafeDoubleSpinBox(parent)
 
 
 class _ScrollColumn(QScrollArea):

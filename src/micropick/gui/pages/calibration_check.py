@@ -56,8 +56,8 @@ import time
 import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import (QCheckBox, QDoubleSpinBox, QHBoxLayout, QLabel,
-                               QPlainTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QPlainTextEdit,
+                               QVBoxLayout, QWidget)
 
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import goto_xy, move_to, xyz
@@ -65,8 +65,8 @@ from ...viz import markers
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+from ..theme.factory import (card, combo_box, double_spin_box, heading,
+                             primary_button, scroll_column, secondary_button)
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.feed_row import FeedRow
@@ -164,7 +164,7 @@ class CalibrationCheck(QWidget):
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Z"))
-        self.z = QDoubleSpinBox(self)
+        self.z = double_spin_box(self)
         self.z.setRange(0.5, 150.0)
         self.z.setDecimals(2)
         self.z.setSingleStep(0.5)

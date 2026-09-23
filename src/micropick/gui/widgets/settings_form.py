@@ -28,12 +28,12 @@ import typing
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-                               QDoubleSpinBox, QFormLayout, QHBoxLayout,
-                               QLabel, QLineEdit, QScrollArea, QSpinBox,
-                               QVBoxLayout, QWidget)
+                               QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+                               QScrollArea, QVBoxLayout, QWidget)
 
 from ...config.schema import PickingConfig
 from ..theme import SPACING
+from ..theme.factory import double_spin_box, spin_box
 
 __all__ = ["PickingSettingsDialog", "field_widget"]
 
@@ -74,11 +74,11 @@ def _is_window(name: str) -> bool:
 
 def _number(kind: type, value) -> QWidget:
     if kind is int:
-        box = QSpinBox()
+        box = spin_box()
         box.setRange(*INT_RANGE)
         box.setValue(int(value))
     else:
-        box = QDoubleSpinBox()
+        box = double_spin_box()
         box.setRange(*FLOAT_RANGE)
         box.setDecimals(FLOAT_DECIMALS)
         box.setValue(float(value))

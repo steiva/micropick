@@ -63,9 +63,9 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QPalette
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel,
-                               QPlainTextEdit, QProgressBar, QSpinBox,
-                               QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QPlainTextEdit,
+                               QProgressBar, QStackedWidget, QVBoxLayout,
+                               QWidget)
 
 from ...viz import markers
 from ..auto_camera import CameraOpener
@@ -73,8 +73,9 @@ from ...workflows.calibrate_camera import Cancelled, calibrate_camera
 from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+from ..theme.factory import (card, combo_box, double_spin_box, heading,
+                             primary_button, scroll_column, secondary_button,
+                             spin_box)
 from ..widgets.camera_view import CameraView
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
@@ -230,18 +231,18 @@ class CameraCalibration(QWidget):
         box = card(page)
         box.layout().addWidget(heading("Sweep parameters", 2))
 
-        self.marker_side = QDoubleSpinBox(page)
+        self.marker_side = double_spin_box(page)
         self.marker_side.setRange(1.0, 60.0)
         self.marker_side.setDecimals(2)
         self.marker_side.setSingleStep(0.1)
         self.marker_side.setValue(6.8)
         self.marker_side.setSuffix(" mm")
 
-        self.grid_n = QSpinBox(page)
+        self.grid_n = spin_box(page)
         self.grid_n.setRange(4, 15)
         self.grid_n.setValue(7)
 
-        self.degree = QSpinBox(page)
+        self.degree = spin_box(page)
         # Below 3 is refused by fit_pixel_map rather than silently useless:
         # radial distortion is cubic in image coordinates, so a quadratic
         # reduces exactly to the affine fit it is meant to improve on.

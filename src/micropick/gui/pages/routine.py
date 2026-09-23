@@ -52,7 +52,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel,
-                               QPlainTextEdit, QSpinBox, QVBoxLayout, QWidget)
+                               QPlainTextEdit, QVBoxLayout, QWidget)
 
 from ... import paths
 from ...config.labware import LabwareError, resolve_definition
@@ -61,7 +61,7 @@ from ...hardware.labware import loaded_labware
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+                             scroll_column, secondary_button, spin_box)
 from ..widgets.deck_view import DeckView
 from ..widgets.plate_view import PlateView
 from ..workers import Worker
@@ -180,7 +180,7 @@ class RoutinePage(QWidget):
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Per well"))
-        self.per_well = QSpinBox(self)
+        self.per_well = spin_box(self)
         self.per_well.setRange(0, 999)
         self.per_well.setValue(1)
         self.per_well.setMinimumWidth(70)

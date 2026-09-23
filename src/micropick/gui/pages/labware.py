@@ -65,17 +65,16 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QDoubleSpinBox, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem, QVBoxLayout, QWidget)
 
 from ...config.labware import (LabwareDefinition, LabwareError,
                                local_definitions, shared_definitions)
 from ...config.schema import DeckModule
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+from ..theme.factory import (card, combo_box, double_spin_box, heading,
+                             primary_button, scroll_column, secondary_button)
 from ..widgets.deck_view import TRASH_SLOT, DeckView
 from ..workers import Worker
 
@@ -162,7 +161,7 @@ class LabwarePage(QWidget):
         self.module_slots = QLineEdit(self)
         self.module_slots.setPlaceholderText("slots, e.g. 5, 8, 9")
         self.module_slots.setMaximumWidth(120)
-        self.module_height = QDoubleSpinBox(self)
+        self.module_height = double_spin_box(self)
         self.module_height.setRange(-200.0, 200.0)
         self.module_height.setDecimals(2)
         self.module_height.setSingleStep(0.1)
