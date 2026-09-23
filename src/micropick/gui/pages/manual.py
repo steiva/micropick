@@ -26,9 +26,16 @@ the picture, as a jog step past them is. And nothing moves at all until
 "Click to move" is on; it is off each time this tab is opened, and with it
 off a click only says where it would go.
 
+Aspirate and dispense in place, with a volume and a flow rate, are on the
+page and on A and D - the in-place commands the run uses, for trying a
+pickup by hand. They are refused unless the robot reports a tip on.
+
 Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
 detections are dropped: they were measured from where the camera was.
+
+The keys - the jog panel's and these - and what the mouse does are listed
+on the picture, bottom right; H hides them.
 """
 
 from __future__ import annotations
@@ -39,6 +46,7 @@ import time
 import cv2
 import numpy as np
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
@@ -81,18 +89,49 @@ CROSSHAIR_Z_MM = 67.0
 
 Z_RANGE = (0.5, 150.0)
 
+# Liquid handling bounds: wide enough for any pipette on this robot, and a
+# typo of an extra digit still stops at the top of the range.
+VOLUME_RANGE = (0.1, 1000.0)
+FLOW_RANGE = (0.1, 1000.0)
 
-def _z_box(parent: QWidget, value: float):
+# (key, what it does, handler name). One list, so the picture's key box
+# cannot offer a key that is not bound.
+KEYS = (("A", "aspirate", "_aspirate"),
+        ("D", "dispense", "_dispense"))
+
+# What the mouse does on the picture, for the same box.
+MOUSE_HELP = ("click   move there (with Click to move on)",
+              "wheel   zoom",
+              "middle-drag   pan",
+              "double-click   fit the picture")
+
+
+def _number_box(parent: QWidget, value: float, span, suffix: str,
+                decimals: int = 2, step: float = 0.1):
     box = double_spin_box(parent)
-    box.setRange(*Z_RANGE)
-    box.setDecimals(2)
-    box.setSingleStep(0.1)
-    box.setSuffix(" mm")
+    box.setRange(*span)
+    box.setDecimals(decimals)
+    box.setSingleStep(step)
+    box.setSuffix(suffix)
     # Wide enough for the value and its suffix: a spin box sized by its
     # layout shows neither.
     box.setMinimumWidth(110)
     box.setValue(value)
     return box
+
+
+def _z_box(parent: QWidget, value: float):
+    return _number_box(parent, value, Z_RANGE, " mm")
+
+
+def _row(box, label: str, widget) -> None:
+    row = QHBoxLayout()
+    name = QLabel(label)
+    name.setMinimumWidth(90)
+    row.addWidget(name)
+    row.addWidget(widget)
+    row.addStretch(1)
+    box.layout().addLayout(row)
 
 
 class ManualPage(QWidget):
@@ -113,9 +152,12 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
         self.jog.moved.connect(self._forget_targets)
+        self.jog.add_help([f"{key.lower()}   {what}" for key, what, _ in KEYS]
+                          + list(MOUSE_HELP))
 
         panel = CardColumns([self._camera_card(), self._click_card(),
-                             self._targets_card(), self.jog], self)
+                             self._targets_card(), self._liquid_card(),
+                             self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -132,6 +174,7 @@ class ManualPage(QWidget):
         session.robot_state_changed.connect(self._robot_changed)
         session.tip_changed.connect(lambda _t: self._lose_top())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
+        self._install_shortcuts()
         self._on_profile_changed()
         self._refresh_cameras()
 
@@ -182,15 +225,8 @@ class ManualPage(QWidget):
             "The profile's pickup height (dish_bottom + pickup_offset). "
             "Changing it here changes pickup_offset, which the run uses too.")
         self.cuboid_z.editingFinished.connect(self._cuboid_z_edited)
-        for label, widget in (("Crosshair Z", self.cross_z),
-                              ("Cuboid Z", self.cuboid_z)):
-            row = QHBoxLayout()
-            name = QLabel(label)
-            name.setMinimumWidth(90)
-            row.addWidget(name)
-            row.addWidget(widget)
-            row.addStretch(1)
-            box.layout().addLayout(row)
+        _row(box, "Crosshair Z", self.cross_z)
+        _row(box, "Cuboid Z", self.cuboid_z)
 
         self.clear_button = secondary_button("Clear", self)
         self.clear_button.clicked.connect(lambda: self._forget_targets())
@@ -202,6 +238,74 @@ class ManualPage(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.state)
         return box
+
+    def _liquid_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Liquid", 2))
+        self.volume = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
+        self.flow_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1, 1.0)
+        _row(box, "Volume", self.volume)
+        _row(box, "Flow rate", self.flow_rate)
+        row = QHBoxLayout()
+        # The keys are in the box on the picture; in the label they cut the
+        # button's text off in a column half the panel wide.
+        self.aspirate_button = secondary_button("Aspirate", self)
+        self.aspirate_button.setToolTip("Aspirate where the tip is. Key: A")
+        self.aspirate_button.clicked.connect(self._aspirate)
+        self.dispense_button = secondary_button("Dispense", self)
+        self.dispense_button.setToolTip("Dispense where the tip is. Key: D")
+        self.dispense_button.clicked.connect(self._dispense)
+        row.addWidget(self.aspirate_button)
+        row.addWidget(self.dispense_button)
+        box.layout().addLayout(row)
+        return box
+
+    def _install_shortcuts(self) -> None:
+        """A and D, window-wide while this page is showing - the jog panel's
+        arrangement, and for its reason: enabled only on screen, so no
+        hidden page claims the key."""
+        self._shortcuts = []
+        for key, _what, handler in KEYS:
+            shortcut = QShortcut(QKeySequence(key), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(getattr(self, handler))
+            shortcut.setEnabled(False)
+            self._shortcuts.append(shortcut)
+
+    # -- liquid ------------------------------------------------------------------
+
+    def _aspirate(self) -> None:
+        self._liquid("aspirate", "aspirated", moves.aspirate)
+
+    def _dispense(self) -> None:
+        self._liquid("dispense", "dispensed", moves.dispense)
+
+    def _liquid(self, what: str, done: str, command) -> None:
+        """Aspirate or dispense where the tip is, through the jog queue."""
+        session = self.session
+        robot = session.robot
+        if robot is None:
+            self.jog.tell(f"REFUSED: no robot to {what} with.")
+            return
+        if session.tip.attached is not True:
+            state = ("none" if session.tip.attached is False
+                     else "that it cannot tell")
+            self.jog.tell(f"REFUSED: {what} needs a tip on the pipette, and "
+                          f"the robot reports {state}.")
+            return
+        volume = float(self.volume.value())
+        rate = float(self.flow_rate.value())
+        note = f"{done} {volume:g} µl at {rate:g} µl/s"
+
+        def job(log):
+            log(f"{what} {volume:g} µl at {rate:g} µl/s")
+            command(robot, volume, rate)
+            return note
+
+        # Nothing moves: what is detected on the picture still stands.
+        if not self.jog.run_job(job, moves=False):
+            self.jog.tell(f"not now: the robot is busy; {what} again when "
+                          f"it is done.")
 
     # -- what the picture can be used for -------------------------------------
 
@@ -509,6 +613,9 @@ class ManualPage(QWidget):
             len(self._cross) > 0 or len(self._cross_outside) > 0
             or self._cuboids is not None)
         self.cuboid_z.setEnabled(self.session.profile is not None)
+        has_robot = self.session.robot is not None
+        self.aspirate_button.setEnabled(has_robot)
+        self.dispense_button.setEnabled(has_robot)
         if busy:
             return
         if problems:
@@ -547,6 +654,11 @@ class ManualPage(QWidget):
         if profile is not getattr(self, "_profile", None):
             self._profile = profile
             self._tip_detector = None
+            if profile is not None:
+                # The run's own numbers as the starting point; what is typed
+                # here afterwards stays while this profile is loaded.
+                self.volume.setValue(profile.picking.vol)
+                self.flow_rate.setValue(profile.picking.flow_rate)
             self._forget_targets()
         else:
             self._refresh()
@@ -589,9 +701,16 @@ class ManualPage(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        for shortcut in self._shortcuts:
+            shortcut.setEnabled(True)
         # Disarmed on every entry, however it was left.
         self.armed.setChecked(False)
         # Jogging is done by eye through this camera; without it the page is
         # a D-pad and a blank rectangle.
         self.opener.ensure(self.session.upper_camera_label)
         self._refresh_cameras()
+
+    def hideEvent(self, event) -> None:
+        for shortcut in self._shortcuts:
+            shortcut.setEnabled(False)
+        super().hideEvent(event)

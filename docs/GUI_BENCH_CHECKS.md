@@ -773,3 +773,17 @@ static until the session owns them.
   Zoom in with the wheel, hold the middle button and drag: the picture
   follows the hand and stops when its edge reaches the widget's. Every
   camera view has it, feed windows included.
+
+- [ ] **Aspirate and dispense in place, from the page and from A and D.**
+  Tip on, tip in liquid: set Volume and Flow rate, press A - the log and
+  the box under the position say "aspirated 10 µl at 50 µl/s" and the
+  liquid rises in the tip; D puts it back. With no tip the command is
+  refused on the picture and nothing is sent. On any other page A and D do
+  nothing. Expected failure: the robot declines the aspirate (a dispense of
+  more than is in the tip, or no prior pick-up) - the refusal appears under
+  the position rather than nothing happening.
+
+- [ ] **The keys are on the picture.**
+  Bottom-right of the picture: the jog keys, A and D, and the mouse. H hides
+  the box and shows it again, with or without a robot connected.
+

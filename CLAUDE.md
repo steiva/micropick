@@ -40,3 +40,16 @@ A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture gets the width its frame shape needs (4:3 for the upper camera),
 the panel the rest, within 1-2x its designed width. Pages carry no title;
 the tab along the top is the title.
+
+The keys a page binds and what the mouse does are listed in a box at the
+picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
+plus the page's `add_help`); H toggles it. A key added to a page belongs in
+that list too.
+
+### Manual control drives the robot from the picture
+
+Robot commands from a page with a jog panel go through
+`JogPanel.run_job`, never a worker of the page's own, so they cannot overlap
+a key press. Moves across the deck raise the tip first
+(`workflows.manual.raise_tip`). Click-to-move is off on every entry to the
+tab.

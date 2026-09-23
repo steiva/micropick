@@ -77,6 +77,10 @@ refused or clamped step was, through `position_changed`, and the page hands
 that to its `CameraView`, which draws it in a box under the resolution. The
 operator jogging is watching the picture; a readout at the other side of the
 window was one more place to look.
+
+The keys are listed there too, in a box in the picture's bottom-right corner
+(`help_changed`, `CameraView.set_help`), shown until H hides it. A page adds
+its own keys and mouse actions to the same list with `add_help`.
 """
 
 from __future__ import annotations
@@ -168,6 +172,13 @@ def _check_layout() -> None:
 _check_layout()
 
 
+def _reflow(line: str) -> str:
+    """One line of jog's help for a proportional font: the padding it is laid
+    out with only lines the columns up in a fixed one."""
+    keys, _, text = line.strip().partition(" ")
+    return f"{keys}   {text.strip()}"
+
+
 def _bound_layout() -> tuple:
     """The layout minus what this backend does not bind, for the help."""
     return tuple(key for key in LAYOUT if key.command not in UNBOUND)
@@ -182,6 +193,8 @@ class JogPanel(QWidget):
     # detections drawn on the picture drops them: they were measured from
     # where the camera was.
     moved = Signal()
+    # The key list for the picture, or [] while H has it hidden.
+    help_changed = Signal(list)
 
     def __init__(self, session: Session, *,
                  shortcut_host: QWidget | None = None,
@@ -207,6 +220,8 @@ class JogPanel(QWidget):
         self._status = NO_ROBOT
         self._message = ""
         self._job_moves = True
+        self._help = [_reflow(line) for line in help_lines(_bound_layout())]
+        self._help_shown = True
 
         # Not a scroll area itself. The page that hosts it may put it in one
         # (theme.factory.scroll_column), which takes no focus, so PageUp and
@@ -222,7 +237,6 @@ class JogPanel(QWidget):
             column.addWidget(self._machine_card())
         else:
             self.home_button = self.retract_button = None
-        column.addWidget(self._help_label())
         column.addStretch(1)
 
         self._install_shortcuts(shortcut_host or self)
@@ -349,13 +363,6 @@ class JogPanel(QWidget):
         box.layout().addLayout(row)
         return box
 
-    def _help_label(self) -> QWidget:
-        self.help = QLabel("\n".join(help_lines(_bound_layout())))
-        self.help.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.help.hide()
-        return self.help
-
     # -- keys ----------------------------------------------------------------
 
     def _install_shortcuts(self, host: QWidget) -> None:
@@ -406,14 +413,13 @@ class JogPanel(QWidget):
         self._run(Worker(job))
 
     def _command(self, command: str) -> None:
-        if self.controller is None:
-            return
         if command == "help":
-            # isHidden, not isVisible: isVisible() is false whenever any
-            # ancestor is hidden, and these pages live in a QStackedWidget
-            # where four of the five are. Toggling on it reads "not shown" for
-            # a panel that is shown and sticks the toggle on.
-            self.help.setVisible(self.help.isHidden())
+            # Before the robot check: reading the keys is exactly what is
+            # wanted when nothing else works yet.
+            self._help_shown = not self._help_shown
+            self._emit_help()
+            return
+        if self.controller is None:
             return
         if self._busy():
             return
@@ -571,7 +577,7 @@ class JogPanel(QWidget):
         is done should wait for this to clear first."""
         return self._busy()
 
-    def run_job(self, fn) -> bool:
+    def run_job(self, fn, *, moves: bool = True) -> bool:
         """Run `fn(log)` on this panel's worker, after any step in flight.
 
         The one queue for the robot on a page with a panel: a click-move or an
@@ -587,7 +593,9 @@ class JogPanel(QWidget):
         def job(log):
             return fn(log), controller.status()
 
-        self._run(Worker(job))
+        # `moves=False` for a job that leaves the gantry where it is, such
+        # as an aspirate: what was detected on the picture still stands.
+        self._run(Worker(job), moves=moves)
         return True
 
     def tell(self, text: str) -> None:
@@ -673,9 +681,24 @@ class JogPanel(QWidget):
         return [self._status] + ([self._message] if self._message else [])
 
     def show_position_on(self, view) -> None:
-        """Keep `view` (a CameraView) showing where the gantry is, from now."""
+        """Keep `view` (a CameraView) showing where the gantry is, and the
+        keys, from now."""
         self.position_changed.connect(view.set_position)
         view.set_position(self.position_lines)
+        self.help_changed.connect(view.set_help)
+        view.set_help(self.help_lines)
+
+    @property
+    def help_lines(self) -> list[str]:
+        return list(self._help) if self._help_shown else []
+
+    def add_help(self, lines) -> None:
+        """A page's own keys and mouse actions, after the jog keys."""
+        self._help += [str(line) for line in lines]
+        self._emit_help()
+
+    def _emit_help(self) -> None:
+        self.help_changed.emit(self.help_lines)
 
     def _emit_position(self) -> None:
         self.position_changed.emit(self.position_lines)
