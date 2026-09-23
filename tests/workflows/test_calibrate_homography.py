@@ -12,8 +12,8 @@ import numpy as np
 from micropick.hardware.mock import MockRobot
 from micropick.workflows.calibrate_homography import calibrate_homography
 
-AXES = np.array([[0.0, 1.0], [1.0, 0.0]])
-H_TRUE = np.array([[0.0, 0.9, 100.0], [0.9, 0.0, 50.0], [0.0, 0.0, 1.0]])
+# The lower view is the upper one turned +90 degrees and scaled, no mirror.
+H_TRUE = np.array([[0.0, -0.9, 2100.0], [0.9, 0.0, 300.0], [0.0, 0.0, 1.0]])
 OVER_C = np.array([1300.0, 950.0])
 OVER_N = OVER_C + np.array([[200.0, 0.0], [0.0, 200.0], [-200.0, 0.0], [0.0, -200.0]])
 
@@ -27,6 +27,11 @@ class _View:
     def __init__(self, centre, neighbours):
         self.centre = np.asarray(centre, float)
         self.neighbours = np.asarray(neighbours, float)
+
+
+class _Camera:
+    def __init__(self, resolution):
+        self.resolution = resolution
 
 
 class FakeDetector:
@@ -46,10 +51,10 @@ class FakeDetector:
 def test_calibrate_homography_returns_config_with_pose():
     robot = MockRobot(position=(150.0, 160.0, 100.0), noise_mm=0.0)
     before = robot.moves
-    result = calibrate_homography(robot, over_cam=object(), under_cam=object(),
-                                  detector=FakeDetector(),
-                                  target=type("T", (), {"spacing_mm": 20.25,
-                                                        "axes": AXES})(),
+    target = type("T", (), {"spacing_mm": 20.25, "under_rotation_deg": 90.0})()
+    result = calibrate_homography(robot, over_cam=_Camera((2592, 1944)),
+                                  under_cam=_Camera((4000, 3000)),
+                                  detector=FakeDetector(), target=target,
                                   log=lambda *a: None)
 
     assert robot.moves == before                       # nothing was commanded
@@ -57,3 +62,6 @@ def test_calibrate_homography_returns_config_with_pose():
     assert result.homography.n_points == 5
     assert np.allclose(result.homography.gantry_xy, [150.0, 160.0])
     assert np.array(result.homography.matrix).shape == (3, 3)
+    # stored with the modes it was fitted at, so it can be rescaled later
+    assert result.homography.over_resolution == [2592, 1944]
+    assert result.homography.under_resolution == [4000, 3000]

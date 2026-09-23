@@ -147,5 +147,6 @@ def test_check_labware_matches_empty_and_wrong():
         r.check_labware({})                             # empty slot
     with pytest.raises(RoutineError):
         r.check_labware({"3": ("otherplate", 2)})       # wrong definition
-    with pytest.raises(RoutineError):
-        r.check_labware({"3": ("myplate", 1)})          # wrong version
+    # The version is the definition file's revision, not the plate's, and
+    # the robot reports 1 whatever was loaded: noted, never refused.
+    r.check_labware({"3": ("myplate", 1)})

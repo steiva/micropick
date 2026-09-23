@@ -209,7 +209,8 @@ def test_detect_floater_zones_single_frame_is_empty():
 
 def test_drop_in_zones_removes_near_and_keeps_far():
     df = pd.DataFrame({'cX': [100.0, 500.0], 'cY': [100.0, 500.0]})
-    kept = cb.drop_in_zones(df, zones=[(100, 100)], radius_px=50)
+    # A zone carries its own radius: (x, y, radius_px).
+    kept = cb.drop_in_zones(df, zones=[(100, 100, 50)])
     assert kept['cX'].tolist() == [500.0]
 
 

@@ -1,4 +1,4 @@
-"""The overlays: geometry, purity, and that the split changed no pixel."""
+"""The overlays: geometry, purity, and a pinned rendering of every branch."""
 
 from __future__ import annotations
 
@@ -52,10 +52,10 @@ def test_annotate_tolerates_empty_frames_table():
     assert np.array_equal(out, frame)
 
 
-# -- the split changed nothing ----------------------------------------------
+# -- the rendering is pinned ------------------------------------------------
 
-def test_annotate_still_produces_the_pre_split_image():
-    """Pinned to an image rendered by the implementation before `items` existed.
+def test_annotate_still_produces_the_pinned_image():
+    """Pinned to an image of every branch of `annotate` at once.
 
     Regenerate deliberately with `python -m tests.viz.regenerate_golden`, never
     because the test failed: a change here is a change to what an operator sees
@@ -68,7 +68,7 @@ def test_annotate_still_produces_the_pre_split_image():
     assert out.shape == golden.shape
     assert np.array_equal(out, golden), (
         f"{int(np.count_nonzero(np.abs(out.astype(int) - golden.astype(int)).sum(2)))}"
-        f" pixels differ from the pre-split rendering")
+        f" pixels differ from the pinned rendering")
 
 
 # -- items -------------------------------------------------------------------
