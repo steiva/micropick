@@ -342,6 +342,7 @@ class RoutinePage(QWidget):
             return
         self.destination = destination
         self.routine = None
+        self.session.set_routine(None)
         self._plan = {}
         self._selection = set()
         self.plate.set_destination(destination)
@@ -455,6 +456,9 @@ class RoutinePage(QWidget):
 
     def _adopt(self, routine: Routine) -> None:
         self.routine = routine
+        # The Picking page needs it and the two pages never meet; the
+        # session is where "what this session is attached to" lives.
+        self.session.set_routine(routine)
         self.plate.set_plan(dict(routine.plan))
         self.plate.set_progress(self._delivered())
         self.summary.setPlainText(routine.summary())

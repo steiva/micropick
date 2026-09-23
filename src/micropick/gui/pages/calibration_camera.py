@@ -172,6 +172,7 @@ class CameraCalibration(QWidget):
         self.jog = JogPanel(self.session, shortcut_host=page,
                             machine_controls=False, collapsed=("positions",),
                             parent=page)
+        self.jog.show_position_on(self.view)
 
         panel = QWidget(page)
         column = QVBoxLayout(panel)

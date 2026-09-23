@@ -1,11 +1,18 @@
 """The window everything else sits in.
 
-A list on the left and a stack on the right, assembled by hand rather than from
-a structural framework: the navigation is a handful of fixed entries and a framework
-would decide the window's shape, the page lifecycle and the theme along with
-it. Those are exactly the three things this application needs to keep.
+A row of tabs along the top and a stack under it, assembled by hand rather
+than from a structural framework: the navigation is a handful of fixed entries
+and a framework would decide the window's shape, the page lifecycle and the
+theme along with it. Those are exactly the three things this application
+needs to keep.
 
-`PAGES` is the only place the order and the names exist. The list item and the
+The tabs are in two groups. On the left, the pages a session goes through in
+order — profile, labware, calibration, routine, picking. On the right edge,
+the two that are used whenever they are needed rather than in sequence:
+manual control and the log. A column down the side used to hold them all and
+cost the pages 200 px of width for seven words.
+
+`PAGES` is the only place the order and the names exist. The tab and the
 stacked widget are built from the same row in one pass, so the entry an
 operator clicks and the page that appears cannot come apart — the mistake
 `workflows/jog` fixed by generating its help from its layout, in a different
@@ -18,10 +25,10 @@ import logging
 from typing import TYPE_CHECKING
 
 import qtawesome as qta
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QListWidget, QMainWindow,
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel, QMainWindow,
                                QStackedWidget, QStatusBar, QToolButton,
-                               QWidget)
+                               QVBoxLayout, QWidget)
 
 from . import log_bridge
 from .pages import (calibration, labware, log, manual, picking, profile,
@@ -39,22 +46,23 @@ __all__ = ["MainWindow", "StatusBar", "PAGES"]
 
 _log = logging.getLogger(__name__)
 
-# (attribute name, title in the list, page class). The attribute is how the
-# rest of the application reaches a page; the title is what is on screen.
+# Which end of the tab row a page sits at.
+SEQUENCE, ASIDE = "sequence", "aside"
+
+# (attribute name, title on the tab, page class, group). The attribute is how
+# the rest of the application reaches a page; the title is what is on screen.
 PAGES = (
-    ("profile", profile.TITLE, profile.ProfilePage),
-    ("labware", labware.TITLE, labware.LabwarePage),
-    ("manual", manual.TITLE, manual.ManualPage),
-    ("calibration", calibration.TITLE, calibration.CalibrationPage),
+    ("profile", profile.TITLE, profile.ProfilePage, SEQUENCE),
+    ("labware", labware.TITLE, labware.LabwarePage, SEQUENCE),
+    ("calibration", calibration.TITLE, calibration.CalibrationPage, SEQUENCE),
     # Routine before Picking: the plan is what a run picks into, and an
     # operator who meets the pages in order meets them in the order the
     # work happens.
-    ("routine", routine.TITLE, routine.RoutinePage),
-    ("picking", picking.TITLE, picking.PickingPage),
-    ("log", log.TITLE, log.LogPage),
+    ("routine", routine.TITLE, routine.RoutinePage, SEQUENCE),
+    ("picking", picking.TITLE, picking.PickingPage, SEQUENCE),
+    ("manual", manual.TITLE, manual.ManualPage, ASIDE),
+    ("log", log.TITLE, log.LogPage, ASIDE),
 )
-
-NAV_WIDTH = 200
 
 # The one colour this shell owns. A tip on the pipette is the first reason
 # the robot crashes into something, and the indicator that says so has to be
@@ -234,43 +242,52 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("micropick")
         self.resize(1400, 900)
 
-        self.nav = QListWidget()
-        self.nav.setObjectName("nav")
-        self.nav.setFixedWidth(NAV_WIDTH)
-        self.nav.setUniformItemSizes(True)
-        # The mouse chooses pages; the keyboard drives the robot. A list with
-        # focus takes the arrow keys for its own selection, and on the manual
-        # page that is a page change where a step in Y was meant.
-        self.nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.stack = QStackedWidget()
-
-        # Row height in Python rather than in the stylesheet. qdarktheme
-        # installs a QProxyStyle and item geometry is computed through it, so
-        # `padding` and `min-height` on QListWidget#nav::item were painted and
-        # not measured: the selected row's rounded rect ran over its
-        # neighbours. Derived from the font so it still follows theme.SPACING
-        # and the font size rather than being a number picked to look right.
-        row = QSize(0, self.nav.fontMetrics().height() + SPACING * 2)
+        # One exclusive group across both ends of the row, so choosing a tab
+        # on the right clears the one on the left. The id is the page's index
+        # in the stack.
+        self.nav = QButtonGroup(self)
+        self.nav.setExclusive(True)
+        self.tabs: dict[str, QToolButton] = {}
 
         self.session = Session(options, parent=self)
 
+        tab_row = QHBoxLayout()
+        tab_row.setContentsMargins(0, 0, 0, 0)
+        tab_row.setSpacing(SPACING // 2)
+        aside: list[QToolButton] = []
         self.pages: dict[str, QWidget] = {}
-        for name, title, page_class in PAGES:
+        for name, title, page_class, group in PAGES:
             page = page_class(self.session)
             self.pages[name] = page
             setattr(self, f"{name}_page", page)
-            self.nav.addItem(title)
-            self.nav.item(self.nav.count() - 1).setSizeHint(row)
-            self.stack.addWidget(page)
+            tab = QToolButton()
+            tab.setObjectName("navTab")
+            tab.setText(title)
+            tab.setCheckable(True)
+            tab.setAutoRaise(True)
+            # The mouse chooses pages; the keyboard drives the robot. A tab
+            # with focus takes Space for itself, and on the manual page that
+            # is a page change where a jog key was meant.
+            tab.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.nav.addButton(tab, self.stack.addWidget(page))
+            self.tabs[name] = tab
+            if group == ASIDE:
+                aside.append(tab)
+            else:
+                tab_row.addWidget(tab)
+        tab_row.addStretch(1)
+        for tab in aside:
+            tab_row.addWidget(tab)
 
-        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
-        self.nav.setCurrentRow(0)
+        self.nav.idClicked.connect(self.stack.setCurrentIndex)
+        self.show_page(PAGES[0][0])
 
         central = QWidget()
-        layout = QHBoxLayout(central)
+        layout = QVBoxLayout(central)
         layout.setContentsMargins(SPACING, SPACING, SPACING, SPACING)
-        layout.setSpacing(SPACING)
-        layout.addWidget(self.nav)
+        layout.setSpacing(SPACING // 2)
+        layout.addLayout(tab_row)
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
@@ -412,5 +429,6 @@ class MainWindow(QMainWindow):
         self.status.show_lights(self.session.lights)
 
     def show_page(self, name: str) -> None:
-        """Bring a page to the front by name, keeping the list in step."""
-        self.nav.setCurrentRow(list(self.pages).index(name))
+        """Bring a page to the front by name, keeping the tabs in step."""
+        self.tabs[name].setChecked(True)
+        self.stack.setCurrentWidget(self.pages[name])

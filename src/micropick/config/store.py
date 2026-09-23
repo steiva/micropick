@@ -36,7 +36,8 @@ from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, DeckConfig,
                      ProfileMeta)
 
 __all__ = ["Profile", "ProfileError", "LegacyProfileError",
-           "list_profiles", "create_profile", "load_profile", "profile_dir"]
+           "list_profiles", "create_profile", "copy_profile", "delete_profile",
+           "load_profile", "profile_dir"]
 
 META_FILE = "profile.json"
 CALIBRATION_FILE = "calibration.json"
@@ -416,3 +417,41 @@ def create_profile(name: str, *, camera_label: str | None = None,
     path.mkdir(parents=True)
     profile.save()
     return profile
+
+
+def copy_profile(source: str, name: str, *, notes: str = "") -> Profile:
+    """A new profile `name` holding everything `source` holds but its history.
+
+    The usual way to start a second profile on the same bench: the cameras,
+    the calibration and the taught positions are the bench's, and a profile
+    started empty would have to measure all of them again. The archived
+    calibrations stay behind; they describe the source's past, not the copy's.
+    """
+    src = profile_dir(source)
+    dst = profile_dir(name)
+    if dst.exists():
+        raise ProfileError(f"profile {name!r} already exists at {dst}")
+    original = load_profile(source)          # refuses a broken source up front
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns(
+        HISTORY_DIR, "*.bak", "*.tmp"))
+    copy = load_profile(name)
+    copy.meta = ProfileMeta(
+        name=name, camera_label=original.meta.camera_label,
+        notes=notes or f"copied from {source}",
+        created_at=datetime.now(timezone.utc))
+    copy.save_meta()
+    return copy
+
+
+def delete_profile(name: str) -> Path:
+    """Remove a profile's directory, history and all. Returns where it was.
+
+    Only a directory that is a profile: `profile_dir` refuses a name with a
+    separator in it, and a directory without profile.json is left alone, so
+    a typo cannot take anything else under the profiles root with it.
+    """
+    path = profile_dir(name)
+    if not (path / META_FILE).is_file():
+        raise ProfileError(f"{path} is not a profile, so it is not deleted")
+    shutil.rmtree(path)
+    return path

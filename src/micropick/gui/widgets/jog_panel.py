@@ -36,7 +36,7 @@ be driven to, which is the point of having named a pose at all.
 `shortcut_host` is the widget the key bindings are registered on, normally the
 page. They are `WindowShortcut`: while the panel is on screen the keys reach
 the robot from anywhere in the window, whatever has focus — the camera view,
-the page list on the left, a combo box that was just clicked. The cv2 window
+a page tab, a combo box that was just clicked. The cv2 window
 behaves the same way, and it is what an operator with one hand on the keyboard
 and eyes on the picture expects; a shortcut that works only while the right
 widget has focus is one that silently stops working after a click somewhere
@@ -69,13 +69,22 @@ step, so each one runs in a `Worker` and the controls are disabled until it
 returns. `JogController` already refuses a second move while one is in flight —
 that is what stops a held-down arrow queueing moves that keep running after the
 key is released — and this neither repeats that guard nor works around it.
+
+Where the gantry is goes on the picture
+---------------------------------------
+The panel has no readout of its own. It says where the gantry is, and what a
+refused or clamped step was, through `position_changed`, and the page hands
+that to its `CameraView`, which draws it in a box under the resolution. The
+operator jogging is watching the picture; a readout at the other side of the
+window was one more place to look.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
                                QLabel, QListWidget, QListWidgetItem,
@@ -87,6 +96,9 @@ from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (Section, card, combo_box, heading,
                              primary_button, secondary_button)
+
+# What the picture says while there is no robot to ask.
+NO_ROBOT = "no robot — connect it on the Profile page"
 from ..workers import Worker
 
 __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS"]
@@ -162,6 +174,11 @@ def _bound_layout() -> tuple:
 
 
 class JogPanel(QWidget):
+    # Where the gantry is, and what the last step ran into, as lines for
+    # `CameraView.set_position`. Emitted on every change; `position_lines`
+    # holds the latest for a view connected later.
+    position_changed = Signal(list)
+
     def __init__(self, session: Session, *,
                  shortcut_host: QWidget | None = None,
                  machine_controls: bool = True,
@@ -183,6 +200,8 @@ class JogPanel(QWidget):
         self._shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
         self._collapsed = tuple(collapsed)
+        self._status = NO_ROBOT
+        self._message = ""
 
         # Not a scroll area itself. The page that hosts it may put it in one
         # (theme.factory.scroll_column), which takes no focus, so PageUp and
@@ -190,7 +209,6 @@ class JogPanel(QWidget):
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        column.addWidget(self._position_card())
         column.addWidget(self._move_card())
         column.addWidget(self._positions_card())
         if machine_controls:
@@ -210,25 +228,6 @@ class JogPanel(QWidget):
         self._on_robot_changed(session.robot_state)
 
     # -- construction --------------------------------------------------------
-
-    def _position_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Position", 2))
-        self.status_label = QLabel("no robot")
-        self.status_label.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.status_label.setWordWrap(True)
-        self.status_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.status_label)
-
-        # Refusals and clamps land here rather than in a dialog: running into a
-        # soft limit is ordinary, and a modal box for it would be in the way
-        # several times a minute.
-        self.message = QLabel()
-        self.message.setWordWrap(True)
-        box.layout().addWidget(self.message)
-        return box
 
     def _move_card(self) -> QWidget:
         box = Section("Move", collapsed="move" in self._collapsed, parent=self)
@@ -612,7 +611,7 @@ class JogPanel(QWidget):
         if not self._claim():
             return
         result, status = payload
-        self.status_label.setText(status)
+        self._set_status(status)
         self._refresh_saved()
         if result is None:
             self._say("")
@@ -632,16 +631,33 @@ class JogPanel(QWidget):
 
     # -- display -------------------------------------------------------------
 
+    @property
+    def position_lines(self) -> list[str]:
+        return [self._status] + ([self._message] if self._message else [])
+
+    def show_position_on(self, view) -> None:
+        """Keep `view` (a CameraView) showing where the gantry is, from now."""
+        self.position_changed.connect(view.set_position)
+        view.set_position(self.position_lines)
+
+    def _emit_position(self) -> None:
+        self.position_changed.emit(self.position_lines)
+
+    def _set_status(self, status: str) -> None:
+        # `controller.status()` pads its numbers into columns for a fixed
+        # font; the picture's box is set in the UI font, where the padding is
+        # only gaps.
+        self._status = re.sub(r"\(\s+", "(", re.sub(r"\s+", " ", status)).strip()
+        self._emit_position()
+
     def _say(self, text: str, firm: bool = False) -> None:
         """Words rather than colour. Running into a soft limit is ordinary, and
-        the difference between refused and clamped is what the sentence says."""
-        if not text:
-            self.message.clear()
-            return
-        self.message.setText(("Refused: " if firm else "Clamped: ") + text)
-        font = self.message.font()
-        font.setBold(firm)
-        self.message.setFont(font)
+        the difference between refused and clamped is what the sentence says.
+        Shown on the picture under the position rather than in a dialog: a
+        modal box for it would be in the way several times a minute."""
+        self._message = (("REFUSED: " if firm else "Clamped: ") + text
+                         if text else "")
+        self._emit_position()
 
     def _set_step(self, value: float) -> None:
         index = self.step_choice.findData(value)
@@ -650,13 +666,13 @@ class JogPanel(QWidget):
             self.step_choice.setCurrentIndex(index)
             self.step_choice.blockSignals(False)
         if self.controller is not None:
-            self.status_label.setText(self._offline_status())
+            self._set_status(self._offline_status())
 
     def _step_chosen(self, index: int) -> None:
         if self.controller is None or index < 0:
             return
         self.controller.step = self.step_choice.itemData(index)
-        self.status_label.setText(self._offline_status())
+        self._set_status(self._offline_status())
 
     def _offline_status(self) -> str:
         """The line already on screen with the step brought up to date.
@@ -664,7 +680,7 @@ class JogPanel(QWidget):
         `controller.status()` reads the pose over HTTP, and changing the step
         size is not a reason to talk to the robot.
         """
-        current = self.status_label.text()
+        current = self._status
         step = f"step {self.controller.step:g} mm"
         if "step " not in current:
             return step
@@ -703,7 +719,7 @@ class JogPanel(QWidget):
         robot = self.session.robot
         if robot is None:
             self.controller = None
-            self.status_label.setText("no robot — connect it on the Profile page")
+            self._status = NO_ROBOT
             self._say("")
             self._set_enabled(False)
             # The list outlives the connection: it is the profile's, and

@@ -86,6 +86,8 @@ RESIZE_ABOVE = 2.0
 BACKDROP = QColor(24, 24, 26)
 CAPTION_BG = QColor(0, 0, 0, 140)
 CAPTION_FG = QColor(235, 235, 235)
+CAPTION_PAD = 6
+CAPTION_GAP = 6
 # Red, as in jog_in_window, so the marker means the same thing in both.
 CROSSHAIR = QColor(230, 60, 60)
 CROSSHAIR_ARM = 30
@@ -133,6 +135,8 @@ class CameraView(QWidget):
         self._fps_at = time.monotonic()
         self._fps_count = 0
         self._overlay: list = []
+        self._position: list[str] = []
+        self._status: list[str] = []
 
         # Zoom about a point: the view pixel that sits at the widget's centre.
         self._zoom = 1.0
@@ -392,6 +396,25 @@ class CameraView(QWidget):
         self._overlay = list(primitives or ())
         self.update()
 
+    def set_position(self, lines) -> None:
+        """Where the gantry is, in a box under the caption. Empty removes it.
+
+        On the picture rather than in a panel beside it: the operator jogging
+        is looking here, and a readout at the other side of the window is one
+        they have to look away to check. `JogPanel.position_changed` is what
+        normally feeds it.
+        """
+        self._position = [str(line) for line in lines or ()]
+        self.update()
+
+    def set_status(self, lines) -> None:
+        """Lines of text under the caption: what a page is doing, where the
+        caption says what the camera is. Chrome like the caption, so it is
+        drawn in widget pixels and reads the same at any frame size or zoom
+        rather than being scaled along with the picture. Empty removes it."""
+        self._status = [str(line) for line in lines or ()]
+        self.update()
+
     @property
     def transform(self) -> QTransform:
         """Sensor pixels to widget pixels. Identity while nothing is shown."""
@@ -582,6 +605,8 @@ class CameraView(QWidget):
 
         if self._image is None:
             self._draw_placeholder(painter)
+            # Where the gantry is does not depend on there being a picture.
+            self._draw_boxes(painter, [self._position, self._status])
             painter.end()
             return
 
@@ -617,12 +642,31 @@ class CameraView(QWidget):
             parts.append(f"zoom {self._zoom:.2g}×")
         parts.append("held" if not self._live else f"{self._fps:.0f} fps")
 
+        # The caption, then where the gantry is, then what the page is
+        # doing: boxes of one kind, stacked down the corner.
+        self._draw_boxes(painter, [["   ".join(parts)], self._position,
+                                   self._status])
+
+    def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> None:
         painter.setFont(QFont(self.font().family(), 10))
-        text = "   ".join(parts)
-        metrics = painter.fontMetrics()
-        pad = 6
-        rect = QRect(8, 8, metrics.horizontalAdvance(text) + 2 * pad,
-                     metrics.height() + 2 * pad)
-        painter.fillRect(rect, CAPTION_BG)
         painter.setPen(QPen(CAPTION_FG))
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+        top = 8
+        for lines in groups:
+            if lines:
+                top = self._draw_box(painter, top, lines) + CAPTION_GAP
+
+    def _draw_box(self, painter: QPainter, top: int, lines: list[str]) -> int:
+        """One translucent box of left-aligned lines; returns its bottom."""
+        metrics = painter.fontMetrics()
+        pad = CAPTION_PAD
+        width = max(metrics.horizontalAdvance(line) for line in lines)
+        box = QRect(8, top, width + 2 * pad,
+                    metrics.height() * len(lines) + 2 * pad)
+        painter.fillRect(box, CAPTION_BG)
+        for i, line in enumerate(lines):
+            painter.drawText(QRect(box.x() + pad,
+                                   box.y() + pad + i * metrics.height(),
+                                   width, metrics.height()),
+                             Qt.AlignmentFlag.AlignLeft
+                             | Qt.AlignmentFlag.AlignVCenter, line)
+        return box.bottom() + 1

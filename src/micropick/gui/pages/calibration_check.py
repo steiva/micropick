@@ -111,6 +111,7 @@ class CalibrationCheck(QWidget):
         self.jog = JogPanel(session, shortcut_host=self,
                             machine_controls=False, collapsed=("move",),
                             parent=self)
+        self.jog.show_position_on(self.view)
 
         panel = QWidget(self)
         column = QVBoxLayout(panel)

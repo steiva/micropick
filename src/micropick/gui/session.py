@@ -222,6 +222,10 @@ class Session(QObject):
     tip_changed = Signal(object)
     # The rail lights, as last read from the robot; carries bool or None.
     lights_changed = Signal(object)
+    # The routine a run would deliver into, or None. Set by the Routine page
+    # and read by the Picking page: the two never see each other, and the
+    # session is what a session is attached to.
+    routine_changed = Signal(object)
     camera_opened = Signal(str)
     camera_closed = Signal(str)
     error = Signal(str)
@@ -238,6 +242,7 @@ class Session(QObject):
         self.robot = None
         self.run_state: RunState | None = None
         self.run_origin: str | None = None       # "reused" or "new"
+        self.routine = None                      # see routine_changed
         self.tip = Tip.unknown()                 # see tip_changed
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
@@ -346,6 +351,13 @@ class Session(QObject):
         profile.save()
         log.info("created the mock profile at %s", directory)
         return profile
+
+    def set_routine(self, routine) -> None:
+        """What a picking run would deliver into. None clears it."""
+        self.routine = routine
+        log.info("routine in hand: %s", routine.name if routine is not None
+                 else "none")
+        self.routine_changed.emit(routine)
 
     def remember(self, name: str, position) -> None:
         if self.profile is None:

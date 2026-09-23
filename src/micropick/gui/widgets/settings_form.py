@@ -129,6 +129,10 @@ class _Row:
             box = _number(annotation, value)
             self.widget, self._read = box, box.value
             self._write = box.setValue
+        elif annotation is str:
+            text = QLineEdit(str(value))
+            self.widget, self._read = text, text.text
+            self._write = lambda v: text.setText(str(v))
         else:
             # Anything the form cannot express is shown and left alone, so a
             # field added to the schema is visible here even before this
@@ -226,7 +230,13 @@ class PickingSettingsDialog(QDialog):
     @staticmethod
     def _hint(name: str, field) -> str:
         annotation = getattr(field.annotation, "__name__", None) or str(field.annotation)
-        return f"{name}: {annotation}\ndefault {field.default!r}"
+        hint = f"{name}: {annotation}\ndefault {field.default!r}"
+        if name == "model_file":
+            # A free-text box for a file name is correct and is not what
+            # anyone should be typing into by choice; the Profile page
+            # offers what is actually in ml_models/.
+            hint += "\nchosen from the weights in ml_models/ on the Profile page"
+        return hint
 
     def _apply_filter(self, text: str) -> None:
         wanted = text.strip().lower()

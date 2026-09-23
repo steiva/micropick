@@ -159,12 +159,12 @@ static until the session owns them.
   selection jumps.
 
 - [ ] **The keys drive the robot from anywhere in the window.**
-  On the manual page, click the page list on the left, then the camera combo,
+  On the manual page, click the Manual control tab, then the camera combo,
   then the picture, and press an arrow after each click. The gantry steps
-  every time and the page never changes. Expected failure: the arrow moves
-  the selection in the page list, or does nothing until a button on the panel
-  is clicked first. The shortcuts are `WindowShortcut` and the page list is
-  `NoFocus`, which together are what makes this true.
+  every time and the page never changes. Expected failure: a key changes the
+  page, or does nothing until a button on the panel is clicked first. The
+  shortcuts are `WindowShortcut` and the page tabs are `NoFocus`, which
+  together are what makes this true.
 
 - [ ] **The shortcuts do not reach the robot from another window.**
   Put another application in front and press the arrow keys. Nothing should
@@ -624,7 +624,7 @@ static until the session owns them.
   - which is what they are for. Both create a routine whose summary counts
   what was planned.
 
-- [ ] **Routine comes before Picking in the list on the left.**
+- [ ] **Routine comes before Picking in the tabs.**
   And the plan made here is the one the Picking page's run delivers into.
 
 ## Commit 20 — the dish, measured before the run
@@ -638,7 +638,7 @@ static until the session owns them.
 
 - [ ] **"Go to the dish" goes to the dish.**
   Jog until the dish fills the frame, Teach here, drive somewhere else, then
-  Go to the dish: the same view comes back. `dish` appears in the jog
+  Go to the dish: the same view comes back. `observe` appears in the jog
   panel's positions like any other pose.
 
 - [ ] **The analysis counts what a run would pick.**
@@ -659,3 +659,55 @@ static until the session owns them.
   Filter for a field you know is in the schema; it is there. Put a window in
   the wrong order and Save: pydantic's own message appears and the dialog
   stays open.
+
+## Commit 21 — the run from the Picking page, tabs along the top, profiles
+
+- [ ] **Start asks once, then the robot moves.**
+  With everything in place, Start picking: a dialog names the routine and
+  asks about the dish, the plate, the lids and the settings, with Cancel as
+  the default. Start: the gantry retracts, goes to `observe` and the run
+  begins without Resume. Cancel: nothing moves.
+
+- [ ] **Resume is only for a run that asked for it.**
+  During a normal run Resume and Space do nothing. Empty the dish until the
+  run stops in `needs_operator`: Resume lights up, and pressing it measures
+  the dish again before choosing anything.
+
+- [ ] **The run's status is on the picture, beside the resolution.**
+  State, target, PAUSED when paused and the keys, in a translucent box under
+  the resolution caption, the same size at any zoom. Nothing is written into
+  the frame. During the run the decision frame is held (the caption says
+  "held") and the overlays sit on it; while waiting for the operator it is
+  live.
+
+- [ ] **Analysis is drawn over the live feed.**
+  Analyse the dish, then nudge the dish by hand: the contours stay where
+  they were and the cuboids move out from under them. Analyse again and they
+  line up. Switching camera removes them.
+
+- [ ] **The routine is named above Start.**
+  Make or change a routine on the Routine page: the Picking page shows its
+  summary - name, delivered/planned, next well, plate and slot - before the
+  run buttons, and it updates as the run delivers.
+
+- [ ] **Tabs along the top, two groups.**
+  Profile, Labware, Calibration, Routine, Picking on the left in that order;
+  Manual control and Log at the right edge. The chosen tab is filled. Space
+  or the arrows never change the page.
+
+- [ ] **Where the gantry is shows on the picture.**
+  On Manual control, the calibration tabs, Check and Picking the jog panel
+  has no Position card; the coordinates and the step are in a box under the
+  resolution, and a refused or clamped step adds a second line there. With
+  no camera the box is still shown over the placeholder.
+
+- [ ] **Profiles are made and removed on the Profile page.**
+  New profile…, a name, Start from the loaded one: the copy loads, with the
+  same cameras, calibration and positions and no history. Start from
+  "empty": a profile with defaults. A name that exists or contains a slash
+  is refused while it is typed. Delete… on a profile that is not loaded asks
+  first, with Cancel as the default, and then removes the directory; on the
+  loaded one the button is off and says why.
+
+- [ ] **The Profile page fits in two columns.**
+  Installation and Robot side by side, Cameras and Models under them.

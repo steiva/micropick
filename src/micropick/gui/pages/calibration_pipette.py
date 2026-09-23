@@ -159,6 +159,7 @@ class PipetteCalibration(QWidget):
         self.jog = JogPanel(self.session, shortcut_host=page,
                             machine_controls=False,
                             collapsed=("move", "positions"), parent=page)
+        self.jog.show_position_on(self.view)
 
         panel = QWidget(page)
         column = QVBoxLayout(panel)
@@ -321,6 +322,7 @@ class PipetteCalibration(QWidget):
                                   machine_controls=False,
                                   collapsed=("positions",),
                                   parent=self.touch_box)
+        self.touch_jog.show_position_on(self.run_view)
         self.touch_box.layout().addWidget(self.touch_jog)
         row = QHBoxLayout()
         self.accept_button = primary_button("Accept", panel)

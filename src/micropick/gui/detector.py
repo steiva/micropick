@@ -104,6 +104,13 @@ class DetectorService(QObject):
         return self._model
 
     @property
+    def name(self) -> str | None:
+        """What is loaded, by the name it was asked for. A page that loads
+        the profile's model when it opens compares against this rather than
+        loading it again every time it is looked at."""
+        return self._name
+
+    @property
     def is_standin(self) -> bool:
         return isinstance(self._model, StandInDetector)
 

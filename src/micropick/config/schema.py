@@ -383,6 +383,13 @@ class PickingConfig(BaseModel):
     circle_radius: int = 900
 
     # ---------------------- YOLO detection ----------------------
+    # The cuboid detector's weights, by file name in ml_models/. Empty means
+    # none chosen, which is not an error until something tries to detect:
+    # an installation without the weights still loads its profile, drives
+    # the robot and plans a plate. It lives here rather than in a notebook
+    # cell for the same reason TipTarget.model_file does - the model a run
+    # used is part of what the run was.
+    model_file: str = ""
     yolo_imgsz: int = 1536             # must match the training size
     yolo_conf: float = 0.25            # low: recall first, shape filters later
     yolo_iou: float = 0.80             # above default: touching cuboids labelled singly

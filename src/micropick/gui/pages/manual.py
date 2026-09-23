@@ -33,6 +33,7 @@ class ManualPage(QWidget):
         # The host is this page: its shortcuts are window-wide while the page
         # is showing, and go quiet with it.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
+        self.jog.show_position_on(self.view)
 
         panel = QWidget(self)
         column = QVBoxLayout(panel)

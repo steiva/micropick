@@ -1179,8 +1179,8 @@ with that reason and filtered out of the help rather than quietly dropped.
 Two consequences of PgUp and PgDn being an axis: the control panel is not a
 `QScrollArea`, which would take those keys for scrolling before the shortcut
 saw them, and the saved-positions list is `NoFocus` for the same reason — as
-is the page list in the window's shell, which otherwise took the arrows for
-its own selection and changed the page where a step in Y was meant. The
+are the page tabs in the window's shell, which otherwise took the keys for
+their own and changed the page where a step was meant. The
 shortcuts are `WindowShortcut`, active while the panel is on screen and
 whatever has focus, and disabled with the panel when its page is hidden so
 the two panels never compete for a key. That is still one window and not the

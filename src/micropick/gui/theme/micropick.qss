@@ -35,15 +35,17 @@ QFrame#card {
  * and the outline on every secondary one. qdarktheme already makes labels
  * transparent (QLabel:!window), which was the only thing that rule fixed. */
 
-/* The navigation list. Colours, including the selected row, are qdarktheme's
- * QAbstractItemView rules. Only the corner is ours: the row height is set from
- * the font in shell.py, because neither `padding` nor `min-height` here reaches
- * the size of a row. qdarktheme installs a QProxyStyle, and item geometry is
- * computed through it rather than through the stylesheet, so both were honoured
- * when the row was painted and ignored when it was measured — the selected
- * row's rounded rect then overlapped the entry below it. */
-QListWidget#nav::item {
+/* The page tabs along the top of the window. Checkable tool buttons, so the
+ * chosen one is filled by qdarktheme's QToolButton:checked rule; only the
+ * size and the weight are ours. */
+QToolButton#navTab {
+    padding: 6px 16px;
     border-radius: 8px;
+    font-size: 11pt;
+}
+
+QToolButton#navTab:checked {
+    font-weight: 600;
 }
 
 QLabel#heading1 { font-size: 16pt; font-weight: 600; }
