@@ -38,11 +38,21 @@ where a person looks and nowhere else.
 
 Zoom is a view property too
 ---------------------------
-The wheel zooms about the cursor and a double click resets. Zooming changes
-nothing but the transform: the frame handed to detection is the whole sensor
-frame as before, and at 4x on a 4000 px frame the widget does not resample
-16000 px — only the part of the frame that is on screen is cut out and scaled
-to the widget, so the cost stays what the widget's size makes it.
+The wheel zooms about the cursor, the middle button drags the zoomed picture
+about, and a double click resets. Panning moves the same centre the wheel
+does, and `_zoomed` clamps it, so the picture never leaves a gap at its
+edge. Zooming changes nothing but the transform: the frame handed to
+detection is the whole sensor frame as before, and at 4x on a 4000 px frame
+the widget does not resample 16000 px — only the part of the frame that is
+on screen is cut out and scaled to the widget, so the cost stays what the
+widget's size makes it.
+
+A click is only a click once it is not a double click
+-----------------------------------------------------
+`clicked` can move the robot, and the double click that resets the zoom
+begins with a click. So `clicked` is sent a double-click interval after the
+release, and a double click in that time cancels it: resetting the zoom
+never sends the gantry anywhere.
 
 On the picture, two small controls
 ----------------------------------
@@ -64,8 +74,8 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTransform
-from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QSlider,
-                               QWidget)
+from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel,
+                               QSlider, QWidget)
 
 from ...core.vision.cuboids import center_crop_box
 from . import overlay_painter
@@ -145,11 +155,20 @@ class CameraView(QWidget):
         self._overlay: list = []
         self._position: list[str] = []
         self._status: list[str] = []
+        self._help: list[str] = []
 
         # Zoom about a point: the view pixel that sits at the widget's centre.
         self._zoom = 1.0
         self._centre: tuple[float, float] | None = None
         self._shown = QRect()                     # where the image lands
+        self._pan_from: QPointF | None = None     # middle button held here
+
+        # See "A click is only a click once it is not a double click".
+        self._pending_click: tuple[float, float] | None = None
+        self._after_double = False                # its release is not a click
+        self._click_timer = QTimer(self)
+        self._click_timer.setSingleShot(True)
+        self._click_timer.timeout.connect(self._send_click)
 
         # Remembered per camera label, so a choice made on one feed of the
         # lower camera holds on every other feed of it.
@@ -340,16 +359,60 @@ class CameraView(QWidget):
         event.accept()
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self._image is not None:
+        if (event.button() == Qt.MouseButton.MiddleButton
+                and self._image is not None and self._zoom != ZOOM_MIN):
+            self._pan_from = event.position()
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._pan_from is None:
+            super().mouseMoveEvent(event)
+            return
+        position = event.position()
+        delta = position - self._pan_from
+        self._pan_from = position
+        scale = self._box.width() / max(1, self._view_size[0])
+        if self._centre is not None and scale > 0:
+            # The picture follows the hand, so the centre moves against it.
+            self._centre = (self._centre[0] - delta.x() / scale,
+                            self._centre[1] - delta.y() / scale)
+            self._dirty = True
+            self._rebuild()
+            self.update()
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton and self._pan_from is not None:
+            self._pan_from = None
+            self.unsetCursor()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton and self._after_double:
+            self._after_double = False
+        elif event.button() == Qt.MouseButton.LeftButton and self._image is not None:
             position = event.position()
             if self._shown.contains(position.toPoint()):
                 inverse, ok = self._transform.inverted()
                 if ok:
                     point = inverse.map(position)
-                    self.clicked.emit(point.x(), point.y())
-        super().mousePressEvent(event)
+                    self._pending_click = (point.x(), point.y())
+                    self._click_timer.start(
+                        QApplication.doubleClickInterval())
+        super().mouseReleaseEvent(event)
+
+    def _send_click(self) -> None:
+        click, self._pending_click = self._pending_click, None
+        if click is not None:
+            self.clicked.emit(*click)
 
     def mouseDoubleClickEvent(self, event) -> None:
+        # The first click of the pair is not a click; see the module notes.
+        self._click_timer.stop()
+        self._pending_click = None
+        self._after_double = True
         if self._zoom != ZOOM_MIN:
             self._zoom = ZOOM_MIN
             self._centre = None
@@ -413,6 +476,12 @@ class CameraView(QWidget):
         normally feeds it.
         """
         self._position = [str(line) for line in lines or ()]
+        self.update()
+
+    def set_help(self, lines) -> None:
+        """What the keys and the mouse do here, in a box in the bottom-right
+        corner. Empty removes it."""
+        self._help = [str(line) for line in lines or ()]
         self.update()
 
     def set_status(self, lines) -> None:
@@ -624,6 +693,7 @@ class CameraView(QWidget):
             self._draw_placeholder(painter)
             # Where the gantry is does not depend on there being a picture.
             self._draw_boxes(painter, [self._position, self._status])
+            self._draw_help(painter)
             painter.end()
             return
 
@@ -634,6 +704,7 @@ class CameraView(QWidget):
         if self.crosshair_box.isChecked():
             self._draw_crosshair(painter, self._box)
         self._draw_caption(painter)
+        self._draw_help(painter)
         painter.end()
 
     def _draw_placeholder(self, painter: QPainter) -> None:
@@ -672,12 +743,27 @@ class CameraView(QWidget):
             if lines:
                 top = self._draw_box(painter, top, lines) + CAPTION_GAP
 
-    def _draw_box(self, painter: QPainter, top: int, lines: list[str]) -> int:
+    def _draw_help(self, painter: QPainter) -> None:
+        """The keys box, in the bottom-right corner, clear of the focus
+        slider on the left and the crosshair toggle at the top."""
+        if not self._help:
+            return
+        painter.setFont(QFont(self.font().family(), 10))
+        painter.setPen(QPen(CAPTION_FG))
+        metrics = painter.fontMetrics()
+        width = (max(metrics.horizontalAdvance(line) for line in self._help)
+                 + 2 * CAPTION_PAD)
+        height = metrics.height() * len(self._help) + 2 * CAPTION_PAD
+        self._draw_box(painter, self.height() - 8 - height, self._help,
+                       left=self.width() - 8 - width)
+
+    def _draw_box(self, painter: QPainter, top: int, lines: list[str],
+                  left: int = 8) -> int:
         """One translucent box of left-aligned lines; returns its bottom."""
         metrics = painter.fontMetrics()
         pad = CAPTION_PAD
         width = max(metrics.horizontalAdvance(line) for line in lines)
-        box = QRect(8, top, width + 2 * pad,
+        box = QRect(left, top, width + 2 * pad,
                     metrics.height() * len(lines) + 2 * pad)
         painter.fillRect(box, CAPTION_BG)
         for i, line in enumerate(lines):

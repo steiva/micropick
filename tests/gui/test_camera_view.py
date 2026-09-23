@@ -70,10 +70,20 @@ def _wheel(app, view, pos, notches):
 
 
 def _click(app, view, point):
-    event = QMouseEvent(QMouseEvent.Type.MouseButtonPress, point,
-                        view.mapToGlobal(point), Qt.MouseButton.LeftButton,
-                        Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
-    app.sendEvent(view, event)
+    """Press and release, then let the double-click interval run out: a
+    click is only sent once it cannot be the start of a double click."""
+    for kind, buttons in ((QMouseEvent.Type.MouseButtonPress,
+                           Qt.MouseButton.LeftButton),
+                          (QMouseEvent.Type.MouseButtonRelease,
+                           Qt.MouseButton.NoButton)):
+        event = QMouseEvent(kind, point, view.mapToGlobal(point),
+                            Qt.MouseButton.LeftButton, buttons,
+                            Qt.KeyboardModifier.NoModifier)
+        app.sendEvent(view, event)
+    view._click_timer.setInterval(0)
+    if view._click_timer.isActive():
+        view._click_timer.start(0)
+    app.processEvents()
     app.processEvents()
 
 
