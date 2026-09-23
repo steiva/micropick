@@ -55,7 +55,7 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel,
                                QPlainTextEdit, QVBoxLayout, QWidget)
 
 from ... import paths
-from ...config.labware import LabwareError, resolve_definition
+from ...config.labware import LabwareError
 from ...core.routine import STRATEGIES, Destination, Routine, RoutineError
 from ...hardware.labware import loaded_labware
 from ..session import Session
@@ -73,11 +73,6 @@ TITLE = "Routine"
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 420
-
-# Labware that holds no destination. A tip rack has wells and an ordering
-# like a plate, and delivering a cuboid into one is a mistake nothing
-# downstream would catch.
-NOT_A_DESTINATION = ("tipRack", "trash", "adapter")
 
 # How tall the deck picture is in the panel. Enough to read a slot number
 # and tell a full slot from an empty one; the Labware page is where the
@@ -263,20 +258,8 @@ class RoutinePage(QWidget):
     def _loaded_plates(self) -> list[tuple[str, str, str]]:
         """(slot, load_name, display name) for every labware in the run that
         something could be delivered into, nearest slot first."""
-        state = self.session.run_state
-        if self.session.robot is None or state is None:
-            return []
-        out = []
-        for slot, entry in sorted(state.labware.items(), key=lambda kv: int(kv[0])
-                                  if kv[0].isdigit() else 99):
-            try:
-                definition = resolve_definition(entry.load_name)
-            except LabwareError:
-                continue
-            if definition.category in NOT_A_DESTINATION or not definition.ordering:
-                continue
-            out.append((slot, entry.load_name, definition.display_name))
-        return out
+        return [(slot, entry.load_name, definition.display_name)
+                for slot, entry, definition in self.session.plates()]
 
     def _reload_plates(self) -> None:
         """The run's labware, in the combo and on the deck."""

@@ -30,6 +30,12 @@ Aspirate and dispense in place, with a volume and a flow rate, are on the
 page and on A and D - the in-place commands the run uses, for trying a
 pickup by hand. They are refused unless the robot reports a tip on.
 
+A cuboid picked by hand needs somewhere to go, so a well of any plate the
+run holds can be driven to: the robot's own `move_to_well`, to the top,
+centre or bottom of the well with an offset from it. Two switches make the
+pair a pickup: aspirate as soon as the tip reaches a clicked cuboid, and
+dispense as soon as it reaches the well.
+
 Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
 detections are dropped: they were measured from where the camera was.
@@ -99,6 +105,9 @@ FLOW_RANGE = (0.1, 1000.0)
 KEYS = (("A", "aspirate", "_aspirate"),
         ("D", "dispense", "_dispense"))
 
+# How far the tip may be sent from the chosen well level, either way.
+WELL_OFFSET_RANGE = (-50.0, 50.0)
+
 # What the mouse does on the picture, for the same box.
 MOUSE_HELP = ("click   move there (with Click to move on)",
               "wheel   zoom",
@@ -157,7 +166,7 @@ class ManualPage(QWidget):
 
         panel = CardColumns([self._camera_card(), self._click_card(),
                              self._targets_card(), self._liquid_card(),
-                             self.jog], self)
+                             self._well_card(), self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -172,9 +181,11 @@ class ManualPage(QWidget):
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(self._robot_changed)
+        session.labware_changed.connect(lambda _s: self._reload_plates())
         session.tip_changed.connect(lambda _t: self._lose_top())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
         self._install_shortcuts()
+        self._reload_plates()
         self._on_profile_changed()
         self._refresh_cameras()
 
@@ -258,6 +269,54 @@ class ManualPage(QWidget):
         row.addWidget(self.aspirate_button)
         row.addWidget(self.dispense_button)
         box.layout().addLayout(row)
+
+        # The two halves of a pickup, made automatic. Both use the volume
+        # and flow rate above.
+        self.auto_aspirate = QCheckBox("Aspirate at a cuboid", self)
+        self.auto_aspirate.setToolTip(
+            "Aspirate as soon as the tip reaches a cuboid clicked on the "
+            "picture, with the volume and flow rate above.")
+        self.auto_dispense = QCheckBox("Dispense at a well", self)
+        self.auto_dispense.setToolTip(
+            "Dispense as soon as the tip reaches the well chosen below, with "
+            "the volume and flow rate above.")
+        box.layout().addWidget(self.auto_aspirate)
+        box.layout().addWidget(self.auto_dispense)
+        return box
+
+    def _well_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Well", 2))
+        self.plate_choice = combo_box(self)
+        self.plate_choice.currentIndexChanged.connect(lambda _i: self._show_wells())
+        self.well_choice = combo_box(self)
+        # Typed as well as chosen: "H12" is quicker than scrolling to it,
+        # and the completer the editable box brings finds it either way.
+        self.well_choice.setEditable(True)
+        self.well_choice.setInsertPolicy(self.well_choice.InsertPolicy.NoInsert)
+        self.well_level = combo_box(self)
+        self.well_level.addItems(moves.WELL_LEVELS)
+        self.well_offset = _number_box(self, 0.0, WELL_OFFSET_RANGE, " mm")
+        self.well_offset.setToolTip(
+            "Z from the chosen level: + is up. X and Y come from the "
+            "profile's well_offset_x and well_offset_y, as in the run.")
+        for label, widget in (("Plate", self.plate_choice),
+                              ("Well", self.well_choice),
+                              ("Level", self.well_level)):
+            row = QHBoxLayout()
+            name = QLabel(label)
+            name.setMinimumWidth(90)
+            row.addWidget(name)
+            row.addWidget(widget, 1)
+            box.layout().addLayout(row)
+        _row(box, "Offset Z", self.well_offset)
+
+        self.well_button = secondary_button("Go to well", self)
+        self.well_button.clicked.connect(self._go_to_well)
+        box.layout().addWidget(self.well_button)
+        self.well_state = QLabel()
+        self.well_state.setWordWrap(True)
+        box.layout().addWidget(self.well_state)
         return box
 
     def _install_shortcuts(self) -> None:
@@ -280,21 +339,29 @@ class ManualPage(QWidget):
     def _dispense(self) -> None:
         self._liquid("dispense", "dispensed", moves.dispense)
 
-    def _liquid(self, what: str, done: str, command) -> None:
-        """Aspirate or dispense where the tip is, through the jog queue."""
+    def _tip_problem(self, what: str) -> str:
+        """Why `what` (aspirate, dispense) cannot happen now, or ""."""
         session = self.session
-        robot = session.robot
-        if robot is None:
-            self.jog.tell(f"REFUSED: no robot to {what} with.")
-            return
+        if session.robot is None:
+            return f"REFUSED: no robot to {what} with."
         if session.tip.attached is not True:
             state = ("none" if session.tip.attached is False
                      else "that it cannot tell")
-            self.jog.tell(f"REFUSED: {what} needs a tip on the pipette, and "
-                          f"the robot reports {state}.")
+            return (f"REFUSED: {what} needs a tip on the pipette, and the "
+                    f"robot reports {state}.")
+        return ""
+
+    def _liquid_amount(self) -> tuple[float, float]:
+        return float(self.volume.value()), float(self.flow_rate.value())
+
+    def _liquid(self, what: str, done: str, command) -> None:
+        """Aspirate or dispense where the tip is, through the jog queue."""
+        problem = self._tip_problem(what)
+        if problem:
+            self.jog.tell(problem)
             return
-        volume = float(self.volume.value())
-        rate = float(self.flow_rate.value())
+        robot = self.session.robot
+        volume, rate = self._liquid_amount()
         note = f"{done} {volume:g} µl at {rate:g} µl/s"
 
         def job(log):
@@ -441,6 +508,14 @@ class ManualPage(QWidget):
             xy = np.asarray(world) + np.array([offset.dx, offset.dy])
             z = float((self.cross_z if kind == "crosshair"
                        else self.cuboid_z).value())
+            # Checked before anything moves: a pickup that goes to the
+            # cuboid and then cannot aspirate has disturbed the dish for
+            # nothing.
+            pick = kind == "cuboid" and self.auto_aspirate.isChecked()
+            if pick and self._tip_problem("aspirate"):
+                self.jog.tell(self._tip_problem("aspirate"))
+                return
+            volume, rate = self._liquid_amount()
             self._chosen = (kind, index)
             self._redraw()
             what = f"tip to {kind} ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}"
@@ -449,6 +524,11 @@ class ManualPage(QWidget):
             def job(log):
                 self._z_top = moves.drive_tip(robot, xy, z, self._z_top,
                                               log=log)
+                if pick:
+                    log(f"aspirate {volume:g} µl at {rate:g} µl/s")
+                    moves.aspirate(robot, volume, rate)
+                    return f"aspirated {volume:g} µl at {rate:g} µl/s"
+                return None
         else:
             gantry = np.array(xyz(robot)[:2])
             xy = moves.camera_target(pmap, u, v, gantry)
@@ -460,6 +540,7 @@ class ManualPage(QWidget):
             def job(log):
                 self._z_top = moves.drive_camera(robot, xy, self._z_top,
                                                  log=log)
+                return None
 
         why = moves.unreachable(self.session.jog_limits, position)
         if why:
@@ -468,12 +549,11 @@ class ManualPage(QWidget):
         if not self.armed.isChecked():
             self.jog.tell(f"{what} - switch on Click to move to go there")
             return
-        note = "; ".join([what] + notes)
-        log.info("%s", note)
+        log.info("%s", "; ".join([what] + notes))
 
         def run(log_):
-            job(log_)
-            return note if notes else ""
+            done = job(log_)
+            return "; ".join(notes + ([done] if done else []))
 
         self.jog.run_job(run)
 
@@ -506,6 +586,76 @@ class ManualPage(QWidget):
             return None
         _, kind, index, world = min(found, key=lambda f: f[0])
         return kind, index, world
+
+    # -- the well ------------------------------------------------------------------
+
+    def _reload_plates(self) -> None:
+        """The run's plates in the combo, the one in hand kept."""
+        chosen = self.plate_choice.currentData()
+        chosen_slot = chosen[0] if chosen else None
+        self.plate_choice.blockSignals(True)
+        self.plate_choice.clear()
+        for slot, entry, definition in self.session.plates():
+            self.plate_choice.addItem(f"slot {slot} - {definition.display_name}",
+                                      (slot, entry.labware_id, definition))
+        slots = [self.plate_choice.itemData(i)[0]
+                 for i in range(self.plate_choice.count())]
+        if chosen_slot in slots:
+            self.plate_choice.setCurrentIndex(slots.index(chosen_slot))
+        self.plate_choice.blockSignals(False)
+        self._show_wells()
+
+    def _show_wells(self) -> None:
+        """The chosen plate's wells, row by row, the one typed kept."""
+        typed = self.well_choice.currentText()
+        data = self.plate_choice.currentData()
+        wells = []
+        if data is not None:
+            ordering = data[2].ordering
+            for row in range(max((len(c) for c in ordering), default=0)):
+                wells += [column[row] for column in ordering
+                          if row < len(column)]
+        self.well_choice.blockSignals(True)
+        self.well_choice.clear()
+        self.well_choice.addItems(wells)
+        if typed in wells:
+            self.well_choice.setCurrentIndex(wells.index(typed))
+        self.well_choice.blockSignals(False)
+        self._refresh()
+
+    def _go_to_well(self) -> None:
+        data = self.plate_choice.currentData()
+        robot = self.session.robot
+        if data is None or robot is None or self.jog.busy:
+            return
+        slot, labware_id, definition = data
+        well = self.well_choice.currentText().strip().upper()
+        if well not in definition.wells:
+            self.jog.tell(f"REFUSED: {definition.display_name} in slot {slot} "
+                          f"has no well {well!r}.")
+            return
+        drop = self.auto_dispense.isChecked()
+        if drop and self._tip_problem("dispense"):
+            self.jog.tell(self._tip_problem("dispense"))
+            return
+        cfg = self.session.profile.picking
+        level = self.well_level.currentText()
+        offset = (cfg.well_offset_x, cfg.well_offset_y,
+                  float(self.well_offset.value()))
+        volume, rate = self._liquid_amount()
+
+        def job(log):
+            self._z_top = moves.drive_to_well(robot, labware_id, well, level,
+                                              offset, self._z_top, log=log)
+            said = f"tip in {well} of slot {slot} ({level} {offset[2]:+g} mm)"
+            if drop:
+                log(f"dispense {volume:g} µl at {rate:g} µl/s")
+                moves.dispense(robot, volume, rate)
+                said += f"; dispensed {volume:g} µl"
+            return said
+
+        log.info("going to well %s in slot %s", well, slot)
+        self.jog.run_job(job)
 
     # -- the profile's number -----------------------------------------------------
 
@@ -616,6 +766,13 @@ class ManualPage(QWidget):
         has_robot = self.session.robot is not None
         self.aspirate_button.setEnabled(has_robot)
         self.dispense_button.setEnabled(has_robot)
+        has_plate = self.plate_choice.count() > 0
+        self.well_button.setEnabled(has_robot and has_plate
+                                    and self.well_choice.count() > 0)
+        self.well_state.setText(
+            "" if has_plate else
+            "No plate in the run: load one on the Labware page.")
+        self.well_state.setVisible(not has_plate)
         if busy:
             return
         if problems:
@@ -665,7 +822,7 @@ class ManualPage(QWidget):
 
     def _robot_changed(self, _state: str) -> None:
         self._lose_top()
-        self._refresh()
+        self._reload_plates()
 
     def _lose_top(self) -> None:
         """The top of the travel depends on the tip and on the run; measure it

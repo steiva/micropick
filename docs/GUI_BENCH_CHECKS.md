@@ -787,3 +787,24 @@ static until the session owns them.
   Bottom-right of the picture: the jog keys, A and D, and the mouse. H hides
   the box and shows it again, with or without a robot connected.
 
+## Commit 24 — straight moves, a well to put a cuboid in, pickups in two clicks
+
+- [ ] **Click-moves go in one straight line.**
+  Click far across the picture: the gantry travels diagonally in one move,
+  not X then Y. With a long tip fitted, watch for the old refusal of
+  moveToCoordinates at the tip's height - it now arrives as an error under
+  the position ("asked for ..., ended at ...") rather than as nothing.
+
+- [ ] **Go to well reaches the well at the chosen level.**
+  Load a plate on the Labware page; it appears in the Well card. Choose a
+  well (typing "b3" works), Level top, Offset Z 5: the tip stops 5 mm over
+  the well. Then bottom and a small offset. The path from the dish goes up
+  and over the labware, not through it (the robot's own path; this move is
+  deliberately not force_direct).
+
+- [ ] **A pickup and a deposit are two clicks.**
+  Tip on, "Aspirate at a cuboid" and "Dispense at a well" on, Click to move
+  on: click a cuboid - the tip comes down and aspirates at once; Go to
+  well - it goes there and dispenses. With no tip both are refused before
+  anything moves.
+

@@ -42,8 +42,12 @@ import numpy as np
 from ..hardware.protocols import Robot, move_to, require_ok, xyz
 from .jog import AXES, Limits
 
-__all__ = ["RAISED_TOL_MM", "raise_tip", "camera_target", "tip_target",
-           "unreachable", "drive_camera", "drive_tip", "aspirate", "dispense"]
+__all__ = ["RAISED_TOL_MM", "WELL_LEVELS", "raise_tip", "camera_target",
+           "tip_target", "unreachable", "drive_camera", "drive_tip",
+           "drive_to_well", "aspirate", "dispense"]
+
+# The robot's names for where in a well an offset is measured from.
+WELL_LEVELS = ("top", "center", "bottom")
 
 # How far below the measured top the tip may be and still count as raised:
 # the reported Z wanders by hundredths after a retract, and a retract for
@@ -107,6 +111,27 @@ def drive_tip(robot: Robot, xy, z: float, z_top: float | None, *,
         log(f"tip to ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}")
     _straight(robot, xy, xyz(robot)[2])
     _straight(robot, xy, z)
+    return z_top
+
+
+def drive_to_well(robot: Robot, labware_id: str, well: str, level: str,
+                  offset, z_top: float | None, *, log=None) -> float:
+    """The tip up, then into a well of a labware the run holds.
+
+    `level` is the robot's own well origin - top, center or bottom - and
+    `offset` (x, y, z) is from it. Not force_direct: going from the dish to
+    a plate crosses other labware, and the robot's own path over the deck
+    is the one that knows how tall each of them is. Returns the known top.
+    """
+    if level not in WELL_LEVELS:
+        raise ValueError(f"well level must be one of {WELL_LEVELS}, "
+                         f"got {level!r}")
+    z_top = raise_tip(robot, z_top, log=log)
+    if log is not None:
+        log(f"tip to well {well} ({level} {offset[2]:+g} mm)")
+    require_ok(robot.move_to_well(labware_id, well, well_location=level,
+                                  offset=tuple(float(v) for v in offset),
+                                  verbose=False), "move to well")
     return z_top
 
 

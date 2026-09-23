@@ -39,6 +39,8 @@ from PySide6.QtCore import QObject, Signal          # noqa: E402
 
 from .. import paths                                # noqa: E402
 from ..config import store                          # noqa: E402
+from ..config.labware import (LabwareDefinition,       # noqa: E402
+                              LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              DeckConfig, DeckModule, PickingConfig,
                              ProfileMeta)
@@ -59,6 +61,11 @@ __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
 log = logging.getLogger(__name__)
 
 MOCK_PROFILE_NAME = "mock"
+
+# Labware that holds no destination. A tip rack has wells and an ordering
+# like a plate, and delivering a cuboid into one is a mistake nothing
+# downstream would catch.
+NOT_A_DESTINATION = ("tipRack", "trash", "adapter")
 
 # Robot states, as the status bar shows them.
 DISCONNECTED = "not connected"
@@ -578,6 +585,27 @@ class Session(QObject):
             log.info("deck modules registered for loading: %s",
                      "; ".join(m.describe() for m in modules))
         return modules
+
+    def plates(self) -> list[tuple[str, LoadedLabware, LabwareDefinition]]:
+        """(slot, what the run holds there, its definition) for every
+        labware in the run that a cuboid could be put into, nearest slot
+        first. Empty with no robot: the list is the run's, not the plan's."""
+        state = self.run_state
+        if self.robot is None or state is None:
+            return []
+        out = []
+        for slot, entry in sorted(state.labware.items(),
+                                  key=lambda kv: int(kv[0])
+                                  if kv[0].isdigit() else 99):
+            try:
+                definition = resolve_definition(entry.load_name)
+            except LabwareError:
+                continue
+            if (definition.category in NOT_A_DESTINATION
+                    or not definition.ordering):
+                continue
+            out.append((slot, entry, definition))
+        return out
 
     def deck_problems(self) -> list[DeckProblem]:
         """Labware the run holds in a module slot without that module's
