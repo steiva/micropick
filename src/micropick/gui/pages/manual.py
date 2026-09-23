@@ -14,6 +14,7 @@ from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import card, combo_box, heading, scroll_column
 from ..widgets.camera_view import CameraView
+from ..widgets.card_columns import CardColumns
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 
@@ -36,12 +37,7 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
 
-        panel = QWidget(self)
-        column = QVBoxLayout(panel)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-        column.addWidget(self._camera_card())
-        column.addWidget(self.jog, 1)
+        panel = CardColumns([self._camera_card(), self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)

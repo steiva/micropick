@@ -100,6 +100,7 @@ from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
+from ..widgets.card_columns import CardColumns
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..widgets.settings_form import PickingSettingsDialog
@@ -180,15 +181,9 @@ class PickingPage(QWidget):
 
         self.view = CameraView(self)
 
-        panel = QWidget(self)
-        column = QVBoxLayout(panel)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-        column.addWidget(self._dish_card())
-        column.addWidget(self._analysis_card())
-        column.addWidget(self._histogram_card())
-        column.addWidget(self._run_card())
-        column.addWidget(self._jog_section(), 1)
+        panel = CardColumns([self._dish_card(), self._analysis_card(),
+                             self._histogram_card(), self._run_card(),
+                             self._jog_section()], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -284,7 +279,10 @@ class PickingPage(QWidget):
         self.hist.setLabel("bottom", "diameter, µm")
         self.hist.setLabel("left", "cuboids")
         self.hist.showGrid(x=True, y=True, alpha=0.2)
+        # Bounded above too: a plot widget expands, and in a tall column it
+        # took every spare pixel and pushed the run card out of sight.
         self.hist.setMinimumHeight(190)
+        self.hist.setMaximumHeight(260)
         box.layout().addWidget(self.hist)
 
         self.window_state = QLabel(
