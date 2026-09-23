@@ -542,7 +542,8 @@ static until the session owns them.
   ago, which would mean `on_frame` is being called with stale corners.
 
 - [ ] **The check tab drives the tip to a crosshair, and the tip is there.**
-  With both calibrations saved and a tip on, open Check, Detect: every
+  With both calibrations saved and a tip on, open Manual control (the
+  Check tab's home since commit 23), Detect crosshairs: every
   crosshair on the disc is circled green, the map's reference pixel is a
   red cross, anything outside the fitted area is grey. Switch on "Click to
   move" and click one. The tip arrives over it at z 67 - look at it, that
@@ -630,7 +631,7 @@ static until the session owns them.
 ## Commit 20 — the dish, measured before the run
 
 - [ ] **The camera is open when the page appears.**
-  Open Picking, Manual control, either calibration tab or Check with no
+  Open Picking, Manual control or either calibration tab with no
   camera open: the upper camera opens itself and the picture is there. Unplug
   it and try again: the page says why once and does not try again until the
   Profile page's button is pressed - watch for a page that becomes slow to
@@ -696,7 +697,7 @@ static until the session owns them.
   or the arrows never change the page.
 
 - [ ] **Where the gantry is shows on the picture.**
-  On Manual control, the calibration tabs, Check and Picking the jog panel
+  On Manual control, the calibration tabs and Picking the jog panel
   has no Position card; the coordinates and the step are in a box under the
   resolution, and a refused or clamped step adds a second line there. With
   no camera the box is still shown over the placeholder.
@@ -732,3 +733,43 @@ static until the session owns them.
 - [ ] **The crosshair is thin, white and see-through.**
   On a bright dish and on a dark one it is visible and does not hide what
   it is aimed at.
+
+## Commit 23 — Manual control moves the robot from the picture
+
+- [ ] **The top of the Z travel is measured, and used.**
+  Tip on, lower the tip a few millimetres with PgDn, switch on Click to
+  move and click the picture: the log shows "retracting leftZ" before the
+  gantry travels, and the tip is at the top. Click again: no retract this
+  time. Change the tip (or reconnect): the next click retracts again.
+
+- [ ] **The camera goes where you clicked.**
+  Click a feature near the middle of the upper camera's picture: it ends up
+  under the crosshair. Near the frame's edge the box under the position
+  says "approximate: outside the calibrated area", and the feature lands
+  near the crosshair rather than on it. Expected failure: a consistent miss
+  in one direction everywhere, which is the map's reference pixel not being
+  the crosshair.
+
+- [ ] **Unreachable targets are refused on the picture.**
+  Drive near a corner of the deck and click beyond it: "UNREACHABLE: ... x
+  402.1 is past the limit 380" under the position, and nothing moves.
+
+- [ ] **The check from the old Check tab, here.**
+  Detect crosshairs on the disc, click one: the tip is lowered over it at
+  Crosshair Z (67). The Calibration page has two tabs now.
+
+- [ ] **The tip goes to a cuboid at Cuboid Z.**
+  Detect cuboids on a dish, click one: its box turns white and the tip
+  comes down over it at Cuboid Z, which starts at the profile's pickup
+  height. Change Cuboid Z and check `picking.json`: `pickup_offset` moved,
+  `dish_bottom` did not.
+
+- [ ] **Nothing moves with Click to move off, or on a zoom reset.**
+  Leave the tab and come back: the box is off, and a click only prints the
+  target. Double-click a zoomed picture with it on: the zoom resets and the
+  gantry stays where it is.
+
+- [ ] **Middle-drag pans a zoomed picture and stops at its edges.**
+  Zoom in with the wheel, hold the middle button and drag: the picture
+  follows the hand and stops when its edge reaches the widget's. Every
+  camera view has it, feed windows included.

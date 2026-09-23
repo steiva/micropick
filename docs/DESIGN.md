@@ -1096,14 +1096,16 @@ mirrored case first, since it is the one an operator cannot otherwise
 diagnose, and the other possibilities after it. Drawing nothing is the
 answer, and the answer needs words.
 
-### The check tab is the notebook's `click_to_go`
+### The calibration check is the notebook's `click_to_go`
 
 Two calibrations can each be internally excellent and jointly wrong: the map
 is fitted against its own held-out poses, the offset against its own
 crosshair, and neither knows about a focus ring that moved between them or a
-tip that is not the tip the offset was measured with. `pages/
-calibration_check.py` is the third tab and the check on both together - the
-operator clicks a crosshair on the picture and the pipette goes there.
+tip that is not the tip the offset was measured with. The check on both
+together lives on Manual control (`pages/manual.py`; it was a third
+Calibration tab until the page could move the robot from the picture
+anyway) - the operator detects the crosshairs, clicks one, and the pipette
+goes there.
 
 It keeps the notebook's three pieces. The click **snaps to the nearest
 detection** within 60 px rather than using the cursor's pixel, because

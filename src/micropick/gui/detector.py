@@ -44,7 +44,7 @@ from ..core.calibration.pixel_map import PixelMap
 from ..core.vision import cuboids
 from ..core.vision.standin import IS_STANDIN_NOTE, StandInDetector
 
-__all__ = ["DetectorService", "Detection", "STANDIN"]
+__all__ = ["DetectorService", "Detection", "STANDIN", "wanted_model"]
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +52,20 @@ log = logging.getLogger(__name__)
 # confused with one.
 STANDIN = "(stand-in: bright blobs, no model)"
 
+
+
+def wanted_model(profile, mock: bool) -> str:
+    """What the profile says this installation detects cuboids with.
+
+    In --mock there are no weights and the stand-in is the only thing that
+    can run, so it is what an unnamed model means there; on the bench an
+    unnamed model is a thing to be chosen on the Profile page rather than
+    guessed at.
+    """
+    named = profile.picking.model_file if profile is not None else ""
+    if named:
+        return named
+    return STANDIN if mock else ""
 
 @dataclass
 class Detection:

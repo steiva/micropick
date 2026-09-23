@@ -94,7 +94,7 @@ from ...hardware.protocols import move_to, xyz
 from ...viz import overlays
 from ...workflows.picking import PickingSession, RobotState
 from ..auto_camera import CameraOpener
-from ..detector import STANDIN
+from ..detector import wanted_model
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
@@ -516,18 +516,7 @@ class PickingPage(QWidget):
     # -- the detector ----------------------------------------------------------
 
     def _wanted_model(self) -> str:
-        """What the profile says this installation detects cuboids with.
-
-        In --mock there are no weights and the stand-in is the only thing
-        that can run, so it is what an unnamed model means there; on the
-        bench an unnamed model is a thing to be chosen on the Profile page
-        rather than guessed at.
-        """
-        profile = self.session.profile
-        named = profile.picking.model_file if profile is not None else ""
-        if named:
-            return named
-        return STANDIN if self.session.mock else ""
+        return wanted_model(self.session.profile, self.session.mock)
 
     def _ensure_detector(self) -> None:
         """Load the profile's model once, when a page that needs it opens."""
