@@ -14,6 +14,16 @@ and if the tip is below the top, it is retracted first. One read per move is
 cheaper than a retract per move, and a retract per move is the only other
 way to be sure.
 
+Then one straight line
+----------------------
+With the tip up, the travel is a single `move_to_coordinates` with
+`force_direct`: the gantry goes diagonally to the target at the height it
+is at, instead of an axis at a time (`goto_xy`, the calibration sweep's
+way) or up-over-down (the robot's own arc planning, which would undo the
+point of having raised the tip). A tip target then comes straight down.
+`move_to` reads the pose back and raises if the robot declined the move,
+so a refusal is a message, not a gantry that silently stayed put.
+
 Two targets, one map
 --------------------
 The pixel map says which deck point sits under a pixel, relative to the
@@ -29,7 +39,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..hardware.protocols import Robot, goto_xy, move_to, require_ok, xyz
+from ..hardware.protocols import Robot, move_to, require_ok, xyz
 from .jog import AXES, Limits
 
 __all__ = ["RAISED_TOL_MM", "raise_tip", "camera_target", "tip_target",
@@ -85,9 +95,7 @@ def drive_camera(robot: Robot, xy, z_top: float | None, *, log=None) -> float:
     z_top = raise_tip(robot, z_top, log=log)
     if log is not None:
         log(f"camera to ({xy[0]:.2f}, {xy[1]:.2f})")
-    # Relative travel: the robot refuses moveToCoordinates at the height a
-    # long tip already sits at, which is why goto_xy exists (DESIGN §4).
-    goto_xy(robot, float(xy[0]), float(xy[1]))
+    _straight(robot, xy, xyz(robot)[2])
     return z_top
 
 
@@ -97,9 +105,15 @@ def drive_tip(robot: Robot, xy, z: float, z_top: float | None, *,
     z_top = raise_tip(robot, z_top, log=log)
     if log is not None:
         log(f"tip to ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}")
-    goto_xy(robot, float(xy[0]), float(xy[1]))
-    move_to(robot, (float(xy[0]), float(xy[1]), float(z)), min_z_height=1.0)
+    _straight(robot, xy, xyz(robot)[2])
+    _straight(robot, xy, z)
     return z_top
+
+
+def _straight(robot: Robot, xy, z: float) -> None:
+    """One direct move, verified; see "Then one straight line"."""
+    move_to(robot, (float(xy[0]), float(xy[1]), float(z)), min_z_height=1.0,
+            force_direct=True)
 
 
 def aspirate(robot: Robot, volume: float, flow_rate: float):
