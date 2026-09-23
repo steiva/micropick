@@ -170,6 +170,10 @@ class MockRobot:
         self.calls.append(("toggle_lights",))
 
     def retract_axis(self, axis, verbose=False):
+        # The real axis goes to the top of its travel; the Z a caller reads
+        # back afterwards is what it takes the top to be.
+        if axis == "leftZ":
+            self._pos[2] = 100.0
         self.calls.append(("retract_axis", axis))
 
     def move_to_well(self, labware_id, well_name, well_location="top",

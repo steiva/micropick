@@ -178,6 +178,10 @@ class JogPanel(QWidget):
     # `CameraView.set_position`. Emitted on every change; `position_lines`
     # holds the latest for a view connected later.
     position_changed = Signal(list)
+    # A job that may have moved the gantry has finished. A page with
+    # detections drawn on the picture drops them: they were measured from
+    # where the camera was.
+    moved = Signal()
 
     def __init__(self, session: Session, *,
                  shortcut_host: QWidget | None = None,
@@ -202,6 +206,7 @@ class JogPanel(QWidget):
         self._collapsed = tuple(collapsed)
         self._status = NO_ROBOT
         self._message = ""
+        self._job_moves = True
 
         # Not a scroll area itself. The page that hosts it may put it in one
         # (theme.factory.scroll_column), which takes no focus, so PageUp and
@@ -511,7 +516,7 @@ class JogPanel(QWidget):
             session.remember(name, controller.position)
             return None, controller.status()
 
-        self._run(Worker(job))
+        self._run(Worker(job), moves=False)
         # The pose just saved is the one in hand; Go to should need no
         # further aiming.
         self._select_position(name)
@@ -566,6 +571,30 @@ class JogPanel(QWidget):
         is done should wait for this to clear first."""
         return self._busy()
 
+    def run_job(self, fn) -> bool:
+        """Run `fn(log)` on this panel's worker, after any step in flight.
+
+        The one queue for the robot on a page with a panel: a click-move or an
+        aspirate from the page and a jog key can then never overlap, and the
+        controls grey out for all of them. `fn` may return a MoveResult, None,
+        or a sentence to show under the position. Returns False, and runs
+        nothing, while the panel is busy or there is no robot.
+        """
+        if self.controller is None or self._busy():
+            return False
+        controller = self.controller
+
+        def job(log):
+            return fn(log), controller.status()
+
+        self._run(Worker(job))
+        return True
+
+    def tell(self, text: str) -> None:
+        """A line under the position on the picture, as it is given."""
+        self._message = text
+        self._emit_position()
+
     def set_step(self, value: float) -> None:
         """Choose the step from outside, e.g. 0.05 mm for a touch-up. A value
         not in the list is still set on the controller; the chooser then
@@ -580,8 +609,9 @@ class JogPanel(QWidget):
     def _busy(self) -> bool:
         return self._worker is not None and self._worker.running
 
-    def _run(self, worker: Worker) -> None:
+    def _run(self, worker: Worker, *, moves: bool = True) -> None:
         self._worker = worker
+        self._job_moves = moves
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and a lambda has none, so it would touch these widgets from
         # the worker's thread.
@@ -613,7 +643,9 @@ class JogPanel(QWidget):
         result, status = payload
         self._set_status(status)
         self._refresh_saved()
-        if result is None:
+        if isinstance(result, str):
+            self.tell(result)
+        elif result is None:
             self._say("")
         elif not result.ok:
             self._say(result.reason or "refused", firm=True)
@@ -622,12 +654,17 @@ class JogPanel(QWidget):
         else:
             self._say("")
         self._set_enabled(True)
+        if self._job_moves:
+            self.moved.emit()
 
     def _job_failed(self, reason: str) -> None:
         if not self._claim():
             return
         self._say(reason, firm=True)
         self._set_enabled(True)
+        # A failed move may still have gone part of the way.
+        if self._job_moves:
+            self.moved.emit()
 
     # -- display -------------------------------------------------------------
 

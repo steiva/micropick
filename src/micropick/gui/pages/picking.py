@@ -94,7 +94,7 @@ from ...hardware.protocols import move_to, xyz
 from ...viz import overlays
 from ...workflows.picking import PickingSession, RobotState
 from ..auto_camera import CameraOpener
-from ..detector import STANDIN, DetectorService
+from ..detector import STANDIN
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
@@ -156,7 +156,7 @@ class PickingPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
-        self.detector = DetectorService(self)
+        self.detector = session.detector
         self.opener = CameraOpener(session, self)
         self._worker: Worker | None = None
         self._frame = None

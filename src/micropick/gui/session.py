@@ -51,6 +51,7 @@ from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..workflows.jog import Limits                  # noqa: E402
+from .detector import DetectorService              # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
            "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
@@ -247,6 +248,10 @@ class Session(QObject):
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
+        # The cuboid detector, one for the application: Picking and Manual
+        # control both run it, and the weights are seconds to load and
+        # hundreds of megabytes to hold twice.
+        self.detector = DetectorService(self)
 
     # -- state ---------------------------------------------------------------
 
