@@ -19,12 +19,19 @@ hardware = [
     "pygrabber; sys_platform == 'win32'",
 ]
 ml = ["ultralytics"]
+# The desktop application. Deliberately free of `ml`: the GUI is developed
+# against mocks, and a machine that only drives the robot by hand should not
+# be made to install a training stack to do it.
+gui = ["PySide6>=6.7", "pyqtdarktheme-fork", "pyqtgraph", "qtawesome"]
 # Stock Opentrons labware definitions. Optional: custom plates in labware/ need
 # nothing. It pins numpy~=1.26, which conflicts with the numpy>=2 the vision
 # stack needs; install with pip's warning (runtime works with numpy 2), or keep
 # your plates in labware/.
 stock = ["opentrons-shared-data"]
 dev = ["nbstripout", "pytest", "ruff"]
+
+[project.scripts]
+micropick-gui = "micropick.gui.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

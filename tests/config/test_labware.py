@@ -79,3 +79,71 @@ def test_hardware_reexports_still_work():
     from micropick.hardware import labware as hw
     assert hw.LabwareDefinition is labware.LabwareDefinition
     assert callable(hw.list_definitions) and callable(hw.load_definition)
+
+
+@requires_shared_data
+def test_shared_definitions_lists_the_catalogue():
+    stock = labware.shared_definitions()
+    # Whatever the installed version ships, the OT-2 tip racks are in it, and
+    # every entry is the newest version of its own load name.
+    assert "opentrons_96_tiprack_300ul" in stock
+    assert all(name == d.load_name and d.source == "shared"
+               for name, d in stock.items())
+    assert stock["opentrons_96_tiprack_300ul"].category == "tipRack"
+    single = labware.shared_definition("opentrons_96_tiprack_300ul")
+    assert stock["opentrons_96_tiprack_300ul"].version == single.version
+
+
+def test_category_is_read_and_optional(tmp_path):
+    data = _write_def(tmp_path, "plain")
+    assert labware.local_definitions(tmp_path)["plain"].category == ""
+    data["metadata"]["displayCategory"] = "wellPlate"
+    (tmp_path / "plain.json").write_text(json.dumps(data))
+    assert labware.local_definitions(tmp_path)["plain"].category == "wellPlate"
+
+
+def test_is_tiprack_reads_the_parameter(tmp_path):
+    data = _write_def(tmp_path, "rack")
+    assert labware.local_definitions(tmp_path)["rack"].is_tiprack is False
+    data["parameters"]["isTiprack"] = True
+    (tmp_path / "rack.json").write_text(json.dumps(data))
+    assert labware.local_definitions(tmp_path)["rack"].is_tiprack is True
+
+
+def test_loaded_labware_carries_the_offset_the_run_applied():
+    from micropick.hardware.labware import _parse_run_labware
+    run = {"current": True,
+           "labwareOffsets": [{"id": "off1", "vector": {"x": 0, "y": 0, "z": 64.2}}],
+           "labware": [
+               {"id": "a", "loadName": "plate", "definitionUri": "opentrons/plate/1",
+                "location": {"slotName": "5"}, "offsetId": "off1"},
+               {"id": "b", "loadName": "rack", "definitionUri": "opentrons/rack/1",
+                "location": {"slotName": "10"}}]}
+    loaded = _parse_run_labware([run])
+    assert loaded["5"].offset == (0.0, 0.0, 64.2)
+    assert loaded["10"].offset is None
+
+
+def test_deck_config_refuses_a_slot_under_two_modules():
+    from micropick.config.schema import DeckConfig, DeckModule
+    DeckConfig(modules=[DeckModule(slots=[5, 8], offset=[0, 0, 64.2]),
+                        DeckModule(slots=[9], offset=[0, 0, 10.0])])
+    with pytest.raises(ValueError, match="slot 8"):
+        DeckConfig(modules=[DeckModule(slots=[5, 8], offset=[0, 0, 64.2]),
+                            DeckModule(slots=[8], offset=[0, 0, 10.0])])
+    with pytest.raises(ValueError):
+        DeckModule(slots=[12], offset=[0, 0, 1.0])          # the trash
+
+
+def test_deck_json_round_trips_through_the_profile(tmp_path):
+    from micropick.config import store
+    from micropick.config.schema import DeckModule
+    profile = store.create_profile("deck", directory=tmp_path / "deck")
+    assert profile.deck.modules == []
+    profile.deck.modules.append(DeckModule(slots=[5, 8, 9], offset=[0, 0, 64.2],
+                                           name="platform"))
+    profile.save_deck()
+    again = store.load_profile("deck", directory=tmp_path / "deck")
+    assert again.deck.module_for(8).height_mm == 64.2
+    assert again.deck.module_for(1) is None
+    assert again.deck.modules[0].describe() == "slots 5, 8, 9: +64.2 mm - platform"

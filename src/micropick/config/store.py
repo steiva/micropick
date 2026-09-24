@@ -31,17 +31,20 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from .. import paths
-from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, PickingConfig,
+from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, DeckConfig,
+                     PickingConfig,
                      ProfileMeta)
 
 __all__ = ["Profile", "ProfileError", "LegacyProfileError",
-           "list_profiles", "create_profile", "load_profile", "profile_dir"]
+           "list_profiles", "create_profile", "copy_profile", "delete_profile",
+           "load_profile", "profile_dir"]
 
 META_FILE = "profile.json"
 CALIBRATION_FILE = "calibration.json"
 PICKING_FILE = "picking.json"
 CAMERAS_FILE = "cameras.json"
 POSITIONS_FILE = "positions.json"
+DECK_FILE = "deck.json"
 HISTORY_DIR = "history"
 KEEP_HISTORY = 10
 
@@ -133,13 +136,17 @@ class Profile:
 
     def __init__(self, meta: ProfileMeta, calibration: Calibration,
                  picking: PickingConfig, cameras: dict[str, CameraSpec],
-                 positions: dict[str, tuple[float, float, float]], path: Path):
+                 positions: dict[str, tuple[float, float, float]], path: Path,
+                 deck: DeckConfig | None = None):
         self.meta = meta
         self.calibration = calibration
         self.picking = picking
         self.cameras = cameras
         self.positions = positions
         self.path = path
+        # Optional in the signature so a profile built in a test or in the
+        # mock needs no deck; an installation without deck.json has none.
+        self.deck = deck if deck is not None else DeckConfig()
 
     # -- convenience --------------------------------------------------------
 
@@ -217,6 +224,10 @@ class Profile:
         self.save_picking()
         self.save_cameras()
         self.save_positions()
+        self.save_deck()
+
+    def save_deck(self) -> None:
+        _write_model(self.path / DECK_FILE, self.deck)
 
     def save_meta(self) -> None:
         _write_model(self.path / META_FILE, self.meta)
@@ -244,6 +255,27 @@ class Profile:
         self.positions[name] = tuple(float(v) for v in position)
         self.save_positions()
         return self.positions[name]
+
+    def forget(self, name: str) -> None:
+        """Drop a named pose. Missing is not an error: the caller asked for
+        it to be gone and it is gone."""
+        if self.positions.pop(name, None) is not None:
+            self.save_positions()
+
+    def rename(self, old: str, new: str) -> tuple[float, float, float]:
+        """Rename a pose, keeping its coordinates. Refuses to overwrite:
+        two positions with one name is how the wrong one gets driven to."""
+        if old not in self.positions:
+            raise ProfileError(f"profile {self.name!r} has no position {old!r}")
+        new = new.strip()
+        if not new:
+            raise ProfileError("a position needs a name")
+        if new != old and new in self.positions:
+            raise ProfileError(f"profile {self.name!r} already has a position "
+                               f"{new!r}")
+        self.positions[new] = self.positions.pop(old)
+        self.save_positions()
+        return self.positions[new]
 
     def where(self, name: str) -> tuple[float, float, float]:
         try:
@@ -296,9 +328,19 @@ def _check_not_legacy(path: Path) -> None:
         )
 
 
-def load_profile(name: str) -> Profile:
-    path = profile_dir(name)
+def load_profile(name: str, *, directory: Path | None = None) -> Profile:
+    """Load a profile by name, or from a directory given outright.
+
+    `directory` names the profile's own folder and bypasses the profiles root.
+    A profile is a directory of JSON files and nothing about it requires living
+    under `profiles/`; the GUI keeps a scratch profile for its mock mode under
+    `outputs/`, where it cannot be mistaken for an installation. The naming
+    follows `config.labware`, which takes a `directory` for the same reason.
+    """
+    path = Path(directory) if directory is not None else profile_dir(name)
     if not path.is_dir():
+        if directory is not None:
+            raise ProfileError(f"no profile directory at {path}")
         known = list_profiles()
         raise ProfileError(
             f"no profile {name!r} under {paths.profiles_dir()}"
@@ -341,18 +383,27 @@ def load_profile(name: str) -> Profile:
                 raise ProfileError(f"{pos_path}: position {name!r} is not x, y, z")
             positions[name] = tuple(float(v) for v in value)
 
-    return Profile(meta, calibration, picking, cameras, positions, path)
+    deck_path = path / DECK_FILE
+    deck = (_validate(DeckConfig, _read_json(deck_path), deck_path)
+            if deck_path.is_file() else DeckConfig())
+
+    return Profile(meta, calibration, picking, cameras, positions, path,
+                   deck=deck)
 
 
 def create_profile(name: str, *, camera_label: str | None = None,
-                   notes: str = "", exist_ok: bool = False) -> Profile:
-    """Create a profile directory with defaults. Does not touch the robot."""
-    path = profile_dir(name)
+                   notes: str = "", exist_ok: bool = False,
+                   directory: Path | None = None) -> Profile:
+    """Create a profile directory with defaults. Does not touch the robot.
+
+    `directory` overrides the location, as in `load_profile`.
+    """
+    path = Path(directory) if directory is not None else profile_dir(name)
     if path.exists():
         _check_not_legacy(path)
         if not exist_ok:
             raise ProfileError(f"profile {name!r} already exists at {path}")
-        return load_profile(name)
+        return load_profile(name, directory=directory)
 
     profile = Profile(
         meta=ProfileMeta(name=name, camera_label=camera_label, notes=notes,
@@ -366,3 +417,41 @@ def create_profile(name: str, *, camera_label: str | None = None,
     path.mkdir(parents=True)
     profile.save()
     return profile
+
+
+def copy_profile(source: str, name: str, *, notes: str = "") -> Profile:
+    """A new profile `name` holding everything `source` holds but its history.
+
+    The usual way to start a second profile on the same bench: the cameras,
+    the calibration and the taught positions are the bench's, and a profile
+    started empty would have to measure all of them again. The archived
+    calibrations stay behind; they describe the source's past, not the copy's.
+    """
+    src = profile_dir(source)
+    dst = profile_dir(name)
+    if dst.exists():
+        raise ProfileError(f"profile {name!r} already exists at {dst}")
+    original = load_profile(source)          # refuses a broken source up front
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns(
+        HISTORY_DIR, "*.bak", "*.tmp"))
+    copy = load_profile(name)
+    copy.meta = ProfileMeta(
+        name=name, camera_label=original.meta.camera_label,
+        notes=notes or f"copied from {source}",
+        created_at=datetime.now(timezone.utc))
+    copy.save_meta()
+    return copy
+
+
+def delete_profile(name: str) -> Path:
+    """Remove a profile's directory, history and all. Returns where it was.
+
+    Only a directory that is a profile: `profile_dir` refuses a name with a
+    separator in it, and a directory without profile.json is left alone, so
+    a typo cannot take anything else under the profiles root with it.
+    """
+    path = profile_dir(name)
+    if not (path / META_FILE).is_file():
+        raise ProfileError(f"{path} is not a profile, so it is not deleted")
+    shutil.rmtree(path)
+    return path

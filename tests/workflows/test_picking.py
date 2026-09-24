@@ -160,7 +160,7 @@ def relaxed_config(**over) -> PickingConfig:
         min_solidity=0.0, max_radial_cv=100.0,
         circle_center=(int(CU), int(CV)), circle_radius=100_000,
         minimum_distance=0.0,
-        floater_check_interval=999, floater_clip_sec=0.0,
+        floater_mode="off",
         capture_settle_s=0.0, verify_settle_s=0.0, wait_time_after_deposit=0.0,
         vol=10.0, flow_rate=50.0, max_batch=10, max_shake_retries=3,
     )
@@ -187,6 +187,9 @@ def make_session(dish: Dish, routine: Routine, cfg: PickingConfig | None = None,
     session = PickingSession(robot, camera, linear_pixel_map(),
                              profile or make_profile(cfg), routine,
                              SceneYOLO(dish), **session_kw)
+    # The operator's go-ahead, given up front as the GUI's Start does: a
+    # session left in IDLE waits for it inside step() for ever.
+    session.start()
     return session, robot, camera
 
 
@@ -355,8 +358,14 @@ def test_needs_operator_after_max_shakes():
         drive(session)
         assert session.state is RobotState.NEEDS_OPERATOR
         assert session._shake_retries == 3
+        # resume() only gives the go-ahead; the transition happens in step(),
+        # which measures the dish again before deciding anything from it.
         session.resume()
-        assert session.state is RobotState.CAPTURE_FRAME
+        assert session.state is RobotState.NEEDS_OPERATOR
+        ev = session.step()
+        assert ev.kind == "resumed"
+        assert session.state is RobotState.DETECT_FLOATERS
+        assert session._shake_retries == 0
     finally:
         camera.close()
 
@@ -464,25 +473,44 @@ def test_recording_on_saves_a_clip(tmp_path):
         camera.close()
 
 
-def _profile_with_homography(cfg, matrix, gantry):
+def _profile_with_homography(cfg, matrix, gantry, over_res, under_res):
     profile = make_profile(cfg)
     profile.calibration.homography = CameraHomography(
-        matrix=matrix, gantry_xy=list(gantry))
+        matrix=matrix, gantry_xy=list(gantry),
+        over_resolution=list(over_res), under_resolution=list(under_res))
     return profile
+
+
+def _spy_on_marks(recorder):
+    """Every set of boxes handed to the recorder, whatever it does with them."""
+    marked = []
+    real = recorder.mark_rois
+
+    def mark_rois(points, *a, **kw):
+        marked.append([tuple(map(float, p)) for p in points])
+        return real(points, *a, **kw)
+    recorder.mark_rois = mark_rois
+    recorder.save_async = lambda path, **kw: None
+    return marked
 
 
 def test_roi_marked_only_with_valid_homography(tmp_path):
     dish, routine = _one_target_run()
-    under = open_mock_camera(width=320, height=240, fps=120.0)
-    # identity map, valid at the observation pose (150, 150)
+    # The lower camera records at half the mode the matrix was fitted at, so
+    # the boxes land at half the upper pixel: the rescale is exercised too.
+    under = open_mock_camera(width=W // 2, height=H // 2, fps=120.0)
     profile = _profile_with_homography(
-        relaxed_config(), [[1, 0, 0], [0, 1, 0], [0, 0, 1]], (150.0, 150.0))
+        relaxed_config(), [[1, 0, 0], [0, 1, 0], [0, 0, 1]], (150.0, 150.0),
+        (W, H), (W, H))
     session, robot, camera = make_session(
         dish, routine, profile=profile, under_cam=under, clip_dir=tmp_path)
-    session._recorder.save_async = lambda path, **kw: None
+    marked = _spy_on_marks(session._recorder)
     try:
         drive(session)
-        assert session._recorder._roi is not None       # box was placed
+        assert session.state is RobotState.COMPLETED
+        assert marked and len(marked[0]) == 1
+        (u, v), = marked[0]
+        assert abs(u - 300 / 2) < 3 and abs(v - 350 / 2) < 3
     finally:
         session.close()
         under.close()
@@ -494,11 +522,11 @@ def test_recording_without_homography_has_no_box(tmp_path):
     under = open_mock_camera(width=320, height=240, fps=120.0)
     session, robot, camera = make_session(dish, routine, under_cam=under,
                                           clip_dir=tmp_path)   # no homography
-    session._recorder.save_async = lambda path, **kw: None
+    marked = _spy_on_marks(session._recorder)
     try:
         drive(session)
         assert session.state is RobotState.COMPLETED    # recorded, just no box
-        assert session._recorder._roi is None
+        assert marked == []
     finally:
         session.close()
         under.close()

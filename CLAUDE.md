@@ -1,0 +1,58 @@
+# micropick
+
+Lab robot (Opentrons OT-2 gantry, pipette, upper and lower cameras) that
+picks cuboid microtissues from a dish into a plate. Design notes are in
+`docs/DESIGN.md`; bench checks for the GUI in `docs/GUI_BENCH_CHECKS.md`.
+
+## Running things
+
+- Interpreter: conda env `lab` (`conda run -n lab python ...`); the bare
+  `python` on PATH is the Windows Store stub.
+- Tests: `conda run -n lab python -m pytest -q` (whole suite, ~20 s).
+- GUI: `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
+- `lab` has an unrelated package named `tests` installed, so
+  `python -m tests.…` resolves to it, not to this repository's `tests/`.
+
+## Decisions to keep
+
+### Picking: analysis is live, a run holds its decision frame
+
+- On the Picking page, *Analyse the dish* draws its contours over the
+  **live** feed. If the dish moves afterwards, the contours visibly stop
+  matching, which is the cue to analyse again. There is no "back to live".
+- During a **run**, the view follows `PickView` from `workflows/picking`:
+  live while the session waits for the operator, otherwise the **frame the
+  decision was made from is held**, unchanged, with the overlays measured on
+  it. Do not make the run view always-live — the overlays belong to that one
+  frame, and drawing them over a newer one shows contours where nothing was
+  measured.
+- Start picking asks for confirmation (dish and plate in place, lids off,
+  settings right) and then gives the session its go-ahead at once;
+  Resume is only for leaving `needs_operator`.
+
+### Camera view chrome
+
+Text about the camera or the run (resolution, fps, zoom, robot status, gantry
+position) is drawn by `CameraView` in widget pixels as semi-transparent
+boxes over the picture, never into the frame and never as a separate panel.
+
+A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
+picture gets the width its frame shape needs (4:3 for the upper camera),
+the panel the rest, within 1-2x its designed width. Pages carry no title;
+the tab along the top is the title.
+
+The keys a page binds and what the mouse does are listed in a box at the
+picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
+plus the page's `add_help`); H toggles it. A key added to a page belongs in
+that list too.
+
+### Manual control drives the robot from the picture
+
+Robot commands from a page with a jog panel go through
+`JogPanel.run_job`, never a worker of the page's own, so they cannot overlap
+a key press. Moves across the deck are one force_direct
+move_to_coordinates at 1 mm under the Z measured after a retract
+(`workflows.manual.raise_tip`, `travel_z`): with a long tip the robot does
+nothing for a moveToCoordinates at the retracted height itself. A retract
+is only repeated when the tip is below that travel height. Click-to-move is off on every entry to the
+tab.

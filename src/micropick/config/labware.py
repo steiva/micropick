@@ -22,7 +22,8 @@ from pathlib import Path
 from .. import paths
 
 __all__ = ["LabwareDefinition", "LabwareError", "read_definition",
-           "local_definitions", "shared_definition", "resolve_definition"]
+           "local_definitions", "shared_definition", "shared_definitions",
+           "resolve_definition"]
 
 
 class LabwareError(RuntimeError):
@@ -47,6 +48,10 @@ class LabwareDefinition:
     source: str                       # "local" or "shared"
     path: Path | None = None
     wells: list[str] = field(default_factory=list)
+    # metadata.displayCategory as the file gives it: "tipRack", "wellPlate",
+    # "reservoir", "tubeRack", "adapter", ... Descriptive only; nothing is
+    # decided on it, so an unknown category is not an error.
+    category: str = ""
 
     def __post_init__(self):
         if not self.wells:
@@ -59,6 +64,14 @@ class LabwareDefinition:
     @property
     def uri(self) -> str:
         return f"{self.namespace}/{self.load_name}/{self.version}"
+
+    @property
+    def is_tiprack(self) -> bool:
+        """parameters.isTiprack, which is what the robot itself decides on."""
+        try:
+            return bool(self.data["parameters"]["isTiprack"])
+        except (KeyError, TypeError):
+            return False
 
     def __str__(self) -> str:
         return (f"{self.load_name} v{self.version} ({self.namespace}, "
@@ -89,6 +102,7 @@ def _parse(data: dict, source: str, path: Path | None) -> LabwareDefinition:
         data=data,
         source=source,
         path=path,
+        category=str(data.get("metadata", {}).get("displayCategory", "")),
     )
 
 
@@ -153,6 +167,25 @@ def shared_definition(load_name: str,
             f"available: {', '.join(map(str, versions))}")
     data = json.loads((directory / f"{want}.json").read_text(encoding="utf-8"))
     return _parse(data, "shared", None)
+
+
+def shared_definitions() -> dict[str, LabwareDefinition]:
+    """Every stock definition, newest version of each, keyed by load name.
+
+    One file per load name is read, so this is a directory scan and about a
+    hundred small JSON reads: fine for filling a list once, not for a hot
+    path. Raises LabwareError when the package is not installed, like
+    `shared_definition`; the caller decides whether that is fatal.
+    """
+    root = _shared_root()
+    out: dict[str, LabwareDefinition] = {}
+    for directory in sorted(root.iterdir(), key=lambda p: p.name):
+        if not directory.is_dir():
+            continue
+        definition = shared_definition(directory.name)
+        if definition is not None:
+            out[definition.load_name] = definition
+    return out
 
 
 # ---------------------------------------------------------------------------

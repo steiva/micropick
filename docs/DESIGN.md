@@ -374,10 +374,21 @@ for a property they do not support, which would make the read-back check pass
 on a control that was silently ignored.
 
 **Known unresolved:** on the bench, the 20MP U3 camera accepts neither
-`CAP_PROP_AUTO_EXPOSURE` nor `CAP_PROP_EXPOSURE` through the default backend.
-Worth retrying with `cv2.CAP_DSHOW`, and `CameraSpec` has a `backend` field
-ready for it. Auto-exposure hunting when the gantry moves from a bright area to
-a dark one is the symptom to watch for.
+`CAP_PROP_AUTO_EXPOSURE` nor `CAP_PROP_EXPOSURE` through the default backend,
+and not through DirectShow either (tried: the read-back is -1 whatever is
+set). Auto-exposure hunting when the gantry moves from a bright area to a
+dark one is the symptom to watch for.
+
+The backend does matter for the Arducam's focus, and `CameraSpec.backend`
+exists for it. Through Media Foundation, OpenCV's default on Windows, a
+`set` of the focus reaches the lens - DirectShow reads back the value it
+set - but a `get` answers 1 whatever the lens is doing, so the read-back
+check reports the control rejected, and the focus slider on the feed, which
+exists only for a camera whose focus verified, never appears. Through
+DirectShow the same device reads back what was set, at the same 14 fps at
+4000×3000; the bench profile names `"backend": "dshow"` for that camera and
+nothing else changes. Not a global switch: the upper camera is left on the
+default, where it was measured.
 
 ### The crop is a view, not a frame
 
@@ -758,7 +769,435 @@ keep accumulating.
 
 ---
 
-## 12. Conventions
+## 12. The GUI layer
+
+A PySide6 application under `src/micropick/gui/`, growing toward everything
+`notebooks/01_robot_session.ipynb` does today. It is the **same outer layer as
+the notebook**, not a new tier: it uses `config`, `core`, `hardware`,
+`workflows` and `viz`, and it adds windows, buttons and keys on top of them.
+
+Five rules, all of them there to keep that true.
+
+**Nothing below `gui` imports `gui`.** The dependency runs one way, so the
+package still installs, imports and tests with PySide6 absent. `gui` is an
+optional extra (`pip install -e ".[gui]"`) and deliberately does not pull in
+`ml`: driving the robot by hand should not require a training stack.
+
+**Only `gui/session.py` and `gui/workers/` touch `openapi.*`.** Pages reach the
+robot through the session and through workers. That is what makes `--mock` a
+single branch in one module rather than a condition repeated on every page —
+and `--mock` is not a debug switch but the mode the application is developed
+in, so everything the GUI does has to work in it.
+
+**No `cv2.imshow`, `cv2.namedWindow` or `cv2.waitKey` under `gui`.** OpenCV is
+an array library here; the window and the keys are Qt's. This is the third
+input backend after `jog_in_window` and `jog_with_hotkeys`, and it shares the
+controller with them rather than the loop.
+
+**Widgets are touched from the GUI thread only.** Workers emit signals; they do
+not reach into a page. Cancellation stays a `threading.Event`, never a Qt
+primitive, because the workflows below take one already and must not learn
+about Qt to be driven from here.
+
+**A blocking call goes to a worker.** `move_relative` blocks on HTTP, and in
+the GUI thread that is a freeze on every jog step. `gui/workers/base.py` is one
+class that runs any blocking callable on a `QThread`, translating the
+`on_progress(i, total)` and `log=` callbacks the workflows already take into
+signals. Those signatures are not adapted to Qt; the worker fits them.
+
+### Picking: measure the dish before committing the robot to it
+
+The page used to be a file dialog and a detector. What it is now is the
+four things that have to be true before a run is worth starting, and all of
+them are the run's own: the camera over the dish, the pose it is looked at
+from, the settings the run reads, and one frame put through the detector
+with the answer laid out.
+
+**The histogram is about `cuboid_size_threshold`.** That window decides what
+a run will pick, and it is two numbers in a file; on a real dish it is also
+the difference between a run that fills a plate and one that finds nothing,
+and nothing on screen said which. The plot is every detection's diameter
+with the window drawn over it and the count inside it in words - "31 of 48
+are inside 250-500 µm, 14 smaller, 3 bigger" - so an operator who sees the
+population sitting to the left of the window knows what to change and by
+how much before the gantry moves. Bars inside the window are a second
+series rather than a recolouring: a bar is inside or it is not, and the eye
+should not have to compare a shade with the band behind it.
+
+**The settings form is generated from `PickingConfig`.** Forty-odd fields
+that change; a hand-written form would be a second list of them and the
+field it forgot would be the one wanted at two in the morning. The names,
+the order, the types and the defaults come from `model_fields`, nothing is
+validated in the widgets, and the values are handed back to the model so
+that pydantic's own words are what an out-of-order window produces. The
+cost is the prose: the schema explains itself in comments, and a comment is
+not data, so a row carries its type and default in a tooltip and a filter
+box is what makes forty rows usable.
+
+**The dish pose is `dish` in the profile**, beside `tip_calib`, taught and
+driven to the same way - the gantry has to be somewhere particular for the
+dish to be in frame, and that is an installation's fact rather than a run's.
+
+### The camera a page needs opens itself
+
+`MainWindow._start` still reaches for no hardware: an application that opens
+devices because it was launched does it at the wrong moment eventually. But
+arriving at a page whose whole content is one camera's picture *is* the
+request to see it, and making the operator go back to the Profile page for
+it is a step with no decision in it. `gui.auto_camera.CameraOpener` holds
+the policy in one place: once per label, never two at a time, never again
+after a failure until something forgets it - without that last rule, a page
+with an unplugged camera is a multi-second blocking open every time it is
+looked at. Which camera is "the upper one" is `ProfileMeta.camera_label`,
+the only non-guess available, since the map and the detector are that
+camera's; the lower one is the other of the two.
+
+### Planning a plate: selecting and planning are two acts
+
+The plate map used to have one gesture. A click toggled a well into the plan
+with whatever the spin box held, so "these twelve wells, three objects each"
+was not something an operator could say: it was twelve clicks with the box on
+3, and changing one's mind about the count meant doing it again. A 384 or a
+1536 made that arithmetic obvious.
+
+So the mouse now changes the **selection** and nothing else - a click
+replaces it, Ctrl adds, Shift removes, a dragged box takes what its marquee
+encloses, and a row letter or a column number takes the whole line with the
+same three modifiers - and the count is applied to whatever is selected. One
+rule, `PlateView._apply`, for clicks, boxes and headers, so the three cannot
+drift apart.
+
+The spin box does **not** follow the selection. It was made to, and that was
+wrong twice over: the count is already written inside each planned well, so
+the box has nothing to report, and a box that reset itself to the well just
+clicked made a value impossible to apply to a second group. It holds the
+value being applied and keeps it.
+
+The drawing carries three things at once because the operator asks three
+questions of one picture: a faint outline is unplanned, an accent outline is
+planned with its count inside, the fill is how much has arrived, and over
+all of them a white ring is the selection - white being a decision rather
+than a class of thing, as in `viz.overlays`.
+
+The labels come from `core.routine.grid_labels`, the parser the planning
+table already uses. The view parses no well names: `int(well[1:])` is how the
+old code found a column and it broke on the first plate with a two-letter
+row.
+
+### The destination is a plate the robot already has
+
+It used to be any definition in `labware/`, with a slot typed in beside it,
+so a routine could name a plate that was not on the deck in a slot that held
+a tip rack, and nothing found out until the first well move. The list is the
+run's own labware, filtered by the definition's `displayCategory`: a tip
+rack, the trash and an adapter are not destinations, a reservoir and a tube
+rack are. Beside it is the same `DeckView` the Labware page draws, because
+"which one is the destination" is a question about the deck and is answered
+by pointing at it. The deck shows the profile's modules with the meaning
+they have on the other page - a raised floor - and nothing else, since one
+mark with two meanings is a picture that needs a legend.
+
+Routine comes before Picking in the navigation for the same reason the plan
+comes before the run.
+
+### Saved positions are the profile's, and only the profile's
+
+There were two. `JogController.saved` is an in-memory dict with generated
+names, emptied on every disconnect, and it was what the jog panel's list
+showed; `profile.positions` is on disk, named by the operator, and is what
+`tip_calib` lives in and what everything else reads. The visible list was
+the useless one, and beside it sat a "Remember in profile" button writing
+to the other.
+
+The panel now shows `profile.positions`, with each pose's coordinates
+beside its name, and saving, renaming and deleting all write there. A pose
+taught by the pipette calibration, or by the notebook, appears in the list
+and can be driven to - which is the point of having named it. Deleting asks
+first, because a name is what other pages drive to and a missing one stops
+them.
+
+Undo moved to the Move section and is called "Undo step". Under a list of
+saved poses, a button marked "Undo" reads as undoing the saving; it
+reverses the last jog step, and next to the D-pad that is what it looks
+like.
+
+### Sections fold, and each page says which
+
+Four pages hold a jog panel and none of them needs all of it. Centring a
+marker is the D-pad; the tip calibration normally drives to a stored pose
+and never jogs; the check page wants the stored poses above everything.
+`theme.factory.Section` is a card whose body folds behind its title, and
+`JogPanel(collapsed=(...))` names the sections a page wants folded to begin
+with - refusing a name that is not one, since that is a typo rather than a
+new section. A folded body is hidden, not empty, so it costs no height on a
+short screen.
+
+### A wrapped paragraph in a side panel
+
+`theme.factory.scroll_column` and `theme.factory.card` share one bug
+between them, and it is worth naming because it eats exactly the text that
+matters. A word-wrapped `QLabel` answers `minimumSizeHint` with about one
+line: wrapping means it can be any height, so its *minimum* is small. A
+`QScrollArea` with `widgetResizable` sizes its widget to the viewport
+unless the minimum says otherwise, so the labels are given one line each
+and the rest is clipped - with no scrollbar, because as far as the scroll
+area is concerned everything fits.
+
+Three parts fix it. `card()` enables `heightForWidth` on the card's size
+policy, which Qt does not infer from the layout, so the column above it
+asks how tall the card needs to be at this width. `_ScrollColumn` keeps the
+inner widget's minimum height at what its layout answers, remeasuring on a
+zero-timer after any layout change - deferred because a label's new text
+reaches its own geometry before it reaches the layouts above it, and asked
+in the handler the column answers with the height the old text needed.
+
+And the third, which the first two did not cover: a `QVBoxLayout` with room
+to spare hands each item its **size hint**, and a wrapped label's size hint
+is a line or two at a width of the layout's own choosing rather than the
+height its text takes at the width it got. The column was tall enough and
+the card inside it still short by a line. So the same refit gives every
+wrapped label a *minimum* height equal to its own text at its own current
+width - a minimum being the one thing a box layout will not take back -
+and recomputes it from the current width, so a narrower window does not
+leave it tall.
+
+### Theme
+
+`gui/theme/` is the only module that knows what the application looks like.
+`qdarktheme` supplies the base stylesheet and follows the operating system's
+light/dark setting, with `micropick.qss` layered on through `additional_qss` —
+not by concatenating stylesheets, since "auto" re-applies the base on every OS
+theme change and would drop one set separately.
+
+**`micropick.qss` holds no colours.** The first attempt used `palette(...)`
+roles on the reasoning that a literal would be right in one mode and unreadable
+in the other. It is unreadable anyway, and rendering both themes is what showed
+it: `setup_theme` installs `load_palette(..., for_stylesheet=True)`, a
+placeholder palette whose `Window` and `Base` are the same grey in both themes,
+because everything qdarktheme actually shows is a literal inside its generated
+stylesheet. `palette(base)` therefore resolves against numbers that mean
+nothing and paints a dark card on a light background. Its own template
+placeholders are no use either — `additional_qss` is appended after the
+template is expanded.
+
+What works is to describe our widgets in terms qdarktheme already colours and
+keep our file to geometry: `primary_button` opts into `QPushButton:default`,
+which carries the accent and its hover, pressed and disabled variants (and is
+Qt's own convention for the accented button, so the look and the Enter key
+agree); a card is a `Panel`-shaped `QFrame`, the shape qdarktheme gives a
+raised surface to. Nothing then has to be kept in step with the theme, because
+nothing of ours knows what colour it is.
+
+Pages build themselves from `theme/factory.py` rather than constructing
+`QPushButton` directly. The point is not what the wrappers do but where they
+are: restyling means editing one module, and so does the next discovery of this
+kind.
+
+### The deck is told, not remembered
+
+`gui/pages/labware.py` is where the run learns what is on the deck: a slot is
+clicked, a definition is chosen, and the session issues `load_labware` — or
+`move_labware('offDeck')` for what was there. The catalogue is the two places
+`config.labware` already reads, the custom files in `labware/` (uploaded into
+the run before loading; the upload is idempotent, so it is repeated here rather
+than trusted to have happened at connect) and the stock definitions from
+`opentrons-shared-data`, which the robot holds already.
+
+The page keeps no record of what it asked for. After every load or unload the
+session re-reads the run (`refresh_run_state`) and the deck is drawn from
+that, because the run state is the only thing `move_to_well` will act on and a
+page that remembered its own version would be the one place the two could
+disagree. It is the same rule `Routine.check_labware` follows from the other
+side. Loading into an occupied slot empties it first, in one job and with both
+steps logged: the robot refuses to load over labware it believes is there, and
+an operator asking for a plate in slot 5 has already decided what is in slot 5.
+
+**Deck modules are a fact in the profile, not a command to remember.** The
+picking platform and the calibration module raise the labware in slots 5, 8
+and 9 by 64.2 mm, and the robot's deck model has the slot floor where it
+always was; a well move planned without that is a tip driven into the
+module. The notebook told the wrapper once per session -
+`add_slot_offsets([5, 8, 9], (0, 0, 64.2))` - and the wrapper attaches a
+labware offset to each labware loaded *afterwards*. That word is the whole
+hazard: the cell forgotten, or run after the plate was loaded, or a run
+carried on from a session that never ran it, all look fine until the first
+well move. So `deck.json` names the modules (`DeckModule`: slots, offset,
+name), `Session.register_deck_modules` puts them on the wrapper at every
+connect before anything can be loaded, and the Labware page edits them.
+
+The check runs the other way too, because registering is only half. The
+run reports the offset on every labware it holds (`LoadedLabware.offset`,
+from the run's `labwareOffsets`), and `Session.deck_problems` compares that
+with the profile: labware in a module slot with no offset, or another one,
+is a `DeckProblem`. It is drawn in the hazard amber on the deck, named in
+the Deck modules card with the one button that fixes it - load it again, so
+the offset attaches - and shown in the status bar on every page until it is
+gone. Loading through the page cannot produce one; a notebook or an adopted
+run can, and that is the case this exists for.
+
+Tips live on the same page, because a tip comes from a rack in a slot. Pick
+up, drop in place, drop in the trash, return to the rack: four session
+methods, each wrapper call checked with `require_ok`, since a tip command
+the robot declines is answered 201 like one it performed.
+
+**The tip is the robot's answer, never this application's note.** A tip is
+the first reason the robot crashes into something: it adds fifty-odd
+millimetres to the pipette, and a move planned without it drives that length
+into whatever is below. The case that does it is an operator who believes
+the robot knows about a tip it does not, or the reverse — a tip picked up
+from a notebook, a drop that was declined and not noticed. So the session
+does not remember what it asked for. `Session.read_tip` asks the robot,
+after connect and after every tip command, and the answer is a `Tip` with
+three states, of which the third is not the second: no tip, a tip on, and
+*could not tell*. An OT-2 has no tip sensor and `/instruments` reports
+none; the run's command log is the robot's own record, and
+`hardware.tips.tip_state` walks it backwards to the last tip command that
+succeeded, whoever issued it. Everything gates on that record both ways —
+no pick-up over a tip, no drop without one, nothing at all while it is
+unknown — and the status bar shows it on every page, in the one colour the
+shell owns.
+
+The trash needed a decision, and the first one was wrong. Robot software
+from 7.1 on does not put the OT-2's fixed trash into a run created over
+HTTP, and it cannot be loaded into one either: slot 12 "is not provided by
+the deck configuration". The trash is an *addressable area*, `fixedTrash`,
+and a tip goes into it with `moveToAddressableAreaForDropTip` and then
+`dropTipInPlace`. `ot2_api` has no method for the first, so
+`hardware.tips.drop_tip_in_trash` posts it. The lights are on the same bar,
+because a picking run leaves them off and the next thing an operator wants
+is to see the deck; and the pipette tip calibration switches them on itself
+before the upper camera looks, since a crosshair in the dark is not found.
+
+### Step 1 of the camera calibration shows what the detector sees
+
+Putting the marker under the camera is done by eye, and the one thing the
+eye cannot check is the one that matters. A marker lying face down, or
+printed through the back of the paper, reaches the camera **mirrored**, and
+a mirrored marker is in no ArUco dictionary at all - it is not "harder to
+detect", it is absent. On screen that is indistinguishable from bad
+lighting, a wrong dictionary, or a marker just out of frame, and the sweep
+only says so at its first pose, minutes later, as "marker not detected at
+the starting pose".
+
+So while step 1 is on screen the frame the view is already showing is
+passed to `gui.marker_watch` about three times a second, in a `Worker`, and
+what it finds is drawn over the picture by `viz.markers` - the outline it
+was detected by, the marker's own top edge, its first corner, its id and
+which way up it is. The overlay is `overlays.Item` primitives like every
+other, so the QPainter renderer draws them and a notebook could draw the
+same list with cv2.
+
+Two decisions inside it. **Every dictionary is tried, not only the chosen
+one**, because a marker found under another one is a fact worth a sentence
+and a button rather than a silence that looks like every other silence; the
+extra three detections cost 50 ms and only when the first finds nothing.
+And **not detected is reported as loudly as detected**: the card names the
+mirrored case first, since it is the one an operator cannot otherwise
+diagnose, and the other possibilities after it. Drawing nothing is the
+answer, and the answer needs words.
+
+### The calibration check is the notebook's `click_to_go`
+
+Two calibrations can each be internally excellent and jointly wrong: the map
+is fitted against its own held-out poses, the offset against its own
+crosshair, and neither knows about a focus ring that moved between them or a
+tip that is not the tip the offset was measured with. The check on both
+together lives on Manual control (`pages/manual.py`; it was a third
+Calibration tab until the page could move the robot from the picture
+anyway) - the operator detects the crosshairs, clicks one, and the pipette
+goes there.
+
+It keeps the notebook's three pieces. The click **snaps to the nearest
+detection** within 60 px rather than using the cursor's pixel, because
+hitting a pixel with a mouse is not a thing and the detector's box centre is
+sub-pixel. The target is `pixel_to_robot` as the notebook defines it,
+`pmap.to_robot(u, v, gantry)` plus the profile's offset, with the pose read
+next to the frame rather than after it. And after the move the **same
+crosshair is found again from the new pose** and its deck coordinate
+recomputed: it should be the same point, and the difference is the map
+disagreeing with itself across the field, accumulated as a mean and a
+maximum in micrometres. That last one is the reason the notebook cell
+exists - the field is measured against itself, with no ruler and no second
+instrument.
+
+One thing is not the notebook's. Clicking a picture moves the gantry, so it
+does not until "Click to move" is switched on, and it is off again every
+time the tab is opened; with it off a click reports the coordinates and
+nothing moves, which is the notebook's `move=False`. The Z is the
+notebook's 67 mm, on screen and editable, because it is the number that
+decides whether the tip clears the calibration module. Nothing here writes
+to the profile: a check that recorded its own disagreement would be a
+calibration, and if it reads badly the answer is to calibrate again.
+
+### The pipette offset is the notebook's section 4, with the operator in the loop
+
+`gui/pages/calibration.py` is two tabs, camera and pipette, in the order they
+have to happen in: the offset is measured through the pixel map the sweep
+produces. `calibration_pipette.py` drives `workflows.calibrate_pipette` with
+nothing changed in it, and the four steps are the notebook's cells: teach or
+confirm the disc position, name the starting offset, run, read.
+
+Three decisions. **The disc position is the profile's `tip_calib`**, the
+notebook's name, so a profile taught from either works in the other; with
+none stored the page is the jog panel and a Remember button, with one it is
+"go there" and "re-teach from here", and the run drives there itself first
+as the notebook does. **The routine needs a tip and asks the robot** —
+`Session.tip`, the command-log record — and is refused on anything but "a
+tip is on", because an offset measured with no tip sends every pick to the
+wrong place and looks like a number. **The manual touch-up is
+`jog_in_window` with Qt in the loop**: the workflow calls `manual_touch_up`
+from its thread and reads the final pose when it returns, so the callback
+emits a signal, the GUI shows the lower camera and a 0.05 mm jog panel, and
+Accept releases a `threading.Event`; Abort releases it with a flag that
+becomes an exception before anything is saved. The profile is written by
+the workflow on that return — Accept is the operator looking at the tip on
+the crosshair, which is the act the camera tab's Save button is — and
+skipping the touch-up saves the automatic result, as `manual_touch_up=None`
+does in the notebook.
+
+In `--mock` there is no disc and no model, so `gui/tip_detector.py` has a
+stand-in that fabricates the two views from the gantry pose with a fixed
+error built in. The routine's arithmetic runs unchanged on it and the saved
+offset is the starting one plus that error plus any nudge, which the result
+screen says in so many words; a stand-in that produced a plausible number
+without saying so would be the worst thing on the page.
+
+### Manual control is a third backend, not a third layout
+
+`gui/pages/manual.py` drives the same `JogController` as `jog_in_window` and
+`jog_with_hotkeys`, and takes its keys from `jog.LAYOUT` and its on-screen help
+from `jog.help_lines`. `LAYOUT` exists because those two had drifted and the
+help described WASD for axes the operator drove with the arrows; a third
+arrangement invented here would be that drift again with an extra window in it.
+So Z is on PgUp and PgDn, as everywhere else, and there is no WASD.
+
+The mapping from a layout key to a Qt key is a table checked against `LAYOUT`
+at import, and a key with no entry is an error rather than a skipped binding —
+otherwise the generated help lists a key, and a labelled button offers it, and
+neither does anything. The one entry with no counterpart here is `enter`, which
+ends the cv2 window's loop; this page has no loop, so it is named in `UNBOUND`
+with that reason and filtered out of the help rather than quietly dropped.
+
+Two consequences of PgUp and PgDn being an axis: the control panel is not a
+`QScrollArea`, which would take those keys for scrolling before the shortcut
+saw them, and the saved-positions list is `NoFocus` for the same reason — as
+are the page tabs in the window's shell, which otherwise took the keys for
+their own and changed the page where a step was meant. The
+shortcuts are `WindowShortcut`, active while the panel is on screen and
+whatever has focus, and disabled with the panel when its page is hidden so
+the two panels never compete for a key. That is still one window and not the
+whole desktop — the argument for `jog_in_window` over the global hotkeys,
+kept.
+
+Every step goes through a worker, because `move_relative` blocks on HTTP.
+`JogController` already refuses a second move while one is in flight, which is
+what stops a held arrow queueing moves that keep running after the key is
+released; the page disables its controls to show that, and neither repeats the
+guard nor works around it.
+
+---
+
+## 13. Conventions
 
 Commits follow Conventional Commits: `feat`, `fix`, `refactor`, `docs`, `test`,
 `chore`; imperative mood; first line under 50 characters; blank line before the

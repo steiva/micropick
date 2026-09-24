@@ -139,6 +139,15 @@ class CameraSpec(BaseModel):
     middle of a field that is mostly empty; the old code applied the same crop
     inside the grab loop, where it leaked into the detections and the
     homography.
+
+    backend is which OpenCV capture backend opens the device; None is
+    OpenCV's default, Media Foundation on Windows. It is per camera because
+    the drivers differ per device: on the bench the Arducam's motorised
+    focus is set fine through Media Foundation but reads back as 1 whatever
+    it is, so the read-back check reports it rejected and nothing built on
+    "does this camera have a focus" can see it. Through DirectShow the same
+    lens reads back what was set, at the same frame rate. The name is
+    lower-case and is the OpenCV constant without its prefix.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -150,6 +159,7 @@ class CameraSpec(BaseModel):
     fourcc: str | None = "MJPG"
     controls: dict[str, float | str] = Field(default_factory=dict)
     crop: float = Field(default=1.0, gt=0.0, le=1.0)
+    backend: Literal["dshow", "msmf", "v4l2", "avfoundation", "any"] | None = None
     notes: str = ""
 
     @model_validator(mode="after")
@@ -373,6 +383,13 @@ class PickingConfig(BaseModel):
     circle_radius: int = 900
 
     # ---------------------- YOLO detection ----------------------
+    # The cuboid detector's weights, by file name in ml_models/. Empty means
+    # none chosen, which is not an error until something tries to detect:
+    # an installation without the weights still loads its profile, drives
+    # the robot and plans a plate. It lives here rather than in a notebook
+    # cell for the same reason TipTarget.model_file does - the model a run
+    # used is part of what the run was.
+    model_file: str = ""
     yolo_imgsz: int = 1536             # must match the training size
     yolo_conf: float = 0.25            # low: recall first, shape filters later
     yolo_iou: float = 0.80             # above default: touching cuboids labelled singly
@@ -512,6 +529,67 @@ class PickingConfig(BaseModel):
 
     def to_dict(self) -> dict:
         return self.model_dump()
+
+
+class DeckModule(BaseModel):
+    """Something bolted to the deck that the robot does not know about.
+
+    The picking platform and the tip calibration module sit in slots and
+    raise whatever labware is put on them; the robot's own model of the deck
+    has the slot's floor where it always was. Without being told, it plans
+    every well move 64 mm too low and drives the tip into the module. The
+    telling is a labware offset on the run: `ot2_api.add_slot_offsets`
+    registers it per slot, and `load_labware` attaches it to each labware
+    loaded there afterwards - *afterwards* is the word, which is why this is
+    in the profile and registered at connect rather than typed in a cell.
+
+    `offset` is the labware's displacement from the slot's own origin, in
+    the deck frame; a module that only raises the plate is (0, 0, height).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    slots: Annotated[list[Annotated[int, Field(ge=1, le=11)]], Field(min_length=1)]
+    offset: Vec3
+    name: str = ""
+
+    @property
+    def height_mm(self) -> float:
+        return float(self.offset[2])
+
+    def describe(self) -> str:
+        slots = ", ".join(str(s) for s in self.slots)
+        x, y, z = self.offset
+        where = f"({x:+g}, {y:+g}, {z:+g}) mm" if (x or y) else f"+{z:g} mm"
+        return f"slot{'s' if len(self.slots) > 1 else ''} {slots}: {where}" \
+               + (f" - {self.name}" if self.name else "")
+
+
+class DeckConfig(BaseModel):
+    """deck.json: the modules on this installation's deck."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    modules: list[DeckModule] = Field(default_factory=list)
+
+    def module_for(self, slot) -> DeckModule | None:
+        wanted = int(slot)
+        for module in self.modules:
+            if wanted in module.slots:
+                return module
+        return None
+
+    @model_validator(mode="after")
+    def _one_module_per_slot(self):
+        seen: dict[int, int] = {}
+        for index, module in enumerate(self.modules):
+            for slot in module.slots:
+                if slot in seen:
+                    raise ValueError(
+                        f"slot {slot} is claimed by two modules; a slot can "
+                        f"carry one offset")
+                seen[slot] = index
+        return self
 
 
 class ProfileMeta(BaseModel):
