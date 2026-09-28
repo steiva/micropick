@@ -643,14 +643,14 @@ class PickingPage(QWidget):
             out.append("the robot reports no tip on the pipette"
                        if session.tip.attached is False else
                        "the robot's tip state is unknown")
-            out[-1] += ": pick one up on the Labware page."
+            out[-1] += ": pick one up on the Robot & Deck page."
         if session.routine is not None and session.robot is not None:
             slot = str(session.routine.destination.slot)
             state = session.run_state
             if state is None or slot not in state.labware:
                 out.append(f"the run holds nothing in slot {slot}, which is "
                            f"where this routine delivers. Load the plate on "
-                           f"the Labware page.")
+                           f"the Robot & Deck page.")
         return out
 
     def _confirm_start(self) -> bool:

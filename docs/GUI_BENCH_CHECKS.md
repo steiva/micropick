@@ -852,3 +852,15 @@ static until the session owns them.
   On the lower camera, move the focus slider, then take the camera away
   and give it back as above: the lens comes back at the tuned focus, not
   the profile's.
+
+## Commit 27 — Robot & Deck
+
+- [ ] **The tab and its cards.**
+  The tab that was Labware reads "Robot & Deck". On it, top to bottom:
+  Deck modules, Definition (its list a quarter shorter than before), Slot,
+  Tip. No Re-read under Slot, no Return to rack under Tip.
+
+- [ ] **A well typed into the Tip chooser.**
+  Select a slot holding a tip rack: the wells run A1 … A12, B1 … H12. Type
+  `c7` and press Enter: C7 is chosen. Type `z1` and press Enter: it goes
+  back to C7. Pick up tip takes the chosen well.

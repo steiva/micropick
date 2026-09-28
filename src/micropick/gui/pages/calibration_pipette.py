@@ -468,8 +468,9 @@ class PipetteCalibration(QWidget):
             problems.append(
                 "the robot reports no tip on the pipette" if tip.attached is False
                 else "the robot's tip state is unknown")
-            problems[-1] += (": pick one up on the Labware page. The offset is "
-                             "of the tip, and every tip seats differently.")
+            problems[-1] += (": pick one up on the Robot & Deck page. The "
+                             "offset is of the tip, and every tip seats "
+                             "differently.")
         if self.dx.value() == 0.0 and self.dy.value() == 0.0 \
                 and (profile is None or profile.calibration.pipette_offset is None):
             problems.append("no starting offset: measure it roughly with a "

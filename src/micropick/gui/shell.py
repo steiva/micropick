@@ -240,7 +240,7 @@ class StatusBar(QStatusBar):
         self._deck.setText(f"<b style='color:{TIP_ON}'>DECK: slot{'s' if len(problems) > 1 else ''} "
                            f"{slots} without module offset</b>")
         hint = ("\n".join(p.describe() for p in problems)
-                + "\nFix it on the Labware page before any well move.")
+                + "\nFix it on the Robot & Deck page before any well move.")
         self._deck_icon.setToolTip(hint)
         self._deck.setToolTip(hint)
         self._deck_box.show()
@@ -260,8 +260,8 @@ class StatusBar(QStatusBar):
         elif tip.attached is None:
             icon = qta.icon("mdi6.help-circle-outline", color=TIP_ON)
             self._tip.setText(f"<b style='color:{TIP_ON}'>tip: unknown</b>")
-            hint = "The robot's tip state could not be read. Re-read it on " \
-                   "the Labware page before moving anything."
+            hint = "The robot's tip state could not be read. Connect again " \
+                   "on the Profile page before moving anything."
         else:
             icon = qta.icon("mdi6.eyedropper-off")
             self._tip.setText("no tip")

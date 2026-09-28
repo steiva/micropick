@@ -891,7 +891,7 @@ so a routine could name a plate that was not on the deck in a slot that held
 a tip rack, and nothing found out until the first well move. The list is the
 run's own labware, filtered by the definition's `displayCategory`: a tip
 rack, the trash and an adapter are not destinations, a reservoir and a tube
-rack are. Beside it is the same `DeckView` the Labware page draws, because
+rack are. Beside it is the same `DeckView` the Robot & Deck page draws, because
 "which one is the destination" is a question about the deck and is answered
 by pointing at it. The deck shows the profile's modules with the meaning
 they have on the other page - a raised floor - and nothing else, since one
@@ -1023,7 +1023,7 @@ hazard: the cell forgotten, or run after the plate was loaded, or a run
 carried on from a session that never ran it, all look fine until the first
 well move. So `deck.json` names the modules (`DeckModule`: slots, offset,
 name), `Session.register_deck_modules` puts them on the wrapper at every
-connect before anything can be loaded, and the Labware page edits them.
+connect before anything can be loaded, and the Robot & Deck page edits them.
 
 The check runs the other way too, because registering is only half. The
 run reports the offset on every labware it holds (`LoadedLabware.offset`,

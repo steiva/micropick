@@ -771,7 +771,7 @@ class ManualPage(QWidget):
                                     and self.well_choice.count() > 0)
         self.well_state.setText(
             "" if has_plate else
-            "No plate in the run: load one on the Labware page.")
+            "No plate in the run: load one on the Robot & Deck page.")
         self.well_state.setVisible(not has_plate)
         if busy:
             return
