@@ -94,6 +94,7 @@ from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
                                QLabel, QListWidget, QListWidgetItem,
                                QMessageBox, QVBoxLayout, QWidget)
 
+from ...workflows import manual as moves
 from ...workflows.jog import (DEFAULT_STEPS, LAYOUT, JogController,
                               help_lines)
 from ..session import Session
@@ -460,12 +461,21 @@ class JogPanel(QWidget):
         where = (self.session.profile.positions or {}).get(name)
         if where is None:
             return
+        why = moves.unreachable(self.controller.limits, where)
+        if why:
+            self._say(f"{name!r} is outside the soft limits: {why}", firm=True)
+            return
         controller = self.controller
-        # move_to, not the controller's `goto`: the controller's own saved
-        # dict is not what this list shows, and the soft limits apply either
-        # way because move_to is where they are checked.
-        self._run(Worker(lambda: (controller.move_to(where),
-                                  controller.status())))
+
+        # drive_tip, not the controller's move_to: a pose taught at the top
+        # of Z is out of bounds for the robot, and one moveToCoordinates
+        # from wherever the tip is drags it across the deck. See
+        # `workflows.manual`.
+        def job():
+            moves.drive_tip(controller.robot, where[:2], where[2], None)
+            return f"at {name!r}", controller.status()
+
+        self._run(Worker(job))
 
     def _rename(self) -> None:
         name = self._chosen_position()

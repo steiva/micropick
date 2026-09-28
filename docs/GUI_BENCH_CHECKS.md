@@ -811,3 +811,27 @@ static until the session owns them.
   well - it goes there and dispenses. With no tip both are refused before
   anything moves.
 
+
+## Commit 25 — the shake pose taught on the Picking page
+
+- [ ] **Teach shake here, then Go to shake.**
+  On Picking, with no `shake` in the profile: the "Shaking the dish" card
+  says so, Go to shake is grey and Start lists the missing position. Jog the
+  tip into the medium clear of the cuboids, Teach shake here: the card shows
+  the coordinates, the button reads "Re-teach shake here" and `shake`
+  appears once in the jog panel's list. Drive away, Go to shake: the tip
+  goes up, across at the travel height and straight down to the same spot.
+  Re-teach elsewhere: still one `shake`, with the new coordinates. During a
+  run both buttons are grey.
+
+- [ ] **The run shakes where it was taught.**
+  Start a run on a crowded dish: when nothing is isolated the tip goes to
+  the taught `shake`, not to a fixed point, and stirs ±10 mm in X there.
+
+- [ ] **A pose taught at the top is reached 1 mm under it.**
+  With `tip_calib` taught straight after a retract (Z at the top), Start the
+  pipette calibration: the log says "driving to tip_calib", the tip retracts,
+  goes across and ends 1 mm under the stored Z, and the calibration goes on
+  - no "Destination out of bounds in the Z-axis". The same for Go to on the
+  calibration page, Go to the dish, and Go to in the jog panel's list. Start
+  a picking run with `observe` taught at the top: it reaches `observe`.

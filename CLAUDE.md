@@ -54,5 +54,8 @@ a key press. Moves across the deck are one force_direct
 move_to_coordinates at 1 mm under the Z measured after a retract
 (`workflows.manual.raise_tip`, `travel_z`): with a long tip the robot does
 nothing for a moveToCoordinates at the retracted height itself. A retract
-is only repeated when the tip is below that travel height. Click-to-move is off on every entry to the
+is only repeated when the tip is below that travel height. A stored pose
+(`tip_calib`, `observe`, `shake`, the jog panel's Go to, and the picking
+run's own moves to them) is reached no higher than that travel height
+(`reachable_z`): taught after a retract, it is out of bounds for the robot. Click-to-move is off on every entry to the
 tab.

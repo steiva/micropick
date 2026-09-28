@@ -71,6 +71,16 @@ The name is the workflow's: `PickingSession` reads `profile.where("observe")`
 and refuses to start without it, so teaching it here is teaching the run's
 own starting pose rather than a second one that looks like it.
 
+So is the shake pose
+--------------------
+`shake`, where the tip goes into the dish to stir it when too few cuboids
+are isolated. It depends on how the dish sits that day, so it is taught
+here, beside the dish, rather than fixed: jog the tip into the medium where
+it can stir without scraping a cuboid, and Teach shake here. There is one
+of it - teaching again replaces it. Both of its buttons go through the jog
+panel's queue, and Go to shake arrives as Manual control's moves do: tip
+up, across at the travel height, then straight down.
+
 The overlay is drawn by `widgets/overlay_painter` from `viz.overlays.items`,
 which is the same list `viz.overlays.draw` renders with cv2 for the
 notebook. One description of the geometry, two renderers.
@@ -90,8 +100,9 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
                                QWidget)
 
 from ...core.calibration.pixel_map import PixelMap
-from ...hardware.protocols import move_to, xyz
+from ...hardware.protocols import xyz
 from ...viz import overlays
+from ...workflows import manual as moves
 from ...workflows.picking import PickingSession, RobotState
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
@@ -181,7 +192,8 @@ class PickingPage(QWidget):
 
         self.view = CameraView(self)
 
-        panel = CardColumns([self._dish_card(), self._analysis_card(),
+        panel = CardColumns([self._dish_card(), self._shake_card(),
+                             self._analysis_card(),
                              self._histogram_card(), self._run_card(),
                              self._jog_section()], self)
 
@@ -236,6 +248,26 @@ class PickingPage(QWidget):
         self.dish_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.dish_state)
+        return box
+
+    def _shake_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Shaking the dish", 2))
+
+        buttons = QHBoxLayout()
+        self.goto_shake_button = secondary_button("Go to shake", self)
+        self.goto_shake_button.clicked.connect(self._goto_shake)
+        self.teach_shake_button = secondary_button("Teach shake here", self)
+        self.teach_shake_button.clicked.connect(self._teach_shake)
+        buttons.addWidget(self.goto_shake_button)
+        buttons.addWidget(self.teach_shake_button)
+        box.layout().addLayout(buttons)
+
+        self.shake_state = QLabel()
+        self.shake_state.setWordWrap(True)
+        self.shake_state.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.shake_state)
         return box
 
     def _analysis_card(self) -> QWidget:
@@ -348,7 +380,8 @@ class PickingPage(QWidget):
         if where is None or self.session.robot is None or self._busy():
             return
         robot = self.session.robot
-        self._run(Worker(lambda: move_to(robot, where, min_z_height=1.0)),
+        self._run(Worker(lambda: moves.drive_tip(robot, where[:2], where[2],
+                                                 None)),
                   self._moved)
 
     def _teach_dish(self) -> None:
@@ -360,6 +393,42 @@ class PickingPage(QWidget):
 
     def _moved(self, _result=None) -> None:
         self._refresh()
+
+    # -- the shake pose -------------------------------------------------------
+
+    def _stored_shake(self):
+        profile = self.session.profile
+        return None if profile is None else profile.positions.get(SHAKE_POSITION)
+
+    def _goto_shake(self) -> None:
+        where = self._stored_shake()
+        if where is None or self.session.robot is None or self._running():
+            return
+        robot = self.session.robot
+
+        def job(log):
+            moves.drive_tip(robot, where[:2], where[2], None, log=log)
+            return f"at {SHAKE_POSITION!r}"
+
+        if not self.jog.run_job(job):
+            self.jog.tell("not now: the robot is busy; Go to shake again "
+                          "when it is done.")
+
+    def _teach_shake(self) -> None:
+        if (self.session.robot is None or self.session.profile is None
+                or self._running()):
+            return
+        robot, session = self.session.robot, self.session
+
+        def job(_log):
+            where = xyz(robot)
+            session.remember(SHAKE_POSITION, where)
+            return (f"{SHAKE_POSITION!r} taught at ({where[0]:.1f}, "
+                    f"{where[1]:.1f}, {where[2]:.1f})")
+
+        if not self.jog.run_job(job, moves=False):
+            self.jog.tell("not now: the robot is busy; Teach shake here "
+                          "again when it is done.")
 
     # -- looking at it --------------------------------------------------------
 
@@ -562,8 +631,8 @@ class PickingPage(QWidget):
         # the operator is not watching.
         for name, what in ((DISH_POSITION, "park over the dish and Teach here"),
                            (SHAKE_POSITION,
-                            "jog to where the dish is shaken and save it as "
-                            f"{SHAKE_POSITION!r} in the jog panel")):
+                            "jog the tip into the dish where it should stir "
+                            "and Teach shake here")):
             if name not in profile.positions:
                 out.append(f"no {name!r} position: {what}.")
         if self.detector.model is None:
@@ -897,6 +966,27 @@ class PickingPage(QWidget):
                 f"{stored[2]:.1f})")
 
         running = self._running()
+        shake = self._stored_shake()
+        self.goto_shake_button.setEnabled(connected and shake is not None
+                                          and not running)
+        self.teach_shake_button.setEnabled(connected and profile is not None
+                                           and not running)
+        self.teach_shake_button.setText("Re-teach shake here"
+                                        if shake is not None
+                                        else "Teach shake here")
+        if profile is None:
+            self.shake_state.setText("No profile loaded.")
+        elif shake is None:
+            self.shake_state.setText(
+                f"No {SHAKE_POSITION!r} position yet. When too few cuboids "
+                f"are isolated the run stirs the dish there: jog the tip "
+                f"into the medium, clear of the cuboids, then Teach shake "
+                f"here.")
+        else:
+            self.shake_state.setText(
+                f"{SHAKE_POSITION}: ({shake[0]:.1f}, {shake[1]:.1f}, "
+                f"{shake[2]:.1f})")
+
         self.settings_button.setEnabled(profile is not None and not busy
                                         and not running)
         self.analyse_button.setEnabled(

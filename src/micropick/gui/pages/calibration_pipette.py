@@ -57,7 +57,8 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QLabel,
 
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
-from ...hardware.protocols import move_to, xyz
+from ...hardware.protocols import xyz
+from ...workflows import manual as moves
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..session import Session
@@ -380,10 +381,10 @@ class PipetteCalibration(QWidget):
         stored = self._stored_position()
         if stored is None or self.session.robot is None or self._busy():
             return
-        robot, height = self.session.robot, self._module_height()
+        robot = self.session.robot
 
         def job():
-            move_to(robot, stored, min_z_height=height - 0.1)
+            moves.drive_tip(robot, stored[:2], stored[2], None)
             return xyz(robot)
 
         self._run_short(Worker(job), f"going to {POSITION_NAME} {stored}")
@@ -508,7 +509,7 @@ class PipetteCalibration(QWidget):
             if standin:
                 log(STANDIN_NOTE)
             log(f"driving to {POSITION_NAME} {tuple(round(v, 2) for v in stored)}")
-            move_to(robot, stored, min_z_height=target.module_height - 0.1)
+            moves.drive_tip(robot, stored[:2], stored[2], None, log=log)
             time.sleep(0.5)
             result = calibrate_pipette_offset(
                 robot, over, under, detector, pmap, target=target,

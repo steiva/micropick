@@ -18,6 +18,12 @@ millimetre lower it moves normally. So before each move Z is read: at the
 travel height or above, the move goes ahead; below it, the axis is
 retracted first. One read per move is cheaper than a retract per move.
 
+The same refusal meets a stored pose taught at the top - `tip_calib`,
+`observe`, anything saved straight after a retract: "Destination out of
+bounds in the Z-axis". So no target goes higher than the travel height
+(`reachable_z`); such a pose is reached 1 mm under where it was taught,
+which the camera on the carriage does not see.
+
 Then one straight line
 ----------------------
 The travel is a single `move_to_coordinates` with `force_direct`: the
@@ -47,7 +53,7 @@ from ..hardware.protocols import Robot, move_to, require_ok, xyz
 from .jog import AXES, Limits
 
 __all__ = ["TRAVEL_BELOW_TOP_MM", "WELL_LEVELS", "raise_tip",
-           "travel_z", "camera_target",
+           "travel_z", "reachable_z", "camera_target",
            "tip_target", "unreachable", "drive_camera", "drive_tip",
            "drive_to_well", "aspirate", "dispense"]
 
@@ -116,14 +122,25 @@ def drive_camera(robot: Robot, xy, z_top: float | None, *, log=None) -> float:
     return z_top
 
 
+def reachable_z(z: float, z_top: float) -> float:
+    """`z`, but no higher than the travel height. A pose taught at the top
+    of Z - a camera pose, saved after a retract - is out of bounds for a
+    moveToCoordinates, and 1 mm under it is where it can be reached."""
+    return min(float(z), travel_z(z_top))
+
+
 def drive_tip(robot: Robot, xy, z: float, z_top: float | None, *,
               log=None) -> float:
-    """The tip up, across to `xy`, then down to `z`. Returns the known top."""
+    """The tip up, across to `xy`, then down to `z`, or to the travel
+    height if `z` is above it. Returns the known top."""
     z_top = raise_tip(robot, z_top, log=log)
+    travel = travel_z(z_top)
+    z = reachable_z(z, z_top)
     if log is not None:
         log(f"tip to ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}")
-    _straight(robot, xy, travel_z(z_top))
-    _straight(robot, xy, z)
+    _straight(robot, xy, travel)
+    if z < travel:
+        _straight(robot, xy, z)
     return z_top
 
 

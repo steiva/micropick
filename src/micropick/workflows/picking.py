@@ -90,6 +90,7 @@ from ..core.vision import floaters
 from ..core.calibration.homography import Homography, HomographyError
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, set_lights, xyz)
+from .manual import reachable_z
 
 __all__ = ["RobotState", "PickEvent", "PickView", "PickingSession",
            "PickingError"]
@@ -260,6 +261,8 @@ class PickingSession:
         self._choice: pd.DataFrame | None = None
         self._world: list[tuple[float, float]] = []
         self._shake_retries = 0
+        # Z after the last retract; see `_reachable`.
+        self._z_top: float | None = None
         self._empty_pickups = 0
         # Which pass round the picking loop we are on, counted from 1 at the head
         # of the cycle. Only ever increases, and it is what names a frame in the
@@ -556,6 +559,24 @@ class PickingSession:
                     raise _Cancelled
                 pause.wait(0.05)
 
+    def _retract(self) -> None:
+        """Tip to the top, and the top remembered: it depends on the tip
+        fitted, and a pose is only reachable under it (`_reachable`)."""
+        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._z_top = xyz(self.robot)[2]
+
+    def _reachable(self, pose) -> np.ndarray:
+        """`pose`, no higher than 1 mm under the measured top.
+
+        `observe` is a camera pose, usually taught straight after a retract,
+        and the robot refuses a moveToCoordinates to the retracted height
+        itself ("Destination out of bounds in the Z-axis"). The camera does
+        not move with Z, so 1 mm lower is the same picture."""
+        pose = np.array(pose, dtype=float)
+        if self._z_top is not None:
+            pose[2] = reachable_z(pose[2], self._z_top)
+        return pose
+
     def _wait_for_operator(self, pause, stop) -> None:
         """Stand at the observation pose until told to go on.
 
@@ -568,9 +589,10 @@ class PickingSession:
         the observation pose drags it through whatever it was standing in.
         """
         self._gate(pause, stop)
-        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._retract()
         self._gate(pause, stop)
-        move_to(self.robot, self._observe, min_z_height=self.config.dish_bottom)
+        move_to(self.robot, self._reachable(self._observe),
+                min_z_height=self.config.dish_bottom)
         while not self._started:
             self._gate(pause, stop)
             time.sleep(_IDLE_POLL_S)
@@ -710,7 +732,8 @@ class PickingSession:
 
     def _state_capture_frame(self, pause, stop) -> PickEvent:
         self._gate(pause, stop)
-        move_to(self.robot, self._observe, min_z_height=self.config.dish_bottom)
+        move_to(self.robot, self._reachable(self._observe),
+                min_z_height=self.config.dish_bottom)
         if self.config.capture_settle_s:
             time.sleep(self.config.capture_settle_s)
         self._frame = self._fresh_frame()
@@ -832,9 +855,10 @@ class PickingSession:
         # can be assumed. Retract before travelling, or a tip still down is
         # dragged through whatever it was standing in.
         self._gate(pause, stop)
-        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._retract()
         self._gate(pause, stop)
-        move_to(self.robot, self._observe, min_z_height=cfg.dish_bottom)
+        move_to(self.robot, self._reachable(self._observe),
+                min_z_height=cfg.dish_bottom)
         if cfg.capture_settle_s:
             # A gantry that is still ringing moves every window's contents
             # together; `classify` sees that as common motion and refuses the
@@ -1007,9 +1031,10 @@ class PickingSession:
     def _state_auto_shake(self, pause, stop) -> PickEvent:
         shake = self.profile.where("shake")
         self._gate(pause, stop)
-        require_ok(self.robot.retract_axis("leftZ"), "retract")
+        self._retract()
         self._gate(pause, stop)
-        move_to(self.robot, shake, min_z_height=self.config.dish_bottom)
+        move_to(self.robot, self._reachable(shake),
+                min_z_height=self.config.dish_bottom)
         for _ in range(3):
             self._gate(pause, stop)
             move_relative(self.robot, "x", 10)
@@ -1127,7 +1152,7 @@ class PickingSession:
 
     def _state_verify_pickup(self, pause, stop) -> PickEvent:
         self._gate(pause, stop)
-        move_to(self.robot, self._observe,
+        move_to(self.robot, self._reachable(self._observe),
                 min_z_height=self.config.dish_bottom, force_direct=True)
         time.sleep(self.config.verify_settle_s)
         self._frame = self._fresh_frame()
@@ -1245,7 +1270,7 @@ class PickingSession:
                 offset=(cfg.well_offset_x, cfg.well_offset_y, 5)),
                 "retract from well")
             self._gate(pause, stop)
-            move_to(self.robot, self._observe,
+            move_to(self.robot, self._reachable(self._observe),
                     min_z_height=cfg.dish_bottom, force_direct=True)
         else:
             x, y = current
@@ -1263,7 +1288,7 @@ class PickingSession:
             self._gate(pause, stop)
             move_relative(self.robot, "z", cfg.lift_mm)
             self._gate(pause, stop)
-            move_to(self.robot, self._observe,
+            move_to(self.robot, self._reachable(self._observe),
                     min_z_height=cfg.dish_bottom, force_direct=True)
 
         nxt = self.routine.next()
