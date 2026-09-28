@@ -13,10 +13,23 @@ while it blocks, so the notebook is not held up either way.
 Consumers subscribe to the single grab loop rather than starting loops of their
 own. Two loops calling read() on one device compete for frames and each sees
 only part of the stream.
+
+A device taken away is opened again
+-----------------------------------
+Windows takes a camera from a stream when another client opens it - the
+preview in Settings, the Camera app, a notebook - and Media Foundation then
+fails every read with MF_E_VIDEO_RECORDING_DEVICE_INVALIDATED (0xC00D3EA2);
+a USB reset does the same. That stream never comes back by itself. A camera
+opened by `CameraManager` is given a way to open its device again, and the
+grab thread uses it: the old capture is released and a new one opened with
+the same settings every couple of seconds until one delivers. Meanwhile
+`lost` says so, read() has nothing and read_after raises, so the last frame
+is never taken for a current one.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -32,8 +45,17 @@ from . import devices
 __all__ = ["BackgroundCamera", "Recorder", "CameraManager", "CameraError",
            "ControlReport", "apply_controls"]
 
+log = logging.getLogger(__name__)
+
 Transform = Callable[[np.ndarray], np.ndarray]
 Annotate = Callable[[np.ndarray], np.ndarray]
+
+# Failed reads in a row before the device is taken to be gone. Media
+# Foundation fails a read at once when the device is taken away, so this is
+# a fraction of a second, not seconds.
+_MISSES_BEFORE_LOST = 50
+# Between attempts to open a lost device again.
+_REOPEN_EVERY_S = 2.0
 
 
 class CameraError(RuntimeError):
@@ -312,6 +334,16 @@ class Recorder:
 # camera
 # ---------------------------------------------------------------------------
 
+def _warm_up(cap, reads: int) -> np.ndarray | None:
+    """The last good frame of a few reads, or None if there was none."""
+    seed = None
+    for _ in range(max(1, reads)):
+        ok, frame = cap.read()
+        if ok:
+            seed = frame
+    return seed
+
+
 class BackgroundCamera:
     """A camera held open by one grab thread.
 
@@ -325,8 +357,13 @@ class BackgroundCamera:
     def __init__(self, cap, *, label: str = "camera",
                  resolution: tuple[int, int] | None = None,
                  controls: ControlReport | None = None,
-                 crop: float = 1.0, warmup: int = 5):
+                 crop: float = 1.0, warmup: int = 5,
+                 reopen: Callable[[], object] | None = None):
         self._cap = cap
+        # Opens the device again, set up as at open, or raises. Without it a
+        # lost device ends the grab thread for good; see the module notes.
+        self._reopen = reopen
+        self._warmup = warmup
         self.label = label
         self.controls = controls or ControlReport()
         self.crop = float(crop)
@@ -345,11 +382,7 @@ class BackgroundCamera:
         # Keep the last warm-up frame rather than discarding it: without a
         # seed, read() returns False for the first few milliseconds after
         # construction, and a caller that reads immediately sees no camera.
-        seed = None
-        for _ in range(max(1, warmup)):
-            ok, frame = cap.read()
-            if ok:
-                seed = frame
+        seed = _warm_up(cap, warmup)
         if seed is None:
             cap.release()
             raise CameraError(f"{label}: no frame during warm-up")
@@ -358,6 +391,7 @@ class BackgroundCamera:
         self._stamp = time.monotonic()
         self._count = 0
         self._error: str | None = None
+        self._lost: str | None = None
         self._cv = threading.Condition()
         self._stop = threading.Event()
         self._sinks: list[Recorder] = []
@@ -377,11 +411,14 @@ class BackgroundCamera:
             ok, frame = self._cap.read()
             if not ok:
                 misses += 1
-                if misses > 50:
-                    with self._cv:
-                        self._error = "camera stopped returning frames"
-                        self._cv.notify_all()
-                    break
+                if misses > _MISSES_BEFORE_LOST:
+                    if self._reopen is None:
+                        with self._cv:
+                            self._error = "camera stopped returning frames"
+                            self._cv.notify_all()
+                        break
+                    self._reconnect()
+                    misses = 0
                 continue
             misses = 0
 
@@ -398,6 +435,55 @@ class BackgroundCamera:
 
         self._cap.release()
 
+    def _reconnect(self) -> None:
+        """Open the device again until it delivers a frame, or until close().
+
+        Runs on the grab thread, so nothing else reads the capture meanwhile.
+        Controls changed while open (a focus tuned on the feed) are applied
+        to the new capture over the profile's, which `reopen` has set.
+        """
+        with self._cv:
+            self._lost = "camera lost - reconnecting"
+            self._cv.notify_all()
+        log.warning("%s: the device stopped delivering frames; opening it "
+                    "again", self.label)
+        self._cap.release()
+
+        attempt, last_why = 0, None
+        while not self._stop.wait(_REOPEN_EVERY_S):
+            attempt += 1
+            try:
+                cap = self._reopen()
+                live = {k: v for k, v in self.controls.applied.items()
+                        if k != "auto_exposure"}
+                if live:
+                    apply_controls(cap, live)
+                seed = _warm_up(cap, self._warmup)
+                if seed is None:
+                    cap.release()
+                    raise CameraError("opened, but no frame")
+            except Exception as exc:                     # noqa: BLE001
+                why = str(exc) or type(exc).__name__
+                if why != last_why:
+                    log.warning("%s: reopen attempt %d failed: %s",
+                                self.label, attempt, why)
+                    last_why = why
+                with self._cv:
+                    self._lost = (f"camera lost - reconnecting, attempt "
+                                  f"{attempt}")
+                continue
+
+            self._cap = cap
+            with self._cv:
+                self._lost = None
+                self._latest = seed
+                self._stamp = time.monotonic()
+                self._count += 1
+                self._cv.notify_all()
+            log.info("%s: reconnected after %d attempt%s", self.label,
+                     attempt, "" if attempt == 1 else "s")
+            return
+
     # -- controls, while open ------------------------------------------------
 
     def set_controls(self, controls: dict) -> ControlReport:
@@ -408,7 +494,16 @@ class BackgroundCamera:
         which is what a profile write-back reads. The grab thread keeps
         reading meanwhile: a UVC control transfer is independent of the
         frame stream, and the drivers seen here accept a set() during one.
+
+        While the device is `lost` there is nothing to set: numeric values
+        are kept as if they took, and the reconnect applies them.
         """
+        if self.lost:
+            report = ControlReport(applied={
+                k: float(v) for k, v in controls.items()
+                if k in _CONTROL_PROPS})
+            self.controls.applied.update(report.applied)
+            return report
         report = apply_controls(self._cap, controls)
         self.controls.applied.update(report.applied)
         for name in report.applied:
@@ -419,7 +514,7 @@ class BackgroundCamera:
     def get_control(self, name: str) -> float | None:
         """The device's current value for a named control, or None."""
         prop = _CONTROL_PROPS.get(name)
-        if prop is None:
+        if prop is None or self.lost:
             return None
         try:
             return float(self._cap.get(prop))
@@ -431,7 +526,7 @@ class BackgroundCamera:
     def read(self) -> tuple[bool, np.ndarray | None]:
         """Most recent frame. May predate whatever the caller just did."""
         with self._cv:
-            if self._error or self._latest is None:
+            if self._error or self._lost or self._latest is None:
                 return False, None
             return True, self._latest
 
@@ -452,12 +547,14 @@ class BackgroundCamera:
             for _ in range(skip + 1):
                 remaining = deadline - time.monotonic()
                 if remaining <= 0 or not self._cv.wait_for(
-                        lambda: self._stamp > t or self._error is not None,
+                        lambda: (self._stamp > t or self._error is not None
+                                 or self._lost is not None),
                         timeout=remaining):
                     raise TimeoutError(
                         f"{self.label}: no frame after t within {timeout} s")
-                if self._error:
-                    raise CameraError(f"{self.label}: {self._error}")
+                if self._error or self._lost:
+                    raise CameraError(
+                        f"{self.label}: {self._error or self._lost}")
                 t = self._stamp
             return self._latest
 
@@ -500,6 +597,13 @@ class BackgroundCamera:
         with self._cv:
             return self._count
 
+    @property
+    def lost(self) -> str | None:
+        """Why there is no frame while the device is being opened again, or
+        None. The camera is still alive meanwhile: it is on its way back."""
+        with self._cv:
+            return self._lost
+
     def is_alive(self) -> bool:
         return self._thread.is_alive() and self._error is None
 
@@ -519,7 +623,9 @@ class BackgroundCamera:
         self.close()
 
     def __repr__(self) -> str:
-        state = "running" if self.is_alive() else f"stopped ({self._error})"
+        state = ("running" if self.is_alive() and not self._lost
+                 else self._lost if self.is_alive()
+                 else f"stopped ({self._error})")
         return (f"<BackgroundCamera {self.label!r} {self._resolution[0]}x"
                 f"{self._resolution[1]} {state}, {self.frame_count} frames>")
 
@@ -578,13 +684,50 @@ class CameraManager:
                     print(f"{label}: reopening {existing.resolution} -> {wanted}")
                 self.close(label)
 
-        device = devices.find_device(spec["device_name"])
         allowed = [tuple(r) for r in spec.get("resolutions", [])]
         if allowed and wanted not in allowed:
             raise CameraError(
                 f"{label}: resolution {wanted} is not in the profile's list "
                 f"{allowed}. Add it there if the camera supports it."
             )
+        merged = dict(spec.get("controls") or {})
+        merged.update(controls or {})
+
+        cap, device, report = self._capture(label, spec, wanted, merged)
+
+        def reopen():
+            # The name is resolved again: a device that went through a USB
+            # reset can come back under another index.
+            again, _device, _report = self._capture(label, spec, wanted,
+                                                    merged)
+            actual = (int(again.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                      int(again.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            if actual != wanted:
+                again.release()
+                raise CameraError(f"{label}: reopened at {actual}, not "
+                                  f"{wanted}")
+            return again
+
+        cam = BackgroundCamera(cap, label=label, resolution=wanted,
+                               controls=report,
+                               crop=float(spec.get("crop", 1.0)),
+                               reopen=reopen)
+        self._open[label] = cam
+
+        if verbose:
+            print(f"{label}: {device}  {wanted[0]}x{wanted[1]}"
+                  + (f"  view crop {cam.crop:g}" if cam.crop != 1.0 else "")
+                  + (f"  via {cap.getBackendName()}"
+                     if spec.get("backend") else ""))
+            if merged:
+                print(f"  {report}".replace("\n", "\n  "))
+        return cam
+
+    def _capture(self, label: str, spec: dict, wanted: tuple[int, int],
+                 controls: dict):
+        """Open the device named in `spec` and set it up. Returns the
+        capture, the device and what the controls did."""
+        device = devices.find_device(spec["device_name"])
 
         # The spec's backend first, then the manager's, then OpenCV's own
         # choice. Per camera because the drivers differ per device; see
@@ -610,22 +753,8 @@ class CameraManager:
             cap.set(cv2.CAP_PROP_FPS, spec["fps"])
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        merged = dict(spec.get("controls") or {})
-        merged.update(controls or {})
-        report = apply_controls(cap, merged) if merged else ControlReport()
-
-        cam = BackgroundCamera(cap, label=label, resolution=wanted,
-                               controls=report,
-                               crop=float(spec.get("crop", 1.0)))
-        self._open[label] = cam
-
-        if verbose:
-            print(f"{label}: {device}  {wanted[0]}x{wanted[1]}"
-                  + (f"  view crop {cam.crop:g}" if cam.crop != 1.0 else "")
-                  + (f"  via {cap.getBackendName()}" if named else ""))
-            if merged:
-                print(f"  {report}".replace("\n", "\n  "))
-        return cam
+        report = apply_controls(cap, controls) if controls else ControlReport()
+        return cap, device, report
 
     def close(self, label: str) -> None:
         cam = self._open.pop(label, None)

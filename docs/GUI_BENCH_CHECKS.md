@@ -835,3 +835,20 @@ static until the session owns them.
   - no "Destination out of bounds in the Z-axis". The same for Go to on the
   calibration page, Go to the dish, and Go to in the jog panel's list. Start
   a picking run with `observe` taught at the top: it reaches `observe`.
+
+## Commit 26 — a camera taken away is opened again
+
+- [ ] **Another app takes the upper camera, and it comes back.**
+  With the upper camera live in the GUI, open the camera preview in
+  Windows Settings (Bluetooth & devices → Cameras) or the Camera app. The
+  console prints the MSMF `OnReadSample ... -1072873822` warnings; within
+  a second the picture shows "camera lost - reconnecting" under the
+  caption, with the last frame behind it, and the log says the device
+  stopped delivering frames. Close the preview: within a few seconds the
+  box goes away, the feed is live again at the same resolution and the
+  log says "reconnected after N attempts" - no restart of the GUI.
+
+- [ ] **A tuned focus survives it.**
+  On the lower camera, move the focus slider, then take the camera away
+  and give it back as above: the lens comes back at the tuned focus, not
+  the profile's.

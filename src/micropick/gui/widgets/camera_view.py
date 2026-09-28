@@ -156,6 +156,7 @@ class CameraView(QWidget):
         self._position: list[str] = []
         self._status: list[str] = []
         self._help: list[str] = []
+        self._lost: str | None = None             # the camera's `lost`
 
         # Zoom about a point: the view pixel that sits at the widget's centre.
         self._zoom = 1.0
@@ -248,6 +249,7 @@ class CameraView(QWidget):
         self._fps = 0.0
         self._fps_count = getattr(camera, "frame_count", 0) if camera else 0
         self._fps_at = time.monotonic()
+        self._lost = None
         self._zoom = 1.0
         self._centre = None
         self._sync_controls()
@@ -511,7 +513,15 @@ class CameraView(QWidget):
 
     def _tick(self) -> None:
         camera = self._camera
-        if camera is None or not self._live:
+        if camera is None:
+            return
+        # Looked at even while a frame is held: a run's picture stays put,
+        # but whether the camera behind it is there is news either way.
+        lost = getattr(camera, "lost", None)
+        if lost != self._lost:
+            self._lost = lost
+            self.update()
+        if not self._live:
             return
         ok, frame = camera.read()
         if not ok or frame is None:
@@ -692,7 +702,8 @@ class CameraView(QWidget):
         if self._image is None:
             self._draw_placeholder(painter)
             # Where the gantry is does not depend on there being a picture.
-            self._draw_boxes(painter, [self._position, self._status])
+            self._draw_boxes(painter, [self._lost_lines(), self._position,
+                                       self._status])
             self._draw_help(painter)
             painter.end()
             return
@@ -732,8 +743,15 @@ class CameraView(QWidget):
 
         # The caption, then where the gantry is, then what the page is
         # doing: boxes of one kind, stacked down the corner.
-        self._draw_boxes(painter, [["   ".join(parts)], self._position,
-                                   self._status])
+        self._draw_boxes(painter, [["   ".join(parts)], self._lost_lines(),
+                                   self._position, self._status])
+
+    def _lost_lines(self) -> list[str]:
+        """Under the caption while the camera is being opened again: the
+        picture above is its last frame, not a live one."""
+        if not self._lost:
+            return []
+        return [self._lost, "the picture is the last frame before it"]
 
     def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> None:
         painter.setFont(QFont(self.font().family(), 10))
