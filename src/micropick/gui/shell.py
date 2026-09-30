@@ -7,7 +7,8 @@ theme along with it. Those are exactly the three things this application
 needs to keep.
 
 The tabs are in two groups. On the left, the pages a session goes through in
-order — profile, labware, calibration, routine, picking. On the right edge,
+order — profile, labware, calibration, routine, picking, liquid handling.
+On the right edge,
 the two that are used whenever they are needed rather than in sequence:
 manual control and the log. A column down the side used to hold them all and
 cost the pages 200 px of width for seven words.
@@ -37,8 +38,8 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QVBoxLayout, QWidget)
 
 from . import log_bridge
-from .pages import (calibration, labware, log, manual, picking, profile,
-                    routine)
+from .pages import (calibration, labware, liquid, log, manual, picking,
+                    profile, routine)
 from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
 from .widgets.feed_window import FeedWindow
@@ -66,6 +67,8 @@ PAGES = (
     # work happens.
     ("routine", routine.TITLE, routine.RoutinePage, SEQUENCE),
     ("picking", picking.TITLE, picking.PickingPage, SEQUENCE),
+    # After picking: washing is done on a plate that already holds cuboids.
+    ("liquid", liquid.TITLE, liquid.LiquidHandlingPage, SEQUENCE),
     ("manual", manual.TITLE, manual.ManualPage, ASIDE),
     ("log", log.TITLE, log.LogPage, ASIDE),
 )

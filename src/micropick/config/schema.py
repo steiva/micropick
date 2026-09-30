@@ -559,11 +559,18 @@ class WellPreset(BaseModel):
     depth_mm: float | None = Field(default=None, gt=0)
 
 
-def _setting(default, title: str, description: str, unit: str = ""):
+def _setting(default, title: str, description: str, unit: str = "",
+             labels: dict | None = None):
     """A washing setting: the words an operator sees are data here, so the
-    form is generated from them rather than holding a second list."""
+    form is generated from them rather than holding a second list. `labels`
+    names a choice's values on screen."""
+    extra = {}
+    if unit:
+        extra["unit"] = unit
+    if labels:
+        extra["labels"] = labels
     return Field(default=default, title=title, description=description,
-                 json_schema_extra={"unit": unit} if unit else None)
+                 json_schema_extra=extra or None)
 
 
 class WashSettings(BaseModel):
@@ -620,7 +627,8 @@ class WashSettings(BaseModel):
     order: Literal["by_row", "by_column"] = _setting(
         "by_row", "Order of wells",
         "Row by row goes A1, A2, A3 ... then B1. Column by column goes A1, "
-        "B1, C1 ... then A2.")
+        "B1, C1 ... then A2.",
+        labels={"by_row": "Row by row", "by_column": "Column by column"})
     pause_after_first: bool = _setting(
         True, "Stop after the first well to check it",
         "The run pauses after the first well so you can look whether the "

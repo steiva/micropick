@@ -88,13 +88,19 @@ def _number(kind: type, value) -> QWidget:
 
 
 class _Row:
-    """One field: its widget, and how to read a value back out of it."""
+    """One field: its widget, and how to read a value back out of it.
 
-    def __init__(self, name: str, annotation, value):
+    `labels` names a literal's choices for the screen, the value itself
+    staying what is stored; `unit` goes after a number.
+    """
+
+    def __init__(self, name: str, annotation, value, *,
+                 labels: dict | None = None, unit: str = ""):
         self.name = name
         self.widget: QWidget
         self._read = None
         self._write = None
+        self._changed = []
 
         literal, choices = _is_literal(annotation)
         pair, kind = _is_pair(annotation)
@@ -104,12 +110,15 @@ class _Row:
             box.setChecked(bool(value))
             self.widget, self._read = box, box.isChecked
             self._write = lambda v: box.setChecked(bool(v))
+            self._changed = [box.toggled]
         elif literal:
             box = QComboBox()
-            box.addItems([str(c) for c in choices])
-            box.setCurrentText(str(value))
-            self.widget, self._read = box, box.currentText
-            self._write = lambda v: box.setCurrentText(str(v))
+            for choice in choices:
+                box.addItem(str((labels or {}).get(choice, choice)), choice)
+            box.setCurrentIndex(max(0, box.findData(value)))
+            self.widget, self._read = box, box.currentData
+            self._write = lambda v: box.setCurrentIndex(max(0, box.findData(v)))
+            self._changed = [box.currentIndexChanged]
         elif pair:
             low, high = (_number(kind, value[0]), _number(kind, value[1]))
             holder = QWidget()
@@ -125,14 +134,19 @@ class _Row:
             self.widget = holder
             self._read = lambda: (low.value(), high.value())
             self._write = lambda v: (low.setValue(v[0]), high.setValue(v[1]))
+            self._changed = [low.valueChanged, high.valueChanged]
         elif annotation in (int, float):
             box = _number(annotation, value)
+            if unit:
+                box.setSuffix(f" {unit}")
             self.widget, self._read = box, box.value
             self._write = box.setValue
+            self._changed = [box.valueChanged]
         elif annotation is str:
             text = QLineEdit(str(value))
             self.widget, self._read = text, text.text
             self._write = lambda v: text.setText(str(v))
+            self._changed = [text.editingFinished]
         else:
             # Anything the form cannot express is shown and left alone, so a
             # field added to the schema is visible here even before this
@@ -150,6 +164,11 @@ class _Row:
     def value(self):
         return self._read()
 
+    def on_change(self, callback) -> None:
+        """Call `callback()` whenever the operator changes the value."""
+        for signal in self._changed:
+            signal.connect(lambda *_: callback())
+
     def set_value(self, value) -> None:
         """Put a value into the widget that is already in the form.
 
@@ -161,9 +180,10 @@ class _Row:
             self._write(value)
 
 
-def field_widget(name: str, annotation, value) -> _Row:
+def field_widget(name: str, annotation, value, *, labels: dict | None = None,
+                 unit: str = "") -> _Row:
     """One row, for a test or a caller that wants a single field."""
-    return _Row(name, annotation, value)
+    return _Row(name, annotation, value, labels=labels, unit=unit)
 
 
 class PickingSettingsDialog(QDialog):
