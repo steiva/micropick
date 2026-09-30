@@ -7,10 +7,9 @@ theme along with it. Those are exactly the three things this application
 needs to keep.
 
 The tabs are in two groups. On the left, the pages a session goes through in
-order — profile, labware, calibration, routine, picking, liquid handling.
-On the right edge,
-the two that are used whenever they are needed rather than in sequence:
-manual control and the log. A column down the side used to hold them all and
+order — profile, labware, calibration, routine, picking. On the right edge,
+the three that are used whenever they are needed rather than in sequence:
+liquid handling, manual control and the log. A column down the side used to hold them all and
 cost the pages 200 px of width for seven words.
 
 The chosen tab opens into its page, as a browser's does. The strip the tabs
@@ -67,8 +66,9 @@ PAGES = (
     # work happens.
     ("routine", routine.TITLE, routine.RoutinePage, SEQUENCE),
     ("picking", picking.TITLE, picking.PickingPage, SEQUENCE),
-    # After picking: washing is done on a plate that already holds cuboids.
-    ("liquid", liquid.TITLE, liquid.LiquidHandlingPage, SEQUENCE),
+    # Beside Manual control: moving liquid is a tool used when it is needed,
+    # before picking or days after it, not a stage of the session.
+    ("liquid", liquid.TITLE, liquid.LiquidHandlingPage, ASIDE),
     ("manual", manual.TITLE, manual.ManualPage, ASIDE),
     ("log", log.TITLE, log.LogPage, ASIDE),
 )

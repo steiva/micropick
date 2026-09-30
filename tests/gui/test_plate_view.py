@@ -180,3 +180,18 @@ def test_changing_the_plate_forgets_the_selection(app, view):
         "corning_384_wellplate_112ul_flat", 2))
     assert view.selection == set()
     assert len(view._wells) == 384
+
+
+def test_group_colours_replace_the_plan_and_done_fills_solid(app, view):
+    view.set_plan({"A1": 2})
+    view.set_colours({"A1": "#5e9eeb", "B1": "#e8a33d"})
+    assert view._wells["B1"].pen().color().name() == "#e8a33d"
+    assert view._wells["B1"].brush().color().alpha() < 255
+    view.set_done({"B1"})
+    assert view._wells["B1"].brush().color().alpha() == 255
+    # Names, not counts, in group mode.
+    assert view._labels["A1"].text() == "A1"
+    view.set_current("A1")
+    assert view._wells["A1"].pen().widthF() > 3
+    view.set_colours({})
+    assert view._labels["A1"].text() == "2"

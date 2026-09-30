@@ -6,7 +6,6 @@ A profile is a directory under the profiles root:
         profile.json        metadata and schema version, read first
         calibration.json    written by the calibration routine
         picking.json        edited by the operator
-        washing.json        washing settings and well presets, optional
         history/            timestamped copies of previous calibrations
 
 Files are split by what writes them rather than by topic, so re-running a
@@ -33,7 +32,8 @@ from pydantic import BaseModel, ValidationError
 
 from .. import paths
 from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, DeckConfig,
-                     PickingConfig, ProfileMeta, WashConfig)
+                     PickingConfig,
+                     ProfileMeta)
 
 __all__ = ["Profile", "ProfileError", "LegacyProfileError",
            "list_profiles", "create_profile", "copy_profile", "delete_profile",
@@ -45,7 +45,6 @@ PICKING_FILE = "picking.json"
 CAMERAS_FILE = "cameras.json"
 POSITIONS_FILE = "positions.json"
 DECK_FILE = "deck.json"
-WASHING_FILE = "washing.json"
 HISTORY_DIR = "history"
 KEEP_HISTORY = 10
 
@@ -138,8 +137,7 @@ class Profile:
     def __init__(self, meta: ProfileMeta, calibration: Calibration,
                  picking: PickingConfig, cameras: dict[str, CameraSpec],
                  positions: dict[str, tuple[float, float, float]], path: Path,
-                 deck: DeckConfig | None = None,
-                 washing: WashConfig | None = None):
+                 deck: DeckConfig | None = None):
         self.meta = meta
         self.calibration = calibration
         self.picking = picking
@@ -149,9 +147,6 @@ class Profile:
         # Optional in the signature so a profile built in a test or in the
         # mock needs no deck; an installation without deck.json has none.
         self.deck = deck if deck is not None else DeckConfig()
-        # The same for washing.json: a profile without it washes with the
-        # defaults and has no well presets yet.
-        self.washing = washing if washing is not None else WashConfig()
 
     # -- convenience --------------------------------------------------------
 
@@ -230,13 +225,9 @@ class Profile:
         self.save_cameras()
         self.save_positions()
         self.save_deck()
-        self.save_washing()
 
     def save_deck(self) -> None:
         _write_model(self.path / DECK_FILE, self.deck)
-
-    def save_washing(self) -> None:
-        _write_model(self.path / WASHING_FILE, self.washing)
 
     def save_meta(self) -> None:
         _write_model(self.path / META_FILE, self.meta)
@@ -396,12 +387,8 @@ def load_profile(name: str, *, directory: Path | None = None) -> Profile:
     deck = (_validate(DeckConfig, _read_json(deck_path), deck_path)
             if deck_path.is_file() else DeckConfig())
 
-    wash_path = path / WASHING_FILE
-    washing = (_validate(WashConfig, _read_json(wash_path), wash_path)
-               if wash_path.is_file() else WashConfig())
-
     return Profile(meta, calibration, picking, cameras, positions, path,
-                   deck=deck, washing=washing)
+                   deck=deck)
 
 
 def create_profile(name: str, *, camera_label: str | None = None,

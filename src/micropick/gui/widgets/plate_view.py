@@ -32,6 +32,14 @@ fill is how much of that has arrived. Over all of them, a white ring is what
 is selected — white being a decision rather than a class of thing, as in
 `viz.overlays`. At 1536 wells there is no room for a number, so above
 `LABEL_MIN_WELLS` the wells are dots and the tooltip carries the detail.
+
+Groups, for liquid handling
+---------------------------
+The Liquid handling page has no plan and no counts; it has groups of wells,
+each in its own colour. `set_colours` gives wells a colour - outline and a
+faint fill - and while it holds any, it is what is drawn instead of the
+plan. `set_done` fills a well solid, `set_current` rings the one being
+worked on. Inside a well is its name, since there is no count to show.
 """
 
 from __future__ import annotations
@@ -118,6 +126,9 @@ class PlateView(QGraphicsView):
         self._selected: set[str] = set()
         self._destination = None
         self._show_names = False
+        self._colours: dict[str, QColor] = {}
+        self._done: set[str] = set()
+        self._current: str | None = None
 
         self._press_scene: QPointF | None = None
         self._press_mods = Qt.KeyboardModifier.NoModifier
@@ -208,6 +219,24 @@ class PlateView(QGraphicsView):
         self._delivered = dict(delivered or {})
         self._repaint_wells()
 
+    def set_colours(self, colours: dict) -> None:
+        """Group colours by well name ({} for none). See "Groups"."""
+        self._colours = {name: QColor(colour)
+                         for name, colour in (colours or {}).items()}
+        self._repaint_wells()
+
+    def set_done(self, names) -> None:
+        self._done = set(names or ())
+        self._repaint_wells()
+
+    def set_current(self, name: str | None) -> None:
+        self._current = name
+        self._repaint_wells()
+
+    @property
+    def wells(self) -> list[str]:
+        return list(self._wells)
+
     @property
     def selection(self) -> set[str]:
         return set(self._selected)
@@ -243,7 +272,11 @@ class PlateView(QGraphicsView):
             planned = self._plan.get(name, 0)
             done = self._delivered.get(name, 0)
             selected = name in self._selected
+            colour = self._colours.get(name)
 
+            if self._colours:
+                self._paint_group_well(name, well, colour, selected)
+                continue
             if planned > 0:
                 fill = QColor(ACCENT)
                 # Alpha as the fraction delivered, so an empty planned well is
@@ -272,6 +305,34 @@ class PlateView(QGraphicsView):
                 rect = well.rect()
                 label.setPos(rect.center().x() - bounds.width() / 2,
                              rect.center().y() - bounds.height() / 2)
+
+    def _paint_group_well(self, name: str, well, colour, selected) -> None:
+        done = name in self._done
+        if colour is not None:
+            fill = QColor(colour)
+            fill.setAlpha(255 if done else 60)
+            well.setBrush(QBrush(fill))
+            edge = colour
+            well.setToolTip(f"{name}: done" if done else name)
+        else:
+            well.setBrush(Qt.BrushStyle.NoBrush)
+            edge = IDLE_EDGE
+            well.setToolTip(name)
+        if name == self._current:
+            well.setPen(QPen(SELECTED, 3.5))
+        elif selected:
+            well.setPen(QPen(SELECTED, 2.5))
+        else:
+            well.setPen(QPen(edge, 1.5 if colour is not None else 1))
+        label = self._labels.get(name)
+        if label is not None:
+            label.setText(name)
+            label.setBrush(QBrush(BACKDROP if done and colour is not None
+                                  else SELECTED if selected else LABEL))
+            bounds = label.boundingRect()
+            rect = well.rect()
+            label.setPos(rect.center().x() - bounds.width() / 2,
+                         rect.center().y() - bounds.height() / 2)
 
     # -- interaction ---------------------------------------------------------
 

@@ -1,134 +1,130 @@
-"""Liquid handling: for now, washing cuboids.
+"""Liquid handling: moving liquid between wells, built from blocks.
 
-Notebook 03 on one page. A plate whose wells already hold cuboids is on the
-deck, and the extra liquid is taken off them: the tip goes down beside the
-cuboid, near the bottom, draws slowly, rises slowly, and empties itself into
-a waste well whenever it would overflow. `workflows.wash` is the procedure;
-this page is where its numbers are set and where it is started, paused and
-stopped. Other liquid handling will join it here later, so the page is not
-called "washing".
+A program (`core.liquid`) is a list of groups. A group is wells of one plate
+on the deck, chosen on the plate map and drawn in one colour, and the steps
+every one of those wells gets - Aspirate, Dispense, Move to, Mix, Blow out,
+Wait, Pause - each saying where it happens: the group's well, one fixed well
+of any labware on the deck, a position saved in the profile, or where the tip
+is. The run takes the groups top to bottom and, for each well of a group,
+does all its steps before the next well (`workflows.liquid`).
 
-The people using it are biologists, not engineers, so every word on it says
-what a thing does rather than what it is called in the code, and every
-setting has a tooltip. The settings' own words live in the schema
-(`WashSettings`), and the form is generated from them.
+The page, top to bottom
+-----------------------
+The plate map is the labware the run holds: select wells with the mouse (as
+on the Routine page), make a group of them or add them to the chosen one. A
+well belongs to one group of its plate at most, so adding it to one takes it
+out of another. Under the groups, the chosen group's steps, and under those
+the chosen step's fields. "Try this step" does that one step for one well -
+the selected one if it is in the group, else the group's first - and leaves
+the tip there to be looked at.
 
-Which wells
------------
-A saved routine's plan: the wells it fills are the wells that hold a cuboid.
-The page starts with the routine open on the Routine page and has its own
-Open button, since washing is usually done days after picking. Nothing is
-written into the routine: its progress counts cuboids delivered, and a wash
-delivers none.
+Saved points are the profile's positions, the same list as the jog panel's
+Positions: jog the tip to the spot, save it there, and it is on offer as a
+location at once. The "points" box on the picture draws them where they are.
 
-Where in the well - a preset
-----------------------------
-The centre and the top of a well are found in one act: Go above the well,
-jog the tip to the middle of the well, level with its rim, Save centre and
-top here. What is stored is the difference from the robot's own idea of the
-well top, so it holds wherever the plate sits. The shift off the centre and
-the depth of the well sit beside it, and the three together are a named
-preset in the profile, made on one kind of plate and refused on another:
-two plates with the same name can differ, and a 96 and a 384 always do.
+The program is saved as it is edited, into `outputs/liquid/current.json`,
+and comes back on the next start; Save as and Open keep named copies beside
+it.
 
 Running it
 ----------
-The run goes through the jog panel's queue like every other robot command
-on a page with a panel (`JogPanel.run_job`), so while it runs no key and no
-button can move the robot. Pause and Stop are `threading.Event`s the run
-checks between moves, and need no queue. What the tip holds and which wells
-are done are kept on the page (`WashState`) across a stop: Continue then
-empties the tip and carries on with the wells left, and Put the liquid back
-returns the last draw to its well - the notebook's remedy for a draw that
-took the cuboid with it. Start always begins again from the first well.
-
-By default the run pauses after the first well so the operator can look
-into it before the rest of the plate is committed.
+Through the jog panel's queue like every robot command on a page with a
+panel (`JogPanel.run_job`), so while it runs no key and no button can move
+the robot. Pause and Stop are `threading.Event`s the run checks between
+commands. What the tip holds and how far the run got are kept on the page
+(`LiquidState`) across a stop: Continue carries on from the step after the
+last one done, Start always begins again from the first well. Changing the
+groups or their wells forgets that progress; changing a step's numbers does
+not, so a flow rate can be corrected between Stop and Continue.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 import threading
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QFileDialog, QFormLayout, QHBoxLayout,
-                               QInputDialog, QLabel, QMessageBox, QVBoxLayout,
-                               QWidget)
+from PySide6.QtGui import QColor, QIcon, QKeySequence, QPixmap, QShortcut
+from PySide6.QtWidgets import (QColorDialog, QFileDialog, QHBoxLayout,
+                               QInputDialog, QLabel, QListWidget,
+                               QListWidgetItem, QMenu, QMessageBox,
+                               QVBoxLayout, QWidget)
 
 from ... import paths
-from ...config.labware import LabwareError, resolve_definition
-from ...config.schema import WashSettings, WellPreset
-from ...core.routine import Routine, RoutineError
-from ...hardware.protocols import xyz
-from ...workflows import wash
+from ...core.liquid import (ACTIONS, Group, Program, ProgramError, describe,
+                            new_step, ordered_wells)
+from ...core.routine import Destination, RoutineError
+from ...workflows import liquid
+from ...workflows import manual as moves
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (Section, card, combo_box, double_spin_box,
-                             heading, primary_button, scroll_column,
-                             secondary_button)
+from ..theme.factory import (card, combo_box, heading, primary_button,
+                             scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
+from ..widgets.liquid_steps import StepEditor
 from ..widgets.plate_view import PlateView
-from ..widgets.settings_form import field_widget
-from .routine import routines_dir
 
-__all__ = ["LiquidHandlingPage"]
+__all__ = ["LiquidHandlingPage", "programs_dir", "CURRENT_FILE"]
 
 TITLE = "Liquid handling"
 
 log = logging.getLogger(__name__)
 
-PANEL_WIDTH = 440
+PANEL_WIDTH = 460
+PLATE_HEIGHT = 220
+LIST_HEIGHT = 120
 
-# Where "Go above the well" stops, over the rim, so a centre that is still
-# wrong cannot put the tip into the wall.
-ABOVE_MM = 5.0
-
-SHIFT_RANGE = (-20.0, 20.0)
-DEPTH_RANGE = (0.0, 100.0)
-
-# The settings are saved this long after the last change, so typing "300"
-# is one write of 300 and not three.
+# The program is saved this long after the last edit, so typing "300" is one
+# write of 300 and not three.
 SAVE_MS = 400
 
-PLATE_HEIGHT = 200
+CURRENT_FILE = "current.json"
 
 # (key, what it does, handler). One list, bound below and shown in the
 # picture's key box.
-KEYS = (("P", "pause / continue washing", "_pause_key"),
-        ("Esc", "stop washing", "_stop_run"))
+KEYS = (("P", "pause / continue the run", "_pause_key"),
+        ("Esc", "stop the run", "_stop_run"))
 
 CONFIRM_START = (
-    "Make sure the plate is in place with its lid off, the waste is in "
-    "place, and a tip is on the pipette.\n\n"
-    "The robot starts moving as soon as you press Start.")
+    "Make sure every plate is in place with its lid off, and a tip is on the "
+    "pipette.\n\nThe robot starts moving as soon as you press Start.")
+
+# The steps that need a tip on the pipette. A move does not.
+LIQUID_ACTIONS = ("aspirate", "dispense", "mix", "blow_out")
 
 
-def _number(parent: QWidget, span, suffix: str, tip: str):
-    box = double_spin_box(parent)
-    box.setRange(*span)
-    box.setDecimals(2)
-    box.setSingleStep(0.1)
-    box.setSuffix(suffix)
-    box.setMinimumWidth(110)
-    box.setToolTip(tip)
-    return box
+def programs_dir():
+    directory = paths.outputs_dir() / "liquid"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
-def _label(text: str = "", tip: str = "") -> QLabel:
+def _label(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setWordWrap(True)
     label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    if tip:
-        label.setToolTip(tip)
     return label
+
+
+def _swatch(colour: str) -> QIcon:
+    pixmap = QPixmap(12, 12)
+    pixmap.fill(QColor(colour))
+    return QIcon(pixmap)
+
+
+def _list(parent: QWidget) -> QListWidget:
+    widget = QListWidget(parent)
+    # PageUp and PageDown are the Z axis here; a list with focus would
+    # scroll on them instead.
+    widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    widget.setMinimumHeight(LIST_HEIGHT)
+    return widget
 
 
 class LiquidHandlingPage(QWidget):
@@ -139,14 +135,9 @@ class LiquidHandlingPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
-        self.routine: Routine | None = None
-        # True once a routine was opened here: the Routine page's then no
-        # longer replaces it.
-        self._own_routine = False
-        self.state = wash.WashState()
-        # The robot's own top of a well of this plate, (labware id, pose),
-        # from the last Go above; what Save centre and top measures against.
-        self._nominal = None
+        self.program = self._load_current()
+        self.state = liquid.LiquidState()
+        self._path = None                    # the last Open or Save as
         self._pause = threading.Event()
         self._stop = threading.Event()
         self._running = False
@@ -154,14 +145,16 @@ class LiquidHandlingPage(QWidget):
         self._checking: str | None = None
         self._progress = ""
         self._outcome = ""
+        self._current: tuple[int, str] | None = None
         self._log_path = None
         self._loading = False
-        self._described_depth: dict[str, float | None] = {}
+        # session.plates(), read when the deck changes rather than on every
+        # refresh: each entry is a definition file resolved from disk.
+        self._deck = session.plates()
 
         self.opener = CameraOpener(session, self)
         self.view = CameraView(self)
-        self.jog = JogPanel(session, shortcut_host=self,
-                            collapsed=("positions",), parent=self)
+        self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
         self.jog.add_help([f"{key.lower()}   {what}" for key, what, _ in KEYS])
         # Emitted whenever a job ends, done or failed: the one moment the
@@ -171,11 +164,11 @@ class LiquidHandlingPage(QWidget):
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(SAVE_MS)
-        self._save_timer.timeout.connect(self._save_settings)
+        self._save_timer.timeout.connect(self._save_current)
 
-        panel = CardColumns([self._wells_card(), self._position_card(),
-                             self._waste_card(), self._settings_card(),
-                             self._run_card(), self.jog], self)
+        self._editing = [self._plate_card(), self._groups_card(),
+                         self._steps_card(), self._program_card()]
+        panel = CardColumns(self._editing + [self._run_card(), self.jog], self)
         body = QHBoxLayout()
         body.setSpacing(SPACING)
         body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
@@ -187,275 +180,191 @@ class LiquidHandlingPage(QWidget):
         layout.addLayout(body, 1)
 
         self.job_said.connect(self._on_job_said)
-        session.profile_changed.connect(lambda _p: self._on_profile_changed())
-        session.robot_state_changed.connect(lambda _s: self._robot_changed())
-        session.labware_changed.connect(lambda _s: self._reload_labware())
+        session.profile_changed.connect(lambda _p: self._offer_choices())
+        session.robot_state_changed.connect(lambda _s: self._deck_changed())
+        session.labware_changed.connect(lambda _s: self._deck_changed())
         session.tip_changed.connect(lambda _t: self._lose_top())
-        session.routine_changed.connect(self._session_routine)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         self._install_shortcuts()
-        self._on_profile_changed()
-        if session.routine is not None:
-            self._adopt(session.routine)
-        self._refresh()
+        self._reload_plates()
+        self._show_groups()
+        self._offer_choices()
 
     # -- construction --------------------------------------------------------
 
-    def _wells_card(self) -> QWidget:
+    def _plate_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Cuboid washing", 2))
+        box.layout().addWidget(heading("Wells", 2))
         box.layout().addWidget(_label(
-            "Takes the extra liquid off wells that already hold a cuboid. "
-            "The wells to wash are the ones planned in a saved routine."))
+            "Select wells on the plate - click, drag a box, or click a row or "
+            "column label; Ctrl adds, Shift removes - then make a group of "
+            "them."))
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Plate"))
+        self.plate_choice = combo_box(self)
+        self.plate_choice.setToolTip("The labware the robot holds. Load more "
+                                     "on the Robot & Deck page.")
+        self.plate_choice.currentIndexChanged.connect(
+            lambda _i: self._show_plate())
+        row.addWidget(self.plate_choice, 1)
+        box.layout().addLayout(row)
 
-        self.open_button = secondary_button("Open routine…", self)
-        self.open_button.setToolTip(
-            "Choose the saved routine whose wells hold the cuboids. The "
-            "routine open on the Routine page is used until you choose one "
-            "here.")
-        self.open_button.clicked.connect(self._open_routine)
-        box.layout().addWidget(self.open_button)
-
-        self.routine_state = _label()
-        box.layout().addWidget(self.routine_state)
-
-        # A picture of the plate: outlined wells get washed, filled ones
-        # are done. Only to look at - choosing wells is the Routine page's.
         self.plate = PlateView(self)
         self.plate.setFixedHeight(PLATE_HEIGHT)
-        self.plate.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.plate.setToolTip("Outlined wells will be washed; filled wells "
-                              "are done.")
+        self.plate.selection_changed.connect(lambda _s: self._refresh())
         box.layout().addWidget(self.plate)
+
+        row = QHBoxLayout()
+        self.new_group_button = primary_button("New group", self)
+        self.new_group_button.setToolTip("A new group of the selected wells.")
+        self.new_group_button.clicked.connect(self._new_group)
+        self.add_wells_button = secondary_button("Add to group", self)
+        self.add_wells_button.setToolTip("Add the selected wells to the chosen "
+                                         "group, taking them out of any other.")
+        self.add_wells_button.clicked.connect(self._add_wells)
+        self.remove_wells_button = secondary_button("Remove", self)
+        self.remove_wells_button.setToolTip("Take the selected wells out of "
+                                            "every group.")
+        self.remove_wells_button.clicked.connect(self._remove_wells)
+        for button in (self.new_group_button, self.add_wells_button,
+                       self.remove_wells_button):
+            row.addWidget(button)
+        box.layout().addLayout(row)
+        self.plate_state = _label()
+        box.layout().addWidget(self.plate_state)
         return box
 
-    def _position_card(self) -> QWidget:
+    def _groups_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Where the tip goes in a well", 2))
+        box.layout().addWidget(heading("Groups", 2))
+        box.layout().addWidget(_label("Run top to bottom; each well of a group "
+                                      "gets all of its steps before the next "
+                                      "well."))
+        self.groups = _list(self)
+        self.groups.currentRowChanged.connect(lambda _r: self._group_chosen())
+        box.layout().addWidget(self.groups)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("Setting"))
-        self.preset_choice = combo_box(self)
-        self.preset_choice.setToolTip(
-            "A saved set of the numbers below - centre and top, shift and "
-            "depth - for one kind of plate. Keep one per plate you use.")
-        self.preset_choice.currentIndexChanged.connect(self._preset_chosen)
-        row.addWidget(self.preset_choice, 1)
-        self.new_preset_button = secondary_button("New…", self)
-        self.new_preset_button.setToolTip(
-            "Make a new setting for the plate of the open routine. It starts "
-            "as a copy of the chosen one if that is for the same plate.")
-        self.new_preset_button.clicked.connect(self._new_preset)
-        self.delete_preset_button = secondary_button("Delete", self)
-        self.delete_preset_button.setToolTip("Delete the chosen setting.")
-        self.delete_preset_button.clicked.connect(self._delete_preset)
-        row.addWidget(self.new_preset_button)
-        row.addWidget(self.delete_preset_button)
+        self.rename_group_button = secondary_button("Rename…", self)
+        self.rename_group_button.clicked.connect(self._rename_group)
+        self.colour_button = secondary_button("Colour…", self)
+        self.colour_button.clicked.connect(self._recolour_group)
+        self.delete_group_button = secondary_button("Delete", self)
+        self.delete_group_button.clicked.connect(self._delete_group)
+        for button in (self.rename_group_button, self.colour_button,
+                       self.delete_group_button):
+            row.addWidget(button)
         box.layout().addLayout(row)
-        self.preset_state = _label()
-        box.layout().addWidget(self.preset_state)
 
-        box.layout().addWidget(heading("Centre and top of the well", 3))
-        box.layout().addWidget(_label(
-            "1. Go above the well.  2. With the arrow keys and PgUp/PgDn, "
-            "bring the tip to the middle of the well, level with its rim.  "
-            "3. Save centre and top here."))
         row = QHBoxLayout()
-        row.addWidget(QLabel("Well"))
-        self.aim_choice = combo_box(self)
-        self.aim_choice.setToolTip(
-            "The well to aim at. Any well of the plate will do; one with a "
-            "cuboid in it is easiest to see.")
-        row.addWidget(self.aim_choice, 1)
+        self.group_up = secondary_button("↑", self)
+        self.group_up.setToolTip("Run this group earlier.")
+        self.group_up.clicked.connect(lambda: self._move_group(-1))
+        self.group_down = secondary_button("↓", self)
+        self.group_down.setToolTip("Run this group later.")
+        self.group_down.clicked.connect(lambda: self._move_group(+1))
+        self.order_choice = combo_box(self)
+        self.order_choice.addItem("Row by row", "by_row")
+        self.order_choice.addItem("Column by column", "by_column")
+        self.order_choice.setToolTip("Row by row goes A1, A2, A3 ... then B1. "
+                                     "Column by column goes A1, B1, C1 ... "
+                                     "then A2.")
+        self.order_choice.currentIndexChanged.connect(self._order_chosen)
+        row.addWidget(self.group_up)
+        row.addWidget(self.group_down)
+        row.addWidget(self.order_choice, 1)
         box.layout().addLayout(row)
-
-        self.above_button = secondary_button("Go above the well", self)
-        self.above_button.setToolTip(
-            f"The tip goes {ABOVE_MM:g} mm above the middle of the well, as "
-            f"far as the robot and the saved setting know it.")
-        self.above_button.clicked.connect(self._go_above)
-        self.save_centre_button = primary_button("Save centre and top here",
-                                                 self)
-        self.save_centre_button.setToolTip(
-            "Remember where the tip is now as the middle of the well, level "
-            "with its rim. Go above the well first.")
-        self.save_centre_button.clicked.connect(self._save_centre)
-        self.goto_centre_button = secondary_button("Go to the saved centre",
-                                                   self)
-        self.goto_centre_button.setToolTip(
-            "The tip goes to the saved middle of the well, level with the "
-            "rim, so you can check it.")
-        self.goto_centre_button.clicked.connect(self._goto_centre)
-        for button in (self.above_button, self.save_centre_button,
-                       self.goto_centre_button):
-            box.layout().addWidget(button)
-        self.centre_state = _label()
-        box.layout().addWidget(self.centre_state)
-
-        box.layout().addWidget(heading("Shift from the centre", 3))
-        shift_tip = ("How far from the middle the tip goes down, so it draws "
-                     "beside the cuboid instead of over it. Less than the "
-                     "well's radius, more than half the cuboid's width. "
-                     "Negative X is towards column 1, negative Y towards the "
-                     "front of the robot.")
-        self.shift_x = _number(self, SHIFT_RANGE, " mm", shift_tip)
-        self.shift_y = _number(self, SHIFT_RANGE, " mm", shift_tip)
-        self.shift_x.valueChanged.connect(self._shift_edited)
-        self.shift_y.valueChanged.connect(self._shift_edited)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("X"))
-        row.addWidget(self.shift_x)
-        row.addWidget(QLabel("Y"))
-        row.addWidget(self.shift_y)
-        row.addStretch(1)
-        box.layout().addLayout(row)
-
-        box.layout().addWidget(heading("Depth of the well", 3))
-        self.depth = _number(
-            self, DEPTH_RANGE, " mm",
-            "From the rim of the well down to its bottom. The tip stops "
-            "'Tip height above the bottom' above this.")
-        self.depth.setSpecialValueText("not set")
-        self.depth.valueChanged.connect(self._depth_edited)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Depth"))
-        row.addWidget(self.depth)
-        row.addStretch(1)
-        box.layout().addLayout(row)
-        self.depth_hint = _label()
-        box.layout().addWidget(self.depth_hint)
-        self.bottom_button = secondary_button(
-            "Use the tip's height as the bottom", self)
-        self.bottom_button.setToolTip(
-            "Go above the well first, then lower the tip until it just "
-            "touches the bottom of an empty well, and press this: the depth "
-            "is measured from the saved top.")
-        self.bottom_button.clicked.connect(self._measure_depth)
-        box.layout().addWidget(self.bottom_button)
-
-        self.show_draw_button = secondary_button(
-            "Show where the tip will draw", self)
-        self.show_draw_button.setToolTip(
-            "The tip goes to the spot beside the centre and down to the "
-            "height it draws from. Nothing is drawn.")
-        self.show_draw_button.clicked.connect(self._show_draw)
-        box.layout().addWidget(self.show_draw_button)
         return box
 
-    def _waste_card(self) -> QWidget:
+    def _steps_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Where the liquid goes", 2))
-        box.layout().addWidget(_label(
-            "A well of any labware on the deck - a reservoir, a spare plate. "
-            "Load it on the Robot & Deck page first."))
-        self.waste_choice = combo_box(self)
-        self.waste_choice.setToolTip("The labware the drawn liquid is "
-                                     "emptied into.")
-        self.waste_choice.currentIndexChanged.connect(self._waste_chosen)
-        self.waste_well = combo_box(self)
-        self.waste_well.setToolTip("The well of that labware the liquid is "
-                                   "emptied into.")
-        self.waste_well.currentIndexChanged.connect(self._waste_well_chosen)
-        for label, widget in (("Labware", self.waste_choice),
-                              ("Well", self.waste_well)):
-            row = QHBoxLayout()
-            name = QLabel(label)
-            name.setMinimumWidth(60)
-            row.addWidget(name)
-            row.addWidget(widget, 1)
-            box.layout().addLayout(row)
-        self.waste_state = _label()
-        box.layout().addWidget(self.waste_state)
+        self.steps_heading = heading("Steps", 2)
+        box.layout().addWidget(self.steps_heading)
+        self.steps = _list(self)
+        self.steps.currentRowChanged.connect(lambda _r: self._step_chosen())
+        box.layout().addWidget(self.steps)
+
+        row = QHBoxLayout()
+        self.add_step_button = primary_button("Add step ▾", self)
+        menu = QMenu(self.add_step_button)
+        for action, _cls, title in ACTIONS:
+            menu.addAction(title, lambda a=action: self._add_step(a))
+        self.add_step_button.setMenu(menu)
+        self.step_up = secondary_button("↑", self)
+        self.step_up.clicked.connect(lambda: self._move_step(-1))
+        self.step_down = secondary_button("↓", self)
+        self.step_down.clicked.connect(lambda: self._move_step(+1))
+        self.copy_step_button = secondary_button("Copy", self)
+        self.copy_step_button.setToolTip("Put a copy of this step under it.")
+        self.copy_step_button.clicked.connect(self._copy_step)
+        self.delete_step_button = secondary_button("Delete", self)
+        self.delete_step_button.clicked.connect(self._delete_step)
+        for button in (self.add_step_button, self.step_up, self.step_down,
+                       self.copy_step_button, self.delete_step_button):
+            row.addWidget(button)
+        box.layout().addLayout(row)
+
+        self.editor = StepEditor(self)
+        self.editor.changed.connect(self._step_edited)
+        box.layout().addWidget(self.editor)
+
+        self.try_button = secondary_button("Try this step", self)
+        self.try_button.setToolTip(
+            "Do this one step now, for the selected well if it is in the "
+            "group, else for the group's first well. The tip stays where the "
+            "step leaves it.")
+        self.try_button.clicked.connect(self._try_step)
+        box.layout().addWidget(self.try_button)
+        self.steps_state = _label()
+        box.layout().addWidget(self.steps_state)
         return box
 
-    def _settings_card(self) -> QWidget:
-        box = Section("Washing settings", parent=self)
-        box.body.layout().addWidget(_label(
-            "Hover over a setting to see what it does. Changes are saved "
-            "into the profile at once."))
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        self._rows = {}
-        defaults = WashSettings()
-        for name, field in WashSettings.model_fields.items():
-            extra = field.json_schema_extra or {}
-            row = field_widget(name, field.annotation, getattr(defaults, name),
-                               labels=extra.get("labels"),
-                               unit=extra.get("unit", ""))
-            label = QLabel(field.title)
-            label.setWordWrap(True)
-            tip = field.description
-            shown = extra.get("labels", {}).get(field.default, field.default)
-            if isinstance(shown, bool):
-                shown = "on" if shown else "off"
-            tip += f"\n\nUsual value: {shown:g}" if isinstance(shown, float) \
-                else f"\n\nUsual value: {shown}"
-            if extra.get("unit") and not isinstance(shown, str):
-                tip += f" {extra['unit']}"
-            label.setToolTip(tip)
-            row.widget.setToolTip(tip)
-            row.on_change(self._settings_edited)
-            form.addRow(label, row.widget)
-            self._rows[name] = row
-        box.body.layout().addLayout(form)
-        self.settings_state = _label()
-        self.settings_state.hide()
-        box.body.layout().addWidget(self.settings_state)
-        self.defaults_button = secondary_button("Back to the usual values",
-                                                self)
-        self.defaults_button.setToolTip("Put every washing setting back to "
-                                        "its usual value.")
-        self.defaults_button.clicked.connect(self._restore_defaults)
-        box.body.layout().addWidget(self.defaults_button)
-        self.settings_box = box
+    def _program_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Program", 2))
+        row = QHBoxLayout()
+        self.new_program_button = secondary_button("New", self)
+        self.new_program_button.clicked.connect(self._new_program)
+        self.open_button = secondary_button("Open…", self)
+        self.open_button.clicked.connect(self._open_program)
+        self.save_as_button = secondary_button("Save as…", self)
+        self.save_as_button.clicked.connect(self._save_as)
+        for button in (self.new_program_button, self.open_button,
+                       self.save_as_button):
+            row.addWidget(button)
+        box.layout().addLayout(row)
+        self.program_state = _label()
+        box.layout().addWidget(self.program_state)
         return box
 
     def _run_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Washing", 2))
-        self.start_button = primary_button("Start washing", self)
-        self.start_button.setToolTip(
-            "Wash every planned well, from the first one. Asks before the "
-            "robot moves.")
+        box.layout().addWidget(heading("Run", 2))
+        self.start_button = primary_button("Start", self)
+        self.start_button.setToolTip("Run the program from the first well. "
+                                     "Asks before the robot moves.")
         self.start_button.clicked.connect(self._start)
         box.layout().addWidget(self.start_button)
-
         row = QHBoxLayout()
         self.pause_button = secondary_button("Pause", self)
-        self.pause_button.setToolTip(
-            "Hold the robot after the move it is making. Key: P")
+        self.pause_button.setToolTip("Hold the robot after the command it is "
+                                     "doing. Key: P")
         self.pause_button.clicked.connect(self._pause_run)
         self.continue_button = secondary_button("Continue", self)
-        self.continue_button.setToolTip(
-            "Go on after a pause - or after Stop, with the wells not washed "
-            "yet (the tip is emptied first). Key: P")
+        self.continue_button.setToolTip("Go on after a pause, or after Stop "
+                                        "from the step after the last one "
+                                        "done. Key: P")
         self.continue_button.clicked.connect(self._continue)
         self.stop_button = secondary_button("Stop", self)
-        self.stop_button.setToolTip(
-            "End the run after the move the robot is making; the tip is "
-            "raised. What is in the tip stays there. Key: Esc")
+        self.stop_button.setToolTip("End the run after the command the robot "
+                                    "is doing; the tip is raised and keeps "
+                                    "what it holds. Key: Esc")
         self.stop_button.clicked.connect(self._stop_run)
         for button in (self.pause_button, self.continue_button,
                        self.stop_button):
             row.addWidget(button)
         box.layout().addLayout(row)
-
-        self.put_back_button = secondary_button("Put the liquid back", self)
-        self.put_back_button.setToolTip(
-            "If a cuboid came up with the liquid: return what is in the tip "
-            "to the well it came from, slowly, at the same spot. That well "
-            "then counts as not washed.")
-        self.put_back_button.clicked.connect(self._put_back)
-        self.empty_button = secondary_button("Empty the tip into the waste",
-                                             self)
-        self.empty_button.setToolTip(
-            "Take the tip to the waste well, empty it and shake off the last "
-            "drop.")
-        self.empty_button.clicked.connect(self._empty_tip)
-        box.layout().addWidget(self.put_back_button)
-        box.layout().addWidget(self.empty_button)
-
         self.run_state = _label()
         box.layout().addWidget(self.run_state)
         return box
@@ -473,518 +382,494 @@ class LiquidHandlingPage(QWidget):
 
     # -- what is in hand -----------------------------------------------------
 
-    def _washing(self):
+    def _plates(self) -> dict[str, liquid.Plate]:
+        return {slot: liquid.Plate(slot, entry.labware_id, entry.load_name,
+                                   definition.ordering)
+                for slot, entry, definition in self._deck}
+
+    def _positions(self) -> dict:
         profile = self.session.profile
-        return None if profile is None else profile.washing
+        return dict(profile.positions or {}) if profile is not None else {}
 
-    def _settings(self) -> WashSettings:
-        washing = self._washing()
-        return washing.settings if washing is not None else WashSettings()
+    def _group_index(self) -> int | None:
+        row = self.groups.currentRow()
+        return row if 0 <= row < len(self.program.groups) else None
 
-    def _preset_name(self) -> str | None:
-        name = self.preset_choice.currentData()
-        return name if name else None
+    def _group(self) -> Group | None:
+        index = self._group_index()
+        return None if index is None else self.program.groups[index]
 
-    def _preset(self) -> WellPreset | None:
-        washing, name = self._washing(), self._preset_name()
-        if washing is None or name is None:
-            return None
-        return washing.presets.get(name)
+    def _step_index(self) -> int | None:
+        group, row = self._group(), self.steps.currentRow()
+        return row if group is not None and 0 <= row < len(group.steps) else None
 
-    def _plate_name(self) -> str | None:
-        return (self.routine.destination.load_name
-                if self.routine is not None else None)
+    def _shown_plate(self):
+        """(slot, load name) of the plate on the map, or None."""
+        data = self.plate_choice.currentData()
+        return None if data is None else (data[0], data[1].load_name)
 
-    def _plate_entry(self):
-        """What the run holds in the routine's slot, if it is the routine's
-        plate; None otherwise."""
-        if self.routine is None or self.session.robot is None:
-            return None
-        state = self.session.run_state
-        slot = str(self.routine.destination.slot)
-        entry = state.labware.get(slot) if state is not None else None
-        if entry is None or entry.load_name != self._plate_name():
-            return None
-        return entry
+    def _on_shown_plate(self, group: Group) -> bool:
+        return self._shown_plate() == (group.slot, group.load_name)
 
-    def _wells(self) -> list[str]:
-        """The routine's planned wells, in the chosen order."""
-        if self.routine is None:
-            return []
-        planned = {w for w, count in self.routine.plan.items() if count > 0}
-        destination = self.routine.destination
-        order = (destination.wells_by_row()
-                 if self._settings().order == "by_row"
-                 else destination.wells_by_column())
-        return [w for w in order if w in planned]
+    # -- the program file ----------------------------------------------------
 
-    def _waste(self) -> wash.Waste | None:
-        washing, state = self._washing(), self.session.run_state
-        if (washing is None or state is None or self.session.robot is None
-                or not washing.waste_slot or not washing.waste_well):
-            return None
-        entry = state.labware.get(washing.waste_slot)
-        if entry is None:
-            return None
-        return wash.Waste(entry.labware_id, washing.waste_well)
+    def _load_current(self) -> Program:
+        path = programs_dir() / CURRENT_FILE
+        if not path.is_file():
+            return Program()
+        try:
+            return Program.load(path)
+        except ProgramError as exc:
+            log.error("liquid handling: could not read %s: %s", path, exc)
+            return Program()
 
-    def _save_washing(self) -> None:
-        profile = self.session.profile
-        if profile is not None:
-            profile.save_washing()
+    def _save_current(self) -> None:
+        try:
+            self.program.save(programs_dir() / CURRENT_FILE)
+        except OSError as exc:
+            log.error("liquid handling: could not save the program: %s", exc)
 
-    # -- the routine ---------------------------------------------------------
+    def _changed(self, forget: str = "") -> None:
+        """After any edit. `forget` "all" drops the run's progress (the
+        groups or their wells changed, so the indices no longer mean the
+        same wells); "steps" only the halfway points of wells."""
+        if forget == "all":
+            self.state.done = []
+            self.state.resume = {}
+            self._can_carry_on = False
+        elif forget == "steps":
+            self.state.resume = {}
+        self._save_timer.start()
+        self._show_groups()
 
-    def _open_routine(self) -> None:
-        if self._running:
+    def _confirm_replace(self, what: str) -> bool:
+        if self.program.empty:
+            return True
+        answer = QMessageBox.question(
+            self, what, "Replace the program on the page? It is kept only if "
+            "it was saved with Save as.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _adopt(self, program: Program, path=None) -> None:
+        self.program = program
+        self._path = path
+        self.state.reset()
+        self._can_carry_on = False
+        self._outcome = ""
+        self._save_current()
+        self._show_groups(select=0)
+
+    def _new_program(self) -> None:
+        if not self._running and self._confirm_replace("New program"):
+            self._adopt(Program())
+
+    def _open_program(self) -> None:
+        if self._running or not self._confirm_replace("Open a program"):
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open a routine", str(routines_dir()),
-            "Routine files (*.json)")
+            self, "Open a program", str(programs_dir()),
+            "Liquid handling programs (*.json)")
         if not path:
             return
         try:
-            routine = Routine.load(path)
-        except (RoutineError, LabwareError, OSError, KeyError) as exc:
-            self.routine_state.setText(f"could not open it: {exc}")
-            log.error("washing: could not open %s: %s", path, exc)
+            program = Program.load(path)
+        except (ProgramError, OSError) as exc:
+            QMessageBox.warning(self, "Open a program", str(exc))
             return
-        self._own_routine = True
-        self._adopt(routine)
+        log.info("liquid handling: opened %s", path)
+        self._adopt(program, path)
 
-    def _session_routine(self, routine) -> None:
-        if routine is not None and not self._own_routine and not self._running:
-            self._adopt(routine)
-
-    def _adopt(self, routine: Routine) -> None:
-        same = (self.routine is not None
-                and self.routine.run_id == routine.run_id
-                and self.routine.path == routine.path)
-        self.routine = routine
-        if not same:
-            # A different plate: what was washed and where the last draw
-            # came from belonged to the other one. What is in the tip is
-            # still in the tip.
-            self.state.done = []
-            self.state.last_well = None
-            self._can_carry_on = False
-            self._outcome = ""
-            self._nominal = None
-        self.plate.set_destination(routine.destination)
-        wells = self._wells()
-        aim = self.aim_choice.currentText()
-        self.aim_choice.clear()
-        self.aim_choice.addItems(routine.destination.wells_by_row())
-        start = aim if routine.destination.contains(aim) else \
-            (wells[0] if wells else "")
-        if start:
-            self.aim_choice.setCurrentText(start)
-        self._choose_preset_for_plate()
-        log.info("washing: routine %r, %d wells", routine.name, len(wells))
+    def _save_as(self) -> None:
+        start = self._path or str(programs_dir() / f"{self.program.name or 'program'}.json")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save the program", start,
+            "Liquid handling programs (*.json)")
+        if not path:
+            return
+        if not path.endswith(".json"):
+            path += ".json"
+        self.program.name = Path(path).stem
+        try:
+            self.program.save(path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Save the program", str(exc))
+            return
+        self._path = path
+        self._save_current()
+        log.info("liquid handling: saved %s", path)
         self._refresh()
 
-    # -- presets ---------------------------------------------------------------
+    # -- the plate map ---------------------------------------------------------
 
-    def _reload_presets(self, wanted: str | None = None) -> None:
-        washing = self._washing()
+    def _reload_plates(self) -> None:
+        shown = self._shown_plate()
+        self._deck = self.session.plates()
         self._loading = True
-        self.preset_choice.clear()
-        if washing is not None:
-            # The name only: the plate it is for is on the line below, and
-            # both do not fit in a combo half the panel wide.
-            for name in sorted(washing.presets):
-                self.preset_choice.addItem(name, name)
-            wanted = wanted or washing.preset
-            index = self.preset_choice.findData(wanted)
-            if index >= 0:
-                self.preset_choice.setCurrentIndex(index)
+        self.plate_choice.clear()
+        for slot, _entry, definition in self._deck:
+            self.plate_choice.addItem(f"slot {slot} — {definition.display_name}",
+                                      (slot, definition))
+        for index in range(self.plate_choice.count()):
+            slot, definition = self.plate_choice.itemData(index)
+            if shown == (slot, definition.load_name):
+                self.plate_choice.setCurrentIndex(index)
         self._loading = False
-        self._show_preset()
+        self._show_plate()
 
-    def _choose_preset_for_plate(self) -> None:
-        """Keep the chosen preset if it is for the routine's plate, else the
-        first one that is."""
-        preset, plate = self._preset(), self._plate_name()
-        washing = self._washing()
-        if washing is None or plate is None:
-            return
-        if preset is not None and preset.plate == plate:
-            return
-        for index in range(self.preset_choice.count()):
-            name = self.preset_choice.itemData(index)
-            if washing.presets[name].plate == plate:
-                self.preset_choice.setCurrentIndex(index)
-                return
-
-    def _preset_chosen(self, _index: int) -> None:
+    def _show_plate(self) -> None:
         if self._loading:
             return
-        washing = self._washing()
-        if washing is not None:
-            washing.preset = self._preset_name()
-            self._save_washing()
-        self._show_preset()
-
-    def _show_preset(self) -> None:
-        """The chosen preset's numbers into the boxes, without saving."""
-        preset = self._preset()
-        self._loading = True
-        self.shift_x.setValue(preset.shift[0] if preset else 0.0)
-        self.shift_y.setValue(preset.shift[1] if preset else 0.0)
-        self.depth.setValue(preset.depth_mm if preset and preset.depth_mm
-                            else 0.0)
-        self._loading = False
+        data = self.plate_choice.currentData()
+        destination = None
+        if data is not None:
+            slot, definition = data
+            try:
+                destination = Destination.from_definition(definition, int(slot))
+            except (RoutineError, ValueError) as exc:
+                log.error("liquid handling: cannot draw slot %s: %s", slot, exc)
+        self.plate.set_destination(destination)
+        group = self._group()
+        if group is not None and self._on_shown_plate(group):
+            self.plate.set_selection(group.wells)
+        self._paint_plate()
         self._refresh()
 
-    def _new_preset(self) -> None:
-        washing, plate = self._washing(), self._plate_name()
-        if washing is None or plate is None:
-            return
-        name, ok = QInputDialog.getText(
-            self, "New setting",
-            f"A name for the new setting for {plate}\n"
-            f"(for example the plate's brand):")
-        name = name.strip()
-        if not ok or not name:
-            return
-        if name in washing.presets:
-            QMessageBox.warning(self, "New setting",
-                                f"There is already a setting called {name!r}.")
-            return
-        current = self._preset()
-        if current is not None and current.plate == plate:
-            preset = current.model_copy(deep=True)
-        else:
-            # Numbers from another kind of plate are worse than none.
-            preset = WellPreset(plate=plate)
-        washing.presets[name] = preset
-        washing.preset = name
-        self._save_washing()
-        log.info("washing: new well setting %r for %s", name, plate)
-        self._reload_presets(name)
+    def _paint_plate(self) -> None:
+        shown = self._shown_plate()
+        colours, done = {}, set()
+        for gi, group in enumerate(self.program.groups):
+            if (group.slot, group.load_name) != shown:
+                continue
+            for well in group.wells:
+                colours[well] = group.color
+                if (gi, well) in self.state.done:
+                    done.add(well)
+        self.plate.set_colours(colours)
+        self.plate.set_done(done)
+        current = self._current
+        self.plate.set_current(
+            current[1] if current is not None
+            and current[0] < len(self.program.groups)
+            and (self.program.groups[current[0]].slot,
+                 self.program.groups[current[0]].load_name) == shown
+            else None)
 
-    def _delete_preset(self) -> None:
-        washing, name = self._washing(), self._preset_name()
-        if washing is None or name is None:
+    def _deck_changed(self) -> None:
+        self._lose_top()
+        self._reload_plates()
+        self._offer_choices()
+
+    # -- groups ----------------------------------------------------------------
+
+    def _show_groups(self, select: int | None = None) -> None:
+        """The list from the program, the chosen row kept."""
+        row = self.groups.currentRow() if select is None else select
+        self._loading = True
+        self.groups.clear()
+        for group in self.program.groups:
+            text = (f"{group.name} — slot {group.slot}, {len(group.wells)} "
+                    f"wells, {len(group.steps)} steps")
+            self.groups.addItem(QListWidgetItem(_swatch(group.color), text))
+        if self.program.groups:
+            self.groups.setCurrentRow(max(0, min(row, len(self.program.groups) - 1)))
+        self._loading = False
+        self._group_chosen(follow=select is not None)
+
+    def _group_chosen(self, follow: bool = True) -> None:
+        if self._loading:
+            return
+        group = self._group()
+        self._loading = True
+        if group is not None:
+            self.order_choice.setCurrentIndex(
+                max(0, self.order_choice.findData(group.order)))
+        self._loading = False
+        if follow and group is not None:
+            # The map goes to the group's plate, with its wells selected.
+            for index in range(self.plate_choice.count()):
+                slot, definition = self.plate_choice.itemData(index)
+                if (slot, definition.load_name) == (group.slot, group.load_name):
+                    if index != self.plate_choice.currentIndex():
+                        self.plate_choice.setCurrentIndex(index)
+                    break
+            if self._on_shown_plate(group):
+                self.plate.set_selection(group.wells)
+        self._show_steps()
+        self._paint_plate()
+
+    def _take_wells(self, slot: str, load_name: str, wells: set[str],
+                    keep: Group | None = None) -> None:
+        """Out of every group of that plate but `keep`: a well is in one
+        group of its plate at most."""
+        for group in self.program.groups:
+            if group is not keep and (group.slot, group.load_name) == (slot, load_name):
+                group.wells = [w for w in group.wells if w not in wells]
+
+    def _new_group(self) -> None:
+        shown, wells = self._shown_plate(), self.plate.selection
+        if self._running or shown is None or not wells:
+            return
+        slot, load_name = shown
+        self._take_wells(slot, load_name, wells)
+        name = f"Group {len(self.program.groups) + 1}"
+        self.program.groups.append(Group(
+            name=name, color=self.program.next_colour(), slot=slot,
+            load_name=load_name,
+            wells=[w for w in self.plate.wells if w in wells]))
+        log.info("liquid handling: %s of %d wells in slot %s", name, len(wells),
+                 slot)
+        self._changed("all")
+        self._show_groups(select=len(self.program.groups) - 1)
+
+    def _add_wells(self) -> None:
+        group, wells = self._group(), self.plate.selection
+        if self._running or group is None or not wells \
+                or not self._on_shown_plate(group):
+            return
+        self._take_wells(group.slot, group.load_name, wells, keep=group)
+        group.wells = [w for w in self.plate.wells
+                       if w in wells or w in set(group.wells)]
+        self._changed("all")
+
+    def _remove_wells(self) -> None:
+        shown, wells = self._shown_plate(), self.plate.selection
+        if self._running or shown is None or not wells:
+            return
+        self._take_wells(*shown, wells)
+        self._changed("all")
+
+    def _rename_group(self) -> None:
+        group = self._group()
+        if group is None or self._running:
+            return
+        name, ok = QInputDialog.getText(self, "Rename group", "Name:",
+                                        text=group.name)
+        if ok and name.strip():
+            group.name = name.strip()
+            self._changed()
+
+    def _recolour_group(self) -> None:
+        group = self._group()
+        if group is None or self._running:
+            return
+        colour = QColorDialog.getColor(QColor(group.color), self, "Group colour")
+        if colour.isValid():
+            group.color = colour.name()
+            self._changed()
+
+    def _delete_group(self) -> None:
+        index = self._group_index()
+        if index is None or self._running:
             return
         answer = QMessageBox.question(
-            self, "Delete setting", f"Delete the setting {name!r}?",
+            self, "Delete group",
+            f"Delete {self.program.groups[index].name!r} and its steps?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
             return
-        washing.presets.pop(name, None)
-        washing.preset = None
-        self._save_washing()
-        log.info("washing: deleted well setting %r", name)
-        self._reload_presets()
-        self._choose_preset_for_plate()
+        del self.program.groups[index]
+        self._changed("all")
+        self._show_groups(select=max(0, index - 1))
 
-    def _shift_edited(self, _value=None) -> None:
-        preset = self._preset()
-        if self._loading or preset is None:
+    def _move_group(self, by: int) -> None:
+        index = self._group_index()
+        if index is None or self._running:
             return
-        preset.shift = [round(self.shift_x.value(), 3),
-                        round(self.shift_y.value(), 3)]
-        self._save_washing()
+        other = index + by
+        if not 0 <= other < len(self.program.groups):
+            return
+        groups = self.program.groups
+        groups[index], groups[other] = groups[other], groups[index]
+        self._changed("all")
+        self._show_groups(select=other)
+
+    def _order_chosen(self, _index: int) -> None:
+        group = self._group()
+        if self._loading or group is None:
+            return
+        group.order = self.order_choice.currentData()
+        self._changed("all")
+
+    # -- steps -------------------------------------------------------------------
+
+    def _show_steps(self, select: int | None = None) -> None:
+        group = self._group()
+        row = self.steps.currentRow() if select is None else select
+        self._loading = True
+        self.steps.clear()
+        if group is not None:
+            for n, step in enumerate(group.steps, 1):
+                self.steps.addItem(f"{n}. {describe(step)}")
+            if group.steps:
+                self.steps.setCurrentRow(max(0, min(row, len(group.steps) - 1)))
+        self.steps_heading.setText(f"Steps of {group.name}" if group is not None
+                                   else "Steps")
+        self._loading = False
+        self._step_chosen()
+
+    def _step_chosen(self) -> None:
+        if self._loading:
+            return
+        group, index = self._group(), self._step_index()
+        self.editor.set_step(group.steps[index] if index is not None else None)
         self._refresh()
 
-    def _depth_edited(self, _value=None) -> None:
-        preset = self._preset()
-        if self._loading or preset is None:
+    def _add_step(self, action: str) -> None:
+        group = self._group()
+        if group is None or self._running:
             return
-        value = round(self.depth.value(), 3)
-        preset.depth_mm = value if value > 0 else None
-        self._save_washing()
+        index = self._step_index()
+        at = len(group.steps) if index is None else index + 1
+        group.steps.insert(at, new_step(action))
+        self._changed("steps")
+        self._show_steps(select=at)
+
+    def _copy_step(self) -> None:
+        group, index = self._group(), self._step_index()
+        if index is None or self._running:
+            return
+        group.steps.insert(index + 1, group.steps[index].model_copy(deep=True))
+        self._changed("steps")
+        self._show_steps(select=index + 1)
+
+    def _delete_step(self) -> None:
+        group, index = self._group(), self._step_index()
+        if index is None or self._running:
+            return
+        del group.steps[index]
+        self._changed("steps")
+        self._show_steps(select=max(0, index - 1))
+
+    def _move_step(self, by: int) -> None:
+        group, index = self._group(), self._step_index()
+        if index is None or self._running:
+            return
+        other = index + by
+        if not 0 <= other < len(group.steps):
+            return
+        group.steps[index], group.steps[other] = group.steps[other], group.steps[index]
+        self._changed("steps")
+        self._show_steps(select=other)
+
+    def _step_edited(self, step) -> None:
+        group, index = self._group(), self._step_index()
+        if index is None:
+            return
+        group.steps[index] = step
+        item = self.steps.item(index)
+        if item is not None:
+            item.setText(f"{index + 1}. {describe(step)}")
+        self._save_timer.start()
         self._refresh()
 
-    def _depth_from_definition(self) -> float | None:
-        """What the plate's definition gives as the well depth. Remembered
-        per plate: this is asked on every refresh, which is every jog step,
-        and the definition is a file."""
-        plate = self._plate_name()
+    def _offer_choices(self) -> None:
+        """The labware and the saved points a location can name."""
+        plates = []
+        for slot, _entry, definition in self._deck:
+            destination_rows = max((len(c) for c in definition.ordering),
+                                   default=0)
+            wells = [column[r] for r in range(destination_rows)
+                     for column in definition.ordering if r < len(column)]
+            plates.append((slot, definition.load_name,
+                           f"slot {slot} — {definition.display_name}", wells))
+        self.editor.set_choices(plates, list(self._positions()))
+        self._refresh()
+
+    def _try_well(self, group: Group) -> str | None:
+        plate = self._plates().get(group.slot)
         if plate is None:
             return None
-        if plate not in self._described_depth:
-            try:
-                definition = resolve_definition(plate)
-                well = definition.wells[0]
-                depth = float(definition.data["wells"][well]["depth"])
-            except (LabwareError, KeyError, TypeError, ValueError, IndexError):
-                depth = None
-            self._described_depth[plate] = depth
-        return self._described_depth[plate]
+        wells = ordered_wells(group, plate.ordering)
+        chosen = [w for w in wells if w in self.plate.selection] \
+            if self._on_shown_plate(group) else []
+        return (chosen or wells or [None])[0]
 
-    # -- moves for setting up ---------------------------------------------------
+    def _try_problems(self) -> list[str]:
+        group, index = self._group(), self._step_index()
+        if index is None:
+            return ["choose a step."]
+        step = group.steps[index]
+        out = self._robot_problems(tip=step.action in LIQUID_ACTIONS)
+        single = Program(groups=[group.model_copy(update={"steps": [step]})])
+        out += liquid.problems(single, self._plates(), self._positions(),
+                               volumes=False)
+        out += self._reach_problems(single)
+        return out
 
-    def _move_problems(self) -> list[str]:
-        """What stops the tip being sent into a well of the plate."""
+    def _try_step(self) -> None:
+        if self._running or self.jog.busy or self._try_problems():
+            return
+        group, index = self._group(), self._step_index()
+        step, well = group.steps[index], self._try_well(group)
+        robot, state = self.session.robot, self.state
+        plates, positions = self._plates(), self._positions()
+
+        def job(log_):
+            said = liquid.run_step(robot, step, group, well, plates, positions,
+                                   state, log=log_)
+            return f"{describe(step).split(' @ ')[0]} for {well}: {said}."
+
+        log.info("liquid handling: trying step %d of %s for %s", index + 1,
+                 group.name, well)
+        if not self.jog.run_job(job):
+            self.jog.tell("not now: the robot is busy.")
+
+    # -- checks -------------------------------------------------------------------
+
+    def _robot_problems(self, *, tip: bool = True) -> list[str]:
         session, out = self.session, []
         if session.robot is None:
             out.append("no robot: connect it on the Profile page.")
-        if session.profile is None:
-            out.append("no profile loaded.")
             return out
-        if self.routine is None:
-            out.append("no routine: open the one whose wells hold the "
-                       "cuboids.")
-        elif session.robot is not None and self._plate_entry() is None:
-            dest = self.routine.destination
-            out.append(f"slot {dest.slot} does not hold {dest.load_name}, the "
-                       f"routine's plate. Load it on the Robot & Deck page.")
-        preset = self._preset()
-        if preset is None:
-            out.append("no setting chosen for where the tip goes: press New… "
-                       "to make one.")
-        elif self.routine is not None and preset.plate != self._plate_name():
-            out.append(f"the chosen setting is for {preset.plate}, not for "
-                       f"{self._plate_name()}. Choose or make one for this "
-                       f"plate.")
-        if session.tip.attached is not True:
-            out.append("no tip on the pipette: pick one up on the Robot & "
-                       "Deck page."
-                       if session.tip.attached is False else
+        if tip and session.tip.attached is not True:
+            out.append("no tip on the pipette: pick one up on the Robot & Deck "
+                       "page." if session.tip.attached is False else
                        "the robot's tip state is unknown: connect again.")
         return out
 
-    def _run_problems(self) -> list[str]:
-        out = self._move_problems()
-        preset = self._preset()
-        if preset is not None:
-            if preset.centre is None:
-                out.append("the centre and top of the well are not saved yet.")
-            if preset.depth_mm is None:
-                out.append("the depth of the well is not set.")
-        if self.routine is not None and not self._wells():
-            out.append("the routine plans no wells.")
-        washing = self._washing()
-        if washing is not None and (not washing.waste_slot
-                                    or not washing.waste_well):
-            out.append("no waste chosen: say where the liquid goes.")
-        elif washing is not None and self.session.robot is not None \
-                and self._waste() is None:
-            out.append(f"slot {washing.waste_slot}, where the waste was, "
-                       f"holds nothing now. Choose the waste again.")
-        slots = set()
-        if self.routine is not None:
-            slots.add(str(self.routine.destination.slot))
-        if washing is not None and washing.waste_slot:
-            slots.add(washing.waste_slot)
-        for problem in self.session.deck_problems():
-            if problem.slot in slots:
-                out.append(problem.describe())
+    def _reach_problems(self, program: Program) -> list[str]:
+        out, positions = [], self._positions()
+        limits = self.session.jog_limits
+        for name in sorted(liquid.points_used(program)):
+            if name in positions:
+                why = moves.unreachable(limits, positions[name])
+                if why:
+                    out.append(f"point {name!r} is outside the soft limits: "
+                               f"{why}.")
+        slots = liquid.slots_used(program)
+        out += [p.describe() for p in self.session.deck_problems()
+                if p.slot in slots]
         return out
 
-    def _job(self, fn, *, moves: bool = True) -> bool:
-        if not self.jog.run_job(fn, moves=moves):
-            self.jog.tell("not now: the robot is busy; try again when it is "
-                          "done.")
-            return False
-        self._refresh()
-        return True
-
-    def _go_above(self) -> None:
-        if self._move_problems() or self._running:
-            return
-        robot, state, emit = self.session.robot, self.state, self.job_said.emit
-        labware_id = self._plate_entry().labware_id
-        well = self.aim_choice.currentText()
-        offset = wash.centre_offset(self._preset(), ABOVE_MM)
-
-        def job(log_):
-            pose = wash.go_to_well(robot, labware_id, well, offset, state,
-                                   log=log_)
-            nominal = tuple(float(p) - float(o) for p, o in zip(pose, offset))
-            emit(("nominal", (labware_id, nominal)))
-            return (f"{ABOVE_MM:g} mm above {well}. Bring the tip to the middle "
-                    f"of the well, level with its rim, then Save centre and "
-                    f"top here.")
-
-        self._job(job)
-
-    def _save_centre(self) -> None:
-        if self._move_problems() or self._running or not self._nominal_here():
-            return
-        robot, emit = self.session.robot, self.job_said.emit
-        name = self._preset_name()
-        _, nominal = self._nominal
-
-        def job(_log):
-            pose = xyz(robot)
-            centre = [round(float(p) - float(n), 3)
-                      for p, n in zip(pose, nominal)]
-            emit(("centre", (name, centre)))
-            return "centre and top saved."
-
-        self._job(job, moves=False)
-
-    def _nominal_here(self) -> bool:
-        entry = self._plate_entry()
-        return (self._nominal is not None and entry is not None
-                and self._nominal[0] == entry.labware_id)
-
-    def _goto_centre(self) -> None:
-        preset = self._preset()
-        if (self._move_problems() or self._running or preset is None
-                or preset.centre is None):
-            return
-        robot, state = self.session.robot, self.state
-        labware_id = self._plate_entry().labware_id
-        well = self.aim_choice.currentText()
-        offset = wash.centre_offset(preset)
-
-        def job(log_):
-            wash.go_to_well(robot, labware_id, well, offset, state, log=log_)
-            return f"at the saved centre of {well}, level with the rim."
-
-        self._job(job)
-
-    def _measure_depth(self) -> None:
-        preset = self._preset()
-        if (self._move_problems() or self._running or preset is None
-                or preset.centre is None or not self._nominal_here()):
-            return
-        robot, emit = self.session.robot, self.job_said.emit
-        name = self._preset_name()
-        top = self._nominal[1][2] + preset.centre[2]
-
-        def job(_log):
-            depth = round(top - xyz(robot)[2], 3)
-            if depth <= 0:
-                raise RuntimeError("the tip is not below the rim of the well; "
-                                   "lower it to the bottom first.")
-            emit(("depth", (name, depth)))
-            return f"depth of the well: {depth:g} mm."
-
-        self._job(job, moves=False)
-
-    def _show_draw(self) -> None:
-        preset = self._preset()
-        if (self._move_problems() or self._running or preset is None
-                or preset.centre is None or preset.depth_mm is None):
-            return
-        robot, state, settings = self.session.robot, self.state, self._settings()
-        labware_id = self._plate_entry().labware_id
-        well = self.aim_choice.currentText()
-
-        def job(log_):
-            wash.to_draw_height(robot, labware_id, well, preset, settings,
-                                state, log=log_)
-            return (f"this is where the tip draws in {well}, "
-                    f"{settings.above_bottom_mm:g} mm above the bottom. "
-                    f"Nothing was drawn.")
-
-        self._job(job)
-
-    # -- the waste --------------------------------------------------------------
-
-    def _reload_labware(self) -> None:
-        washing = self._washing()
-        self._loading = True
-        self.waste_choice.clear()
-        for slot, _entry, definition in self.session.plates():
-            self.waste_choice.addItem(f"slot {slot} — {definition.display_name}",
-                                      (slot, definition))
-        if washing is not None and washing.waste_slot:
-            for index in range(self.waste_choice.count()):
-                if self.waste_choice.itemData(index)[0] == washing.waste_slot:
-                    self.waste_choice.setCurrentIndex(index)
-        self._loading = False
-        self._show_waste_wells()
-        self._refresh()
-
-    def _show_waste_wells(self) -> None:
-        washing = self._washing()
-        data = self.waste_choice.currentData()
-        self._loading = True
-        self.waste_well.clear()
-        if data is not None:
-            self.waste_well.addItems(data[1].wells)
-            if (washing is not None and washing.waste_slot == data[0]
-                    and washing.waste_well in data[1].wells):
-                self.waste_well.setCurrentText(washing.waste_well)
-        self._loading = False
-
-    def _waste_chosen(self, _index: int) -> None:
-        if self._loading:
-            return
-        self._show_waste_wells()
-        self._store_waste()
-
-    def _waste_well_chosen(self, _index: int) -> None:
-        if not self._loading:
-            self._store_waste()
-
-    def _store_waste(self) -> None:
-        washing, data = self._washing(), self.waste_choice.currentData()
-        if washing is None or data is None:
-            return
-        washing.waste_slot = data[0]
-        washing.waste_well = self.waste_well.currentText() or None
-        self._save_washing()
-        log.info("washing: waste is slot %s %s", washing.waste_slot,
-                 washing.waste_well)
-        self._refresh()
-
-    # -- settings ----------------------------------------------------------------
-
-    def _show_settings(self) -> None:
-        settings = self._settings()
-        self._loading = True
-        for name, row in self._rows.items():
-            row.set_value(getattr(settings, name))
-        self._loading = False
-
-    def _settings_edited(self) -> None:
-        if not self._loading:
-            self._save_timer.start()
-
-    def _save_settings(self) -> None:
-        washing = self._washing()
-        if washing is None:
-            return
-        try:
-            settings = WashSettings(**{name: row.value()
-                                       for name, row in self._rows.items()})
-        except Exception as exc:                     # noqa: BLE001
-            # The model's own words, cut to the sentence that matters.
-            lines = [line.strip() for line in str(exc).splitlines()
-                     if line.strip().startswith("Value error")]
-            self.settings_state.setText(
-                "Not saved: " + (lines[0].replace("Value error, ", "")
-                                 if lines else str(exc)))
-            self.settings_state.show()
-            return
-        self.settings_state.hide()
-        washing.settings = settings
-        self._save_washing()
-        self._refresh()
-
-    def _restore_defaults(self) -> None:
-        defaults = WashSettings()
-        self._loading = True
-        for name, row in self._rows.items():
-            row.set_value(getattr(defaults, name))
-        self._loading = False
-        self._save_settings()
+    def _run_problems(self) -> list[str]:
+        out = self._robot_problems()
+        out += liquid.problems(self.program, self._plates(), self._positions())
+        out += self._reach_problems(self.program)
+        return out
 
     # -- running ---------------------------------------------------------------------
 
-    def _remaining(self) -> list[str]:
-        return [w for w in self._wells() if w not in self.state.done]
+    def _total(self) -> int:
+        try:
+            return len(liquid.plan(self.program, self._plates()))
+        except ValueError:
+            return 0
 
-    def _confirm_start(self, wells: list[str]) -> bool:
+    def _confirm_start(self) -> bool:
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle("Start washing")
-        box.setText(f"Wash {len(wells)} wells of {self.routine.name!r}?")
-        again = ("\n\nWells washed earlier count as not washed: the run "
-                 "starts again from the first well."
-                 if self.state.done else "")
-        box.setInformativeText(
-            f"{self._plate_name()} in slot {self.routine.destination.slot}, "
-            f"{self._settings().volume_ul:g} µl from each well, first "
-            f"{wells[0]}, last {wells[-1]}.{again}\n\n{CONFIRM_START}")
+        box.setWindowTitle("Start")
+        groups = self.program.groups
+        box.setText(f"Run {len(groups)} group{'s' if len(groups) != 1 else ''}"
+                    f", {self._total()} wells?")
+        lines = [f"{g.name}: {len(g.wells)} wells in slot {g.slot}, "
+                 f"{len(g.steps)} steps" for g in groups]
+        again = ("\n\nWells done earlier count as not done: the run starts "
+                 "again from the first well." if self.state.done else "")
+        box.setInformativeText("\n".join(lines) + again + "\n\n" + CONFIRM_START)
         start = box.addButton("Start", QMessageBox.ButtonRole.AcceptRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
         box.setDefaultButton(QMessageBox.StandardButton.Cancel)
@@ -994,15 +879,14 @@ class LiquidHandlingPage(QWidget):
     def _start(self) -> None:
         if self._running or self.jog.busy or self._run_problems():
             return
-        if not self._confirm_start(self._wells()):
+        if not self._confirm_start():
             return
         if self._run_problems():                 # changed while asking
             self._refresh()
             return
-        self.state.done = []
-        name = re.sub(r"[^\w.-]+", "_", self.routine.name) or "plate"
-        self._log_path = (paths.logs_dir()
-                          / f"wash_{name}_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+        self.state.reset()
+        self._log_path = (paths.logs_dir() / f"liquid_"
+                          f"{time.strftime('%Y%m%d_%H%M%S')}.csv")
         self._launch()
 
     def _continue(self) -> None:
@@ -1010,38 +894,40 @@ class LiquidHandlingPage(QWidget):
             if self._pause.is_set():
                 self._pause.clear()
                 self._checking = None
-                log.info("washing: continued")
+                log.info("liquid handling: continued")
                 self._refresh()
             return
-        if (self._can_carry_on and self._remaining() and not self.jog.busy
+        if (self._can_carry_on and not self.jog.busy
                 and not self._run_problems()):
             self._launch()
 
     def _launch(self) -> None:
         robot, emit = self.session.robot, self.job_said.emit
-        labware_id = self._plate_entry().labware_id
-        wells, preset, settings = self._wells(), self._preset(), self._settings()
-        waste, state = self._waste(), self.state
+        # A copy: the page may not be edited during the run, but a copy
+        # makes that a rule of the data rather than of the buttons.
+        program = self.program.model_copy(deep=True)
+        plates, positions, state = self._plates(), self._positions(), self.state
         pause, stop, log_path = self._pause, self._stop, self._log_path
         pause.clear()
         stop.clear()
 
         def job(log_):
             try:
-                wash.run(robot, labware_id, wells, preset, settings, waste,
-                         state, pause=pause, stop=stop, log=log_,
-                         on_progress=lambda n, total, well:
-                         emit(("progress", (n, total, well))),
-                         on_paused=lambda well: emit(("paused", well)),
-                         log_path=log_path)
-            except wash.Stopped:
+                liquid.run(robot, program, plates, positions, state,
+                           pause=pause, stop=stop, log=log_,
+                           on_well=lambda gi, well: emit(("well", (gi, well))),
+                           on_progress=lambda n, total, gi, well:
+                           emit(("progress", (n, total, gi, well))),
+                           on_paused=lambda message: emit(("paused", message)),
+                           log_path=log_path)
+            except liquid.Stopped:
                 emit(("ended", "stopped"))
-                return "washing stopped."
+                return "run stopped."
             except Exception as exc:
                 emit(("ended", f"failed: {exc}"))
                 raise
             emit(("ended", "done"))
-            return "washing finished."
+            return "run finished."
 
         if not self.jog.run_job(job):
             self.jog.tell("not now: the robot is busy.")
@@ -1050,21 +936,19 @@ class LiquidHandlingPage(QWidget):
         self._can_carry_on = False
         self._checking = None
         self._outcome = ""
-        self._progress = "starting: emptying the tip"
-        log.info("washing %d wells of %r (%d already done)", len(wells),
-                 self.routine.name, len(state.done))
+        self._progress = "starting"
+        log.info("liquid handling: running %d groups (%d wells already done)",
+                 len(program.groups), len(state.done))
         self._refresh()
 
     def _pause_run(self) -> None:
         if self._running and not self._pause.is_set():
             self._pause.set()
-            log.info("washing: paused")
+            log.info("liquid handling: paused")
             self._refresh()
 
     def _pause_key(self) -> None:
-        if self._running and self._pause.is_set():
-            self._continue()
-        elif self._running:
+        if self._running and not self._pause.is_set():
             self._pause_run()
         else:
             self._continue()
@@ -1072,91 +956,39 @@ class LiquidHandlingPage(QWidget):
     def _stop_run(self) -> None:
         if self._running and not self._stop.is_set():
             self._stop.set()
-            log.info("washing: stop asked")
+            log.info("liquid handling: stop asked")
             self._refresh()
-
-    def _put_back(self) -> None:
-        state, preset = self.state, self._preset()
-        if (self._running or state.in_tip <= 0 or state.last_well is None
-                or self._move_problems() or preset is None
-                or preset.centre is None or preset.depth_mm is None):
-            return
-        robot, settings = self.session.robot, self._settings()
-        labware_id = self._plate_entry().labware_id
-
-        def job(log_):
-            well = wash.put_back(robot, labware_id, preset, settings, state,
-                                 log=log_)
-            return f"the liquid is back in {well}."
-
-        if self._job(job):
-            self._can_carry_on = True
-            self._outcome = ""
-
-    def _empty_tip(self) -> None:
-        waste = self._waste()
-        if (self._running or waste is None
-                or self.session.tip.attached is not True):
-            return
-        robot, settings, state = self.session.robot, self._settings(), self.state
-
-        def job(log_):
-            wash.empty_tip(robot, waste, settings, state, log=log_)
-            return "the tip is empty."
-
-        self._job(job)
 
     def _on_job_said(self, payload) -> None:
         kind, value = payload
-        washing = self._washing()
-        if kind == "nominal":
-            self._nominal = value
-        elif kind == "centre" and washing is not None:
-            name, centre = value
-            if name in washing.presets:
-                washing.presets[name].centre = centre
-                self._save_washing()
-                log.info("washing: centre and top of %r saved: %s", name,
-                         centre)
-        elif kind == "depth" and washing is not None:
-            name, depth = value
-            if name in washing.presets:
-                washing.presets[name].depth_mm = depth
-                self._save_washing()
-                log.info("washing: depth of %r: %g mm", name, depth)
-                self._show_preset()
+        if kind == "well":
+            self._current = value
+            gi, well = value
+            name = (self.program.groups[gi].name
+                    if gi < len(self.program.groups) else "?")
+            self._progress = f"{name} {well}"
         elif kind == "progress":
-            n, total, well = value
-            self._progress = f"washed {well} ({n} of {total})"
+            n, total, _gi, _well = value
+            self._progress += f" done ({n} of {total})"
         elif kind == "paused":
             self._checking = value
         elif kind == "ended":
             self._running = False
             self._checking = None
+            self._current = None
             self._pause.clear()
-            self._can_carry_on = value != "done" and bool(self._remaining())
-            self._outcome = {"done": "Washing finished.",
+            self._can_carry_on = value != "done" and self._total() > len(self.state.done)
+            self._outcome = {"done": "Finished.",
                              "stopped": "Stopped."}.get(value, value.capitalize())
-            log.info("washing %s", value)
+            log.info("liquid handling: %s", value)
+        self._paint_plate()
         self._refresh()
 
     # -- keeping up with the session -----------------------------------------------
 
-    def _on_profile_changed(self) -> None:
-        self._reload_presets()
-        self._choose_preset_for_plate()
-        self._show_settings()
-        self._reload_labware()
-
-    def _robot_changed(self) -> None:
-        self._lose_top()
-        self._nominal = None
-        self._reload_labware()
-
     def _lose_top(self) -> None:
         """The top of the travel depends on the tip and on the run."""
         self.state.z_top = None
-        self._refresh()
 
     def _show_camera(self) -> None:
         self.view.set_camera(self.session.camera(self.session.upper_camera_label
@@ -1181,89 +1013,66 @@ class LiquidHandlingPage(QWidget):
     def _refresh(self) -> None:
         running, busy = self._running, self.jog.busy
         idle = not running and not busy
-        washing = self._washing()
-        preset = self._preset()
-        move_problems = self._move_problems()
-        can_move = idle and not move_problems
+        for box in self._editing:
+            box.setEnabled(not running)
 
-        # The routine.
-        wells = self._wells()
-        if self.routine is None:
-            self.routine_state.setText("No routine yet. Open the one whose "
-                                       "wells hold the cuboids.")
-        else:
-            dest = self.routine.destination
-            self.routine_state.setText(
-                f"Routine {self.routine.name!r}: {len(wells)} wells of "
-                f"{dest.load_name} in slot {dest.slot}.")
-        self.plate.set_plan({w: 1 for w in wells})
-        self.plate.set_progress({w: 1 for w in self.state.done if w in wells})
-        self.open_button.setEnabled(not running)
-
-        # The preset.
-        has_profile = washing is not None
-        self.preset_choice.setEnabled(has_profile and not running)
-        self.new_preset_button.setEnabled(has_profile and not running
-                                          and self.routine is not None)
-        self.delete_preset_button.setEnabled(preset is not None and not running)
-        for box in (self.shift_x, self.shift_y, self.depth):
-            box.setEnabled(preset is not None and not running)
-        if not has_profile:
-            self.preset_state.setText("No profile loaded.")
-        elif preset is None:
-            self.preset_state.setText(
-                "No setting chosen. Press New… to make one for this plate."
-                if self.routine is not None else
-                "Open a routine first: a setting belongs to a kind of plate.")
-        elif self.routine is not None and preset.plate != self._plate_name():
-            self.preset_state.setText(
-                f"This setting is for {preset.plate}, but the routine's plate "
-                f"is {self._plate_name()}. Choose or make another one.")
-        else:
-            self.preset_state.setText(f"For {preset.plate}.")
-
-        self.above_button.setEnabled(can_move)
-        self.save_centre_button.setEnabled(can_move and self._nominal_here())
-        has_centre = preset is not None and preset.centre is not None
-        self.goto_centre_button.setEnabled(can_move and has_centre)
-        self.bottom_button.setEnabled(can_move and has_centre
-                                      and self._nominal_here())
-        self.show_draw_button.setEnabled(
-            can_move and has_centre and preset.depth_mm is not None)
-        if has_centre:
-            x, y, z = preset.centre
-            self.centre_state.setText(
-                f"Saved: {x:+.2f} mm in X, {y:+.2f} mm in Y and {z:+.2f} mm in "
-                f"Z from where the robot thinks the top of the well is.")
-        elif preset is not None:
-            self.centre_state.setText("Not saved yet.")
-        else:
-            self.centre_state.setText("")
-        if move_problems and idle:
-            self.centre_state.setText(
-                self.centre_state.text()
-                + ("\n" if self.centre_state.text() else "")
-                + "To move the tip: " + move_problems[0])
-        hint = self._depth_from_definition()
-        self.depth_hint.setText(
-            f"The plate's description says {hint:g} mm; check it on your "
-            f"plate." if hint is not None else "")
-
-        # The waste.
-        self.waste_choice.setEnabled(has_profile and not running)
-        self.waste_well.setEnabled(has_profile and not running)
-        if self.waste_choice.count() == 0:
-            self.waste_state.setText(
-                "Nothing on the deck to empty into. Load a reservoir or a "
-                "plate on the Robot & Deck page."
+        # The plate.
+        shown, selection = self._shown_plate(), self.plate.selection
+        group = self._group()
+        self.new_group_button.setEnabled(shown is not None and bool(selection))
+        self.add_wells_button.setEnabled(
+            group is not None and bool(selection) and self._on_shown_plate(group))
+        self.remove_wells_button.setEnabled(shown is not None and bool(selection))
+        if self.plate_choice.count() == 0:
+            self.plate_state.setText(
+                "No labware on the deck: load it on the Robot & Deck page."
                 if self.session.robot is not None else
-                "No robot: connect it on the Profile page.")
+                "No robot: connect it on the Profile page to see its plates.")
+        elif group is not None and not self._on_shown_plate(group):
+            self.plate_state.setText(
+                f"{group.name} is on slot {group.slot} ({group.load_name}), "
+                f"which the robot does not hold now.")
         else:
-            self.waste_state.setText("")
-        self.waste_state.setVisible(bool(self.waste_state.text()))
+            self.plate_state.setText(f"{len(selection)} wells selected."
+                                     if selection else "")
+        self.plate_state.setVisible(bool(self.plate_state.text()))
 
-        # The settings.
-        self.settings_box.body.setEnabled(has_profile and not running)
+        # Groups and steps.
+        has_group = group is not None
+        index = self._group_index()
+        for button in (self.rename_group_button, self.colour_button,
+                       self.delete_group_button, self.order_choice,
+                       self.add_step_button):
+            button.setEnabled(has_group)
+        self.group_up.setEnabled(has_group and index > 0)
+        self.group_down.setEnabled(has_group
+                                   and index < len(self.program.groups) - 1)
+        step = self._step_index()
+        has_step = step is not None
+        for button in (self.copy_step_button, self.delete_step_button):
+            button.setEnabled(has_step)
+        self.step_up.setEnabled(has_step and step > 0)
+        self.step_down.setEnabled(has_step and step < len(group.steps) - 1)
+        self.editor.setVisible(has_step)
+        try_problems = self._try_problems() if has_step else []
+        self.try_button.setEnabled(idle and has_step and not try_problems)
+        if not has_group:
+            self.steps_state.setText("Make a group first: select wells on the "
+                                     "plate and press New group.")
+        elif not group.steps:
+            self.steps_state.setText("No steps yet: Add step. Each step says "
+                                     "where it happens.")
+        elif try_problems and idle:
+            self.steps_state.setText("To try it: " + try_problems[0])
+        else:
+            self.steps_state.setText("")
+        self.steps_state.setVisible(bool(self.steps_state.text()))
+
+        # The program.
+        name = self.program.name or "not saved under a name"
+        self.program_state.setText(
+            f"{name}: {len(self.program.groups)} groups. Saved as you edit; "
+            f"Save as keeps a named copy.")
 
         # The run.
         problems = self._run_problems()
@@ -1271,51 +1080,34 @@ class LiquidHandlingPage(QWidget):
         self.start_button.setEnabled(idle and not problems)
         self.pause_button.setEnabled(running and not paused)
         self.continue_button.setEnabled(
-            paused or (idle and self._can_carry_on and bool(self._remaining())
-                       and not problems))
+            paused or (idle and self._can_carry_on and not problems))
         self.stop_button.setEnabled(running)
-        state = self.state
-        self.put_back_button.setEnabled(
-            idle and state.in_tip > 0 and state.last_well is not None
-            and not move_problems and has_centre
-            and preset.depth_mm is not None)
-        self.put_back_button.setText(
-            f"Put the liquid back into {state.last_well}"
-            if state.last_well and state.in_tip > 0 else "Put the liquid back")
-        self.empty_button.setEnabled(idle and self._waste() is not None
-                                     and self.session.tip.attached is True)
-
-        in_tip = f"The tip holds {state.in_tip:g} µl." if state.in_tip > 0 \
-            else "The tip is empty."
-        done = len([w for w in state.done if w in wells])
+        total, done = self._total(), len(self.state.done)
+        in_tip = (f"The tip holds {self.state.in_tip:g} µl."
+                  if self.state.in_tip > 0 else "The tip is empty.")
         if running:
             if self._checking:
-                text = (f"Paused after the first well. Look into "
-                        f"{self._checking}: if the cuboid is still there, "
-                        f"press Continue. If it came up with the liquid, "
-                        f"press Stop, then Put the liquid back, and change "
-                        f"the shift, the tip height or the suction speed.")
+                text = f"Paused: {self._checking}\nPress Continue to go on."
             elif paused:
                 text = "Paused. Press Continue to go on."
             elif self._stop.is_set():
-                text = "Stopping after the move the robot is making…"
+                text = "Stopping after the command the robot is doing…"
             else:
-                text = f"Washing: {self._progress}."
-            text += f"\n{done} of {len(wells)} wells done. {in_tip}"
+                text = f"Running: {self._progress}."
+            text += f"\n{done} of {total} wells done. {in_tip}"
         elif problems:
             text = "\n".join("• " + p for p in problems)
         else:
             text = ((self._outcome + " ") if self._outcome else "") + \
-                f"{done} of {len(wells)} wells done. {in_tip}"
-            if self._can_carry_on and self._remaining():
-                text += (f"\nContinue washes the {len(self._remaining())} "
-                         f"wells left, emptying the tip first.")
+                f"{done} of {total} wells done. {in_tip}"
+            if self._can_carry_on:
+                text += "\nContinue carries on from where the run stopped."
         self.run_state.setText(text)
 
         if running:
-            lines = [f"washing: {self._progress}",
-                     f"{done} of {len(wells)} wells done",
-                     f"in the tip: {state.in_tip:g} µl"]
+            lines = [f"liquid handling: {self._progress}",
+                     f"{done} of {total} wells done",
+                     f"in the tip: {self.state.in_tip:g} µl"]
             if paused:
                 lines.append("PAUSED")
             self.view.set_status(lines)
