@@ -864,3 +864,46 @@ static until the session owns them.
   Select a slot holding a tip rack: the wells run A1 … A12, B1 … H12. Type
   `c7` and press Enter: C7 is chosen. Type `z1` and press Enter: it goes
   back to C7. Pick up tip takes the chosen well.
+
+## Commit 28 — Liquid handling: cuboid washing
+
+- [ ] **Go above the well lands over the right well.**
+  With a new setting (nothing saved yet), Go above the well puts the tip
+  5 mm over the middle of the chosen well as the plate's description has it.
+  Well off, or over the neighbour: the plate is loaded in the wrong slot, or
+  without its module offset (the status bar says which).
+
+- [ ] **Save centre and top here, then Go to the saved centre.**
+  Jog the tip to the middle of the well, level with the rim, and save. The
+  saved numbers are small - fractions of a millimetre in X and Y, a few
+  millimetres at most in Z. Go to the saved centre of *another* well: the tip
+  is on its middle, level with its rim. A Z tens of millimetres off means the
+  pose was read before the move finished, or a module offset changed.
+
+- [ ] **Show where the tip will draw.**
+  The tip goes down beside the cuboid, "Tip height above the bottom" over the
+  bottom, and touches nothing. Touching the bottom: the depth is too large.
+  Over the cuboid: the shift is too small, or its sign is the wrong way.
+
+- [ ] **The first well and the pause.**
+  Start washing on a real plate: the tip is emptied into the waste first
+  (blow out, a small shake), then the first well is drawn slowly and the tip
+  rises in small steps. The run pauses; the cuboid is still in the well.
+  Continue washes the rest, emptying the tip whenever the next draw would
+  overflow it and once at the end.
+
+- [ ] **Stop, put back, continue.**
+  Stop during a draw: the tip rises and "The tip holds N µl" is shown. Put
+  the liquid back returns it to that well, slowly, at the same spot; the well
+  shows as not washed again. Continue empties the tip, pauses after that well
+  again, and does not draw from any well washed before the stop.
+
+- [ ] **Nothing else moves the robot while it washes.**
+  During a run the jog keys and buttons, Go above the well and the other
+  setup buttons are greyed out. P pauses and continues, Esc stops.
+
+- [ ] **The first draw after the tip is emptied is accepted.**
+  The robot refuses an aspirate in place straight after a blow out; the
+  shake is a well-based aspirate and dispense, which is what resets the
+  plunger. If the first draw of a run fails with "previous blow out", the
+  shake did not happen.

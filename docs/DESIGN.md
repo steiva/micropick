@@ -609,6 +609,7 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `workflows/calibrate_pipette` | tip offset against the crosshair disc |
 | `workflows/jog` | manual control, two input backends |
 | `workflows/picking` | the pick-and-place state machine, one step at a time |
+| `workflows/wash` | drawing the liquid off wells that hold a cuboid |
 | `viz/overlays` | drawing for the picking window, frame in, frame out |
 | `viz/window` | one window, sized to the aspect of the frame it shows |
 | `notebooks/01_robot_session.ipynb` | the whole session in one place |
@@ -1194,6 +1195,48 @@ Every step goes through a worker, because `move_relative` blocks on HTTP.
 what stops a held arrow queueing moves that keep running after the key is
 released; the page disables its controls to show that, and neither repeats the
 guard nor works around it.
+
+### Liquid handling: washing cuboids
+
+`gui/pages/liquid.py` is notebook 03 on one page, and the tab is called
+Liquid handling because more of it will join washing there. The people who
+use it are biologists, so its words say what a thing does, and every
+setting has a tooltip. Those words are data in the schema - `WashSettings`
+fields carry a title, a description and a unit - and the form is generated
+from them, for the reason the picking form is generated from its model: a
+second list of the settings is the one that forgets a field.
+
+**The centre and the top of a well are one measurement.** The notebook took
+the centre at one height and touched the rim for the top in a second step,
+and stored the top as an absolute Z. Here the operator goes above a well,
+jogs the tip to its middle level with the rim, and saves once; what is kept
+is the difference from the robot's own well top (`move_to_well(..., "top")`),
+so it holds when the plate moves to another slot or onto a module. The shift
+off the centre stays a separate number, as in the notebook: re-measuring the
+centre must not move it.
+
+**A well setting is a named preset for a kind of plate.** Two plates with
+the same load name can sit differently, and a 96 and a 384 never share
+numbers, so the centre, the shift and the depth are saved together under a
+name in `washing.json`, with the load name they were made on. A preset made
+on another plate is refused, not adapted, and a new preset copies the
+chosen one only when it is for the same plate - numbers from another plate
+are worse than none.
+
+**The wells are a routine's plan, and the routine is not written to.** Its
+progress counts cuboids delivered, and a wash delivers none.
+
+**The run goes through the jog panel's queue.** Like every robot command on
+a page with a panel, so no key can move the robot while it washes; Pause and
+Stop are events it checks between moves and need no queue. What the tip
+holds and which wells were drawn from live in a `WashState` the page keeps
+across a stop, because the one thing a wash must not do is draw from a well
+twice: with its liquid gone, the second draw is the one that lifts the
+cuboid. So Continue after a stop empties the tip and skips the washed wells,
+Put the liquid back returns the last draw to its well and marks it unwashed,
+and only Start, which asks first, begins again from the first well. The run
+pauses after the first well of a plate by default: whether the cuboid stayed
+is visible then and invisible once the rest of the plate is done.
 
 ---
 
