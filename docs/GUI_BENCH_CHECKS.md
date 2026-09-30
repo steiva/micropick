@@ -867,6 +867,9 @@ static until the session owns them.
 
 ## Commit 28 — Liquid handling: cuboid washing
 
+Replaced by commit 29: the washing page and `workflows/wash` are gone.
+Kept for the record of what washing needs when it returns as a program.
+
 - [ ] **Go above the well lands over the right well.**
   With a new setting (nothing saved yet), Go above the well puts the tip
   5 mm over the middle of the chosen well as the plate's description has it.
@@ -907,3 +910,51 @@ static until the session owns them.
   shake is a well-based aspirate and dispense, which is what resets the
   plunger. If the first draw of a run fails with "previous blow out", the
   shake did not happen.
+
+## Commit 29 — Liquid handling as blocks
+
+- [ ] **The tab is on the right.**
+  The tabs on the right edge read Liquid handling, Manual control, Log.
+
+- [ ] **The plate map is the deck's.**
+  With a plate and a reservoir loaded on Robot & Deck, both are in the
+  Plate list. A row selected and New group: the row turns the group's
+  colour. Selecting part of it and New group again moves those wells to the
+  new group.
+
+- [ ] **A well of the group, a well of the reservoir.**
+  Group of A1-A3: Aspirate 20 µl @ this well, bottom +1 mm; Dispense
+  (everything in the tip) @ a well, the reservoir A1, top +5 mm. Try this
+  step on the aspirate: the tip goes into A1 of the plate (or the selected
+  well), 1 mm over the bottom, and draws. Try the dispense: it goes to the
+  reservoir and empties there.
+
+- [ ] **A saved point.**
+  Jog the tip over a spot, Save this position… as "waste". It is offered
+  under Where = a saved point at once. Tick "points" on the picture: a cyan
+  ring with the name sits where the tip was, and follows the deck as the
+  gantry is jogged. On Manual control the same box is there.
+
+- [ ] **The run.**
+  Start asks first, then does A1's whole chain before A2's. The map rings
+  the well being worked on and fills the finished ones. P pauses and
+  continues; Esc stops after the current command with the tip raised and
+  "The tip holds N µl" shown. Continue carries on from the next step - the
+  aspirate is not repeated - going back into the well first if that step is
+  "where the tip is".
+
+- [ ] **Blow out, then aspirate.**
+  A chain with Blow out @ this well followed, in the next well, by an
+  aspirate is accepted by the robot (the shake after the blow out prepares
+  the plunger). The same with the blow out at a saved point: if the next
+  aspirate fails with a message about a blow out, `prepareToAspirate` is not
+  accepted by this robot software and the blow out has to be in a well.
+
+- [ ] **Nothing else moves the robot while it runs.**
+  The jog keys and buttons and every editing card are greyed out during a
+  run.
+
+- [ ] **The program comes back.**
+  Close and start the application: the groups and steps are as they were.
+  Save as, New, Open brings the saved one back.
+

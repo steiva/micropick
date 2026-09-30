@@ -59,3 +59,14 @@ is only repeated when the tip is below that travel height. A stored pose
 run's own moves to them) is reached no higher than that travel height
 (`reachable_z`): taught after a retract, it is out of bounds for the robot. Click-to-move is off on every entry to the
 tab.
+
+### Liquid handling is a program of blocks
+
+The Liquid handling tab (right side, beside Manual control) builds a
+`core.liquid.Program`: groups of wells chosen on the plate map, each with
+steps that each carry their own `Location` (this well, a fixed well, a saved
+point, here); `workflows.liquid` runs it through `JogPanel.run_job`. Saved
+points are `profile.positions`, not a list of the page's own. The "points"
+box on the picture comes from `JogPanel.show_position_on`, so every page
+with a jog panel has it. Washing was removed and is to return as a program,
+not as a page of its own.

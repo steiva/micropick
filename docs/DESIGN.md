@@ -609,7 +609,7 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `workflows/calibrate_pipette` | tip offset against the crosshair disc |
 | `workflows/jog` | manual control, two input backends |
 | `workflows/picking` | the pick-and-place state machine, one step at a time |
-| `workflows/wash` | drawing the liquid off wells that hold a cuboid |
+| `workflows/liquid` | running a liquid handling program, step by step |
 | `viz/overlays` | drawing for the picking window, frame in, frame out |
 | `viz/window` | one window, sized to the aspect of the frame it shows |
 | `notebooks/01_robot_session.ipynb` | the whole session in one place |
@@ -1196,47 +1196,65 @@ what stops a held arrow queueing moves that keep running after the key is
 released; the page disables its controls to show that, and neither repeats the
 guard nor works around it.
 
-### Liquid handling: washing cuboids
+### Liquid handling: a program built from blocks
 
-`gui/pages/liquid.py` is notebook 03 on one page, and the tab is called
-Liquid handling because more of it will join washing there. The people who
-use it are biologists, so its words say what a thing does, and every
-setting has a tooltip. Those words are data in the schema - `WashSettings`
-fields carry a title, a description and a unit - and the form is generated
-from them, for the reason the picking form is generated from its model: a
-second list of the settings is the one that forgets a field.
+`gui/pages/liquid.py` started as notebook 03, cuboid washing, on one page. A
+second procedure would have been a second page of its own buttons, so the
+tab was begun again as a general tool, and washing will come back as a
+program written with it. The tab sits on the right beside Manual control:
+moving liquid is done when it is needed, not as a stage of the session.
 
-**The centre and the top of a well are one measurement.** The notebook took
-the centre at one height and touched the rim for the top in a second step,
-and stored the top as an absolute Z. Here the operator goes above a well,
-jogs the tip to its middle level with the rim, and saves once; what is kept
-is the difference from the robot's own well top (`move_to_well(..., "top")`),
-so it holds when the plate moves to another slot or onto a module. The shift
-off the centre stays a separate number, as in the notebook: re-measuring the
-centre must not move it.
+**A program is groups, a group is wells and steps** (`core/liquid.py`). The
+wells are chosen on the plate map of labware the run holds, and a group is
+drawn in its colour. The run takes the groups in order and gives each well
+of a group all of that group's steps before the next well, so a chain
+written once is done for a row. A well is in one group of its plate at
+most: adding it to one takes it out of another, because two chains on one
+well in an order nobody wrote down is a mistake, not a feature.
 
-**A well setting is a named preset for a kind of plate.** Two plates with
-the same load name can sit differently, and a 96 and a 384 never share
-numbers, so the centre, the shift and the depth are saved together under a
-name in `washing.json`, with the load name they were made on. A preset made
-on another plate is refused, not adapted, and a new preset copies the
-chosen one only when it is for the same plate - numbers from another plate
-are worse than none.
+**Every step says where it happens.** A `Location` is the group's well, one
+fixed well of any labware on the deck (the same for every well of the
+group: a reservoir, a waste), a saved point, or where the tip is; with a
+level in the well and an offset. Putting the place on the step instead of in
+a Move before it makes a chain read as what it does and keeps a step's
+place with it when it is moved up or down the list. Two steps in the same
+place do not move between them, so an aspirate and a mix in one well are
+not a retract apart. Wells go through `drive_to_well` and points through
+`drive_tip`, so the travel rules of manual control hold here too.
 
-**The wells are a routine's plan, and the routine is not written to.** Its
-progress counts cuboids delivered, and a wash delivers none.
+**A group and a well location remember the labware's load name**, not only
+the slot, and a slot now holding something else is a problem the page
+lists, not a plate driven into. The program is also played through on
+paper before a run: a dispense of more than the tip holds at that moment is
+a program written wrong.
 
-**The run goes through the jog panel's queue.** Like every robot command on
-a page with a panel, so no key can move the robot while it washes; Pause and
-Stop are events it checks between moves and need no queue. What the tip
-holds and which wells were drawn from live in a `WashState` the page keeps
-across a stop, because the one thing a wash must not do is draw from a well
-twice: with its liquid gone, the second draw is the one that lifts the
-cuboid. So Continue after a stop empties the tip and skips the washed wells,
-Put the liquid back returns the last draw to its well and marks it unwashed,
-and only Start, which asks first, begins again from the first well. The run
-pauses after the first well of a plate by default: whether the cuboid stayed
-is visible then and invisible once the rest of the plate is done.
+**Saved points are the profile's positions.** The same list as the jog
+panel's Positions, so a point is saved where every other pose is, and can be
+renamed or driven to from there. A "points" box on every picture with a jog
+panel draws them: a saved pose is a pipette pose, the deck point under it is
+the pose less the pipette offset, and the pixel it is at is the pixel map
+inverted (`PixelMap.to_pixel`, Newton from the reference pixel). The marks
+are taken off while a job moves the gantry, since they would be drawn for
+where it was.
+
+**The run goes through the jog panel's queue**, and Pause and Stop are
+events checked between commands. What the tip holds and how far the run got
+- the finished wells, and the next step of a well stopped halfway - live in
+a `LiquidState` the page keeps, so Continue carries on from the step after
+the last one done and never repeats a chain from its first aspirate. The
+tip is raised however a run ends, and the first `here` afterwards goes back
+to where it was first. Changing the groups or their wells forgets the
+progress; changing a step's numbers does not.
+
+**A blow out prepares the plunger.** The robot refuses an aspirate in place
+straight after a blow out. In a well the blow out is the well-based command
+and the washing notebook's shake (10 µl in and out, well-based), which
+prepares the plunger by itself; elsewhere it is a blow out in place and the
+engine's `prepareToAspirate`, which the wrapper has no method for and is
+posted directly (`hardware.protocols.prepare_to_aspirate`).
+
+The program is saved as it is edited into `outputs/liquid/current.json`
+and comes back on the next start; Save as and Open keep named copies.
 
 ---
 
