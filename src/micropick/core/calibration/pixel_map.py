@@ -107,6 +107,36 @@ class PixelMap:
         g = g[..., :2] if g.ndim > 1 else g[:2]
         return g + self.offset_mm(u, v)
 
+    def to_pixel(self, x: float, y: float, gantry_xy, *, tol_mm: float = 1e-4,
+                 iterations: int = 30) -> tuple[float, float] | None:
+        """The pixel a deck point (x, y) appears at in a frame taken at
+        `gantry_xy`: `to_robot` the other way round.
+
+        The polynomial has no closed-form inverse, so Newton's method with
+        the Jacobian taken as `mm_per_px` takes it, from the reference pixel.
+        None if it does not settle, which far outside the swept area it may
+        not: there the map is extrapolating anyway.
+        """
+        g = np.asarray(gantry_xy, dtype=float)[:2]
+        want = np.array([float(x), float(y)]) - g
+        uv = np.asarray(self.config.ref, dtype=float).copy()
+        eps = 1.0
+        for _ in range(iterations):
+            here = np.asarray(self.offset_mm(uv[0], uv[1]), dtype=float)
+            gap = want - here
+            if float(np.hypot(*gap)) < tol_mm:
+                return float(uv[0]), float(uv[1])
+            du = np.asarray(self.offset_mm(uv[0] + eps, uv[1])) - here
+            dv = np.asarray(self.offset_mm(uv[0], uv[1] + eps)) - here
+            jacobian = np.column_stack([du, dv]) / eps
+            try:
+                uv = uv + np.linalg.solve(jacobian, gap)
+            except np.linalg.LinAlgError:
+                return None
+            if not np.all(np.isfinite(uv)):
+                return None
+        return None
+
     def mm_per_px(self, u, v, eps: float = 1.0) -> tuple[float, float]:
         """Local scale along u and v, from the Jacobian.
 

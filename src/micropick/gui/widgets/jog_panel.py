@@ -81,6 +81,12 @@ window was one more place to look.
 The keys are listed there too, in a box in the picture's bottom-right corner
 (`help_changed`, `CameraView.set_help`), shown until H hides it. A page adds
 its own keys and mouse actions to the same list with `add_help`.
+
+And the saved positions, on a "points" box on the picture: the pose read
+with every status line is sent on as `pose_changed`, and the
+`gui.position_marks.PositionMarks` that `show_position_on` attaches draws
+the profile's positions from it. While a job that moves is in flight the
+pose is None, and the marks are off the picture.
 """
 
 from __future__ import annotations
@@ -97,6 +103,7 @@ from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
 from ...workflows import manual as moves
 from ...workflows.jog import (DEFAULT_STEPS, LAYOUT, JogController,
                               help_lines)
+from ..position_marks import PositionMarks
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (Section, card, combo_box, heading,
@@ -120,6 +127,9 @@ def _position_row(name: str, where) -> str:
 
 
 PANEL_WIDTH = 400
+
+# The pose at the head of `JogController.status()`, "(x, y, z) ...".
+POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
 
 # The sections a page may ask to start folded, by name.
 SECTIONS = ("move", "positions")
@@ -196,6 +206,9 @@ class JogPanel(QWidget):
     moved = Signal()
     # The key list for the picture, or [] while H has it hidden.
     help_changed = Signal(list)
+    # The gantry's (x, y, z) from the latest status line, or None while a
+    # job that moves is running or before the first read.
+    pose_changed = Signal(object)
 
     def __init__(self, session: Session, *,
                  shortcut_host: QWidget | None = None,
@@ -223,6 +236,8 @@ class JogPanel(QWidget):
         self._job_moves = True
         self._help = [_reflow(line) for line in help_lines(_bound_layout())]
         self._help_shown = True
+        self.pose: tuple[float, float, float] | None = None
+        self._marks: list[PositionMarks] = []
 
         # Not a scroll area itself. The page that hosts it may put it in one
         # (theme.factory.scroll_column), which takes no focus, so PageUp and
@@ -638,6 +653,8 @@ class JogPanel(QWidget):
         worker.message.connect(self._job_said)
         worker.start()
         self._set_enabled(False)
+        if moves:
+            self._set_pose(None)
 
     def _job_said(self, text: str) -> None:
         log.info("%s", text)
@@ -683,6 +700,11 @@ class JogPanel(QWidget):
         # A failed move may still have gone part of the way.
         if self._job_moves:
             self.moved.emit()
+            # Read where it ended, so the pose - and the marks - come back.
+            if self.controller is not None:
+                controller = self.controller
+                self._run(Worker(lambda: (None, controller.status())),
+                          moves=False)
 
     # -- display -------------------------------------------------------------
 
@@ -697,6 +719,7 @@ class JogPanel(QWidget):
         view.set_position(self.position_lines)
         self.help_changed.connect(view.set_help)
         view.set_help(self.help_lines)
+        self._marks.append(PositionMarks(self.session, self, view))
 
     @property
     def help_lines(self) -> list[str]:
@@ -719,6 +742,14 @@ class JogPanel(QWidget):
         # only gaps.
         self._status = re.sub(r"\(\s+", "(", re.sub(r"\s+", " ", status)).strip()
         self._emit_position()
+        found = POSE.match(self._status)
+        if found:
+            self._set_pose(tuple(float(v) for v in found.groups()))
+
+    def _set_pose(self, pose) -> None:
+        if pose != self.pose:
+            self.pose = pose
+            self.pose_changed.emit(pose)
 
     def _say(self, text: str, firm: bool = False) -> None:
         """Words rather than colour. Running into a soft limit is ordinary, and
@@ -789,6 +820,7 @@ class JogPanel(QWidget):
         robot = self.session.robot
         if robot is None:
             self.controller = None
+            self._set_pose(None)
             self._status = NO_ROBOT
             self._say("")
             self._set_enabled(False)

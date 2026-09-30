@@ -64,6 +64,13 @@ took a `focus` control at open — the lower camera has a motorised lens and its
 focus is set from the profile, which is the wrong place to be tuning it by
 trial. The slider sets it on the device live and reads it back; the profile is
 written from the Profile page, deliberately a separate act.
+
+A third, "points", appears only while a page has marks to offer
+(`set_marks_available`): the profile's saved positions drawn where they are
+on the deck (`gui.position_marks`). Off by default, and remembered per camera
+like the crosshair. The marks are a layer of their own, apart from
+`set_overlay_items`, so a page's detections and the saved points never
+overwrite each other.
 """
 
 from __future__ import annotations
@@ -134,6 +141,10 @@ class CameraView(QWidget):
     # Not emitted for a click outside the picture, or on the controls that
     # sit over it - those are widgets and take their own clicks.
     clicked = Signal(float, float)
+    # Another camera, or none, is now shown.
+    camera_changed = Signal()
+    # The "points" box was ticked or cleared.
+    marks_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -153,6 +164,7 @@ class CameraView(QWidget):
         self._fps_at = time.monotonic()
         self._fps_count = 0
         self._overlay: list = []
+        self._marks: list = []
         self._position: list[str] = []
         self._status: list[str] = []
         self._help: list[str] = []
@@ -174,6 +186,8 @@ class CameraView(QWidget):
         # Remembered per camera label, so a choice made on one feed of the
         # lower camera holds on every other feed of it.
         self._crosshair_choice: dict[str, bool] = {}
+        self._marks_choice: dict[str, bool] = {}
+        self._marks_available = False
         self._build_controls()
 
         self._timer = QTimer(self)
@@ -196,6 +210,15 @@ class CameraView(QWidget):
             f"QCheckBox {{ color: rgb({CAPTION_FG.red()},{CAPTION_FG.green()},"
             f"{CAPTION_FG.blue()}); background: rgba(0,0,0,140); "
             f"padding: 4px 6px; border-radius: 4px; }}")
+
+        self.marks_box = QCheckBox("points", self)
+        self.marks_box.setChecked(False)
+        self.marks_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.marks_box.setToolTip("Show the positions saved in the profile "
+                                  "where they are on the deck.")
+        self.marks_box.toggled.connect(self._marks_toggled)
+        self.marks_box.setStyleSheet(self.crosshair_box.styleSheet())
+        self.marks_box.hide()
 
         self.focus_row = QWidget(self)
         row = QHBoxLayout(self.focus_row)
@@ -254,6 +277,7 @@ class CameraView(QWidget):
         self._centre = None
         self._sync_controls()
         self.update()
+        self.camera_changed.emit()
 
     # -- the controls on the picture -----------------------------------------
 
@@ -270,6 +294,11 @@ class CameraView(QWidget):
         self.crosshair_box.setChecked(wanted)
         self.crosshair_box.blockSignals(False)
         self.crosshair_box.setVisible(self._camera is not None)
+        self.marks_box.blockSignals(True)
+        self.marks_box.setChecked(self._marks_choice.get(label, False))
+        self.marks_box.blockSignals(False)
+        self.marks_box.setVisible(self._camera is not None
+                                  and self._marks_available)
 
         controls = getattr(self._camera, "controls", None)
         applied = getattr(controls, "applied", {}) or {}
@@ -297,6 +326,32 @@ class CameraView(QWidget):
             self._crosshair_choice[self._label()] = bool(on)
         self.update()
 
+    @property
+    def marks_shown(self) -> bool:
+        return self.marks_box.isVisible() and self.marks_box.isChecked()
+
+    def set_marks_available(self, available: bool) -> None:
+        """Whether there are marks to offer, which is what shows the box."""
+        available = bool(available)
+        if available == self._marks_available:
+            return
+        self._marks_available = available
+        self.marks_box.setVisible(self._camera is not None and available)
+        self._place_controls()
+        self.update()
+
+    def set_marks(self, primitives) -> None:
+        """The marks layer, in sensor coordinates like `set_overlay_items`;
+        drawn while the "points" box is ticked."""
+        self._marks = list(primitives or ())
+        self.update()
+
+    def _marks_toggled(self, on: bool) -> None:
+        if self._camera is not None:
+            self._marks_choice[self._label()] = bool(on)
+        self.marks_toggled.emit(bool(on))
+        self.update()
+
     def _focus_moved(self, value: int) -> None:
         """Coalesced: a drag produces dozens of values a second and the
         device takes one control transfer at a time."""
@@ -320,6 +375,10 @@ class CameraView(QWidget):
         hint = self.crosshair_box.sizeHint()
         self.crosshair_box.move(self.width() - hint.width() - margin, margin)
         self.crosshair_box.resize(hint)
+        marks = self.marks_box.sizeHint()
+        self.marks_box.move(self.width() - marks.width() - margin,
+                            margin + hint.height() + margin // 2)
+        self.marks_box.resize(marks)
         height = self.focus_row.sizeHint().height()
         width = min(360, max(200, self.width() - 2 * margin))
         self.focus_row.setGeometry(margin, self.height() - height - margin,
@@ -712,6 +771,8 @@ class CameraView(QWidget):
         painter.drawImage(self._shown, self._image)
         if self._overlay:
             overlay_painter.paint(painter, self._overlay, self._transform)
+        if self._marks and self.marks_shown:
+            overlay_painter.paint(painter, self._marks, self._transform)
         if self.crosshair_box.isChecked():
             self._draw_crosshair(painter, self._box)
         self._draw_caption(painter)
