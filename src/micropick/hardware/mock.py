@@ -203,6 +203,9 @@ class MockRobot:
     def blow_out_in_place(self, flow_rate=25.0):
         self.calls.append(("blow_out_in_place", float(flow_rate)))
 
+    def prepare_to_aspirate(self):
+        self.calls.append(("prepare_to_aspirate",))
+
     # -- tips ----------------------------------------------------------------
 
     def pick_up_tip(self, labware_id, well_name, xyz_offset=(0, 0, 0),

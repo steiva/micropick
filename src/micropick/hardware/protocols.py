@@ -22,7 +22,7 @@ import numpy as np
 
 __all__ = ["Camera", "Robot", "xyz", "move_to", "move_relative", "goto_xy",
            "MoveFailed", "preflight", "command_status", "require_ok",
-           "lights_on", "set_lights"]
+           "lights_on", "set_lights", "prepare_to_aspirate"]
 
 
 @runtime_checkable
@@ -88,6 +88,9 @@ class Robot(Protocol):
 
     def dispense_in_place(self, volume: float, flow_rate: float,
                           verbose: bool = False) -> Any:
+        ...
+
+    def blow_out_in_place(self, flow_rate: float = 25.0) -> Any:
         ...
 
     def dispense(self, labware_id: str, well_name: str,
@@ -236,6 +239,32 @@ def goto_xy(robot: Robot, x: float, y: float, *, tolerance_mm: float = 0.1,
         raise MoveFailed(f"asked for XY {_fmt(target)}, ended at "
                          f"{_fmt(reached[:2])} ({gap:.2f} mm off)")
     return reached
+
+
+def prepare_to_aspirate(robot: Robot):
+    """Make the plunger ready for an aspirate in place after a blow out.
+
+    The robot refuses `aspirateInPlace` straight after a blow out until the
+    plunger is prepared. A well-based aspirate prepares it by itself, which
+    is why the washing notebook's shake worked; in place there is no well,
+    so the engine's own `prepareToAspirate` is sent. The wrapper has no
+    method for it, so it goes through the same `post` its methods use; a
+    backend with a `prepare_to_aspirate` of its own (the mock) answers that
+    way instead, and one with neither is left alone.
+    """
+    own = getattr(robot, "prepare_to_aspirate", None)
+    if callable(own):
+        return require_ok(own(), "prepare to aspirate")
+    post, pipette = getattr(robot, "post", None), getattr(robot, "pipette_id", None)
+    if not callable(post) or not pipette:
+        return None
+    import json
+    payload = json.dumps({"data": {"commandType": "prepareToAspirate",
+                                   "params": {"pipetteId": pipette},
+                                   "intent": "setup"}})
+    return require_ok(post("commands", headers=getattr(robot, "HEADERS", None),
+                           params={"waitUntilComplete": True}, data=payload),
+                      "prepare to aspirate")
 
 
 def lights_on(robot: Robot) -> bool | None:
