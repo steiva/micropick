@@ -1253,7 +1253,9 @@ as an absolute Z for that plate. It is reached as the notebook did, not by a
 well command: the robot refuses a well command whose point is below the
 definition's bottom, which a measured bottom often is. So: over the
 measured rim with `move_to_well`, the plunger prepared there, straight down
-with `move_to_coordinates`, and the liquid commands in place.
+with `move_to_coordinates`, and the liquid commands in place; and out of it
+with `move_to_well` to the top +5 mm, not a retract, so the robot finds the
+next well by its own path.
 
 **A group and a well location remember the labware's load name**, not only
 the slot, and a slot now holding something else is a problem the page

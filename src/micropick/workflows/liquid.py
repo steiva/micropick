@@ -30,9 +30,11 @@ and a measured bottom is often just that. So it is reached as notebook 03
 did (`_descend`): a `move_to_well` to over the measured rim, the pose read
 there, the engine's `prepareToAspirate` while the tip is still above the
 liquid, and one straight `move_to_coordinates` down to the absolute Z; the
-liquid commands there are the in-place ones. The robot did not put the tip
-there by a well command, so the next well is reached with the tip raised
-first, as from a saved point.
+liquid commands there are the in-place ones. Leaving it, the tip goes up
+out of the same well with a well command - `move_to_well` to the top,
+`LIFT_OUT_MM` over it, straight above where it was (`_lift_out`) - rather
+than a retract of the whole axis: from there the robot has put the tip
+where it is, and finds the next well by its own path.
 
 A saved point is the robot's coordinates, not a place it plans a path to,
 so it is reached by the rules of manual control (`workflows.manual`): the
@@ -105,6 +107,10 @@ SHAKE_FLOW = 50.0
 # How far over the measured rim the tip stops before going straight down
 # to the measured bottom.
 APPROACH_MM = 2.0
+
+# How far over the robot's well top the tip comes up out of a measured
+# bottom before going anywhere else.
+LIFT_OUT_MM = 5.0
 
 # Volumes are compared with this much slack: 0.1 + 0.2 is not 0.3.
 VOLUME_TOL = 1e-6
@@ -365,27 +371,52 @@ def go(robot: Robot, location: Location, group: Group, well: str,
     if location.kind == "point":
         x, y, z = positions[location.point]
         ox, oy, oz = location.offset
+        _lift_out(robot, state, plates, log)
         state.z_top = moves.drive_tip(robot, (x + ox, y + oy), z + oz,
                                       state.z_top, log=log)
     elif location.level == MEASURED_BOTTOM:
-        _leave_for_well(robot, state, log)
+        _leave_for_well(robot, state, plates, log)
         _descend(robot, location, group, well, plates, log, prepare)
     else:
         place = _well_target(location, group, well, plates, state)
-        _leave_for_well(robot, state, log)
+        _leave_for_well(robot, state, plates, log)
         _say(log, f"tip to {_where(place)}")
         _in_well(robot, "move_to_well", place, verbose=False)
     state.at = key
     state.last = (location, group, well)
 
 
-def _leave_for_well(robot: Robot, state: LiquidState, log) -> None:
+def _leave_for_well(robot: Robot, state: LiquidState,
+                    plates: dict[str, Plate], log) -> None:
     """Before a command the robot moves into a well by itself: the tip up
-    first, unless a well command of the robot's put it where it is. See
-    "Getting there"."""
-    if (state.at is None or state.at[0] not in ("this_well", "well")
-            or state.at[3] == MEASURED_BOTTOM):
+    first, unless a well command of the robot's put it where it is - out
+    of a measured bottom by one (`_lift_out`). See "Getting there"."""
+    _lift_out(robot, state, plates, log)
+    if state.at is None or state.at[0] not in ("this_well", "well"):
         state.z_top = moves.raise_tip(robot, state.z_top, log=log)
+
+
+def _lift_out(robot: Robot, state: LiquidState, plates: dict[str, Plate],
+              log) -> None:
+    """If the tip stands at a measured bottom, up out of that well with the
+    robot's own well move: the top, `LIFT_OUT_MM` over it, straight above.
+    Then the robot has put it where it is, as after any well command."""
+    if (state.at is None or state.at[0] not in ("this_well", "well")
+            or state.at[3] != MEASURED_BOTTOM or state.last is None):
+        return
+    location, group, well = state.last
+    plate, target = _plate_well(location, group, well, plates)
+    x, y, _z = (float(v) for v in location.offset)
+    cx, cy, _cz = plate.centre or (0.0, 0.0, 0.0)
+    _say(log, f"up out of {target}: top +{LIFT_OUT_MM:g} mm")
+    require_ok(robot.move_to_well(
+        plate.labware_id, target, well_location="top",
+        offset=(round(x + cx, 3), round(y + cy, 3), LIFT_OUT_MM),
+        verbose=False), "move to well")
+    lifted = location.model_copy(update={"level": "top",
+                                         "offset": [x, y, LIFT_OUT_MM]})
+    state.at = lifted.key(well)
+    state.last = (lifted, group, well)
 
 
 def _plate_well(location: Location, group: Group, well: str,
@@ -484,7 +515,7 @@ def do_step(robot: Robot, step, group: Group, well: str,
             and location.level != MEASURED_BOTTOM):
         place = _well_target(location, group, well, plates, state)
         if location.key(well) != state.at:
-            _leave_for_well(robot, state, log)
+            _leave_for_well(robot, state, plates, log)
     else:
         # An aspirate in place needs the plunger ready; an empty tip is made
         # ready on the way down to a measured bottom.
