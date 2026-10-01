@@ -13,10 +13,12 @@ marks draw differently:
 - **A camera pose** - the names in `CAMERA_POSITIONS`, each set on its own
   page and read by a workflow as where the upper camera looks from. A ring
   where the tip would go would sit a pipette offset away from anything that
-  matters. What matters is the picture the camera takes from there: its
-  outline (the frame's edges through `PixelMap.to_robot` at that pose, back
-  through `to_pixel` at the current one) and a cross at its centre. Standing
-  at the pose, the outline is the picture's border.
+  matters. What matters is the centre of the picture the camera takes from
+  there, which is the pose itself with no offset: a square of the ring's
+  size, open at the middle of each side - a viewfinder - with a dot in it.
+  Standing at the pose, it is at the picture's centre.
+
+Both are the same green; the shape says which is which.
 
 Which is which is decided by the name, never by the operator: a camera pose
 is only taught by the button of the page that uses it, and the jog panel
@@ -49,15 +51,13 @@ __all__ = ["MARK", "CAMERA_POSITIONS", "mark_items", "PositionMarks"]
 # POSITION_NAME`).
 CAMERA_POSITIONS = {"observe": "Picking", "tip_calib": "Pipette"}
 
-# BGR, as every overlay colour. Cyan: no detection class uses it, and it
-# reads on a dark dish and a bright one.
-MARK = (255, 230, 0)
+# BGR, as every overlay colour. A light green, for both kinds: paler than
+# the pure green of the isolated cuboids, so the two are not confused.
+MARK = (120, 255, 120)
 RADIUS_PX = 22
+# Half the gap in the middle of each side of a camera pose's square.
+GAP_PX = 8
 LABEL_SCALE = 1.4
-
-# Points along each edge of a camera pose's outline: the map is not linear,
-# so the edges are not quite straight.
-EDGE_SAMPLES = 8
 
 
 def _inside(u, v, width, height) -> bool:
@@ -86,65 +86,36 @@ def _tip_items(name, pose, pmap, pipette_offset, gantry_xy, image_size):
             _label(name, centre)]
 
 
-def _outline(pmap, pose_xy, gantry_xy, image_size):
-    """The frame's border seen from `pose_xy`, in pixels of a frame taken at
-    `gantry_xy`, or None where the map cannot invert it."""
-    width, height = image_size
-    w, h = width - 1, height - 1
-    t = np.linspace(0.0, 1.0, EDGE_SAMPLES, endpoint=False)
-    u = np.concatenate([t * w, np.full_like(t, w), (1 - t) * w,
-                        np.zeros_like(t)])
-    v = np.concatenate([np.zeros_like(t), t * h, np.full_like(t, h),
-                        (1 - t) * h])
-    deck = pmap.to_robot(u, v, pose_xy)
-    out = []
-    for x, y in deck:
-        pixel = pmap.to_pixel(x, y, gantry_xy)
-        if pixel is None:
-            return None
-        out.append(pixel)
-    return np.asarray(out)
-
-
 def _camera_items(name, pose, pmap, gantry_xy, image_size):
-    """The outline of the picture taken from `pose`, a cross at its centre."""
+    """A square open at the middle of each side, the ring's size, where the
+    centre of the camera's picture would be, and a dot in it."""
     width, height = image_size
-    pose_xy = (float(pose[0]), float(pose[1]))
-    out = []
-    outline = _outline(pmap, pose_xy, gantry_xy, image_size)
-    if outline is not None:
-        x0, y0 = outline.min(axis=0)
-        x1, y1 = outline.max(axis=0)
-        if x1 >= 0 and y1 >= 0 and x0 < width and y0 < height:
-            out.append(overlays.Polyline(
-                points=np.round(outline).astype(np.int32), closed=True,
-                color=MARK, thickness=2))
     # The reference pixel is where the pose itself is seen (`to_robot` of it
-    # is the gantry), so the centre needs no outline to be found.
-    centre = pmap.to_pixel(*pose_xy, gantry_xy)
-    if centre is not None and _inside(*centre, width, height):
-        cx, cy = int(round(centre[0])), int(round(centre[1]))
-        for a, b in (((cx - RADIUS_PX, cy), (cx + RADIUS_PX, cy)),
-                     ((cx, cy - RADIUS_PX), (cx, cy + RADIUS_PX))):
-            out.append(overlays.Polyline(points=np.array([a, b], np.int32),
-                                         closed=False, color=MARK,
-                                         thickness=2))
-        out.append(_label(name, (cx, cy)))
-    elif out:
-        # Only the outline is in view: name it at its corner nearest the
-        # picture's top-left that is in view, or at the picture's own.
-        seen = [p for p in outline if _inside(*p, width, height)]
-        corner = min(seen, key=lambda p: p[0] + p[1]) if seen else (0, 0)
-        out.append(overlays.Text(
-            text=str(name), org=(int(corner[0]) + 8, int(corner[1]) + 36),
-            scale=LABEL_SCALE, color=MARK, thickness=2))
+    # is the gantry), so the pose is the deck point to draw.
+    pixel = pmap.to_pixel(float(pose[0]), float(pose[1]), gantry_xy)
+    if pixel is None or not _inside(*pixel, width, height):
+        return []
+    cx, cy = int(round(pixel[0])), int(round(pixel[1]))
+    r, g = RADIUS_PX, GAP_PX
+    out = []
+    # Each corner as an L of two arms stopping short of the side's middle.
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            corner = (cx + sx * r, cy + sy * r)
+            out.append(overlays.Polyline(
+                points=np.array([(cx + sx * g, cy + sy * r), corner,
+                                 (cx + sx * r, cy + sy * g)], np.int32),
+                closed=False, color=MARK, thickness=2))
+    out.append(overlays.Circle(center=(cx, cy), radius=3, color=MARK,
+                               thickness=-1, fill=True))
+    out.append(_label(name, (cx, cy)))
     return out
 
 
 def mark_items(positions: dict, pmap: PixelMap, pipette_offset, gantry_xy,
                image_size) -> list:
-    """The marks of every position with any part inside the frame: a ring
-    for a pipette point, an outline for a camera pose."""
+    """The marks of every position inside the frame: a ring for a pipette
+    point, a viewfinder square for a camera pose."""
     out = []
     for name, pose in sorted(positions.items()):
         if name in CAMERA_POSITIONS:
