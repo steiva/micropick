@@ -43,6 +43,10 @@ change. Typing a number into the box applies it as it is typed, so "12"
 would be two changes; typing into the same selection is one step instead.
 Choosing another plate starts a new history.
 
+Ctrl+A selects every well and Delete takes the selected ones out of the
+plan. Every gesture and key is listed on the page, one per line, from
+`GESTURES` - the same list a new key has to be added to.
+
 The version note. `check_labware` prints a line to stdout when the slot reports
 a different definition revision, and from a GUI that goes nowhere anyone can
 see. Since `ot2_api.load_labware` hard-codes version 1 in the load command, that
@@ -90,6 +94,24 @@ MINI_DECK_HEIGHT = 190
 
 # How many plan snapshots Undo keeps.
 UNDO_LIMIT = 100
+
+# What the plate answers to, as shown on the page. The keys are bound in
+# `_install_shortcuts`; a key added there belongs in this list too.
+GESTURES = (
+    ("Click", "select a well"),
+    ("Ctrl+click", "add a well to the selection, or take it out"),
+    ("Shift+click", "take a well out of the selection"),
+    ("Drag", "select the wells in a box (Ctrl adds, Shift takes out)"),
+    ("Row letter, column number", "select the whole line (Ctrl, Shift as "
+                                  "above)"),
+    ("Click on empty space", "select nothing"),
+    ("Double-click", "put the Per well number into that well"),
+    ("Per well number", "applies to the selected wells as you type; 0 takes "
+                        "them out of the plan"),
+    ("Ctrl+A", "select all wells"),
+    ("Delete", "take the selected wells out of the plan"),
+    ("Ctrl+Z / Ctrl+Y", "undo / redo"),
+)
 
 
 def routines_dir() -> Path:
@@ -161,7 +183,13 @@ class RoutinePage(QWidget):
                                    self._undo_plan),
                                   (QKeySequence("Ctrl+Y"), self._redo_plan),
                                   (QKeySequence.StandardKey.Redo,
-                                   self._redo_plan)):
+                                   self._redo_plan),
+                                  (QKeySequence.StandardKey.SelectAll,
+                                   self._select_all),
+                                  (QKeySequence(Qt.Key.Key_Delete),
+                                   self._delete_selected),
+                                  (QKeySequence(Qt.Key.Key_Backspace),
+                                   self._delete_selected)):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(handler)
@@ -208,12 +236,14 @@ class RoutinePage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Plan", 2))
 
-        note = QLabel(
-            "Click a well to select it, Ctrl to add, Shift to remove; drag a "
-            "box over several; click a row letter or a column number for the "
-            "whole line. Then set how many objects each selected well should "
-            "get — 0 takes them out of the plan again.")
+        # Every gesture and key the plate answers to, one per line: the
+        # sentence this replaced named half of them.
+        rows = "".join(
+            f"<tr><td style='padding-right:10px'><b>{what}</b></td>"
+            f"<td>{does}</td></tr>" for what, does in GESTURES)
+        note = QLabel(f"<table>{rows}</table>")
         note.setWordWrap(True)
+        note.setTextFormat(Qt.TextFormat.RichText)
         box.layout().addWidget(note)
 
         selecting = QHBoxLayout()
@@ -454,6 +484,17 @@ class RoutinePage(QWidget):
         if self.routine is not None:
             return
         self._change_plan({})
+
+    def _select_all(self) -> None:
+        if self.destination is not None:
+            self.plate.select_all()
+
+    def _delete_selected(self) -> None:
+        """Delete: the selected wells out of the plan, as 0 would."""
+        if not self._editable() or not self._selection:
+            return
+        self._change_plan({w: n for w, n in self._plan.items()
+                           if w not in self._selection})
 
     # -- history -------------------------------------------------------------
 

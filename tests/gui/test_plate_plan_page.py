@@ -88,3 +88,21 @@ def test_choosing_the_plate_again_starts_a_new_history(page):
     _set(page, {"A1"}, 1)
     page._use_plate()
     assert page._plan == {} and not page.undo_button.isEnabled()
+
+
+def test_ctrl_a_selects_all_and_delete_takes_the_selection_out(app, page):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    page.show()
+    app.processEvents()
+    _set(page, {"A1", "A2", "B1"}, 2)
+    page.plate.set_selection({"A1", "B1"})
+    QTest.keyClick(page.plate.viewport(), Qt.Key.Key_Delete)
+    assert page._plan == {"A2": 2}
+    QTest.keyClick(page.plate.viewport(), Qt.Key.Key_A,
+                   Qt.KeyboardModifier.ControlModifier)
+    assert len(page.plate.selection) == 96
+    QTest.keyClick(page.plate.viewport(), Qt.Key.Key_Z,
+                   Qt.KeyboardModifier.ControlModifier)
+    assert page._plan == {"A1": 2, "A2": 2, "B1": 2}
+    page.hide()
