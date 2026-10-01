@@ -482,10 +482,12 @@ class PickingPage(QWidget):
 
     def _draw_histogram(self) -> None:
         profile = self.session.profile
-        self.histogram.show_detection(
+        bins = self.histogram.show_detection(
             self._detection,
             profile.picking.cuboid_size_threshold if profile else None,
             after=HIST_AFTER)
+        # The same bins over the picture, small: what the plot counts.
+        self.view.set_histogram(bins)
 
     # -- the detector ----------------------------------------------------------
 

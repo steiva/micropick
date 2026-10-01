@@ -184,3 +184,24 @@ def test_a_click_outside_the_picture_is_not_a_click_on_it(app):
     _click(app, view, QPointF(view.width() / 2, 2.0))
     assert seen == []
     view.close()
+
+
+def test_a_size_histogram_is_drawn_over_the_picture_without_failing(app):
+    """Painted onto an offscreen widget with a frame: the drawing path runs
+    end to end, and the toggle appears with the histogram."""
+    import numpy as np
+    import pandas as pd
+    from micropick.gui.detector import Detection
+    from micropick.gui.widgets.camera_view import CameraView
+    from micropick.gui.widgets.size_histogram import size_bins
+    df = pd.DataFrame({"diameter_microns": [300.0, 320.0, 600.0]})
+    empty = df.iloc[0:0]
+    detection = Detection(np.empty((0, 4)), np.empty(0), df, empty, empty,
+                          empty, {}, classified=True, standin=False)
+    view = CameraView()
+    view.resize(900, 700)
+    view.hold(np.zeros((480, 640, 3), dtype=np.uint8))
+    view.set_histogram(size_bins(detection, (250, 500)))
+    view.grab()                                       # paints
+    view.set_histogram(None)
+    assert view._histogram is None

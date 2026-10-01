@@ -71,6 +71,13 @@ on the deck (`gui.position_marks`). Off by default, and remembered per camera
 like the crosshair. The marks are a layer of their own, apart from
 `set_overlay_items`, so a page's detections and the saved points never
 overwrite each other.
+
+And a fourth, "sizes", while a page has handed over a size histogram
+(`set_histogram`, the bins of `widgets.size_histogram`): the cuboids'
+diameters against the size window, small and translucent in the
+bottom-left corner. Chrome like the caption - drawn in widget pixels,
+never into the frame, and not a widget, so a click on it still reaches the
+picture. On by default when it appears.
 """
 
 from __future__ import annotations
@@ -87,6 +94,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel,
 from ...core.vision.cuboids import center_crop_box
 from . import overlay_painter
 from .frame import to_qimage
+from .size_histogram import BAR, INSIDE, WINDOW_EDGE
 
 __all__ = ["CameraView"]
 
@@ -123,6 +131,9 @@ ZOOM_STEP = 1.25                 # per wheel notch
 # Arducam takes 0-1023). A value outside is still shown, clamped.
 FOCUS_RANGE = (0, 1023)
 FOCUS_SETTLE_MS = 60             # coalesce slider moves into one set()
+
+# The size histogram over the picture: its box, in widget pixels.
+HIST_BOX = (300, 150)
 
 # The label of a camera whose crosshair is off unless asked for.
 UNDER_WORD = "under"
@@ -165,6 +176,7 @@ class CameraView(QWidget):
         self._fps_count = 0
         self._overlay: list = []
         self._marks: list = []
+        self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
         self._status: list[str] = []
         self._help: list[str] = []
@@ -219,6 +231,15 @@ class CameraView(QWidget):
         self.marks_box.toggled.connect(self._marks_toggled)
         self.marks_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.marks_box.hide()
+
+        self.sizes_box = QCheckBox("sizes", self)
+        self.sizes_box.setChecked(True)
+        self.sizes_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.sizes_box.setToolTip("Show the cuboids' sizes against the size "
+                                  "window over the picture.")
+        self.sizes_box.toggled.connect(lambda _on: self.update())
+        self.sizes_box.setStyleSheet(self.crosshair_box.styleSheet())
+        self.sizes_box.hide()
 
         self.focus_row = QWidget(self)
         row = QHBoxLayout(self.focus_row)
@@ -299,6 +320,8 @@ class CameraView(QWidget):
         self.marks_box.blockSignals(False)
         self.marks_box.setVisible(self._camera is not None
                                   and self._marks_available)
+        self.sizes_box.setVisible(self._camera is not None
+                                  and self._histogram is not None)
 
         controls = getattr(self._camera, "controls", None)
         applied = getattr(controls, "applied", {}) or {}
@@ -346,6 +369,14 @@ class CameraView(QWidget):
         self._marks = list(primitives or ())
         self.update()
 
+    def set_histogram(self, bins) -> None:
+        """The size histogram to draw over the picture, or None. See the
+        module docstring."""
+        self._histogram = bins
+        self.sizes_box.setVisible(self._camera is not None and bins is not None)
+        self._place_controls()
+        self.update()
+
     def _marks_toggled(self, on: bool) -> None:
         if self._camera is not None:
             self._marks_choice[self._label()] = bool(on)
@@ -375,10 +406,14 @@ class CameraView(QWidget):
         hint = self.crosshair_box.sizeHint()
         self.crosshair_box.move(self.width() - hint.width() - margin, margin)
         self.crosshair_box.resize(hint)
-        marks = self.marks_box.sizeHint()
-        self.marks_box.move(self.width() - marks.width() - margin,
-                            margin + hint.height() + margin // 2)
-        self.marks_box.resize(marks)
+        # The toggles stack down the top-right corner, the shown ones only.
+        top = margin + hint.height() + margin // 2
+        for box in (self.marks_box, self.sizes_box):
+            size = box.sizeHint()
+            box.move(self.width() - size.width() - margin, top)
+            box.resize(size)
+            if box.isVisible():
+                top += size.height() + margin // 2
         height = self.focus_row.sizeHint().height()
         width = min(360, max(200, self.width() - 2 * margin))
         self.focus_row.setGeometry(margin, self.height() - height - margin,
@@ -775,6 +810,8 @@ class CameraView(QWidget):
             overlay_painter.paint(painter, self._marks, self._transform)
         if self.crosshair_box.isChecked():
             self._draw_crosshair(painter, self._box)
+        if self._histogram is not None and self.sizes_box.isChecked():
+            self._draw_histogram(painter)
         self._draw_caption(painter)
         self._draw_help(painter)
         painter.end()
@@ -806,6 +843,65 @@ class CameraView(QWidget):
         # doing: boxes of one kind, stacked down the corner.
         self._draw_boxes(painter, [["   ".join(parts)], self._lost_lines(),
                                    self._position, self._status])
+
+    def _draw_histogram(self, painter: QPainter) -> None:
+        """The size histogram, small, in the bottom-left corner: clear of
+        the help on the right and of the focus slider when there is one.
+        The same bins as the page's plot, so the two count alike."""
+        bins = self._histogram
+        width, height = HIST_BOX
+        if self.width() < 2 * width or self.height() < 2 * height:
+            return                                # no room on a small view
+        bottom = (self.focus_row.geometry().top() - 8
+                  if self.focus_row.isVisible() else self.height() - 8)
+        box = QRect(8, bottom - height, width, height)
+        painter.fillRect(box, CAPTION_BG)
+        painter.setFont(QFont(self.font().family(), 9))
+        metrics = painter.fontMetrics()
+        line = metrics.height()
+        pad = CAPTION_PAD
+        # The plot area: under a line for the largest count, over a line for
+        # the window's edges and a line for the sentence.
+        plot = QRect(box.x() + pad, box.y() + pad + line, width - 2 * pad,
+                     height - 2 * pad - 3 * line)
+        x0, x1 = bins.x_range
+        scale = plot.width() / (x1 - x0)
+
+        def x_of(value: float) -> float:
+            return plot.left() + (value - x0) * scale
+
+        band = QRectF(x_of(bins.low), plot.top(),
+                      x_of(bins.high) - x_of(bins.low), plot.height())
+        painter.fillRect(band, QColor(*WINDOW_EDGE, 45))
+        painter.setPen(QPen(QColor(*WINDOW_EDGE), 1.5))
+        for edge in (bins.low, bins.high):
+            painter.drawLine(QPointF(x_of(edge), plot.top()),
+                             QPointF(x_of(edge), plot.bottom()))
+        peak = max(1, int(bins.counts.max()))
+        bar_width = max(1.0, bins.width * scale * 0.92)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for centre, count, inside in zip(bins.centres, bins.counts,
+                                         bins.inside_bins):
+            if not count:
+                continue
+            bar_height = plot.height() * count / peak
+            colour = QColor(*(INSIDE if inside else BAR), 210)
+            painter.fillRect(QRectF(x_of(centre) - bar_width / 2,
+                                    plot.bottom() - bar_height,
+                                    bar_width, bar_height), colour)
+        painter.setPen(QPen(CAPTION_FG))
+        painter.drawText(QRect(plot.left(), box.y() + pad, plot.width(), line),
+                         Qt.AlignmentFlag.AlignLeft, f"sizes, µm  ·  max {peak}")
+        for edge in (bins.low, bins.high):
+            text = f"{edge:g}"
+            half = metrics.horizontalAdvance(text) / 2
+            painter.drawText(QPointF(x_of(edge) - half,
+                                     plot.bottom() + line), text)
+        painter.drawText(QRect(plot.left(), plot.bottom() + line + 2,
+                               plot.width(), line),
+                         Qt.AlignmentFlag.AlignLeft,
+                         f"{bins.inside} of {bins.total} inside  ·  "
+                         f"{bins.smaller} smaller, {bins.bigger} bigger")
 
     def _lost_lines(self) -> list[str]:
         """Under the caption while the camera is being opened again: the

@@ -155,3 +155,14 @@ def test_a_slot_on_the_deck_map_brings_the_camera_over_its_centre(app, page,
     _wait(app, page)
     pos = session.robot.get_position(verbose=False)[0]
     assert (pos["x"], pos["y"]) == pytest.approx(slot_centre(5), abs=0.05)
+
+
+def test_the_same_sizes_are_drawn_over_the_picture(page):
+    page.session.profile.picking.cuboid_size_threshold = (250, 500)
+    page._cuboids = _detection([300, 320, 600])
+    page._show_sizes()
+    bins = page.view._histogram
+    assert bins is not None and (bins.inside, bins.total) == (2, 3)
+    assert page.view.sizes_box.isChecked()
+    page._forget_targets()
+    assert page.view._histogram is None
