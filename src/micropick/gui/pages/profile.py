@@ -273,6 +273,18 @@ class ProfilePage(QWidget):
         self.robot_state = QLabel()
         box.layout().addWidget(self.robot_state)
 
+        # The first thing to do, said before the button that needs it: a
+        # Connect pressed while the robot is still starting up fails with a
+        # network error that says nothing about why.
+        self.robot_hint = QLabel(
+            "1. Turn the robot on and wait for it to start up - about a "
+            "minute, until the light on its front button stops blinking and "
+            "stays on.\n"
+            "2. Press Connect. It only asks the robot what it is doing; "
+            "nothing moves yet.")
+        self.robot_hint.setWordWrap(True)
+        box.layout().addWidget(self.robot_hint)
+
         self.connect_button = primary_button("Connect", self)
         self.connect_button.clicked.connect(self._connect)
         self.disconnect_button = secondary_button("Disconnect", self)
@@ -621,6 +633,7 @@ class ProfilePage(QWidget):
         connected = session.robot is not None
         probed = session.run_state is not None and not connected
         self.robot_state.setText(f"State: {session.robot_state}")
+        self.robot_hint.setVisible(session.run_state is None)
         self.connect_button.setEnabled(session.run_state is None and not busy)
         self.disconnect_button.setEnabled(
             session.run_state is not None and not busy)
