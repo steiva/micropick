@@ -31,7 +31,10 @@ else reads. Two lists, one visible and one useful. The visible one is gone:
 this list is `profile.positions`, with its coordinates beside each name,
 and saving, renaming and deleting all write to the profile. `tip_calib`
 taught by the pipette calibration, or by the notebook, appears here and can
-be driven to, which is the point of having named a pose at all.
+be driven to, which is the point of having named a pose at all. What is
+saved here is a pipette point; the camera poses (`observe`, `tip_calib`:
+`position_marks.CAMERA_POSITIONS`) are only taught on their own pages, so
+saving or renaming to one of those names is refused.
 
 `shortcut_host` is the widget the key bindings are registered on, normally the
 page. They are `WindowShortcut`: while the panel is on screen the keys reach
@@ -124,7 +127,7 @@ from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
 from ...workflows import manual as moves
 from ...workflows.jog import (DEFAULT_STEPS, LAYOUT, JogController,
                               help_lines)
-from ..position_marks import PositionMarks
+from ..position_marks import CAMERA_POSITIONS, PositionMarks
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (Section, card, combo_box, heading,
@@ -146,6 +149,17 @@ POSITION_ROLE = Qt.ItemDataRole.UserRole
 
 def _position_row(name: str, where) -> str:
     return f"{name:<14} {where[0]:8.2f} {where[1]:8.2f} {where[2]:7.2f}"
+
+
+def camera_name_refusal(name: str) -> str | None:
+    """Why `name` cannot be given here, or None. A camera pose is taught on
+    the page that uses it, with the camera on the spot; saved from this
+    panel it would be taken for one and drawn and driven to as one."""
+    tab = CAMERA_POSITIONS.get(name)
+    if tab is None:
+        return None
+    return (f"{name!r} is where the camera looks from; set it on the {tab} "
+            f"tab with Set position")
 
 
 PANEL_WIDTH = 400
@@ -620,6 +634,10 @@ class JogPanel(QWidget):
         new = new.strip()
         if not ok or not new or new == name:
             return
+        why = camera_name_refusal(new)
+        if why is not None:
+            self._say(why, firm=True)
+            return
         try:
             self.session.rename_position(name, new)
         except Exception as exc:                 # noqa: BLE001
@@ -659,6 +677,10 @@ class JogPanel(QWidget):
             f"Name this deck position in profile {self.session.profile.name!r}:")
         name = name.strip()
         if not ok or not name:
+            return
+        why = camera_name_refusal(name)
+        if why is not None:
+            self._say(why, firm=True)
             return
         controller, session = self.controller, self.session
 
