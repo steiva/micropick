@@ -21,6 +21,12 @@ as a way of pointing:
 * **A click on a detected cuboid sends the tip to it**, at the Cuboid Z -
   the profile's pickup height, one number shared with the run.
 
+**On the lower camera a click never moves anything**, and the picture says
+so for as long as it is shown. The pixel map is the upper camera's; the
+lower one looks up at the tip, so a point on its picture is not a place on
+the deck, and a click there that moved the gantry would move it somewhere
+unrelated to what was clicked.
+
 Tip moves are only made inside the area the map was fitted over; a camera
 move outside it is only imprecise, a tip move outside it could put the tip
 into the wrong thing.
@@ -119,6 +125,9 @@ KEYS = (("A", "aspirate", "_aspirate"),
 
 # How far the tip may be sent from the chosen well level, either way.
 WELL_OFFSET_RANGE = (-50.0, 50.0)
+
+# On the picture while the lower camera is shown; see the module docstring.
+LOWER_CAMERA_NOTE = "lower camera: clicks do not move the robot"
 
 # What the mouse does on the picture, for the same box.
 MOUSE_HELP = ("click   move the camera or the tip there (Click to move on)",
@@ -537,6 +546,9 @@ class ManualPage(QWidget):
 
     def _clicked(self, u: float, v: float) -> None:
         """A click on the picture, in sensor pixels."""
+        if self._on_lower_camera():
+            self.jog.tell(LOWER_CAMERA_NOTE)
+            return
         problems = self._map_problems()
         if problems:
             self.jog.tell("Click: " + problems[0])
@@ -912,6 +924,10 @@ class ManualPage(QWidget):
     def _camera(self):
         return self.session.camera(self.camera_choice.currentText())
 
+    def _on_lower_camera(self) -> bool:
+        label = self.camera_choice.currentText()
+        return bool(label) and label == self.session.lower_camera_label
+
     def _refresh_cameras(self, _label: str = "") -> None:
         labels = self.session.open_cameras
         current = self.camera_choice.currentText()
@@ -932,6 +948,10 @@ class ManualPage(QWidget):
             # What was detected was the other camera's picture.
             self._forget_targets()
         self.view.set_camera(camera)
+        # Said on the picture, not only when a click is refused: the
+        # operator should know before clicking.
+        self.view.set_status([LOWER_CAMERA_NOTE] if self._on_lower_camera()
+                             else [])
         self._refresh()
 
     def showEvent(self, event) -> None:

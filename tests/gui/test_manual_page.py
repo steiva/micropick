@@ -120,3 +120,22 @@ def test_tip_mode_refuses_outside_the_map(app, page, session):
     _wait(app, page)
     assert dict(session.robot.get_position()[0]) == pytest.approx(before)
     assert "outside the calibrated area" in page.jog.position_lines[-1]
+
+
+def test_on_the_lower_camera_a_click_never_moves_and_the_picture_says_so(
+        app, page, session):
+    from micropick.gui.pages.manual import LOWER_CAMERA_NOTE
+    _calibrate(session)
+    session.open_camera(session.lower_camera_label)
+    app.processEvents()
+    page._refresh_cameras()
+    page.camera_choice.setCurrentText(session.lower_camera_label)
+    app.processEvents()
+    assert page.view._status == [LOWER_CAMERA_NOTE]
+    page.armed.setChecked(True)
+    before = dict(session.robot.get_position(verbose=False)[0])
+    page._clicked(W / 2 + 100, H / 2)
+    _wait(app, page)
+    assert dict(session.robot.get_position(verbose=False)[0]) == \
+        pytest.approx(before)
+    assert page.jog.position_lines[-1] == LOWER_CAMERA_NOTE
