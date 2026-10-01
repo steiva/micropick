@@ -17,8 +17,10 @@ start until the operator says yes to that particular text.
 
 **`check_labware` is a check, not a guarantee, and it says so.** It verifies
 the definition in the slot against the run state; it cannot verify that the
-physical plate is the one this progress belongs to. All three of its outcomes
-are surfaced as they come.
+physical plate is the one this progress belongs to. It runs by itself -
+when a plan is opened or created and whenever the robot session's labware
+changes - against the run state the session already keeps, so it costs no
+request, and its answer is one line in the Labware in the slot card.
 
 **The plate is one the robot already has.** It used to be any definition in
 `labware/`, with a slot typed in beside it — so a routine could name a plate
@@ -81,14 +83,12 @@ from ... import paths
 from ...config.labware import LabwareError
 from ...core.routine import (STRATEGIES, Destination, PlanPreset, Routine,
                              RoutineError)
-from ...hardware.labware import loaded_labware
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button, spin_box)
 from ..widgets.deck_view import DeckView
 from ..widgets.plate_view import PlateView
-from ..workers import Worker
 
 __all__ = ["RoutinePage"]
 
@@ -147,7 +147,6 @@ class RoutinePage(QWidget):
         self.routine: Routine | None = None
         self.destination: Destination | None = None
         self._plan: dict[str, int] = {}
-        self._worker: Worker | None = None
         # Plan snapshots: the plan before each change, and the ones undone.
         self._undo: list[dict[str, int]] = []
         self._redo: list[dict[str, int]] = []
@@ -390,12 +389,11 @@ class RoutinePage(QWidget):
     def _labware_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Labware in the slot", 2))
-        self.check_button = secondary_button("Check against the robot", self)
-        self.check_button.clicked.connect(self._check)
-        box.layout().addWidget(self.check_button)
-        self.labware_state = QLabel(
-            "verifies the definition in the slot, not that this is the same "
-            "physical plate — no software check can tell those apart.")
+        self.labware_state = QLabel()
+        self.labware_state.setToolTip(
+            "Checked by itself against what the robot session holds. It "
+            "verifies the kind of plate in the slot, not that it is the same "
+            "physical plate - no software check can tell those apart.")
         self.labware_state.setWordWrap(True)
         self.labware_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -438,6 +436,7 @@ class RoutinePage(QWidget):
         self.definition.blockSignals(False)
         if self.destination is not None:
             self.deck.select(str(self.destination.slot))
+        self._check_labware()
         self._refresh()
 
     def _slot_clicked(self, slot: str) -> None:
@@ -487,6 +486,7 @@ class RoutinePage(QWidget):
             f"{destination.slot}")
         self.summary.clear()
         log.info("destination: %r", destination)
+        self._check_labware()
         self._refresh()
 
     # -- plan ----------------------------------------------------------------
@@ -750,6 +750,7 @@ class RoutinePage(QWidget):
             f"slot {routine.destination.slot}  ·  {routine.path}")
         log.info("routine %r: %s", routine.name,
                  routine.summary().replace("\n", " | "))
+        self._check_labware()
         self._refresh()
 
     def _delivered(self) -> dict[str, int]:
@@ -776,71 +777,47 @@ class RoutinePage(QWidget):
 
     # -- labware -------------------------------------------------------------
 
-    def _check(self) -> None:
-        if self.routine is None or self.session.robot is None:
+    def _check_labware(self) -> None:
+        """The plan's slot against what the robot session holds, as one
+        line. No request: the session re-reads the run state whenever
+        labware changes, and that is what this reads."""
+        routine, session = self.routine, self.session
+        if routine is None:
+            self.labware_state.setText("Open or create a plan: its slot is "
+                                       "checked here.")
             return
-        if self._worker is not None and self._worker.running:
+        slot = str(routine.destination.slot)
+        if session.robot is None or session.run_state is None:
+            self.labware_state.setText(f"No robot session: slot {slot} is "
+                                       f"checked once the robot is connected.")
             return
-        robot, routine = self.session.robot, self.routine
-
-        def job():
-            """Read the run state and judge it. Both halves are HTTP-blocking
-            on a real robot, so both are here rather than split across
-            threads."""
-            loaded = loaded_labware(robot)
-            slot = str(routine.destination.slot)
-            entry = loaded.get(slot)
-            routine.check_labware(loaded)        # raises on empty or foreign
-            return entry
-
-        self.labware_state.setText("reading the robot session…")
-        worker = Worker(job)
-        self._worker = worker
-        worker.finished.connect(self._checked)
-        worker.failed.connect(self._check_failed)
-        worker.message.connect(self._said)
-        worker.start()
-        self._refresh()
-
-    def _checked(self, entry) -> None:
-        self._worker = None
-        want = self.routine.destination
-        # The version note check_labware would have printed, shown instead.
+        loaded = session.run_state.labware
+        try:
+            routine.check_labware(loaded)
+        except RoutineError as exc:
+            self.labware_state.setText(f"<b>Slot {slot}: {exc}</b>")
+            log.error("labware check: %s", exc)
+            return
+        entry = loaded.get(slot)
         reported = getattr(entry, "version", None)
-        note = ""
-        if reported is not None and want.version is not None \
-                and int(reported) != int(want.version):
-            note = (f"\nThe slot reports v{reported} and the plate plan "
-                    f"recorded v{want.version}. Ignored: ot2_api.load_labware "
-                    f"sends version 1 whatever the definition says, and a version is "
-                    f"a revision of the description rather than the identity "
-                    f"of the plate.")
-        self.labware_state.setText(
-            f"slot {want.slot} holds {getattr(entry, 'load_name', '?')} — "
-            f"matches this plate plan.{note}\nThis verifies the definition, "
-            f"not that it is the same physical plate.")
-        log.info("labware check passed for slot %s", want.slot)
-        self._refresh()
-
-    def _check_failed(self, reason: str) -> None:
-        self._worker = None
-        self.labware_state.setText(reason)
-        log.error("labware check: %s", reason)
-        self._refresh()
-
-    def _said(self, text: str) -> None:
-        log.info("%s", text)
+        want = routine.destination.version
+        # check_labware prints the version difference; it is ignored there
+        # for a reason (ot2_api.load_labware sends version 1), and said here.
+        note = (f" (the slot reports v{reported}, the plan v{want}: only the "
+                f"definition's revision)" if reported is not None
+                and want is not None and int(reported) != int(want) else "")
+        self.labware_state.setText(f"Slot {slot} holds {entry.load_name} - "
+                                   f"matches the plan.{note}")
 
     # -- display -------------------------------------------------------------
 
     def _refresh(self) -> None:
-        busy = self._worker is not None and self._worker.running
         has_plate = self.destination is not None
         editable = self._editable()
         self.undo_button.setEnabled(editable and bool(self._undo))
         self.redo_button.setEnabled(editable and bool(self._redo))
 
-        self.use_button.setEnabled(not busy and self.definition.count() > 0)
+        self.use_button.setEnabled(self.definition.count() > 0)
         self.all_button.setEnabled(has_plate)
         self.none_button.setEnabled(has_plate and bool(self._selection))
         self.apply_button.setEnabled(editable and bool(self._selection))
@@ -861,8 +838,7 @@ class RoutinePage(QWidget):
                 "writes it, keeping what is already delivered. Picking runs "
                 "the saved plan until then.")
         self.save_preset_button.setEnabled(has_plate and bool(self._plan))
-        self.from_preset_button.setEnabled(not busy)
-        self.open_button.setEnabled(not busy)
+
 
         if self.definition.count() == 0:
             self.plate_state.setText(
@@ -900,6 +876,3 @@ class RoutinePage(QWidget):
                 "not confirm — build a new plate plan, or its first well will "
                 "be the middle of this one. Nothing can tell those two apart "
                 "but you.")
-        self.check_button.setEnabled(
-            self.routine is not None and self.session.robot is not None
-            and not busy)

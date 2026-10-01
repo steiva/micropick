@@ -165,3 +165,16 @@ def test_changes_to_a_plan_under_way_can_be_discarded(app, page, tmp_path):
     _set(page, {"C3"}, 4)
     page._discard_edit()
     assert page._plan == {"A1": 1} and not page._edited()
+
+
+def test_the_slot_is_checked_by_itself(app, page, session, tmp_path):
+    from micropick.core.routine import Routine
+    assert "Open or create a plan" in page.labware_state.text()
+    _set(page, {"A1"}, 1)
+    page._adopt(Routine(page.destination, dict(page._plan), name="p",
+                        path=tmp_path / "p.json"))
+    assert "matches the plan" in page.labware_state.text()
+    session.unload_labware(5)                 # the plate taken off the deck
+    app.processEvents()
+    assert "matches" not in page.labware_state.text()
+    assert "Slot 5" in page.labware_state.text()
