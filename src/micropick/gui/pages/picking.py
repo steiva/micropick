@@ -57,9 +57,9 @@ place, lids off, settings right — and then the session leaves idle at once.
 Resume is what is left of the second step: the retry out of
 needs_operator, after the operator has fixed whatever the run stopped for.
 
-Starting needs a routine, because a run with nowhere to put a cuboid is a
-run that picks one up and then asks what to do with it. The Routine page
-hands its routine to the session; this page reads it there and says above
+Starting needs a routine - a "plate plan" on screen - because a run with
+nowhere to put a cuboid is a run that picks one up and then asks what to do
+with it. The Plate plan page hands its routine to the session; this page reads it there and says above
 the Start button which one it is.
 
 The dish pose is a profile position
@@ -76,7 +76,7 @@ So is the shake pose
 `shake`, where the tip goes into the dish to stir it when too few cuboids
 are isolated. It depends on how the dish sits that day, so it is taught
 here, beside the dish, rather than fixed: jog the tip into the medium where
-it can stir without scraping a cuboid, and Teach shake here. There is one
+it can stir without scraping a cuboid, and Set shake position. There is one
 of it - teaching again replaces it. Both of its buttons go through the jog
 panel's queue, and Go to shake arrives as Manual control's moves do: tip
 up, across at the travel height, then straight down.
@@ -235,9 +235,9 @@ class PickingPage(QWidget):
         box.layout().addLayout(row)
 
         buttons = QHBoxLayout()
-        self.goto_button = secondary_button("Go to the dish", self)
+        self.goto_button = secondary_button("Go to picking position", self)
         self.goto_button.clicked.connect(self._goto_dish)
-        self.teach_button = secondary_button("Teach here", self)
+        self.teach_button = secondary_button("Set position", self)
         self.teach_button.clicked.connect(self._teach_dish)
         buttons.addWidget(self.goto_button)
         buttons.addWidget(self.teach_button)
@@ -257,7 +257,8 @@ class PickingPage(QWidget):
         buttons = QHBoxLayout()
         self.goto_shake_button = secondary_button("Go to shake", self)
         self.goto_shake_button.clicked.connect(self._goto_shake)
-        self.teach_shake_button = secondary_button("Teach shake here", self)
+        self.teach_shake_button = secondary_button("Set shake position",
+                                                   self)
         self.teach_shake_button.clicked.connect(self._teach_shake)
         buttons.addWidget(self.goto_shake_button)
         buttons.addWidget(self.teach_shake_button)
@@ -328,7 +329,7 @@ class PickingPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("The run", 2))
 
-        # Which routine Start would run, from the Routine page, before the
+        # Which routine Start would run, from the Plate plan page, before the
         # button that commits the robot to it.
         self.routine_state = QLabel()
         self.routine_state.setWordWrap(True)
@@ -427,7 +428,7 @@ class PickingPage(QWidget):
                     f"{where[1]:.1f}, {where[2]:.1f})")
 
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell("not now: the robot is busy; Teach shake here "
+            self.jog.tell("not now: the robot is busy; Set shake position "
                           "again when it is done.")
 
     # -- looking at it --------------------------------------------------------
@@ -615,12 +616,13 @@ class PickingPage(QWidget):
             out.append("no profile loaded.")
             return out
         if session.routine is None:
-            out.append("no routine: make a plan on the Routine page. A run "
+            out.append("no plate plan: make one on the Plate plan page. A run "
                        "with nowhere to put a cuboid picks one up and then "
                        "asks what to do with it.")
         elif session.routine.needs_confirmation:
-            out.append("the routine was restored with progress on it and has "
-                       "not been confirmed; confirm it on the Routine page.")
+            out.append("the plate plan was restored with progress on it and "
+                       "has not been confirmed; confirm it on the Plate plan "
+                       "page.")
         if profile.pixel_map is None:
             out.append("no pixel map: run the camera calibration.")
         if profile.calibration.pipette_offset is None:
@@ -629,10 +631,11 @@ class PickingPage(QWidget):
         # reached when the dish needs stirring, so without this check a run
         # can start, work for ten minutes and then fail at the one moment
         # the operator is not watching.
-        for name, what in ((DISH_POSITION, "park over the dish and Teach here"),
+        for name, what in ((DISH_POSITION,
+                            "park over the dish and Set position"),
                            (SHAKE_POSITION,
                             "jog the tip into the dish where it should stir "
-                            "and Teach shake here")):
+                            "and Set shake position")):
             if name not in profile.positions:
                 out.append(f"no {name!r} position: {what}.")
         if self.detector.model is None:
@@ -648,9 +651,9 @@ class PickingPage(QWidget):
             slot = str(session.routine.destination.slot)
             state = session.run_state
             if state is None or slot not in state.labware:
-                out.append(f"the run holds nothing in slot {slot}, which is "
-                           f"where this routine delivers. Load the plate on "
-                           f"the Robot & Deck page.")
+                out.append(f"the robot session holds nothing in slot "
+                           f"{slot}, which is where this plate plan delivers. "
+                           f"Load the plate on the Robot & Deck page.")
         return out
 
     def _confirm_start(self) -> bool:
@@ -952,14 +955,13 @@ class PickingPage(QWidget):
 
         self.goto_button.setEnabled(connected and stored is not None and not busy)
         self.teach_button.setEnabled(connected and profile is not None and not busy)
-        self.teach_button.setText("Re-teach here" if stored is not None
-                                  else "Teach here")
         if profile is None:
             self.dish_state.setText("No profile loaded.")
         elif stored is None:
             self.dish_state.setText(
                 f"No {DISH_POSITION!r} position yet. Jog until the dish fills "
-                f"the frame, then Teach here; afterwards this is one button.")
+                f"the frame, then Set position; afterwards Go to picking "
+                f"position is one button.")
         else:
             self.dish_state.setText(
                 f"{DISH_POSITION}: ({stored[0]:.1f}, {stored[1]:.1f}, "
@@ -971,17 +973,14 @@ class PickingPage(QWidget):
                                           and not running)
         self.teach_shake_button.setEnabled(connected and profile is not None
                                            and not running)
-        self.teach_shake_button.setText("Re-teach shake here"
-                                        if shake is not None
-                                        else "Teach shake here")
         if profile is None:
             self.shake_state.setText("No profile loaded.")
         elif shake is None:
             self.shake_state.setText(
                 f"No {SHAKE_POSITION!r} position yet. When too few cuboids "
                 f"are isolated the run stirs the dish there: jog the tip "
-                f"into the medium, clear of the cuboids, then Teach shake "
-                f"here.")
+                f"into the medium, clear of the cuboids, then Set shake "
+                f"position.")
         else:
             self.shake_state.setText(
                 f"{SHAKE_POSITION}: ({shake[0]:.1f}, {shake[1]:.1f}, "
@@ -996,8 +995,8 @@ class PickingPage(QWidget):
 
         routine = self.session.routine
         self.routine_state.setText(
-            "Routine: none. Make a plan on the Routine page."
-            if routine is None else f"Routine:\n{routine.summary()}")
+            "Plate plan: none. Make one on the Plate plan page."
+            if routine is None else f"Plate plan:\n{routine.summary()}")
 
         problems = self._run_problems()
         self.start_button.setEnabled(not busy and not running and not problems)

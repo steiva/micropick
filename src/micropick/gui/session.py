@@ -67,9 +67,11 @@ MOCK_PROFILE_NAME = "mock"
 # downstream would catch.
 NOT_A_DESTINATION = ("tipRack", "trash", "adapter")
 
-# Robot states, as the status bar shows them.
+# Robot states, as the status bar shows them. The OT-2's HTTP "run" - the
+# thing that holds the loaded labware and offsets - is a "robot session" on
+# screen: "run" reads as a picking run to everyone at the bench.
 DISCONNECTED = "not connected"
-PROBED = "connected, no run chosen"
+PROBED = "connected, no robot session chosen"
 CONNECTED = "connected"
 MOCK = "mock"
 
@@ -104,13 +106,14 @@ class RunState:
 
     def describe(self) -> str:
         if not self.exists:
-            return "no current run on the robot"
+            return "no robot session on the robot"
         slots = ", ".join(f"slot {s}: {lw.load_name}"
                           for s, lw in sorted(self.labware.items())) or "no labware"
-        pipette = "pipette loaded" if self.has_pipette else "no pipette"
-        return (f"run {self.run_id}, status {self.status}, {pipette}; {slots}"
+        # The pipette is left out: whether the run has one is set up under
+        # the hood, and "pipette loaded" reads as "a tip is on".
+        return (f"robot session {self.run_id}, status {self.status}; {slots}"
                 + ("" if self.reusable else
-                   f" - a {self.status} run cannot take commands"))
+                   f" - a {self.status} session cannot take commands"))
 
 
 def _run_state(api) -> RunState:
@@ -230,7 +233,7 @@ class Session(QObject):
     tip_changed = Signal(object)
     # The rail lights, as last read from the robot; carries bool or None.
     lights_changed = Signal(object)
-    # The routine a run would deliver into, or None. Set by the Routine page
+    # The routine a run would deliver into, or None. Set by the Plate plan page
     # and read by the Picking page: the two never see each other, and the
     # session is what a session is attached to.
     routine_changed = Signal(object)
@@ -273,7 +276,9 @@ class Session(QObject):
         base = MOCK if self.mock else CONNECTED
         run = self.run_state.run_id if self.run_state else None
         if run and self.run_origin:
-            return f"{base}, run {run} ({self.run_origin})"
+            origin = {"reused": "continued"}.get(self.run_origin,
+                                                 self.run_origin)
+            return f"{base}, session {run} ({origin})"
         return base
 
     @property
@@ -436,8 +441,8 @@ class Session(QObject):
         state = self._require_probe()
         if not state.reusable:
             raise SessionError(
-                f"the robot's current run cannot be carried on with: "
-                f"{state.describe()}. Start a new run instead.")
+                f"the robot's current session cannot be continued: "
+                f"{state.describe()}. Start a new robot session instead.")
 
         if not self.mock:
             self._api.get_run_info()
@@ -446,8 +451,8 @@ class Session(QObject):
                      len(uploaded), state.run_id)
             if not state.has_pipette:
                 self._api.load_pipette()
-                log.info("pipette %s loaded into run %s",
-                         self._api.PIPETTE, state.run_id)
+                log.debug("pipette %s set up in run %s",
+                          self._api.PIPETTE, state.run_id)
         self._ready("reused")
         return self.robot
 
@@ -477,7 +482,7 @@ class Session(QObject):
             log.info("uploaded %d custom definitions: %s",
                      len(uploaded), ", ".join(sorted(uploaded)) or "none")
             self._api.load_pipette(verbose=False)
-            log.info("pipette %s loaded", self._api.PIPETTE)
+            log.debug("pipette %s set up", self._api.PIPETTE)
             log.info("homing")
             self._api.home_robot(verbose=False)
             log.info("homed")
@@ -536,8 +541,8 @@ class Session(QObject):
         entry = state.labware.get(str(slot))
         if entry is None:
             raise SessionError(
-                f"the run accepted {definition.load_name!r} for slot {slot} "
-                f"but does not report it there afterwards")
+                f"the robot session accepted {definition.load_name!r} for "
+                f"slot {slot} but does not report it there afterwards")
         return entry
 
     def unload_labware(self, slot: int) -> None:
@@ -559,8 +564,8 @@ class Session(QObject):
 
     def _require_robot(self) -> None:
         if self.robot is None:
-            raise SessionError("no run to load labware into: connect the "
-                               "robot on the Profile page first")
+            raise SessionError("no robot session to load labware into: "
+                               "connect the robot on the Profile page first")
 
     # -- deck modules --------------------------------------------------------
     #
@@ -769,7 +774,8 @@ class Session(QObject):
         self._require_robot()
         entry = self.run_state.labware.get(str(slot)) if self.run_state else None
         if entry is None:
-            raise SessionError(f"the run holds nothing in slot {slot}")
+            raise SessionError(f"the robot session holds nothing in slot "
+                               f"{slot}")
         return entry
 
     def _forget_tip(self) -> None:

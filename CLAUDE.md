@@ -70,3 +70,14 @@ points are `profile.positions`, not a list of the page's own. The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing was removed and is to return as a program,
 not as a page of its own.
+
+### Words on screen
+
+UI strings only; code names stay. The OT-2's HTTP run is a **robot session**
+("Continue robot session", "New robot session + home", status bar "session
+<id> (continued)"); "run" on screen means a picking or liquid run. The pipette
+is set up under the hood and never mentioned ("pipette loaded" reads as "a
+tip is on"). A `Routine` is a **plate plan** (the Plate plan tab). Stored
+poses are set with **Set position** / **Set shake position**; the pipette
+calibration's way back is **Go to last saved**, the Picking page's **Go to
+picking position**.

@@ -574,20 +574,21 @@ class LabwarePage(QWidget):
         if not connected:
             self.slot_heading.setText("Slot")
             self.slot_state.setText(
-                "No run. Connect the robot on the Profile page; the deck "
-                "shows what the run holds.")
+                "No robot session. Connect the robot on the Profile page; "
+                "the deck shows what the robot session holds.")
         elif self._slot is None:
             self.slot_heading.setText("Slot")
             # The trash, once loaded for a drop, is run labware too; it is
             # not something the operator put on the deck.
             count = len([slot for slot in held if slot != TRASH_SLOT])
             self.slot_state.setText(
-                f"Click a slot on the deck. The run holds "
+                f"Click a slot on the deck. The robot session holds "
                 f"{count} labware{'s' if count != 1 else ''}.")
         else:
             self.slot_heading.setText(f"Slot {self._slot}")
             if entry is None:
-                self.slot_state.setText("empty, as far as the run knows.")
+                self.slot_state.setText("empty, as far as the robot session "
+                                        "knows.")
             else:
                 self.slot_state.setText(
                     f"{self._describe(entry)}\n{entry.namespace}/"

@@ -8,10 +8,10 @@ good enough, read what was saved.
 **The disc position is a profile position, `tip_calib`.** The notebook
 teaches it once with `jog(...)` and `profile.remember`, and drives to it with
 `profile.where("tip_calib")` before every calibration. Step 1 is those two
-acts: with no stored position, the jog panel and a Remember button; with one,
-a button to go there and a button to re-teach it from wherever the gantry is
-standing now. The routine's own drive to the stored position happens at the
-start of the run, as in the notebook, so "go there" on step 1 is for looking,
+acts: with no stored position, the jog panel and Set position; with one, Go
+to last saved and Set position again from wherever the gantry is standing
+now. The routine's own drive to the stored position happens at the start of
+the run, as in the notebook, so Go to last saved on step 1 is for looking,
 not a step that can be forgotten.
 
 **The routine needs a tip on the pipette, and asks the robot.** Every tip
@@ -186,9 +186,9 @@ class PipetteCalibration(QWidget):
         buttons = QHBoxLayout()
         # Short: three buttons' worth of words do not fit a panel this
         # wide, and the sentence above already says what is stored.
-        self.goto_button = secondary_button("Go there", panel)
+        self.goto_button = secondary_button("Go to last saved", panel)
         self.goto_button.clicked.connect(self._goto)
-        self.remember_button = primary_button("Teach here", panel)
+        self.remember_button = primary_button("Set position", panel)
         self.remember_button.clicked.connect(self._remember)
         buttons.addWidget(self.goto_button)
         buttons.addWidget(self.remember_button)
@@ -395,7 +395,7 @@ class PipetteCalibration(QWidget):
         stored = self._stored_position()
         if stored is not None:
             answer = QMessageBox.question(
-                self, "Re-teach the disc position",
+                self, "Set the disc position",
                 f"Replace the stored {POSITION_NAME} {tuple(round(v, 2) for v in stored)} "
                 f"with where the gantry is now? Every calibration after this "
                 f"one drives here first.",
@@ -643,16 +643,15 @@ class PipetteCalibration(QWidget):
             self.position_state.setText(
                 f"No {POSITION_NAME} in the profile. Jog the disc's central "
                 f"crosshair under the camera crosshair at the working height "
-                f"(module height {self._module_height():g} mm), then Remember.")
-            self.remember_button.setText("Teach this position")
+                f"(module height {self._module_height():g} mm), then Set "
+                f"position.")
         else:
             self.position_state.setText(
                 f"Stored {POSITION_NAME}: "
                 f"({stored[0]:.2f}, {stored[1]:.2f}, {stored[2]:.2f}). Every "
-                f"calibration drives here first. Go there to check the disc "
-                f"is still under the camera, or re-teach it from where the "
-                f"gantry stands now.")
-            self.remember_button.setText("Re-teach here")
+                f"calibration drives here first. Go to last saved to check "
+                f"the disc is still under the camera, or Set position again "
+                f"from where the gantry stands now.")
         self.goto_button.setEnabled(connected and stored is not None and not busy)
         self.remember_button.setEnabled(connected and profile is not None and not busy)
 

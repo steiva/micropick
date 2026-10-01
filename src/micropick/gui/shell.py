@@ -7,7 +7,7 @@ theme along with it. Those are exactly the three things this application
 needs to keep.
 
 The tabs are in two groups. On the left, the pages a session goes through in
-order — profile, labware, calibration, routine, picking. On the right edge,
+order — profile, labware, calibration, plate plan, picking. On the right edge,
 the three that are used whenever they are needed rather than in sequence:
 liquid handling, manual control and the log. A column down the side used to hold them all and
 cost the pages 200 px of width for seven words.
@@ -61,7 +61,7 @@ PAGES = (
     ("profile", profile.TITLE, profile.ProfilePage, SEQUENCE),
     ("labware", labware.TITLE, labware.LabwarePage, SEQUENCE),
     ("calibration", calibration.TITLE, calibration.CalibrationPage, SEQUENCE),
-    # Routine before Picking: the plan is what a run picks into, and an
+    # Plate plan before Picking: the plan is what a run picks into, and an
     # operator who meets the pages in order meets them in the order the
     # work happens.
     ("routine", routine.TITLE, routine.RoutinePage, SEQUENCE),

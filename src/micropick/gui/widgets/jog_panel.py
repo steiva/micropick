@@ -368,7 +368,7 @@ class JogPanel(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Machine", 3))
         row = QHBoxLayout()
-        self.home_button = secondary_button("Home", self)
+        self.home_button = secondary_button("Home robot position", self)
         self.home_button.clicked.connect(self._home)
         self.retract_button = secondary_button("Retract Z", self)
         self.retract_button.clicked.connect(self._retract)
@@ -554,7 +554,7 @@ class JogPanel(QWidget):
 
     def _home(self) -> None:
         if not self._confirm(
-                "Home the robot?",
+                "Home robot position?",
                 "The gantry travels to the home position on all axes. Saved "
                 "positions are kept, but the undo history no longer describes "
                 "where the robot is."):

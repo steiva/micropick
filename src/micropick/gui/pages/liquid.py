@@ -11,7 +11,7 @@ does all its steps before the next well (`workflows.liquid`).
 The page, top to bottom
 -----------------------
 The plate map is the labware the run holds: select wells with the mouse (as
-on the Routine page), make a group of them or add them to the chosen one. A
+on the Plate plan page), make a group of them or add them to the chosen one. A
 well belongs to one group of its plate at most, so adding it to one takes it
 out of another. Under the groups, the chosen group's steps, and under those
 the chosen step's fields. "Try this step" does that one step for one well -

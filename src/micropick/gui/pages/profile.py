@@ -293,9 +293,10 @@ class ProfilePage(QWidget):
         box.layout().addWidget(self.run_found)
 
         # Both secondary; setDefault below picks which one carries the accent.
-        self.adopt_button = secondary_button("Continue with this run", self)
+        self.adopt_button = secondary_button("Continue robot session", self)
         self.adopt_button.clicked.connect(self._adopt)
-        self.new_run_button = secondary_button("New run + home", self)
+        self.new_run_button = secondary_button("New robot session + home",
+                                               self)
         self.new_run_button.clicked.connect(self._new_run)
         choice = QHBoxLayout()
         choice.addWidget(self.adopt_button)
@@ -323,17 +324,19 @@ class ProfilePage(QWidget):
         whatever is named here when they need it.
         """
         box = card(self)
-        box.layout().addWidget(heading("Models", 2))
+        box.layout().addWidget(heading("Machine Learning Models", 2))
 
         self.cuboid_model = combo_box(self)
         self.cuboid_model.currentTextChanged.connect(self._cuboid_model_chosen)
         self.tip_model = combo_box(self)
         self.tip_model.currentTextChanged.connect(self._tip_model_chosen)
-        for label, widget in (("Cuboids", self.cuboid_model),
-                              ("Pipette tip", self.tip_model)):
+        rows = [(QLabel("Model to use for cuboids"), self.cuboid_model),
+                (QLabel("Model to use for tip detection"), self.tip_model)]
+        # One width for both labels, so the two choosers line up.
+        width = max(name.sizeHint().width() for name, _ in rows)
+        for name, widget in rows:
             row = QHBoxLayout()
-            name = QLabel(label)
-            name.setMinimumWidth(90)
+            name.setFixedWidth(width)
             row.addWidget(name)
             row.addWidget(widget, 1)
             box.layout().addLayout(row)
@@ -439,20 +442,20 @@ class ProfilePage(QWidget):
     def _adopt(self) -> None:
         self._clear_error()
         self._run(Worker(self.session.adopt_run),
-                  "carrying on with the robot's current run")
+                  "continuing the robot session")
 
     def _new_run(self) -> None:
         """Ends in a home, so it asks: the gantry travels to its limits on
         every axis, and a hand in the deck is the failure this dialog is for."""
         state = self.session.run_state
-        detail = ("The robot will create a new run, load the pipette and then "
-                  "home: the gantry moves to its limits on all three axes. "
-                  "Keep hands and labware clear.")
+        detail = ("The robot will start a new session and then home: the "
+                  "gantry moves to its limits on all three axes. Keep hands "
+                  "and labware clear.")
         if state is not None and state.reusable:
-            detail += (f"\n\nThe current run {state.run_id} will be left "
-                       f"behind, with its labware and offsets.")
+            detail += (f"\n\nThe current robot session {state.run_id} will "
+                       f"be left behind, with its labware and offsets.")
         answer = QMessageBox.question(
-            self, "New run and home", detail,
+            self, "New robot session and home", detail,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         # `==`, not `is`: PySide6 hands the answer back as a plain int on
@@ -461,7 +464,8 @@ class ProfilePage(QWidget):
         if answer != QMessageBox.StandardButton.Yes:
             return
         self._clear_error()
-        self._run(Worker(self.session.new_run), "new run, then home")
+        self._run(Worker(self.session.new_run),
+                  "new robot session, then home")
 
     def open_camera(self, label: str) -> None:
         self._clear_error()
@@ -628,7 +632,7 @@ class ProfilePage(QWidget):
         if probed:
             self.run_found.setText(
                 "Found: " + state.describe() + ("" if state.reusable else
-                 "\nOnly a new run is possible."))
+                 "\nOnly a new robot session is possible."))
             self.adopt_button.setEnabled(state.reusable and not busy)
             self.new_run_button.setEnabled(not busy)
             # Carrying on is the expected case when the robot was left on, so

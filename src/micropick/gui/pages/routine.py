@@ -68,7 +68,9 @@ from ..workers import Worker
 
 __all__ = ["RoutinePage"]
 
-TITLE = "Routine"
+# On screen a Routine is a "plate plan": what an operator sets up here is
+# which wells get how many cuboids, and "routine" read as a procedure.
+TITLE = "Plate plan"
 
 log = logging.getLogger(__name__)
 
@@ -209,7 +211,7 @@ class RoutinePage(QWidget):
 
     def _routine_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Routine", 2))
+        box.layout().addWidget(heading("Saved plan", 2))
         row = QHBoxLayout()
         self.create_button = primary_button("Create…", self)
         self.create_button.clicked.connect(self._create)
@@ -302,7 +304,7 @@ class RoutinePage(QWidget):
                 self._chose_plate(index)
                 return
         self.plate_state.setText(
-            f"slot {slot} holds nothing a routine can deliver into. Load a "
+            f"slot {slot} holds nothing a plate plan can deliver into. Load a "
             f"plate there on the Robot & Deck page.")
 
     def _chose_plate(self, _index: int) -> None:
@@ -368,7 +370,7 @@ class RoutinePage(QWidget):
             # A routine's plan is fixed once it exists: editing it underneath
             # recorded progress would make the counts describe two plans.
             self.plan_state.setText(
-                "this routine's plan is fixed. Create a new one to change it.")
+                "this plate plan is fixed. Create a new one to change it.")
             return
         if not self._selection:
             self.plan_state.setText("nothing is selected. Click a well, or a "
@@ -399,14 +401,14 @@ class RoutinePage(QWidget):
         # without one: it is what tells a resumed run from a fresh plate of the
         # same kind.
         name, ok = QInputDialog.getText(
-            self, "Name this routine",
+            self, "Name this plate plan",
             "Your label for this physical plate:")
         name = name.strip()
         if not ok or not name:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save the routine", str(routines_dir() / f"{name}.json"),
-            "Routine files (*.json)")
+            self, "Save the plate plan", str(routines_dir() / f"{name}.json"),
+            "Plate plan files (*.json)")
         if not path:
             return
         try:
@@ -421,8 +423,8 @@ class RoutinePage(QWidget):
 
     def _open(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open a routine", str(routines_dir()),
-            "Routine files (*.json)")
+            self, "Open a plate plan", str(routines_dir()),
+            "Plate plan files (*.json)")
         if not path:
             return
         try:
@@ -492,7 +494,7 @@ class RoutinePage(QWidget):
             routine.check_labware(loaded)        # raises on empty or foreign
             return entry
 
-        self.labware_state.setText("reading the run state…")
+        self.labware_state.setText("reading the robot session…")
         worker = Worker(job)
         self._worker = worker
         worker.finished.connect(self._checked)
@@ -509,15 +511,15 @@ class RoutinePage(QWidget):
         note = ""
         if reported is not None and want.version is not None \
                 and int(reported) != int(want.version):
-            note = (f"\nThe slot reports v{reported} and the routine recorded "
-                    f"v{want.version}. Ignored: ot2_api.load_labware sends "
-                    f"version 1 whatever the definition says, and a version is "
+            note = (f"\nThe slot reports v{reported} and the plate plan "
+                    f"recorded v{want.version}. Ignored: ot2_api.load_labware "
+                    f"sends version 1 whatever the definition says, and a version is "
                     f"a revision of the description rather than the identity "
                     f"of the plate.")
         self.labware_state.setText(
             f"slot {want.slot} holds {getattr(entry, 'load_name', '?')} — "
-            f"matches this routine.{note}\nThis verifies the definition, not "
-            f"that it is the same physical plate.")
+            f"matches this plate plan.{note}\nThis verifies the definition, "
+            f"not that it is the same physical plate.")
         log.info("labware check passed for slot %s", want.slot)
         self._refresh()
 
@@ -549,12 +551,13 @@ class RoutinePage(QWidget):
 
         if self.definition.count() == 0:
             self.plate_state.setText(
-                "The run holds nothing to deliver into. Load a plate on the "
-                "Robot & Deck page; tip racks and the trash are not offered "
-                "here."
+                "The robot session holds nothing to deliver into. Load a "
+                "plate on the Robot & Deck page; tip racks and the trash are "
+                "not offered here."
                 if self.session.robot is not None else
-                "No run. Connect the robot on the Profile page; the plate is "
-                "chosen from what the run actually holds.")
+                "No robot session. Connect the robot on the Profile page; "
+                "the plate is chosen from what the robot session actually "
+                "holds.")
 
         wells = len(self._plan)
         objects = sum(self._plan.values())
@@ -577,10 +580,11 @@ class RoutinePage(QWidget):
         self.confirm_note.setVisible(needs)
         if needs:
             self.confirm_note.setText(
-                "This routine was restored with progress already on it. If the "
-                "plate in the slot is a fresh one of the same kind, do not "
-                "confirm — build a new routine, or its first well will be the "
-                "middle of this one. Nothing can tell those two apart but you.")
+                "This plate plan was restored with progress already on it. "
+                "If the plate in the slot is a fresh one of the same kind, do "
+                "not confirm — build a new plate plan, or its first well will "
+                "be the middle of this one. Nothing can tell those two apart "
+                "but you.")
         self.check_button.setEnabled(
             self.routine is not None and self.session.robot is not None
             and not busy)

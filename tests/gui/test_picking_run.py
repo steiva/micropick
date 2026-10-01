@@ -45,7 +45,7 @@ def problems(page):
 
 def test_it_names_what_is_missing_rather_than_refusing_quietly(page):
     text = problems(page)
-    for wanted in ("no robot", "no routine", DISH_POSITION, SHAKE_POSITION,
+    for wanted in ("no robot", "no plate plan", DISH_POSITION, SHAKE_POSITION,
                    "no detector"):
         assert wanted in text, f"{wanted!r} not named in: {text}"
     assert not page.start_button.isEnabled()
@@ -62,9 +62,9 @@ def test_a_routine_is_required(page):
         class destination:
             slot = 5
     page.session.set_routine(_Routine())
-    assert "no routine" not in problems(page)
+    assert "no plate plan" not in problems(page)
     page.session.set_routine(None)
-    assert "no routine" in problems(page)
+    assert "no plate plan" in problems(page)
 
 
 def test_the_plate_the_routine_delivers_into_has_to_be_on_the_deck(page):
