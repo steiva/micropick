@@ -137,13 +137,20 @@ def _flow():
 class Aspirate(_Model):
     """`refill`: skipped while the tip holds enough for the dispenses that
     follow, else the tip is topped up to `volume_ul`. See "What the tip
-    holds"."""
+    holds".
+
+    `lift_steps` small rises of `lift_step_mm` after drawing, `lift_pause_s`
+    apart: notebook 03's slow lift, so the liquid leaving with the tip does
+    not pull a cuboid along. 0 is no slow lift."""
 
     action: Literal["aspirate"] = "aspirate"
     volume_ul: float = Field(default=50.0, gt=0)
     flow_rate: float = _flow()
     location: Location = Field(default_factory=Location)
     refill: bool = True
+    lift_steps: int = Field(default=0, ge=0, le=50)
+    lift_step_mm: float = Field(default=0.1, gt=0, le=5)
+    lift_pause_s: float = Field(default=0.2, ge=0, le=10)
 
 
 class Dispense(_Model):
@@ -353,6 +360,9 @@ def describe(step) -> str:
         text = (f"Refill to {step.volume_ul:g} µl when short"
                 if refills(step) else f"Aspirate {step.volume_ul:g} µl")
         text += f" at {step.flow_rate:g} µl/s"
+        if step.lift_steps:
+            text += (f", slow lift {step.lift_steps}×{step.lift_step_mm:g} "
+                     f"mm")
     elif action == "dispense" and step.auto_empty:
         text = f"Empty the tip when full at {step.flow_rate:g} µl/s"
     elif action == "dispense":

@@ -283,6 +283,30 @@ class StepEditor(QWidget):
         self.cycles.setToolTip("How many times to draw and push back the "
                                "volume.")
         self.seconds = _number(self, SECONDS_RANGE, " s")
+        # The slow lift after an aspirate: under a label of its own, three
+        # boxes across the form, as the offsets are.
+        self.lift_steps = spin_box(self)
+        self.lift_steps.setRange(0, 50)
+        self.lift_steps.setSuffix(" ×")
+        self.lift_steps.setToolTip("How many small rises after drawing. 0: "
+                                   "no slow lift.")
+        self.lift_mm = _number(self, (0.01, 5.0), " mm", 2, 0.05)
+        self.lift_mm.setToolTip("How far each small rise goes.")
+        self.lift_pause = _number(self, (0.0, 10.0), " s", 1, 0.1)
+        self.lift_pause.setToolTip("How long to wait after each rise.")
+        self.lift_label = QLabel("Slow lift after: rises × height, wait",
+                                 self)
+        self.lift_label.setToolTip(
+            "After drawing, the tip rises in small steps with a wait between, "
+            "so the liquid does not pull a cuboid along. For washing.")
+        lift_row = QWidget(self)
+        row = QHBoxLayout(lift_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
+        for box in (self.lift_steps, self.lift_mm, self.lift_pause):
+            box.setMinimumWidth(0)
+            row.addWidget(box, 1)
+        self.lift_row = lift_row
         self.message = QLineEdit(self)
         self.message.setToolTip("Shown when the run pauses here.")
         self.where = LocationEditor(self)
@@ -292,6 +316,8 @@ class StepEditor(QWidget):
         self.form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.form.addRow("Volume", self.volume_row)
         self.form.addRow("Flow rate", self.flow)
+        self.form.addRow(self.lift_label)
+        self.form.addRow(self.lift_row)
         self.form.addRow("Cycles", self.cycles)
         self.form.addRow("Seconds", self.seconds)
         self.form.addRow("Message", self.message)
@@ -300,9 +326,11 @@ class StepEditor(QWidget):
         column.addLayout(self.form)
         column.addWidget(self.where)
 
-        for box in (self.volume, self.flow, self.seconds):
+        for box in (self.volume, self.flow, self.seconds, self.lift_mm,
+                    self.lift_pause):
             box.valueChanged.connect(self._edited)
         self.cycles.valueChanged.connect(self._edited)
+        self.lift_steps.valueChanged.connect(self._edited)
         self.all_in_tip.toggled.connect(self._all_toggled)
         self.auto_empty.toggled.connect(self._all_toggled)
         self.refill.toggled.connect(self._edited)
@@ -331,6 +359,11 @@ class StepEditor(QWidget):
             self._volume_enabled()
         if action == "aspirate":
             self.refill.setChecked(step.refill)
+            self.lift_steps.setValue(step.lift_steps)
+            self.lift_mm.setValue(step.lift_step_mm)
+            self.lift_pause.setValue(step.lift_pause_s)
+        self.form.setRowVisible(self.lift_label, action == "aspirate")
+        self.form.setRowVisible(self.lift_row, action == "aspirate")
         if has("flow_rate"):
             self.flow.setValue(step.flow_rate)
         if has("cycles"):
@@ -364,6 +397,10 @@ class StepEditor(QWidget):
             update["refill"] = self.refill.isChecked()
         if hasattr(step, "auto_empty"):
             update["auto_empty"] = self.auto_empty.isChecked()
+        if hasattr(step, "lift_steps"):
+            update["lift_steps"] = int(self.lift_steps.value())
+            update["lift_step_mm"] = round(self.lift_mm.value(), 3)
+            update["lift_pause_s"] = round(self.lift_pause.value(), 3)
         if hasattr(step, "flow_rate"):
             update["flow_rate"] = round(self.flow.value(), 3)
         if hasattr(step, "cycles"):

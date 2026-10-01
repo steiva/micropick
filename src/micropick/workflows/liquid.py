@@ -73,7 +73,8 @@ from pathlib import Path
 
 from ..core.liquid import (Group, Location, Program, aspirate_volume,
                            empties_now, needed_after, ordered_wells, refills)
-from ..hardware.protocols import Robot, prepare_to_aspirate, require_ok
+from ..hardware.protocols import (Robot, move_relative, prepare_to_aspirate,
+                                  require_ok)
 from . import manual as moves
 
 __all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "problems",
@@ -442,6 +443,20 @@ def _dispense(robot: Robot, place, volume: float, rate: float) -> None:
                  flow_rate=float(rate))
 
 
+def _slow_lift(robot: Robot, step, pause, stop, log) -> None:
+    """The aspirate's slow lift, if it has one: small rises with a wait
+    between, so the liquid going up with the tip does not pull a cuboid.
+    The next well command takes the tip the rest of the way out."""
+    if not step.lift_steps:
+        return
+    _say(log, f"slow lift: {step.lift_steps} × {step.lift_step_mm:g} mm, "
+              f"{step.lift_pause_s:g} s apart")
+    for _ in range(step.lift_steps):
+        _gate(pause, stop)
+        move_relative(robot, "z", float(step.lift_step_mm))
+        time.sleep(float(step.lift_pause_s))
+
+
 def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
             stop, log) -> str:
     """The liquid part of a step: in the well `place` with the robot's
@@ -453,6 +468,7 @@ def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
                   f"µl/s{at}")
         _aspirate(robot, place, step.volume_ul, step.flow_rate)
         state.in_tip += step.volume_ul
+        _slow_lift(robot, step, pause, stop, log)
         return f"aspirated {step.volume_ul:g} µl"
     if action == "dispense" and step.auto_empty:
         volume = state.in_tip
