@@ -43,9 +43,11 @@ page and on A and D - the in-place commands the run uses, for trying a
 pickup by hand. They are refused unless the robot reports a tip on.
 
 A small deck map is the way across the deck: a click on a slot sends the
-camera over that slot's centre at the travel height (`deck_view.slot_centre`,
-the deck definition's geometry), so the next look is at that slot. It obeys
-Click to move like the picture does, and goes through the same queue.
+camera or the tip, as "A click moves" says, over that slot's centre at the
+travel height (`deck_view.slot_centre`, the deck definition's geometry). The
+definition is in the robot's frame, the tip's: the tip goes to the centre
+itself, the camera to it less the pipette offset. It obeys Click to move
+like the picture does, and goes through the same queue.
 
 A cuboid picked by hand needs somewhere to go, so a well of any plate the
 run holds can be driven to: the robot's own `move_to_well`, to the top,
@@ -273,10 +275,16 @@ class ManualPage(QWidget):
     def _deck_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Deck", 2))
+        note = QLabel("To cross the deck: click a slot and the camera or the "
+                      "tip, as chosen under A click moves, goes over its "
+                      "centre at the travel height. Needs Click to move.")
+        note.setWordWrap(True)
+        box.layout().addWidget(note)
         self.deck = DeckView(self)
         self.deck.setFixedHeight(DECK_HEIGHT)
-        self.deck.setToolTip("Click a slot: the camera goes over its centre, "
-                             "at the travel height (with Click to move on).")
+        self.deck.setToolTip("Click a slot: the camera or the tip goes over "
+                             "its centre, at the travel height (with Click to "
+                             "move on).")
         self.deck.slot_clicked.connect(self._slot_clicked)
         box.layout().addWidget(self.deck)
         return box
@@ -701,12 +709,26 @@ class ManualPage(QWidget):
     # -- the deck ------------------------------------------------------------------
 
     def _slot_clicked(self, slot: str) -> None:
-        """The camera over the slot's centre, at the travel height."""
+        """The camera or the tip over the slot's centre, at the travel
+        height. The centre is in the robot's frame, which is the tip's: the
+        camera is over it with the gantry a pipette offset short of it."""
         robot = self.session.robot
         if robot is None or self.jog.busy:
             return
-        xy = slot_centre(slot)
-        what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
+        xy = np.asarray(slot_centre(slot), dtype=float)
+        if self.click_tip.isChecked():
+            what = f"tip over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
+        else:
+            profile = self.session.profile
+            offset = (profile.calibration.pipette_offset
+                      if profile is not None else None)
+            if offset is None:
+                self.jog.tell("REFUSED: no pipette offset, so where the camera "
+                              "sees the slot is not known. Run the pipette "
+                              "calibration, or choose Tip.")
+                return
+            xy = xy - np.array([offset.dx, offset.dy])
+            what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
         why = moves.unreachable(self.session.jog_limits,
                                 (xy[0], xy[1], xyz(robot)[2]))
         if why:

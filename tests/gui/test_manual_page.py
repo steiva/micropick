@@ -141,20 +141,29 @@ def test_on_the_lower_camera_a_click_never_moves_and_the_picture_says_so(
     assert page.jog.position_lines[-1] == LOWER_CAMERA_NOTE
 
 
-def test_a_slot_on_the_deck_map_brings_the_camera_over_its_centre(app, page,
-                                                                  session):
+def test_a_slot_on_the_deck_map_brings_the_camera_or_the_tip_over_its_centre(
+        app, page, session):
     from micropick.gui.widgets.deck_view import slot_centre
     assert slot_centre(1) == pytest.approx((63.88, 42.74))
     assert slot_centre(5) == pytest.approx((132.5 + 63.88, 90.5 + 42.74))
+    _calibrate(session)
     _wait(app, page)
     page._slot_clicked("5")                   # Click to move is off
     _wait(app, page)
     assert "switch on Click to move" in page.jog.position_lines[-1]
     page.armed.setChecked(True)
+    # Camera: the slot's centre is the tip's frame, so the gantry stops a
+    # pipette offset short of it.
     page._slot_clicked("5")
     _wait(app, page)
     pos = session.robot.get_position(verbose=False)[0]
-    assert (pos["x"], pos["y"]) == pytest.approx(slot_centre(5), abs=0.05)
+    x, y = slot_centre(5)
+    assert (pos["x"], pos["y"]) == pytest.approx((x - 10.0, y + 5.0), abs=0.05)
+    page.click_tip.setChecked(True)
+    page._slot_clicked("5")
+    _wait(app, page)
+    pos = session.robot.get_position(verbose=False)[0]
+    assert (pos["x"], pos["y"]) == pytest.approx((x, y), abs=0.05)
 
 
 def test_the_same_sizes_are_drawn_over_the_picture(page):
