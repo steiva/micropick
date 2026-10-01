@@ -65,6 +65,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..widgets.liquid_steps import StepEditor
@@ -365,6 +366,9 @@ class LiquidHandlingPage(QWidget):
                        self.stop_button):
             row.addWidget(button)
         box.layout().addLayout(row)
+        # A green check when the program has run to its end.
+        self.done = DoneBanner(self)
+        box.layout().addWidget(self.done)
         self.run_state = _label()
         box.layout().addWidget(self.run_state)
         return box
@@ -933,6 +937,7 @@ class LiquidHandlingPage(QWidget):
             self.jog.tell("not now: the robot is busy.")
             return
         self._running = True
+        self.done.clear()
         self._can_carry_on = False
         self._checking = None
         self._outcome = ""
@@ -980,6 +985,8 @@ class LiquidHandlingPage(QWidget):
             self._can_carry_on = value != "done" and self._total() > len(self.state.done)
             self._outcome = {"done": "Finished.",
                              "stopped": "Stopped."}.get(value, value.capitalize())
+            if value == "done":
+                self.done.show_done(f"{len(self.state.done)} wells done.")
             log.info("liquid handling: %s", value)
         self._paint_plate()
         self._refresh()

@@ -97,6 +97,7 @@ from ..theme.factory import (Section, card, combo_box, double_spin_box,
                              secondary_button, spin_box)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
@@ -394,6 +395,9 @@ class CameraCalibration(QWidget):
         # sweep is doing, and every line also goes to the application log.
         self.details = Section("Details", collapsed=True, parent=self)
         self.details.body.layout().addWidget(self.run_log)
+        # A green check when a sweep has ended well, and after Save.
+        self.done = DoneBanner(self)
+        box.layout().addWidget(self.done)
         box.layout().addWidget(self.details)
         return box
 
@@ -562,6 +566,7 @@ class CameraCalibration(QWidget):
         self.progress.setRange(0, 0)         # indeterminate until the first pose
         self._result = None
         self._verdict = None
+        self.done.clear()
         self.verdict.setText("Sweeping: the result comes when the fit is "
                              "done.")
         self.stats_button.hide()
@@ -641,7 +646,11 @@ class CameraCalibration(QWidget):
         self._draw_residuals(report)
         self.verdict.setText(f"<b>{self._verdict.line}</b>")
         self.stats_button.show()
-        self._outcome = f"Done: {self._verdict.level}. See Result."
+        self._outcome = f"Finished: {self._verdict.level}. See Result."
+        # A fit to redo is the end of the sweep, not a thing done.
+        if self._verdict.level != REDO:
+            self.done.show_done(f"Sweep finished - {self._verdict.level}. "
+                                f"Save to profile keeps the map.")
         self._describe_write(pmap)
         self._refresh()
         # The sweep moved the gantry with the panel hidden.
@@ -659,6 +668,7 @@ class CameraCalibration(QWidget):
         do it.
         """
         self._worker = None
+        self.done.clear()
         self.view.set_overlay_items([])
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
@@ -770,6 +780,7 @@ class CameraCalibration(QWidget):
             f"{config.degree}, {config.n_poses} poses, image_size "
             f"{config.image_size[0]}×{config.image_size[1]}.")
         self.save_button.setEnabled(False)
+        self.done.show_done("The pixel map is saved to the profile.")
         self.session.profile_changed.emit(profile)
 
     # -- display -------------------------------------------------------------

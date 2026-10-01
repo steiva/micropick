@@ -110,6 +110,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.size_histogram import SizeHistogram
 from ..widgets.jog_panel import JogPanel
@@ -328,6 +329,9 @@ class PickingPage(QWidget):
         row.addWidget(self.stop_button)
         box.layout().addLayout(row)
 
+        # A green check when a run has filled the plan.
+        self.done = DoneBanner(self)
+        box.layout().addWidget(self.done)
         self.run_state = QLabel()
         self.run_state.setWordWrap(True)
         self.run_state.setTextInteractionFlags(
@@ -617,6 +621,7 @@ class PickingPage(QWidget):
             return picking.state.value
 
         self._run_message = ""
+        self.done.clear()
         self.run_state.setText("starting…")
         self._run_worker = Worker(job)
         self._run_worker.finished.connect(self._run_finished)
@@ -662,6 +667,8 @@ class PickingPage(QWidget):
         self._view = None
         self._run_message = f"run {state}"
         log.info("picking run %s", state)
+        if state == RobotState.COMPLETED.value:
+            self.done.show_done("The run filled the plate plan.")
         self._back_to_live()
 
     def _run_failed(self, reason: str) -> None:

@@ -82,6 +82,7 @@ from ..theme.factory import (Section, card, combo_box, double_spin_box,
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
@@ -305,6 +306,8 @@ class PipetteCalibration(QWidget):
         # when something went wrong.
         self.details = Section("Details", collapsed=True, parent=self)
         self.details.body.layout().addWidget(self.run_log)
+        self.done = DoneBanner(self)
+        box.layout().addWidget(self.done)
         box.layout().addWidget(self.details)
         return box
 
@@ -487,6 +490,7 @@ class PipetteCalibration(QWidget):
         mock = session.mock
 
         self.run_log.clear()
+        self.done.clear()
         self._outcome = ""
         self._last_line = ""
         self._result = None
@@ -571,8 +575,9 @@ class PipetteCalibration(QWidget):
         self._result, self._standin = result, standin
         offset: PipetteOffset = result.offset
         self._append("done")
-        self._outcome = (f"Done: offset ({offset.dx:+.3f}, {offset.dy:+.3f}) "
-                         f"mm saved; see Result.")
+        self._outcome = "Finished: see Result."
+        self.done.show_done(f"Offset ({offset.dx:+.3f}, {offset.dy:+.3f}) mm "
+                            f"saved to the profile.")
         log.info("pipette offset calibrated: dx %+.3f dy %+.3f mm (%s)",
                  offset.dx, offset.dy, offset.method)
         text = str(result)
@@ -597,6 +602,7 @@ class PipetteCalibration(QWidget):
     def _on_failed(self, reason: str) -> None:
         self._worker = None
         self.touch_box.hide()
+        self.done.clear()
         aborted = reason.startswith(TouchUpAborted.__name__)
         kind = "aborted" if aborted else "failed"
         detail = reason.split(": ", 1)[1] if ": " in reason else reason

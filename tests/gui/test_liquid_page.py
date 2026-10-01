@@ -100,6 +100,8 @@ def test_a_run_goes_through_every_well(app, session):
     aspirates = [c for c in session.robot.calls if c[0] == "aspirate_in_place"]
     assert len(aspirates) == 2
     assert "Finished" in page.run_state.text()
+    assert page.done.done                               # the green check
+    assert "2 wells done" in page.done.detail.text()
     page.deleteLater()
 
 
