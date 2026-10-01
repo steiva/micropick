@@ -25,6 +25,21 @@ moves.
 A group and a well location remember the load name of the labware they were
 made on as well as its slot, so a plate swapped for another kind is refused
 rather than driven into (`workflows.liquid.problems`).
+
+What the tip holds
+------------------
+The run counts what is in the tip. An aspirate is done as written unless it
+is a **refill** (`Aspirate.refill`): then it is skipped while the tip holds
+enough for the dispenses that follow it, and otherwise tops the tip up to
+its volume rather than adding the whole volume to what is left
+(`aspirate_volume`). So "Refill to 200 µl from the reservoir, dispense 50 µl
+into this well" fills four wells per trip, and goes back to the reservoir
+only when the tip runs short. A plain aspirate is for taking liquid out of a
+well, which has to happen every time.
+
+The program says how much a tip holds (`Program.tip_ul`), and nothing may
+put more in it: the run refuses such an aspirate, and `problems` finds it on
+paper first.
 """
 
 from __future__ import annotations
@@ -40,7 +55,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 __all__ = ["LEVELS", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
            "MoveTo", "Mix", "BlowOut", "Wait", "Pause", "Step", "Group",
            "Program", "ProgramError", "ordered_wells", "describe",
-           "describe_location", "new_step", "GROUP_COLOURS"]
+           "describe_location", "new_step", "GROUP_COLOURS",
+           "needed_after", "aspirate_volume", "TIP_UL"]
 
 # The robot's own well origins; the same as workflows.manual.WELL_LEVELS,
 # restated because core does not import workflows.
@@ -56,6 +72,13 @@ GROUP_COLOURS = ("#5e9eeb", "#e8a33d", "#5cc18a", "#d65f8a", "#a58cf0",
                  "#4fc4c9", "#d8d05a", "#e06b4f")
 
 PROGRAM_VERSION = 1
+
+# What a tip holds unless the program says otherwise: the 200 µl tips this
+# bench uses on its p300.
+TIP_UL = 200.0
+
+# Volumes are compared with this much slack: 0.1 + 0.2 is not 0.3.
+VOLUME_TOL = 1e-6
 
 
 class ProgramError(ValueError):
@@ -95,10 +118,15 @@ def _flow():
 
 
 class Aspirate(_Model):
+    """`refill`: skipped while the tip holds enough for the dispenses that
+    follow, else the tip is topped up to `volume_ul`. See "What the tip
+    holds"."""
+
     action: Literal["aspirate"] = "aspirate"
     volume_ul: float = Field(default=50.0, gt=0)
     flow_rate: float = _flow()
     location: Location = Field(default_factory=Location)
+    refill: bool = False
 
 
 class Dispense(_Model):
@@ -173,6 +201,8 @@ class Group(_Model):
 class Program(_Model):
     version: int = PROGRAM_VERSION
     name: str = ""
+    # The most the tip holds, in µl.
+    tip_ul: float = Field(default=TIP_UL, gt=0)
     groups: list[Group] = Field(default_factory=list)
 
     @property
@@ -226,6 +256,35 @@ def ordered_wells(group: Group, ordering: list[list[str]]) -> list[str]:
     return [w for w in order if w in wanted]
 
 
+def needed_after(steps: list, index: int) -> float | None:
+    """What the dispenses after step `index` take from the tip before the
+    next aspirate or blow out: the steps after it, then - for the next well
+    of the group - the ones before it. None when one of them dispenses
+    everything, or none dispenses at all: then no amount is enough."""
+    total, dispensed = 0.0, False
+    for step in steps[index + 1:] + steps[:index]:
+        if step.action in ("aspirate", "blow_out"):
+            break
+        if step.action == "dispense":
+            if step.volume_ul is None:
+                return None
+            total += step.volume_ul
+            dispensed = True
+    return total if dispensed else None
+
+
+def aspirate_volume(step, steps: list, index: int, in_tip: float) -> float:
+    """How much the aspirate `step`, at `index` of `steps`, takes with
+    `in_tip` µl already in the tip: its volume, or for a refill nothing while
+    the tip holds enough and else what tops it up to its volume."""
+    if not getattr(step, "refill", False):
+        return step.volume_ul
+    need = needed_after(steps, index)
+    if need is not None and in_tip >= need - VOLUME_TOL:
+        return 0.0
+    return max(0.0, step.volume_ul - in_tip)
+
+
 def _mm(value: float) -> str:
     return f"{value:+g} mm"
 
@@ -248,7 +307,9 @@ def describe(step) -> str:
     """One line for the list of steps."""
     action = step.action
     if action == "aspirate":
-        text = f"Aspirate {step.volume_ul:g} µl at {step.flow_rate:g} µl/s"
+        text = (f"Refill to {step.volume_ul:g} µl when short"
+                if step.refill else f"Aspirate {step.volume_ul:g} µl")
+        text += f" at {step.flow_rate:g} µl/s"
     elif action == "dispense":
         amount = "all" if step.volume_ul is None else f"{step.volume_ul:g} µl"
         text = f"Dispense {amount} at {step.flow_rate:g} µl/s"

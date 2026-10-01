@@ -26,6 +26,16 @@ The program is saved as it is edited, into `outputs/liquid/current.json`,
 and comes back on the next start; Save as and Open keep named copies beside
 it.
 
+What the tip holds
+------------------
+The run counts it (`LiquidState.in_tip`, shown under Run and on the
+picture), and an Aspirate marked "only when the tip runs short" is a refill:
+skipped while the tip holds enough for the dispenses after it, else a top-up
+to its volume (`core.liquid`, "What the tip holds"). The program says how
+much a tip takes, and nothing is let overfill it. The count is the page's:
+it goes to zero when the robot reports no tip, and "Tip is empty" sets it
+there after the tip was emptied some other way.
+
 Running it
 ----------
 Through the jog panel's queue like every robot command on a page with a
@@ -61,8 +71,8 @@ from ...workflows import manual as moves
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+from ..theme.factory import (card, combo_box, double_spin_box, heading,
+                             primary_button, scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.done_banner import DoneBanner
@@ -184,7 +194,7 @@ class LiquidHandlingPage(QWidget):
         session.profile_changed.connect(lambda _p: self._offer_choices())
         session.robot_state_changed.connect(lambda _s: self._deck_changed())
         session.labware_changed.connect(lambda _s: self._deck_changed())
-        session.tip_changed.connect(lambda _t: self._lose_top())
+        session.tip_changed.connect(self._tip_changed)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         self._install_shortcuts()
@@ -346,6 +356,19 @@ class LiquidHandlingPage(QWidget):
                        self.save_as_button):
             row.addWidget(button)
         box.layout().addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("A tip holds"))
+        self.tip_volume = double_spin_box(self)
+        self.tip_volume.setRange(1.0, 1000.0)
+        self.tip_volume.setDecimals(0)
+        self.tip_volume.setSingleStep(10.0)
+        self.tip_volume.setSuffix(" µl")
+        self.tip_volume.setToolTip("The most the tip on the pipette takes. No "
+                                   "aspirate or mix is let put more in it.")
+        self.tip_volume.valueChanged.connect(self._tip_volume_edited)
+        row.addWidget(self.tip_volume)
+        row.addStretch(1)
+        box.layout().addLayout(row)
         self.program_state = _label()
         box.layout().addWidget(self.program_state)
         return box
@@ -377,6 +400,12 @@ class LiquidHandlingPage(QWidget):
                        self.stop_button):
             row.addWidget(button)
         box.layout().addLayout(row)
+        self.empty_button = secondary_button("Tip is empty", self)
+        self.empty_button.setToolTip(
+            "Set what the tip holds to nothing, after it was emptied outside "
+            "this page - by hand, or on Manual control.")
+        self.empty_button.clicked.connect(self._mark_empty)
+        box.layout().addWidget(self.empty_button)
         # A green check when the program has run to its end.
         self.done = DoneBanner(self)
         box.layout().addWidget(self.done)
@@ -582,6 +611,7 @@ class LiquidHandlingPage(QWidget):
         """The list from the program, the chosen row kept."""
         row = self.groups.currentRow() if select is None else select
         self._loading = True
+        self.tip_volume.setValue(self.program.tip_ul)
         self.groups.clear()
         for group in self.program.groups:
             text = (f"{group.name} — slot {group.slot}, {len(group.wells)} "
@@ -700,6 +730,13 @@ class LiquidHandlingPage(QWidget):
         groups[index], groups[other] = groups[other], groups[index]
         self._changed("all")
         self._show_groups(select=other)
+
+    def _tip_volume_edited(self, value: float) -> None:
+        if self._loading:
+            return
+        self.program.tip_ul = float(value)
+        self._save_timer.start()
+        self._refresh()
 
     def _order_chosen(self, _index: int) -> None:
         group = self._group()
@@ -821,10 +858,11 @@ class LiquidHandlingPage(QWidget):
         step, well = group.steps[index], self._try_well(group)
         robot, state = self.session.robot, self.state
         plates, positions = self._plates(), self._positions()
+        capacity = self.program.tip_ul
 
         def job(log_):
             said = liquid.run_step(robot, step, group, well, plates, positions,
-                                   state, log=log_)
+                                   state, log=log_, capacity=capacity)
             return f"{describe(step).split(' @ ')[0]} for {well}: {said}."
 
         log.info("liquid handling: trying step %d of %s for %s", index + 1,
@@ -861,7 +899,11 @@ class LiquidHandlingPage(QWidget):
 
     def _run_problems(self) -> list[str]:
         out = self._robot_problems()
-        out += liquid.problems(self.program, self._plates(), self._positions())
+        # Played through from what the tip holds now, for a run from the
+        # first well. Carrying on is checked step by step as it runs.
+        out += liquid.problems(self.program, self._plates(), self._positions(),
+                               volumes=not self._can_carry_on,
+                               in_tip=self.state.in_tip)
         out += self._reach_problems(self.program)
         return out
 
@@ -1008,6 +1050,21 @@ class LiquidHandlingPage(QWidget):
         """The top of the travel depends on the tip and on the run."""
         self.state.z_top = None
 
+    def _tip_changed(self, tip) -> None:
+        """A new tip has a new top of travel; and no tip holds nothing."""
+        self._lose_top()
+        if tip.attached is False and not self._running:
+            self.state.in_tip = 0.0
+            self._refresh()
+
+    def _mark_empty(self) -> None:
+        if self._running or self.jog.busy:
+            return
+        log.info("liquid handling: tip marked empty (it was counted at %g µl)",
+                 self.state.in_tip)
+        self.state.in_tip = 0.0
+        self._refresh()
+
     def _show_camera(self) -> None:
         self.view.set_camera(self.session.camera(self.session.upper_camera_label
                                                  or ""))
@@ -1100,6 +1157,7 @@ class LiquidHandlingPage(QWidget):
         self.continue_button.setEnabled(
             paused or (idle and self._can_carry_on and not problems))
         self.stop_button.setEnabled(running)
+        self.empty_button.setEnabled(idle and self.state.in_tip > 0)
         total, done = self._total(), len(self.state.done)
         in_tip = (f"The tip holds {self.state.in_tip:g} µl."
                   if self.state.in_tip > 0 else "The tip is empty.")

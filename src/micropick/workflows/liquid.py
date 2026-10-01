@@ -27,6 +27,15 @@ raised however a run ends; the first `here` after that goes back to where the
 tip was before it was raised, so a dispense does not happen in the air above
 the well it was meant for.
 
+What the tip holds
+------------------
+`LiquidState.in_tip` counts it, across wells, groups and runs. A refill
+aspirate takes what `core.liquid.aspirate_volume` says - nothing while the
+tip holds enough for the dispenses after it, else what tops it up - and is
+not driven to when it takes nothing. No aspirate and no mix may put more in
+the tip than the program's `tip_ul`: the run raises `Overfill` before the
+tip moves, and `problems` plays the run through on paper to say so first.
+
 Blowing out
 -----------
 The robot refuses an aspirate in place straight after a blow out until the
@@ -45,11 +54,13 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.liquid import Group, Location, Program, ordered_wells
+from ..core.liquid import (Group, Location, Program, aspirate_volume,
+                           needed_after, ordered_wells)
 from ..hardware.protocols import Robot, prepare_to_aspirate, require_ok
 from . import manual as moves
 
-__all__ = ["Stopped", "Plate", "LiquidState", "problems", "plan", "go",
+__all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "problems",
+           "plan", "go",
            "do_step", "run", "run_step", "slots_used", "points_used"]
 
 LOG_FIELDS = ["time", "group", "well", "step", "in_tip", "note"]
@@ -66,6 +77,10 @@ VOLUME_TOL = 1e-6
 
 class Stopped(RuntimeError):
     """The operator stopped the run. Not a failure: `LiquidState` says where."""
+
+
+class Overfill(RuntimeError):
+    """A step would put more in the tip than it holds."""
 
 
 @dataclass(frozen=True)
@@ -164,11 +179,13 @@ def _plate_problem(plates: dict[str, Plate], slot: str | None,
 
 
 def problems(program: Program, plates: dict[str, Plate],
-             positions: dict, *, volumes: bool = True) -> list[str]:
+             positions: dict, *, volumes: bool = True,
+             in_tip: float = 0.0) -> list[str]:
     """What stops the program from running as written, in words. Only what
     the data says; the page adds the robot, the tip and the deck. Without
     `volumes` the run is not played through for the tip's contents - for one
-    step tried on its own, whose dispense may be of liquid already drawn."""
+    step tried on its own, whose dispense may be of liquid already drawn.
+    `in_tip` is what the tip holds when the run starts."""
     out = []
     if not program.groups:
         return ["the program has no groups: select wells on the plate and "
@@ -205,29 +222,54 @@ def problems(program: Program, plates: dict[str, Plate],
                 out.append(f"{where}: there is no saved point "
                            f"{location.point!r} in the profile.")
     if volumes:
-        out += _volume_problems(program, plates)
+        out += _volume_problems(program, plates, in_tip)
     return out
 
 
-def _volume_problems(program: Program, plates: dict[str, Plate]) -> list[str]:
+def _volume_problems(program: Program, plates: dict[str, Plate],
+                     in_tip: float = 0.0) -> list[str]:
     """The run played through on paper: a dispense of more than the tip
-    holds at that moment is a program written wrong."""
-    in_tip, out = 0.0, []
+    holds at that moment, or an aspirate or a mix of more than it can take,
+    is a program written wrong."""
+    out, tip = [], program.tip_ul
     for group in program.groups:
+        steps = group.steps
         plate = plates.get(group.slot)
         wells = (ordered_wells(group, plate.ordering) if plate is not None
                  else list(group.wells))
+        for si, step in enumerate(steps, 1):
+            if step.action != "aspirate" or not step.refill:
+                continue
+            where = f"group {group.name!r}, step {si}"
+            if step.volume_ul > tip + VOLUME_TOL:
+                return out + [f"{where}: refills to {step.volume_ul:g} µl, "
+                              f"but a tip holds {tip:g} µl."]
+            need = needed_after(steps, si - 1)
+            if need is not None and need > step.volume_ul + VOLUME_TOL:
+                return out + [f"{where}: the dispenses after it take "
+                              f"{need:g} µl, more than the {step.volume_ul:g} "
+                              f"µl it refills to."]
         for well in wells:
-            for si, step in enumerate(group.steps, 1):
+            for si, step in enumerate(steps, 1):
+                where = f"group {group.name!r}, step {si} at {well}"
                 if step.action == "aspirate":
-                    in_tip += step.volume_ul
+                    in_tip += aspirate_volume(step, steps, si - 1, in_tip)
+                    if in_tip > tip + VOLUME_TOL:
+                        return out + [
+                            f"{where}: the tip would hold {in_tip:g} µl, "
+                            f"more than the {tip:g} µl it takes."]
+                elif step.action == "mix":
+                    if in_tip + step.volume_ul > tip + VOLUME_TOL:
+                        return out + [
+                            f"{where}: mixing {step.volume_ul:g} µl with "
+                            f"{in_tip:g} µl in the tip is more than the "
+                            f"{tip:g} µl it takes."]
                 elif step.action == "dispense":
                     volume = in_tip if step.volume_ul is None else step.volume_ul
                     if volume > in_tip + VOLUME_TOL:
                         return out + [
-                            f"group {group.name!r}, step {si} at {well}: "
-                            f"dispenses {volume:g} µl, but the tip holds "
-                            f"{in_tip:g} µl then."]
+                            f"{where}: dispenses {volume:g} µl, but the tip "
+                            f"holds {in_tip:g} µl then."]
                     in_tip -= volume
                 elif step.action == "blow_out":
                     in_tip = 0.0
@@ -276,10 +318,27 @@ def go(robot: Robot, location: Location, group: Group, well: str,
     state.last = (location, group, well)
 
 
+def _overfill(step, state: LiquidState, capacity: float | None) -> None:
+    """Raise before the tip moves if `step` would overfill it."""
+    if capacity is None or step.action not in ("aspirate", "mix"):
+        return
+    after = state.in_tip + step.volume_ul
+    if after > capacity + VOLUME_TOL:
+        what = "aspirating" if step.action == "aspirate" else "mixing"
+        raise Overfill(
+            f"the tip holds {state.in_tip:g} µl; {what} {step.volume_ul:g} µl "
+            f"more would make {after:g} µl, past the {capacity:g} µl it "
+            f"takes. Dispense or blow out first, or mark the tip empty if it "
+            f"is.")
+
+
 def do_step(robot: Robot, step, group: Group, well: str,
             plates: dict[str, Plate], positions: dict, state: LiquidState, *,
-            pause=None, stop=None, log=None, on_paused=None) -> str:
-    """One step for one well. Returns what was done, for the log."""
+            pause=None, stop=None, log=None, on_paused=None,
+            capacity: float | None = None) -> str:
+    """One step for one well. Returns what was done, for the log. With
+    `capacity`, an aspirate or a mix that would overfill the tip raises
+    `Overfill` before anything moves."""
     action = step.action
     if action == "wait":
         _say(log, f"wait {step.seconds:g} s")
@@ -297,6 +356,7 @@ def do_step(robot: Robot, step, group: Group, well: str,
             _gate(pause, stop)
         return "paused"
 
+    _overfill(step, state, capacity)
     _gate(pause, stop)
     go(robot, step.location, group, well, plates, positions, state, log=log)
     _gate(pause, stop)
@@ -398,6 +458,7 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
     raised however this ends."""
     jobs = plan(program, plates)
     total = len(jobs)
+    capacity = program.tip_ul
     state.at = None
     try:
         for gi, group, well in jobs:
@@ -412,9 +473,17 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
                     # Counted as done once it holds the run: a stop while
                     # paused and a Continue must not pause here again.
                     state.resume[(gi, well)] = si + 1
+                if step.action == "aspirate":
+                    step, said = _sized(step, group.steps, si, state, log)
+                    if step is None:
+                        state.resume[(gi, well)] = si + 1
+                        _log_row(log_path, group=group.name, well=well,
+                                 step=si + 1, in_tip=f"{state.in_tip:g}",
+                                 note=said)
+                        continue
                 said = do_step(robot, step, group, well, plates, positions,
                                state, pause=pause, stop=stop, log=log,
-                               on_paused=on_paused)
+                               on_paused=on_paused, capacity=capacity)
                 state.resume[(gi, well)] = si + 1
                 _log_row(log_path, group=group.name, well=well, step=si + 1,
                          in_tip=f"{state.in_tip:g}", note=said)
@@ -430,12 +499,39 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
         _retract(robot, state)
 
 
+def _sized(step, steps: list, index: int, state: LiquidState, log):
+    """An aspirate as much as it takes now (`aspirate_volume`), or None and
+    why when it takes nothing."""
+    amount = aspirate_volume(step, steps, index, state.in_tip)
+    if amount <= VOLUME_TOL:
+        said = (f"no refill: the tip holds {state.in_tip:g} µl, enough for "
+                f"{needed_after(steps, index):g} µl")
+        _say(log, said)
+        return None, said
+    if abs(amount - step.volume_ul) > VOLUME_TOL:
+        _say(log, f"refill: the tip holds {state.in_tip:g} µl, topping up to "
+                  f"{step.volume_ul:g} µl")
+        step = step.model_copy(update={"volume_ul": amount})
+    return step, ""
+
+
 def run_step(robot: Robot, step, group: Group, well: str,
              plates: dict[str, Plate], positions: dict, state: LiquidState, *,
-             log=None) -> str:
+             log=None, capacity: float | None = None) -> str:
     """One step for one well, to try it: the tip is left where the step put
     it, so it can be looked at. Always drives to the location, since
-    anything may have moved the tip since the last job."""
+    anything may have moved the tip since the last job. A refill takes what
+    it would in a run, from what the tip holds now."""
     state.at = None
     state.last = None
-    return do_step(robot, step, group, well, plates, positions, state, log=log)
+    if step.action == "aspirate":
+        index = next((i for i, s in enumerate(group.steps) if s is step),
+                     None)
+        if index is None and step in group.steps:
+            index = group.steps.index(step)
+        if index is not None:
+            step, said = _sized(step, group.steps, index, state, log)
+            if step is None:
+                return said
+    return do_step(robot, step, group, well, plates, positions, state,
+                   log=log, capacity=capacity)

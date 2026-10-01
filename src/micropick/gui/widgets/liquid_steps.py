@@ -228,6 +228,12 @@ class StepEditor(QWidget):
         self.all_in_tip = QCheckBox("everything in the tip", self)
         self.all_in_tip.setToolTip("Dispense whatever the tip holds at that "
                                    "moment.")
+        self.refill = QCheckBox("only when the tip runs short", self)
+        self.refill.setToolTip(
+            "A refill: skipped while the tip holds enough for the dispenses "
+            "after it; otherwise the tip is topped up to this volume. For "
+            "filling from a reservoir. Off: the volume is aspirated every "
+            "time, as for taking liquid out of a well.")
         # The box and its switch one above the other: side by side they
         # are squeezed in a column of the panel.
         volume_row = QWidget(self)
@@ -236,6 +242,7 @@ class StepEditor(QWidget):
         rows.setSpacing(4)
         rows.addWidget(self.volume)
         rows.addWidget(self.all_in_tip)
+        rows.addWidget(self.refill)
         self.volume_row = volume_row
         self.flow = _number(self, FLOW_RANGE, " µl/s")
         self.flow.setToolTip("How fast the plunger moves. Slow near cuboids.")
@@ -265,6 +272,7 @@ class StepEditor(QWidget):
             box.valueChanged.connect(self._edited)
         self.cycles.valueChanged.connect(self._edited)
         self.all_in_tip.toggled.connect(self._all_toggled)
+        self.refill.toggled.connect(self._edited)
         self.message.editingFinished.connect(self._edited)
         self.where.changed.connect(self._edited)
         self.set_step(None)
@@ -283,6 +291,9 @@ class StepEditor(QWidget):
             self.volume.setValue(step.volume_ul if step.volume_ul is not None
                                  else self.volume.value())
             self.volume.setEnabled(step.volume_ul is not None)
+        self.refill.setVisible(action == "aspirate")
+        if action == "aspirate":
+            self.refill.setChecked(step.refill)
         if has("flow_rate"):
             self.flow.setValue(step.flow_rate)
         if has("cycles"):
@@ -311,6 +322,8 @@ class StepEditor(QWidget):
             update["volume_ul"] = (None if step.action == "dispense"
                                    and self.all_in_tip.isChecked()
                                    else round(self.volume.value(), 3))
+        if hasattr(step, "refill"):
+            update["refill"] = self.refill.isChecked()
         if hasattr(step, "flow_rate"):
             update["flow_rate"] = round(self.flow.value(), 3)
         if hasattr(step, "cycles"):
