@@ -101,6 +101,11 @@ POSITION_NAME = "tip_calib"
 # The jog step for the touch-up, as the notebook sets it.
 TOUCH_UP_STEP_MM = 0.05
 
+# Where to start when the profile has no offset yet: notebook 01's manual
+# offset for this rig. Only has to land the tip inside the lower camera's
+# view; the calibration measures the real one.
+DEFAULT_OFFSET_MM = (16.0, 60.0)
+
 
 class TouchUpAborted(RuntimeError):
     """The operator pressed Abort during the manual touch-up."""
@@ -130,6 +135,9 @@ class PipetteCalibration(QWidget):
         self._last_line = ""
         # How the last run ended, shown under Start until the next one.
         self._outcome = ""
+        # The profile the offset boxes were last filled for: a new one is a
+        # new starting point.
+        self._filled_for = None
         self.opener = CameraOpener(session, self)
 
         self.view = CameraView(self)
@@ -197,6 +205,10 @@ class PipetteCalibration(QWidget):
     def _offset_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Starting offset", 2))
+        box.layout().addWidget(self._wrapped(
+            "A rough estimate of where the tip is from the camera's centre. "
+            "A ruler is enough: it only has to land the tip inside the lower "
+            "camera's view, and the calibration measures the real offset."))
         self.offset_note = QLabel()
         self.offset_note.setWordWrap(True)
         box.layout().addWidget(self.offset_note)
@@ -219,11 +231,15 @@ class PipetteCalibration(QWidget):
                                   "crosshair, then Done", self)
         self.touch_up.setChecked(True)
 
+        self.reset_offset_button = secondary_button("Reset to defaults", self)
+        self.reset_offset_button.setToolTip(
+            f"dx {DEFAULT_OFFSET_MM[0]:g} mm, dy {DEFAULT_OFFSET_MM[1]:g} mm: "
+            f"the usual offset on this rig.")
+        self.reset_offset_button.clicked.connect(self._reset_offset)
+
         for label, widget, hint in (
-                ("dx", self.dx,
-                 "camera reference to tip, x. On a new installation, a "
-                 "ruler's worth; afterwards the last calibration's."),
-                ("dy", self.dy, "the same, y."),
+                ("dx", self.dx, "camera centre to tip, in x."),
+                ("dy", self.dy, "the same, in y."),
                 ("Tip type", self.tip_type,
                  "recorded with the offset. Taken from the rack the tip came "
                  "from when the robot's record names one."),
@@ -240,9 +256,22 @@ class PipetteCalibration(QWidget):
             note = QLabel(hint)
             note.setWordWrap(True)
             box.layout().addWidget(note)
+            if widget is self.dy:
+                box.layout().addWidget(self.reset_offset_button, 0,
+                                       Qt.AlignmentFlag.AlignLeft)
         box.layout().addWidget(self.verify)
         box.layout().addWidget(self.touch_up)
         return box
+
+    @staticmethod
+    def _wrapped(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setWordWrap(True)
+        return label
+
+    def _reset_offset(self) -> None:
+        self.dx.setValue(DEFAULT_OFFSET_MM[0])
+        self.dy.setValue(DEFAULT_OFFSET_MM[1])
 
     def _calibration_card(self) -> QWidget:
         box = card(self)
@@ -630,10 +659,9 @@ class PipetteCalibration(QWidget):
         offset = profile.calibration.pipette_offset if profile else None
         if offset is None:
             self.offset_note.setText(
-                "No offset in the profile. The routine drives to where it "
-                "believes the target is before looking, so a rough value from "
-                "a ruler is needed first; tens of millimetres off puts the "
-                "tip outside the lower camera's view.")
+                f"No offset in the profile yet: starting from the usual "
+                f"values, dx {DEFAULT_OFFSET_MM[0]:g} mm and dy "
+                f"{DEFAULT_OFFSET_MM[1]:g} mm.")
         else:
             when = (offset.measured_at.strftime("%Y-%m-%d %H:%M")
                     if offset.measured_at else "date unknown")
@@ -642,9 +670,9 @@ class PipetteCalibration(QWidget):
                 f"{offset.method}, {when}"
                 + (f", tip {offset.tip_type}" if offset.tip_type else "")
                 + ". Used as the starting point unless changed below.")
-        for widget in (self.dx, self.dy, self.tip_type, self.frames,
-                       self.verify, self.touch_up, self.under_choice,
-                       self.over_choice):
+        for widget in (self.dx, self.dy, self.reset_offset_button,
+                       self.tip_type, self.frames, self.verify, self.touch_up,
+                       self.under_choice, self.over_choice):
             widget.setEnabled(not running)
         if not running:
             self._prefill(offset)
@@ -667,11 +695,15 @@ class PipetteCalibration(QWidget):
                              else self._over_camera())
 
     def _prefill(self, offset) -> None:
-        """The profile's offset into the spin boxes while they are still
-        untouched. A value the operator typed stays."""
-        if self.dx.value() == 0.0 and self.dy.value() == 0.0 and offset is not None:
-            self.dx.setValue(offset.dx)
-            self.dy.setValue(offset.dy)
+        """The profile's offset into the boxes, or the defaults when it has
+        none - once per profile, so a value the operator typed stays."""
+        profile = self.session.profile
+        if profile is not None and profile is not self._filled_for:
+            self._filled_for = profile
+            dx, dy = ((offset.dx, offset.dy) if offset is not None
+                      else DEFAULT_OFFSET_MM)
+            self.dx.setValue(dx)
+            self.dy.setValue(dy)
         if not self.tip_type.text():
             tip = self.session.tip
             name = None
