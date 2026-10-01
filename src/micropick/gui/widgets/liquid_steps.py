@@ -267,6 +267,13 @@ class StepEditor(QWidget):
         rows.setSpacing(4)
         rows.addWidget(self.volume)
         rows.addWidget(self.all_in_tip)
+        self.auto_empty = QCheckBox("Auto empty", self)
+        self.auto_empty.setToolTip(
+            "Empty the tip here - everything in it, then a blow out - only "
+            "when it could not take the next aspirate, and after the group's "
+            "last well. For a waste: the tip is emptied every few wells "
+            "instead of after each.")
+        rows.addWidget(self.auto_empty)
         rows.addWidget(self.refill)
         self.volume_row = volume_row
         self.flow = _number(self, FLOW_RANGE, " µl/s")
@@ -297,6 +304,7 @@ class StepEditor(QWidget):
             box.valueChanged.connect(self._edited)
         self.cycles.valueChanged.connect(self._edited)
         self.all_in_tip.toggled.connect(self._all_toggled)
+        self.auto_empty.toggled.connect(self._all_toggled)
         self.refill.toggled.connect(self._edited)
         # Auto refill is offered only for a source, so it follows Where.
         self.where.changed.connect(self._show_refill)
@@ -313,11 +321,14 @@ class StepEditor(QWidget):
         action = step.action if step is not None else None
         has = lambda name: step is not None and hasattr(step, name)  # noqa: E731
         if has("volume_ul"):
-            self.all_in_tip.setVisible(action == "dispense")
+            dispense = action == "dispense"
+            self.all_in_tip.setVisible(dispense)
             self.all_in_tip.setChecked(step.volume_ul is None)
+            self.auto_empty.setVisible(dispense)
+            self.auto_empty.setChecked(dispense and step.auto_empty)
             self.volume.setValue(step.volume_ul if step.volume_ul is not None
                                  else self.volume.value())
-            self.volume.setEnabled(step.volume_ul is not None)
+            self._volume_enabled()
         if action == "aspirate":
             self.refill.setChecked(step.refill)
         if has("flow_rate"):
@@ -351,6 +362,8 @@ class StepEditor(QWidget):
                                    else round(self.volume.value(), 3))
         if hasattr(step, "refill"):
             update["refill"] = self.refill.isChecked()
+        if hasattr(step, "auto_empty"):
+            update["auto_empty"] = self.auto_empty.isChecked()
         if hasattr(step, "flow_rate"):
             update["flow_rate"] = round(self.flow.value(), 3)
         if hasattr(step, "cycles"):
@@ -366,9 +379,18 @@ class StepEditor(QWidget):
             k: (v.model_dump() if hasattr(v, "model_dump") else v)
             for k, v in update.items()}})
 
-    def _all_toggled(self, on: bool) -> None:
-        self.volume.setEnabled(not on)
+    def _all_toggled(self, _on: bool) -> None:
+        self._volume_enabled()
         self._edited()
+
+    def _volume_enabled(self) -> None:
+        """An auto empty takes everything, so it greys the volume and the
+        "everything" switch alike."""
+        empty = self.auto_empty.isChecked() and not self.auto_empty.isHidden()
+        everything = (self.all_in_tip.isChecked()
+                      and not self.all_in_tip.isHidden())
+        self.all_in_tip.setEnabled(not empty)
+        self.volume.setEnabled(not empty and not everything)
 
     def _show_refill(self) -> None:
         step = self._step

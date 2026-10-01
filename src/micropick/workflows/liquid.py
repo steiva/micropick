@@ -46,7 +46,10 @@ What the tip holds
 `LiquidState.in_tip` counts it, across wells, groups and runs. A refill
 aspirate takes what `core.liquid.aspirate_volume` says - nothing while the
 tip holds enough for the dispenses after it, else what tops it up - and is
-not driven to when it takes nothing. No aspirate and no mix may put more in
+not driven to when it takes nothing. An auto empty dispense is skipped, and
+not driven to, while the tip can take the next aspirate
+(`core.liquid.empties_now`); when it does empty, it is a dispense of
+everything and a blow out, as below. No aspirate and no mix may put more in
 the tip than the program's `tip_ul`: the run raises `Overfill` before the
 tip moves, and `problems` plays the run through on paper to say so first.
 
@@ -69,7 +72,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..core.liquid import (Group, Location, Program, aspirate_volume,
-                           needed_after, ordered_wells, refills)
+                           empties_now, needed_after, ordered_wells, refills)
 from ..hardware.protocols import Robot, prepare_to_aspirate, require_ok
 from . import manual as moves
 
@@ -266,7 +269,8 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
                 return out + [f"{where}: the dispenses after it take "
                               f"{need:g} µl, more than the {step.volume_ul:g} "
                               f"µl it refills to."]
-        for well in wells:
+        for wi, well in enumerate(wells):
+            last_well = wi == len(wells) - 1
             for si, step in enumerate(steps, 1):
                 where = f"group {group.name!r}, step {si} at {well}"
                 if step.action == "aspirate":
@@ -281,6 +285,9 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
                             f"{where}: mixing {step.volume_ul:g} µl with "
                             f"{in_tip:g} µl in the tip is more than the "
                             f"{tip:g} µl it takes."]
+                elif step.action == "dispense" and step.auto_empty:
+                    if empties_now(steps, si - 1, in_tip, tip, last_well):
+                        in_tip = 0.0
                 elif step.action == "dispense":
                     volume = in_tip if step.volume_ul is None else step.volume_ul
                     if volume > in_tip + VOLUME_TOL:
@@ -447,6 +454,16 @@ def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
         _aspirate(robot, place, step.volume_ul, step.flow_rate)
         state.in_tip += step.volume_ul
         return f"aspirated {step.volume_ul:g} µl"
+    if action == "dispense" and step.auto_empty:
+        volume = state.in_tip
+        if volume > VOLUME_TOL:
+            _say(log, f"empty the tip: {volume:g} µl at {step.flow_rate:g} "
+                      f"µl/s{at}")
+            _dispense(robot, place, volume, step.flow_rate)
+        _say(log, f"blow out at {step.flow_rate:g} µl/s{at}")
+        _blow_out(robot, step, blow_at)
+        state.in_tip = 0.0
+        return f"emptied {volume:g} µl"
     if action == "dispense":
         volume = state.in_tip if step.volume_ul is None else step.volume_ul
         if volume <= VOLUME_TOL:
@@ -548,6 +565,8 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
     jobs = plan(program, plates)
     total = len(jobs)
     capacity = program.tip_ul
+    # The last well of each group: an auto empty there always empties.
+    last = {gi: well for gi, _group, well in jobs}
     state.at = None
     try:
         for gi, group, well in jobs:
@@ -564,12 +583,19 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
                     state.resume[(gi, well)] = si + 1
                 if step.action == "aspirate":
                     step, said = _sized(step, group.steps, si, state, log)
-                    if step is None:
-                        state.resume[(gi, well)] = si + 1
-                        _log_row(log_path, group=group.name, well=well,
-                                 step=si + 1, in_tip=f"{state.in_tip:g}",
-                                 note=said)
-                        continue
+                elif (step.action == "dispense" and step.auto_empty
+                      and not empties_now(group.steps, si, state.in_tip,
+                                          capacity, last[gi] == well)):
+                    step, said = None, (
+                        f"no emptying: the tip holds {state.in_tip:g} µl, "
+                        f"room for the next aspirate")
+                    _say(log, said)
+                if step is None:
+                    state.resume[(gi, well)] = si + 1
+                    _log_row(log_path, group=group.name, well=well,
+                             step=si + 1, in_tip=f"{state.in_tip:g}",
+                             note=said)
+                    continue
                 said = do_step(robot, step, group, well, plates, positions,
                                state, pause=pause, stop=stop, log=log,
                                on_paused=on_paused, capacity=capacity)

@@ -45,6 +45,14 @@ its volume every time whatever the switch says: that is taking liquid out
 of every well - washing - where skipping one would leave a well unwashed.
 Programs saved before the switch existed read it as on.
 
+The other way round, a dispense can be an **auto empty**
+(`Dispense.auto_empty`): it empties the tip - everything in it, then a blow
+out - but only when the tip could not take the next aspirate of the chain,
+and always on the group's last well, so the tip ends the group empty
+(`empties_now`). So "aspirate 100 µl from each well, auto empty into the
+waste" goes to the waste every second well with a 200 µl tip, as notebook 03
+did, instead of after every well.
+
 The program says how much a tip holds (`Program.tip_ul`), and nothing may
 put more in it: the run refuses such an aspirate, and `problems` finds it on
 paper first.
@@ -64,7 +72,8 @@ __all__ = ["LEVELS", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
            "MoveTo", "Mix", "BlowOut", "Wait", "Pause", "Step", "Group",
            "Program", "ProgramError", "ordered_wells", "describe",
            "describe_location", "new_step", "GROUP_COLOURS",
-           "needed_after", "aspirate_volume", "refills", "TIP_UL"]
+           "needed_after", "aspirate_volume", "refills", "empties_now",
+           "TIP_UL"]
 
 # The robot's own well origins; the same as workflows.manual.WELL_LEVELS,
 # restated because core does not import workflows.
@@ -138,12 +147,15 @@ class Aspirate(_Model):
 
 
 class Dispense(_Model):
-    """`volume_ul` None dispenses whatever the tip holds."""
+    """`volume_ul` None dispenses whatever the tip holds. `auto_empty`:
+    everything and a blow out, only when the tip is full (see "What the tip
+    holds"); the volume is then not used."""
 
     action: Literal["dispense"] = "dispense"
     volume_ul: float | None = Field(default=None, gt=0)
     flow_rate: float = _flow()
     location: Location = Field(default_factory=Location)
+    auto_empty: bool = False
 
 
 class MoveTo(_Model):
@@ -300,6 +312,22 @@ def aspirate_volume(step, steps: list, index: int, in_tip: float) -> float:
     return max(0.0, step.volume_ul - in_tip)
 
 
+def empties_now(steps: list, index: int, in_tip: float, tip_ul: float,
+                last_well: bool) -> bool:
+    """Whether the auto empty at `index` of `steps` empties the tip now: when
+    the next aspirate of the chain - after it in this well, else from the
+    top for the next well - would not fit with `in_tip` µl in the tip, when
+    there is none, or when the next one would be in a well after the group's
+    last."""
+    after = steps[index + 1:]
+    for n, step in enumerate(after + steps[:index]):
+        if step.action == "aspirate":
+            if n >= len(after) and last_well:
+                return True
+            return in_tip + step.volume_ul > tip_ul + VOLUME_TOL
+    return True
+
+
 def _mm(value: float) -> str:
     return f"{value:+g} mm"
 
@@ -325,6 +353,8 @@ def describe(step) -> str:
         text = (f"Refill to {step.volume_ul:g} µl when short"
                 if refills(step) else f"Aspirate {step.volume_ul:g} µl")
         text += f" at {step.flow_rate:g} µl/s"
+    elif action == "dispense" and step.auto_empty:
+        text = f"Empty the tip when full at {step.flow_rate:g} µl/s"
     elif action == "dispense":
         amount = "all" if step.volume_ul is None else f"{step.volume_ul:g} µl"
         text = f"Dispense {amount} at {step.flow_rate:g} µl/s"
