@@ -160,6 +160,7 @@ def test_a_deck_json_without_types_reads_as_the_default_catalogue(tmp_path):
     again = store.load_profile("old", directory=tmp_path / "old")
     assert [(t.name, t.height_mm) for t in again.deck.module_types] == \
         list(DEFAULT_MODULE_TYPES)
+    assert again.deck.recent_labware == []
     assert again.deck.module_for(5).height_mm == 64.2
 
 
@@ -169,3 +170,11 @@ def test_module_type_names_are_unique():
         DeckConfig(module_types=[ModuleType(name="a", height_mm=1.0),
                                  ModuleType(name="a", height_mm=2.0)])
 
+
+def test_recent_labware_keeps_the_last_five_newest_first():
+    from micropick.config.schema import RECENT_LABWARE, DeckConfig
+    deck = DeckConfig()
+    for name in ["a", "b", "c", "a", "d", "e", "f", "g"]:
+        deck.remember_labware(name)
+    assert deck.recent_labware == ["g", "f", "e", "d", "a"]
+    assert len(deck.recent_labware) == RECENT_LABWARE

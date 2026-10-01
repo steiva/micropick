@@ -583,6 +583,9 @@ class ModuleType(BaseModel):
 DEFAULT_MODULE_TYPES = (("Picking platform", 64.2),
                         ("Calibration module", 67.1))
 
+# How many load names "Recently used" keeps.
+RECENT_LABWARE = 5
+
 
 def _default_module_types() -> list[ModuleType]:
     return [ModuleType(name=name, height_mm=height)
@@ -590,19 +593,25 @@ def _default_module_types() -> list[ModuleType]:
 
 
 class DeckConfig(BaseModel):
-    """deck.json: the modules on this installation's deck, and the kinds of
-    module there are to choose from.
+    """deck.json: the modules on this installation's deck, the kinds of
+    module there are to choose from, and the labware loaded most recently.
 
-    The catalogue is optional, so a deck.json from before it reads as the
-    default one."""
+    The last two are optional, so a deck.json from before them reads as the
+    default catalogue and an empty history."""
 
     model_config = ConfigDict(extra="forbid")
 
     modules: list[DeckModule] = Field(default_factory=list)
     module_types: list[ModuleType] = Field(default_factory=_default_module_types)
+    recent_labware: list[str] = Field(default_factory=list)
 
     def module_type(self, name: str) -> ModuleType | None:
         return next((t for t in self.module_types if t.name == name), None)
+
+    def remember_labware(self, load_name: str) -> None:
+        """Put `load_name` first in the recent list, keeping RECENT_LABWARE."""
+        rest = [n for n in self.recent_labware if n != load_name]
+        self.recent_labware = [load_name] + rest[:RECENT_LABWARE - 1]
 
     def module_for(self, slot) -> DeckModule | None:
         wanted = int(slot)

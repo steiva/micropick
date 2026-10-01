@@ -11,7 +11,10 @@ Definitions come from the two places `config.labware` reads: the custom ones
 in `labware/`, made for this rig and uploaded into the run before loading, and
 the stock Opentrons ones from `opentrons-shared-data`, which the robot already
 holds. Custom ones are listed first because they are the reason the list
-exists; the stock list is long, so a filter box sits above it.
+exists; the stock list is long, so a filter box sits above it. Above both,
+"Recently used": the last few load names loaded from this page, kept per
+profile in `deck.json`, because a bench loads the same handful of plates
+every day and the stock list is hundreds long.
 
 Everything the page shows comes from the run state the robot reports, re-read
 after every change, rather than from a record the page keeps of what it asked
@@ -148,6 +151,13 @@ class LabwarePage(QWidget):
         self.session = session
         self._worker: Worker | None = None
         self._slot: str | None = None
+        # What a load in flight is loading, so a successful one goes into
+        # Recently used and a failed one does not.
+        self._loading_name: str | None = None
+        self._custom: dict = {}
+        self._stock: dict = {}
+        self._catalogue_notes: list[str] = []
+        self._shown_recent: list[str] | None = None
 
         self.deck = DeckView(self)
         self.deck.slot_clicked.connect(self._slot_clicked)
@@ -355,39 +365,70 @@ class LabwarePage(QWidget):
     # -- the catalogue -------------------------------------------------------
 
     def _reload_definitions(self) -> None:
-        """Custom first, then stock. Read once: neither list changes while
-        the application runs, short of editing labware/ underneath it."""
-        self.definitions.clear()
+        """Read the catalogue, once: neither list changes while the
+        application runs, short of editing labware/ underneath it."""
         notes = []
         try:
-            custom = local_definitions()
+            self._custom = local_definitions()
         except LabwareError as exc:
-            custom = {}
+            self._custom = {}
             notes.append(str(exc))
         try:
-            stock = shared_definitions()
+            self._stock = shared_definitions()
         except LabwareError as exc:
-            stock = {}
+            self._stock = {}
             notes.append(str(exc))
+        notes.append(f"{len(self._custom)} custom, "
+                     f"{len(set(self._stock) - set(self._custom))} stock "
+                     f"definitions")
+        self._catalogue_notes = notes
+        self._fill_definitions()
 
-        self._add_group("Custom — labware/", custom.values())
+    def _recent(self) -> list[str]:
+        profile = self.session.profile
+        return list(profile.deck.recent_labware) if profile is not None else []
+
+    def _fill_definitions(self) -> None:
+        """Recently used, then custom, then stock; the chosen one and the
+        filter kept."""
+        chosen = self.chosen_definition()
+        recent = self._recent()
+        self._shown_recent = recent
+        self.definitions.clear()
+        known = {**self._stock, **self._custom}
+        used = [known[name] for name in recent if name in known]
+        if used:
+            self._add_group("Recently used", used, keep_order=True)
+        self._add_group("Custom — labware/", self._custom.values())
         # A stock name shadowed by a custom file is the custom one, as
         # resolve_definition would have it; listing both would offer a choice
         # the loader does not make.
         self._add_group("Stock — Opentrons",
-                        (d for name, d in stock.items() if name not in custom))
-        notes.append(f"{len(custom)} custom, "
-                     f"{len(set(stock) - set(custom))} stock definitions")
-        self.catalogue_note.setText("\n".join(notes))
+                        (d for name, d in self._stock.items()
+                         if name not in self._custom))
+        self.catalogue_note.setText("\n".join(self._catalogue_notes))
+        self._apply_filter(self.filter.text())
+        if chosen is not None:
+            for index in range(self.definitions.count()):
+                item = self.definitions.item(index)
+                definition = item.data(DEFINITION_ROLE)
+                if (definition is not None and not item.isHidden()
+                        and definition.load_name == chosen.load_name):
+                    self.definitions.setCurrentItem(item)
+                    break
 
-    def _add_group(self, title: str, definitions) -> None:
+    def _add_group(self, title: str, definitions, *,
+                   keep_order: bool = False) -> None:
         header = QListWidgetItem(title)
         header.setFlags(Qt.ItemFlag.NoItemFlags)
         font = header.font()
         font.setBold(True)
         header.setFont(font)
         self.definitions.addItem(header)
-        for definition in sorted(definitions, key=lambda d: d.display_name.lower()):
+        if not keep_order:
+            definitions = sorted(definitions,
+                                 key=lambda d: d.display_name.lower())
+        for definition in definitions:
             item = QListWidgetItem(
                 f"{definition.display_name}   ·   {definition.load_name}")
             item.setToolTip(str(definition)
@@ -431,6 +472,7 @@ class LabwarePage(QWidget):
         self._say("")
         self._run(Worker(self.session.load_labware, definition, slot),
                   f"loading {definition.load_name} into slot {slot}")
+        self._loading_name = definition.load_name
 
     def _remove(self) -> None:
         if self._slot is None or self._busy() or self.session.robot is None:
@@ -635,12 +677,17 @@ class LabwarePage(QWidget):
         if self.sender() is not self._worker:
             return
         self._worker = None
+        if self._loading_name is not None:
+            self.session.remember_labware(self._loading_name)
+            self._loading_name = None
+            self._fill_definitions()
         self._refresh()
 
     def _job_failed(self, reason: str) -> None:
         if self.sender() is not self._worker:
             return
         self._worker = None
+        self._loading_name = None
         self._say(reason)
         log.error("labware: %s", reason)
         self._refresh()
@@ -657,8 +704,10 @@ class LabwarePage(QWidget):
         self._refresh()
 
     def _on_profile_changed(self) -> None:
-        """Another profile has other module types."""
+        """Another profile has other module types and another history."""
         self._show_types()
+        if self._recent() != self._shown_recent:
+            self._fill_definitions()
         self._refresh()
 
     def _on_tip_changed(self, tip) -> None:

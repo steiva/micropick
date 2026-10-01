@@ -298,13 +298,15 @@ def test_the_routine_page_offers_only_what_can_be_delivered_into(app, session,
     assert [slot for slot, _, _ in offered] == ["2", "5"]
 
 
-def test_set_deck_modules_keeps_the_catalogue(app, tmp_path, monkeypatch):
+def test_set_deck_modules_keeps_the_catalogue_and_the_history(app, tmp_path, monkeypatch):
     from micropick.config.schema import ModuleType
     monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
     s = Session(Options(mock=True))
     s.load_profile("mock")
     s.set_module_types([ModuleType(name="Block", height_mm=12.0)])
+    s.remember_labware("corning_96_wellplate_360ul_flat")
     s.set_deck_modules([PLATFORM])
     deck = s.profile.deck
     assert [t.name for t in deck.module_types] == ["Block"]
+    assert deck.recent_labware == ["corning_96_wellplate_360ul_flat"]
     s.shutdown()

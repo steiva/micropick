@@ -646,10 +646,11 @@ class Session(QObject):
         if self.profile is None:
             raise SessionError("no profile to save deck modules into")
         # Built again, not copied: the constructor is what refuses two
-        # modules in one slot. The catalogue is kept.
+        # modules in one slot. The catalogue and the history are kept.
         deck = self.profile.deck
         self.profile.deck = DeckConfig(modules=list(modules),
-                                       module_types=list(deck.module_types))
+                                       module_types=list(deck.module_types),
+                                       recent_labware=list(deck.recent_labware))
         self.profile.save_deck()
         log.info("deck modules saved to profile %r: %s", self.profile.name,
                  "; ".join(m.describe() for m in modules) or "none")
@@ -666,12 +667,22 @@ class Session(QObject):
             raise SessionError("no profile to save module types into")
         deck = self.profile.deck
         self.profile.deck = DeckConfig(modules=list(deck.modules),
-                                       module_types=list(types))
+                                       module_types=list(types),
+                                       recent_labware=list(deck.recent_labware))
         self.profile.save_deck()
         log.info("module types in profile %r: %s", self.profile.name,
                  ", ".join(f"{t.name} {t.height_mm:g} mm" for t in types)
                  or "none")
         self.profile_changed.emit(self.profile)
+
+    def remember_labware(self, load_name: str) -> None:
+        """Note a load name as just used, for the Robot & Deck page's
+        Recently used. Saved, but announced to nobody: only that list
+        shows it, and it asks."""
+        if self.profile is None:
+            return
+        self.profile.deck.remember_labware(load_name)
+        self.profile.save_deck()
 
     # -- tips ----------------------------------------------------------------
     #
