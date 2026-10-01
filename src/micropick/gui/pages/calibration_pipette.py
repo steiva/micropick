@@ -1,7 +1,7 @@
 """Measuring the pipette offset — the notebook's section 4, on one page.
 
 The picture on the left and one panel on the right, in the notebook's order:
-Disc position, Starting offset, XY calibration, Result. It used to be a wizard
+Disc position, Starting offset, XY calibration, Details. It used to be a wizard
 of four pages with Back and Next; the order was right, but the pages hid
 what the next one needed, and going back to fix the disc meant leaving the
 camera that showed it. Now everything is in view, and what stops the run is
@@ -144,7 +144,7 @@ class PipetteCalibration(QWidget):
         self.view = CameraView(self)
         panel = CardColumns([self._position_card(), self.jog,
                              self._offset_card(), self._calibration_card(),
-                             self._touch_card(), self._result_card()], self)
+                             self._touch_card(), self._details_card()], self)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, SPACING, 0, 0)
         layout.setSpacing(SPACING)
@@ -289,26 +289,14 @@ class PipetteCalibration(QWidget):
         self.checks.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.checks)
-        self.run_log = QPlainTextEdit(self)
-        self.run_log.setReadOnly(True)
-        self.run_log.setMaximumBlockCount(2000)
-        self.run_log.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.run_log.setMinimumHeight(140)
         row = QHBoxLayout()
         self.start_button = primary_button("Start", self)
         self.start_button.clicked.connect(self._start)
         row.addWidget(self.start_button)
         row.addStretch(1)
         box.layout().addLayout(row)
-        # Folded: the line under Start says what the routine is doing, and
-        # every line also goes to the application log. The full text is for
-        # when something went wrong.
-        self.details = Section("Details", collapsed=True, parent=self)
-        self.details.body.layout().addWidget(self.run_log)
         self.done = DoneBanner(self)
         box.layout().addWidget(self.done)
-        box.layout().addWidget(self.details)
         return box
 
     def _touch_card(self) -> QWidget:
@@ -343,23 +331,23 @@ class PipetteCalibration(QWidget):
         self.touch_box.hide()
         return self.touch_box
 
-    def _result_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Result", 2))
-        self.result_text = QPlainTextEdit(self)
-        self.result_text.setReadOnly(True)
-        self.result_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.result_text.setFont(
+    def _details_card(self) -> QWidget:
+        """Everything the routine wrote, in one text: the run's lines, then
+        the result and where it was saved. A card of its own and folded: the
+        line under Start says what the routine is doing, the banner what it
+        saved, and every line also goes to the application log. The full
+        text is for checking a result or seeing what went wrong."""
+        self.details = Section("Details", collapsed=True, parent=self)
+        self.run_log = QPlainTextEdit(self)
+        self.run_log.setReadOnly(True)
+        self.run_log.setMaximumBlockCount(2000)
+        # Not wrapped: the result's tables line up in columns.
+        self.run_log.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.run_log.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.result_text.setMinimumHeight(140)
-        self.result_text.hide()
-        self.result_note = QLabel("No calibration on this page yet.")
-        self.result_note.setWordWrap(True)
-        self.result_note.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.result_note)
-        box.layout().addWidget(self.result_text, 1)
-        return box
+        self.run_log.setMinimumHeight(260)
+        self.details.body.layout().addWidget(self.run_log)
+        return self.details
 
     # -- the disc ------------------------------------------------------------
 
@@ -575,16 +563,11 @@ class PipetteCalibration(QWidget):
         self._result, self._standin = result, standin
         offset: PipetteOffset = result.offset
         self._append("done")
-        self._outcome = "Finished: see Result."
+        self._outcome = "Finished: the full result is under Details."
         self.done.show_done(f"Offset ({offset.dx:+.3f}, {offset.dy:+.3f}) mm "
                             f"saved to the profile.")
         log.info("pipette offset calibrated: dx %+.3f dy %+.3f mm (%s)",
                  offset.dx, offset.dy, offset.method)
-        text = str(result)
-        if result.homography_report is not None:
-            text += f"\n\n{result.homography_report}"
-        self.result_text.setPlainText(text)
-        self.result_text.show()
         profile = self.session.profile
         note = (f"Saved to {profile.path / 'calibration.json'}: offset "
                 f"({offset.dx:+.3f}, {offset.dy:+.3f}) mm, method "
@@ -593,7 +576,12 @@ class PipetteCalibration(QWidget):
                    else "") + ".")
         if standin:
             note = STANDIN_NOTE + "\n" + note
-        self.result_note.setText(note)
+        # The result after the run's lines, in the same text; not through
+        # _append, which would log line by line what the log already has.
+        text = f"\n{note}\n\n{result}"
+        if result.homography_report is not None:
+            text += f"\n\n{result.homography_report}"
+        self.run_log.appendPlainText(text)
         self.session.profile_changed.emit(profile)
         self.dx.setValue(offset.dx)
         self.dy.setValue(offset.dy)
