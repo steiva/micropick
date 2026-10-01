@@ -107,6 +107,14 @@ class RoutinePage(QWidget):
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
+        # What the page is for, before anything on it: the tab says "Plate
+        # plan", and the word alone does not say whose plan or of what.
+        intro = QLabel(
+            "This page maps how many cuboids go into which wells of the "
+            "plate. Choose the plate, select wells, set how many each gets, "
+            "then Create: the Picking page fills the plate by this plan.")
+        intro.setWordWrap(True)
+        column.addWidget(intro)
         column.addWidget(self._plate_card())
         column.addWidget(self._plan_card())
         column.addWidget(self._routine_card())
