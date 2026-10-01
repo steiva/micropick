@@ -577,11 +577,13 @@ class ModuleType(BaseModel):
     height_mm: float
 
 
-# The catalogue a profile starts with. The heights are this rig's: the
-# picking platform's 64.2 mm, and the calibration module at the tip target's
-# module_height.
-DEFAULT_MODULE_TYPES = (("Picking platform", 64.2),
-                        ("Calibration module", 67.1))
+# The height a module starts with, until it is measured: the picking
+# platform's, which is what this rig's modules raise the labware by.
+DEFAULT_MODULE_HEIGHT_MM = 64.2
+
+# The catalogue a profile starts with.
+DEFAULT_MODULE_TYPES = (("Picking platform", DEFAULT_MODULE_HEIGHT_MM),
+                        ("Calibration module", DEFAULT_MODULE_HEIGHT_MM))
 
 # How many load names "Recently used" keeps.
 RECENT_LABWARE = 5

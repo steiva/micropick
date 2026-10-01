@@ -85,7 +85,8 @@ from PySide6.QtWidgets import (QComboBox, QCompleter, QDialog,
 
 from ...config.labware import (LabwareDefinition, LabwareError,
                                local_definitions, shared_definitions)
-from ...config.schema import DeckModule, ModuleType
+from ...config.schema import (DEFAULT_MODULE_HEIGHT_MM, DeckModule,
+                              ModuleType)
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, double_spin_box, heading,
@@ -123,11 +124,11 @@ def _height_box(parent: QWidget):
 
 
 class _TypeDialog(QDialog):
-    """A name and a height: a new module type."""
+    """A name and a height: a new module for the list."""
 
     def __init__(self, parent: QWidget, height: float):
         super().__init__(parent)
-        self.setWindowTitle("New module type")
+        self.setWindowTitle("New module")
         self.name = QLineEdit(self)
         self.name.setPlaceholderText("e.g. Cooling block")
         self.height = _height_box(self)
@@ -234,7 +235,7 @@ class LabwarePage(QWidget):
         row.addWidget(self.module_type, 1)
         box.layout().addLayout(row)
         row = QHBoxLayout()
-        self.new_type_button = secondary_button("New type…", self)
+        self.new_type_button = secondary_button("New module…", self)
         self.new_type_button.setToolTip("Add a kind of module to the list, "
                                         "with its usual height.")
         self.new_type_button.clicked.connect(self._new_type)
@@ -610,14 +611,14 @@ class LabwarePage(QWidget):
         profile = self.session.profile
         if profile is None:
             return
-        dialog = _TypeDialog(self, self.module_height.value())
+        dialog = _TypeDialog(self, DEFAULT_MODULE_HEIGHT_MM)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         name = dialog.name.text().strip()
         if not name:
             return
         if profile.deck.module_type(name) is not None:
-            QMessageBox.warning(self, "New module type",
+            QMessageBox.warning(self, "New module",
                                 f"There is already a type called {name!r}.")
             return
         types = list(profile.deck.module_types) + [
