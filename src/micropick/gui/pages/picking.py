@@ -92,10 +92,8 @@ import logging
 import threading
 import time
 
-import numpy as np
-import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QKeySequence, QPalette, QShortcut
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
                                QWidget)
 
@@ -113,6 +111,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.feed_row import FeedRow
+from ..widgets.size_histogram import SizeHistogram
 from ..widgets.jog_panel import JogPanel
 from ..widgets.settings_form import PickingSettingsDialog
 from ..workers import Worker
@@ -144,14 +143,11 @@ KEYS = (("Space", "resume", "resume"),
         ("P", "pause", "pause"),
         ("Esc", "stop", "stop"))
 
-# Histogram colours. A plot is its own surface, like the camera viewport,
-# so these are fixed; the ink follows the palette's text colour, which is
-# the one role qdarktheme really varies between light and dark.
-BAR = (94, 158, 235)
-INSIDE = (120, 220, 130)
-WINDOW_EDGE = (240, 160, 48)
-
-HIST_BINS = 28
+# What the sentence under the histogram adds on this page: the window is
+# not the last word on what a run picks, but nothing after it adds any.
+HIST_AFTER = ("Only the shape windows and the spacing rule can reject one "
+              "after that, so this is the most a run could pick from this "
+              "frame.")
 
 CONFIRM_START = (
     "Make sure the dish and the well plate are in place and their lids are "
@@ -293,36 +289,12 @@ class PickingPage(QWidget):
     def _histogram_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Sizes", 2))
-        self.hist = pg.PlotWidget(background=None)
-        ink = self.palette().color(QPalette.ColorRole.Text)
-        for axis in ("left", "bottom"):
-            self.hist.getAxis(axis).setPen(ink)
-            self.hist.getAxis(axis).setTextPen(ink)
-        # The plot is a readout, not something to explore. Left to itself
-        # pyqtgraph keeps whatever range the last wheel turn or auto-range
-        # left behind, and a plot in a scrolling column collects wheel
-        # turns meant for the column - which is how it ends up too tall or
-        # too narrow with an "A" button in the corner as the only way back.
-        # Both axes are set from the data after every draw instead.
-        view = self.hist.getPlotItem().getViewBox()
-        view.setMouseEnabled(x=False, y=False)
-        view.setMenuEnabled(False)
-        view.wheelEvent = lambda event, axis=None: event.ignore()
-        self.hist.getPlotItem().hideButtons()
-        self.hist.setLabel("bottom", "diameter, µm")
-        self.hist.setLabel("left", "cuboids")
-        self.hist.showGrid(x=True, y=True, alpha=0.2)
-        # Bounded above too: a plot widget expands, and in a tall column it
-        # took every spare pixel and pushed the run card out of sight.
-        self.hist.setMinimumHeight(190)
-        self.hist.setMaximumHeight(260)
-        box.layout().addWidget(self.hist)
-
-        self.window_state = QLabel(
+        self.histogram = SizeHistogram(
             "The shaded band is cuboid_size_threshold: what a run would "
-            "accept. Analyse the dish to see what is in it.")
-        self.window_state.setWordWrap(True)
-        box.layout().addWidget(self.window_state)
+            "accept. Analyse the dish to see what is in it.", self)
+        # The names the page and its tests have always used for the two.
+        self.hist, self.window_state = self.histogram.plot, self.histogram.state
+        box.layout().addWidget(self.histogram)
         return box
 
     def _run_card(self) -> QWidget:
@@ -509,79 +481,11 @@ class PickingPage(QWidget):
     # -- the histogram ---------------------------------------------------------
 
     def _draw_histogram(self) -> None:
-        # clear() drops the items; the ranges below are what stop the view
-        # box from keeping the last dish's.
-        self.hist.clear()
-        detection = self._detection
         profile = self.session.profile
-        if detection is None or profile is None:
-            self.window_state.setText("nothing measured yet")
-            return
-        if not detection.classified or "diameter_microns" not in detection.df:
-            # Without a pixel map there are no millimetres, so there are no
-            # microns either, and a histogram of pixels would be a different
-            # quantity wearing the same axis label.
-            self.window_state.setText(
-                "sizes need the pixel map: " + " ".join(detection.notes))
-            return
-
-        sizes = detection.df.diameter_microns.to_numpy(dtype=float)
-        sizes = sizes[np.isfinite(sizes)]
-        low, high = (float(v) for v in profile.picking.cuboid_size_threshold)
-        if len(sizes) == 0:
-            self.window_state.setText("no detections to measure")
-            return
-
-        # A dish with one cuboid, or with several of exactly one size, gives
-        # numpy a zero-width range and every bin edge the same number: the
-        # bars come out zero wide and the plot looks empty. Give it a span
-        # to divide, centred on the value.
-        span = float(sizes.max() - sizes.min())
-        if span <= 0:
-            centre = float(sizes[0])
-            pad = max(1.0, abs(centre) * 0.1)
-            edges = np.linspace(centre - pad, centre + pad, HIST_BINS + 1)
-        else:
-            edges = np.histogram_bin_edges(sizes, bins=HIST_BINS)
-        counts, edges = np.histogram(sizes, bins=edges)
-        width = float(edges[1] - edges[0]) if len(edges) > 1 else 1.0
-        centres = (edges[:-1] + edges[1:]) / 2
-        # Two series rather than one recoloured: a bar is inside the window
-        # or it is not, and the eye should not have to compare a shade with
-        # the band behind it.
-        inside_bin = (centres >= low) & (centres <= high)
-        for mask, colour in ((~inside_bin, BAR), (inside_bin, INSIDE)):
-            if not mask.any():
-                continue
-            self.hist.addItem(pg.BarGraphItem(
-                x=centres[mask], height=counts[mask], width=width * 0.92,
-                brush=pg.mkBrush(*colour, 200), pen=pg.mkPen(*colour)))
-
-        region = pg.LinearRegionItem(values=(low, high), movable=False,
-                                     brush=pg.mkBrush(*WINDOW_EDGE, 28),
-                                     pen=pg.mkPen(*WINDOW_EDGE, width=2))
-        region.setZValue(-10)
-        self.hist.addItem(region)
-        # Both the population and the window in view, so "the cuboids are to
-        # the left of the window" is a thing that can be seen rather than
-        # inferred from two numbers off the edge of the plot.
-        left = min(float(edges[0]), low)
-        right = max(float(edges[-1]), high)
-        margin = max(1.0, (right - left) * 0.05)
-        self.hist.setXRange(left - margin, right + margin, padding=0)
-        # And the height, for the same reason: a bar chart whose y range is
-        # remembered from another dish is a bar chart of the wrong height.
-        self.hist.setYRange(0, max(1, int(counts.max())) * 1.1, padding=0)
-
-        inside = int(((sizes >= low) & (sizes <= high)).sum())
-        smaller = int((sizes < low).sum())
-        bigger = int((sizes > high).sum())
-        self.window_state.setText(
-            f"{inside} of {len(sizes)} cuboids are inside "
-            f"{low:g}–{high:g} µm — {smaller} smaller, {bigger} bigger. "
-            f"Only the shape windows and the spacing rule can reject one "
-            f"after that, so this is the most a run could pick from this "
-            f"frame.")
+        self.histogram.show_detection(
+            self._detection,
+            profile.picking.cuboid_size_threshold if profile else None,
+            after=HIST_AFTER)
 
     # -- the detector ----------------------------------------------------------
 

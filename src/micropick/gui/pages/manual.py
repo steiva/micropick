@@ -40,6 +40,11 @@ Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
 detections are dropped: they were measured from where the camera was.
 
+After Detect cuboids, their sizes against the profile's size window are in
+a folded Sizes section: the Picking page's histogram (`widgets.size_histogram`),
+the same drawing, so the two pages cannot disagree about what a run would
+accept.
+
 The keys - the jog panel's and these - and what the mouse does are listed
 on the picture, bottom right; H hides them.
 """
@@ -64,13 +69,14 @@ from ..auto_camera import CameraOpener
 from ..detector import wanted_model
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, double_spin_box, heading,
-                             scroll_column, secondary_button)
+from ..theme.factory import (Section, card, combo_box, double_spin_box,
+                             heading, scroll_column, secondary_button)
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
+from ..widgets.size_histogram import SizeHistogram
 from ..workers import Worker
 
 __all__ = ["ManualPage", "SNAP_PX", "CROSSHAIR_Z_MM"]
@@ -165,8 +171,9 @@ class ManualPage(QWidget):
                           + list(MOUSE_HELP))
 
         panel = CardColumns([self._camera_card(), self._click_card(),
-                             self._targets_card(), self._liquid_card(),
-                             self._well_card(), self.jog], self)
+                             self._targets_card(), self._sizes_card(),
+                             self._liquid_card(), self._well_card(), self.jog],
+                            self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -249,6 +256,16 @@ class ManualPage(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.state)
         return box
+
+    def _sizes_card(self) -> QWidget:
+        """Folded: the sizes are a second look at a detection, not the
+        reason to make one."""
+        self.sizes = Section("Sizes", collapsed=True, parent=self)
+        self.histogram = SizeHistogram(
+            "Detect cuboids to see their sizes against the profile's "
+            "cuboid_size_threshold, the shaded band.", self)
+        self.sizes.body.layout().addWidget(self.histogram)
+        return self.sizes
 
     def _liquid_card(self) -> QWidget:
         box = card(self)
@@ -479,8 +496,15 @@ class ManualPage(QWidget):
         self._cuboid_covered = covered
         self._chosen = None
         log.info("cuboids: %s", detection.summary.replace("\n", " | "))
+        self._show_sizes()
         self._redraw()
         self._refresh()
+
+    def _show_sizes(self) -> None:
+        profile = self.session.profile
+        self.histogram.show_detection(
+            self._cuboids,
+            profile.picking.cuboid_size_threshold if profile else None)
 
     # -- clicking ---------------------------------------------------------------
 
@@ -727,6 +751,7 @@ class ManualPage(QWidget):
         self._frame_shape = None
         self._chosen = None
         if redraw:
+            self._show_sizes()
             self._redraw()
             self._refresh()
 
