@@ -317,6 +317,55 @@ class Routine:
             checked[target] = count
         return checked
 
+    # -- changing the plan --------------------------------------------------
+
+    def plan_problems(self, plan: dict[Target, int]) -> list[str]:
+        """Why `plan` cannot replace this routine's plan, as sentences; empty
+        if it can.
+
+        The plan of a routine with progress can grow - more in a well, wells
+        added - but it cannot unsay what is already in the plate: a well
+        holding cuboids stays in the plan, and its count stays at least what
+        it holds. Wells nothing was delivered to may go.
+        """
+        try:
+            checked = self._check_plan(plan, self.destination)
+        except RoutineError as exc:
+            return [str(exc)]
+        out = []
+        for target, progress in self._progress.items():
+            held = progress.delivered
+            if not held:
+                continue
+            if target not in checked or checked[target] == 0:
+                out.append(f"{target} already holds {held}: it cannot leave "
+                           f"the plan")
+            elif checked[target] < held:
+                out.append(f"{target} already holds {held}: its count cannot "
+                           f"go below {held}")
+        return out
+
+    def edit_plan(self, plan: dict[Target, int]) -> None:
+        """Replace the plan, keeping the progress recorded so far.
+
+        Refused with `plan_problems` as the reason. Progress is kept for every
+        well still in the plan and started at nothing for a new one; a well
+        taken out had nothing delivered, and its record of misses goes with
+        it. The identity is unchanged - it is the same plate - and the file
+        is written at once when the routine has one.
+        """
+        problems = self.plan_problems(plan)
+        if problems:
+            raise RoutineError("; ".join(problems))
+        checked = self._check_plan(plan, self.destination)
+        self._progress = {t: self._progress.get(t) or _Progress()
+                          for t in checked}
+        self.plan = checked
+        if self._current is not None and self._current not in self.plan:
+            self._current = None
+        if self.path is not None:
+            self.save()
+
     # -- ordering -----------------------------------------------------------
 
     def _ordered(self) -> list[Target]:

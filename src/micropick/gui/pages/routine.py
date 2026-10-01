@@ -48,6 +48,14 @@ no slot, no name, no progress - and New from preset puts them on a plate
 of that kind the robot holds, as a plan to edit and Create, never as a
 plan already under way (`core.routine.PlanPreset`).
 
+**A plan under way can still be changed**, within what the plate already
+holds: more in a well, wells added, wells nothing reached taken out. Each
+change is checked against the progress by `Routine.plan_problems` as it is
+made, and refused with the reason; Save changes writes it with
+`Routine.edit_plan`, keeping the progress and the plan's identity - it is
+the same plate. Until then the plate shows the edited plan and the saved
+one stays what Picking runs.
+
 Ctrl+A selects every well and Delete takes the selected ones out of the
 plan. Every gesture and key is listed on the page, one per line, from
 `GESTURES` - the same list a new key has to be added to.
@@ -360,6 +368,23 @@ class RoutinePage(QWidget):
         self.confirm_button = primary_button("Confirm resume", self)
         self.confirm_button.clicked.connect(self._confirm)
         box.layout().addWidget(self.confirm_button)
+
+        # Changes to a plan that already exists: kept on the page until
+        # saved, so the file Picking reads is never half an edit.
+        self.edit_note = QLabel()
+        self.edit_note.setWordWrap(True)
+        box.layout().addWidget(self.edit_note)
+        row = QHBoxLayout()
+        self.save_edit_button = primary_button("Save changes", self)
+        self.save_edit_button.setToolTip("Write the changed counts into this "
+                                         "plan, keeping its progress.")
+        self.save_edit_button.clicked.connect(self._save_edit)
+        self.discard_edit_button = secondary_button("Discard changes", self)
+        self.discard_edit_button.clicked.connect(self._discard_edit)
+        row.addWidget(self.save_edit_button)
+        row.addWidget(self.discard_edit_button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
         return box
 
     def _labware_card(self) -> QWidget:
@@ -490,12 +515,6 @@ class RoutinePage(QWidget):
             self._apply_count()
 
     def _apply_count(self) -> None:
-        if self.routine is not None:
-            # A routine's plan is fixed once it exists: editing it underneath
-            # recorded progress would make the counts describe two plans.
-            self.plan_state.setText(
-                "this plate plan is fixed. Create a new one to change it.")
-            return
         if not self._selection:
             self.plan_state.setText("nothing is selected. Click a well, or a "
                                     "row letter, or drag a box.")
@@ -507,12 +526,10 @@ class RoutinePage(QWidget):
                 plan[name] = count
             else:
                 plan.pop(name, None)
-        self._change_plan(plan, ("count", frozenset(self._selection)))
+        self._propose(plan, ("count", frozenset(self._selection)))
 
     def _clear_plan(self) -> None:
-        if self.routine is not None:
-            return
-        self._change_plan({})
+        self._propose({})
 
     def _select_all(self) -> None:
         if self.destination is not None:
@@ -522,8 +539,46 @@ class RoutinePage(QWidget):
         """Delete: the selected wells out of the plan, as 0 would."""
         if not self._editable() or not self._selection:
             return
-        self._change_plan({w: n for w, n in self._plan.items()
-                           if w not in self._selection})
+        self._propose({w: n for w, n in self._plan.items()
+                       if w not in self._selection})
+
+    def _propose(self, plan: dict[str, int], kind=None) -> None:
+        """A change to the plan, refused with the reason if a plan under way
+        cannot take it: what the plate holds cannot be unsaid."""
+        if not self._editable():
+            return
+        if self.routine is not None and plan:
+            problems = self.routine.plan_problems(plan)
+            if problems:
+                self.plan_state.setText("Not changed: " + "; ".join(problems))
+                return
+        elif self.routine is not None:
+            self.plan_state.setText("Not changed: a plan under way cannot be "
+                                    "emptied; open or create another.")
+            return
+        self._change_plan(plan, kind)
+
+    # -- changing a plan under way -------------------------------------------
+
+    def _edited(self) -> bool:
+        return self.routine is not None and self._plan != self.routine.plan
+
+    def _save_edit(self) -> None:
+        if not self._edited():
+            return
+        try:
+            self.routine.edit_plan(self._plan)
+        except RoutineError as exc:
+            self.edit_note.setText(f"Not saved: {exc}")
+            return
+        log.info("plan %r changed: %s", self.routine.name,
+                 self.routine.summary().replace("\n", " | "))
+        self.session.set_routine(self.routine)
+        self._adopt(self.routine)
+
+    def _discard_edit(self) -> None:
+        if self._edited():
+            self._change_plan(dict(self.routine.plan))
 
     # -- history -------------------------------------------------------------
 
@@ -565,7 +620,7 @@ class RoutinePage(QWidget):
         self._last_change = None
 
     def _editable(self) -> bool:
-        return self.destination is not None and self.routine is None
+        return self.destination is not None
 
     # -- routine -------------------------------------------------------------
 
@@ -683,6 +738,7 @@ class RoutinePage(QWidget):
 
     def _adopt(self, routine: Routine) -> None:
         self.routine = routine
+        self._plan = dict(routine.plan)
         # The Picking page needs it and the two pages never meet; the
         # session is where "what this session is attached to" lives.
         self.session.set_routine(routine)
@@ -788,10 +844,22 @@ class RoutinePage(QWidget):
         self.all_button.setEnabled(has_plate)
         self.none_button.setEnabled(has_plate and bool(self._selection))
         self.apply_button.setEnabled(editable and bool(self._selection))
-        self.clear_button.setEnabled(editable and bool(self._plan))
+        fresh = editable and self.routine is None
+        # A plan under way keeps its order and cannot be emptied; its counts
+        # change through Save changes, not Create.
+        self.clear_button.setEnabled(fresh and bool(self._plan))
         self.per_well.setEnabled(editable)
-        self.strategy.setEnabled(editable)
-        self.create_button.setEnabled(editable and bool(self._plan))
+        self.strategy.setEnabled(fresh)
+        self.create_button.setEnabled(fresh and bool(self._plan))
+        edited = self._edited()
+        self.save_edit_button.setVisible(edited)
+        self.discard_edit_button.setVisible(edited)
+        self.edit_note.setVisible(edited)
+        if edited:
+            self.edit_note.setText(
+                "Changed on the page, not yet in the plan: Save changes "
+                "writes it, keeping what is already delivered. Picking runs "
+                "the saved plan until then.")
         self.save_preset_button.setEnabled(has_plate and bool(self._plan))
         self.from_preset_button.setEnabled(not busy)
         self.open_button.setEnabled(not busy)

@@ -193,3 +193,55 @@ def test_a_preset_and_a_plan_are_not_taken_for_each_other(tmp_path):
     PlanPreset.from_plan(d, {"A1": 1}).save(preset_path)
     with pytest.raises(RoutineError, match="is a preset"):
         Routine.load(preset_path)
+
+
+# ---------------------------------------------------------------------------
+# editing a plan that has progress
+# ---------------------------------------------------------------------------
+
+def _started(tmp_path, d=None):
+    d = d or Destination.from_definition(tiny_def(), slot=1)
+    r = Routine(d, {"A1": 2, "B1": 1, "A2": 1}, name="run",
+                strategy="by_column", path=tmp_path / "run.json")
+    r.next()
+    r.record(delivered=1, target="A1")
+    r.record(missed=1, target="A2")
+    return r
+
+
+def test_a_plan_with_progress_can_grow(tmp_path):
+    # A plate with a definition on disk: the file is read back below.
+    r = _started(tmp_path, Destination.from_labware("wide_bore_200ul", slot=5))
+    r.edit_plan({"A1": 3, "B1": 1, "A2": 1, "B3": 2})
+    assert r.plan == {"A1": 3, "B1": 1, "A2": 1, "B3": 2}
+    assert r.remaining("A1") == 2                     # 1 of 3 delivered
+    assert r.remaining("B3") == 2
+    back = Routine.load(tmp_path / "run.json")        # written at once
+    assert back.plan == r.plan and back.run_id == r.run_id
+    assert back.remaining("A1") == 2
+
+
+def test_a_well_with_nothing_delivered_may_leave(tmp_path):
+    r = _started(tmp_path)
+    r.edit_plan({"A1": 2})                            # B1 and A2 go
+    assert r.plan == {"A1": 2}
+    assert r.remaining("A1") == 1
+
+
+def test_what_is_in_the_plate_cannot_be_unsaid(tmp_path):
+    r = _started(tmp_path)
+    problems = r.plan_problems({"B1": 1})
+    assert problems == ["A1 already holds 1: it cannot leave the plan"]
+    assert r.plan_problems({"A1": 0, "B1": 1}) == problems
+    r.record(delivered=1, target="A1")                # A1 now holds 2
+    assert r.plan_problems({"A1": 1}) == [
+        "A1 already holds 2: its count cannot go below 2"]
+    with pytest.raises(RoutineError, match="cannot go below 2"):
+        r.edit_plan({"A1": 1})
+    assert r.plan == {"A1": 2, "B1": 1, "A2": 1}      # unchanged when refused
+
+
+def test_an_edited_plan_is_still_checked_against_the_plate(tmp_path):
+    r = _started(tmp_path)
+    assert r.plan_problems({"A1": 2, "Z9": 1})
+    assert r.plan_problems({})                        # empty

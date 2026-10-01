@@ -128,3 +128,40 @@ def test_a_preset_for_a_plate_not_on_the_deck_says_so(page):
     page._apply_preset(PlanPreset("nest_96_wellplate_100ul_pcr_full_skirt",
                                   {"A1": 1}))
     assert "No slot holds" in page.summary.toPlainText()
+
+
+def test_a_plan_under_way_grows_but_keeps_what_the_plate_holds(app, page,
+                                                               tmp_path):
+    from micropick.core.routine import Routine
+    _set(page, {"A1", "A2"}, 2)
+    routine = Routine(page.destination, dict(page._plan), name="plate A",
+                      strategy="by_column", path=tmp_path / "plate_a.json")
+    routine.save()
+    routine.next()
+    routine.record(delivered=2, target="A1")
+    page._adopt(routine)
+    assert not page.save_edit_button.isVisible()
+
+    _set(page, {"A1"}, 1)                             # below what it holds
+    assert page._plan == {"A1": 2, "A2": 2}
+    assert "already holds 2" in page.plan_state.text()
+
+    _set(page, {"B1"}, 3)                             # a well added
+    assert page._edited()
+    assert routine.plan == {"A1": 2, "A2": 2}         # not saved yet
+    page._save_edit()
+    assert routine.plan == {"A1": 2, "A2": 2, "B1": 3}
+    assert routine.remaining("A1") == 0
+    assert Routine.load(tmp_path / "plate_a.json").plan == routine.plan
+    assert not page._edited()
+
+
+def test_changes_to_a_plan_under_way_can_be_discarded(app, page, tmp_path):
+    from micropick.core.routine import Routine
+    _set(page, {"A1"}, 1)
+    routine = Routine(page.destination, dict(page._plan), name="p",
+                      path=tmp_path / "p.json")
+    page._adopt(routine)
+    _set(page, {"C3"}, 4)
+    page._discard_edit()
+    assert page._plan == {"A1": 1} and not page._edited()
