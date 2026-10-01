@@ -1,7 +1,7 @@
 """Measuring the pipette offset — the notebook's section 4, on one page.
 
 The picture on the left and one panel on the right, in the notebook's order:
-Disc position, Starting offset, Calibration, Result. It used to be a wizard
+Disc position, Starting offset, XY calibration, Result. It used to be a wizard
 of four pages with Back and Next; the order was right, but the pages hid
 what the next one needed, and going back to fix the disc meant leaving the
 camera that showed it. Now everything is in view, and what stops the run is
@@ -36,20 +36,21 @@ the screen moves the tip right on the picture. The
 workflow calls `manual_touch_up(robot, camera, view)` from its own thread and
 carries on when it returns, reading the final pose to compute the offset. Here
 the callback raises a signal to the GUI thread and waits on an Event; the
-touch-up block appears with the lower camera live and a jog panel at 0.05 mm,
-and Accept sets the event. Abort sets it too, with a flag the callback turns
-into an exception, so the routine ends before it saves. Between Start and
-Accept the routine is not cancellable — it is a handful of moves and a few
-seconds of detection — and the log says which of those it is doing.
+touch-up block - Manual adjustment - appears with the lower camera live and
+a jog panel at 0.05 mm, and Done sets the event. Abort sets it too, with a
+flag the callback turns into an exception, so the routine ends before it
+saves. Between Start and Done the routine is not cancellable — it is a
+handful of moves and a few seconds of detection — and the log says which of
+those it is doing.
 
 **The routine ends with the Z axis retracted**, as the notebook's cell does
 after printing the result: the tip is at the module height over the disc,
 and every next move starts by going somewhere else. An aborted or failed run
 leaves the gantry where it stopped, so what happened can be seen.
 
-**The profile is written by the workflow, on Accept.** `calibrate_pipette_offset`
+**The profile is written by the workflow, on Done.** `calibrate_pipette_offset`
 saves the offset and the by-product homography together when given the
-profile, and it is given the profile here because Accept is the operator
+profile, and it is given the profile here because Done is the operator
 looking at the tip on the crosshair and saying so — the same act the camera
 page's Save button is. Skipping the touch-up saves on the automatic result,
 which is what the notebook does with `manual_touch_up=None`.
@@ -214,8 +215,8 @@ class PipetteCalibration(QWidget):
         self.frames.setValue(7)
         self.verify = QCheckBox("verify after the correction", self)
         self.verify.setChecked(True)
-        self.touch_up = QCheckBox("finish by hand: nudge the tip onto the "
-                                  "crosshair, then Accept", self)
+        self.touch_up = QCheckBox("manual adjustment: nudge the tip onto the "
+                                  "crosshair, then Done", self)
         self.touch_up.setChecked(True)
 
         for label, widget, hint in (
@@ -245,7 +246,7 @@ class PipetteCalibration(QWidget):
 
     def _calibration_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Calibration", 2))
+        box.layout().addWidget(heading("XY calibration", 2))
         row = QHBoxLayout()
         row.addWidget(QLabel("Lower camera"))
         self.under_choice = QComboBox(self)
@@ -281,11 +282,11 @@ class PipetteCalibration(QWidget):
     def _touch_card(self) -> QWidget:
         """Shown only while the routine is waiting for the operator."""
         self.touch_box = card(self)
-        self.touch_box.layout().addWidget(heading("Finish by hand", 2))
+        self.touch_box.layout().addWidget(heading("Manual adjustment", 2))
         note = QLabel(
             f"The lower camera is live in the picture. Nudge the tip onto the "
             f"central crosshair — the step is {TOUCH_UP_STEP_MM:g} mm — and "
-            f"press Accept. Whatever you move is part of the offset. Abort "
+            f"press Done. Whatever you move is part of the offset. Abort "
             f"ends the calibration with nothing saved.")
         note.setWordWrap(True)
         self.touch_box.layout().addWidget(note)
@@ -299,7 +300,7 @@ class PipetteCalibration(QWidget):
         self.touch_jog.show_position_on(self.view)
         self.touch_box.layout().addWidget(self.touch_jog)
         row = QHBoxLayout()
-        self.accept_button = primary_button("Accept", self)
+        self.accept_button = primary_button("Done", self)
         self.accept_button.clicked.connect(self._accept)
         self.abort_button = secondary_button("Abort", self)
         self.abort_button.clicked.connect(self._abort)
@@ -513,16 +514,16 @@ class PipetteCalibration(QWidget):
         self.touch_jog.set_step(TOUCH_UP_STEP_MM)
         self.touch_box.show()
         self._append("waiting for you: nudge the tip onto the crosshair, "
-                     "then Accept")
+                     "then Done")
         self._refresh()
 
     def _accept(self) -> None:
         if self.touch_jog.busy:
-            self._append("a jog step is still in flight; Accept when it has "
-                         "landed")
+            self._append("a jog step is still in flight; press Done when it "
+                         "has landed")
             return
         self.touch_box.hide()
-        self._append("accepted")
+        self._append("done adjusting")
         self._gate.set()
         self._refresh()
 
@@ -604,7 +605,8 @@ class PipetteCalibration(QWidget):
         # robot during a calibration.
         self.jog.setVisible(not running)
         # The key box is the panel's that has the keys now.
-        self.view.set_help((self.touch_jog if waiting else self.jog).help_lines)
+        keys = self.touch_jog if waiting else self.jog
+        self.view.set_help(keys.help_lines)
 
         # the disc
         stored = self._stored_position()
