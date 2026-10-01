@@ -283,27 +283,38 @@ class LiquidHandlingPage(QWidget):
         self.steps_heading = heading("Steps", 2)
         box.layout().addWidget(self.steps_heading)
         self.steps = _list(self)
+        # A step's line is long; wrapped, it is read without scrolling.
+        self.steps.setWordWrap(True)
+        self.steps.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.steps.currentRowChanged.connect(lambda _r: self._step_chosen())
         box.layout().addWidget(self.steps)
 
-        row = QHBoxLayout()
+        # Two rows: five buttons in one are cut off in a column half the
+        # panel wide.
         self.add_step_button = primary_button("Add step ▾", self)
         menu = QMenu(self.add_step_button)
         for action, _cls, title in ACTIONS:
             menu.addAction(title, lambda a=action: self._add_step(a))
         self.add_step_button.setMenu(menu)
+        box.layout().addWidget(self.add_step_button)
+        row = QHBoxLayout()
         self.step_up = secondary_button("↑", self)
+        self.step_up.setToolTip("Do this step earlier.")
         self.step_up.clicked.connect(lambda: self._move_step(-1))
         self.step_down = secondary_button("↓", self)
+        self.step_down.setToolTip("Do this step later.")
         self.step_down.clicked.connect(lambda: self._move_step(+1))
         self.copy_step_button = secondary_button("Copy", self)
         self.copy_step_button.setToolTip("Put a copy of this step under it.")
         self.copy_step_button.clicked.connect(self._copy_step)
         self.delete_step_button = secondary_button("Delete", self)
         self.delete_step_button.clicked.connect(self._delete_step)
-        for button in (self.add_step_button, self.step_up, self.step_down,
-                       self.copy_step_button, self.delete_step_button):
+        for button in (self.step_up, self.step_down):
+            button.setFixedWidth(44)
             row.addWidget(button)
+        for button in (self.copy_step_button, self.delete_step_button):
+            row.addWidget(button, 1)
         box.layout().addLayout(row)
 
         self.editor = StepEditor(self)

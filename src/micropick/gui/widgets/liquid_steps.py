@@ -81,27 +81,37 @@ class LocationEditor(QWidget):
         self.level.addItems(LEVELS)
         self.level.setToolTip("Where in the well the offset is measured "
                               "from: its rim, its middle or its bottom.")
-        self.offsets = [_number(self, OFFSET_RANGE, " mm", 2, 0.1)
+        # The axis inside the box and the unit on the row's label: three
+        # boxes with a letter beside each and "mm" in each do not fit a
+        # column of the panel.
+        self.offsets = [_number(self, OFFSET_RANGE, "", 2, 0.1)
                         for _ in range(3)]
         for axis, box in zip("XYZ", self.offsets):
-            box.setToolTip(f"{axis} from the level (or the point). "
+            box.setPrefix(f"{axis} ")
+            box.setMinimumWidth(0)
+            box.setToolTip(f"{axis} from the level (or the point), in mm. "
                            + ("+ is up." if axis == "Z" else ""))
+        # Across the whole form, under a label of its own: beside a label
+        # three boxes are too narrow to show their numbers.
+        self.offset_label = QLabel("Offset from there, mm", self)
         offset_row = QWidget(self)
         row = QHBoxLayout(offset_row)
         row.setContentsMargins(0, 0, 0, 0)
-        for axis, box in zip("XYZ", self.offsets):
-            row.addWidget(QLabel(axis))
+        row.setSpacing(4)
+        for box in self.offsets:
             row.addWidget(box, 1)
         self.offset_row = offset_row
 
         self.form = QFormLayout(self)
         self.form.setContentsMargins(0, 0, 0, 0)
+        self.form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.form.addRow("Where", self.kind)
         self.form.addRow("Labware", self.labware)
         self.form.addRow("Well", self.well)
         self.form.addRow("Point", self.point)
         self.form.addRow("Level", self.level)
-        self.form.addRow("Offset", self.offset_row)
+        self.form.addRow(self.offset_label)
+        self.form.addRow(self.offset_row)
 
         self.kind.currentIndexChanged.connect(self._kind_changed)
         self.labware.currentIndexChanged.connect(self._labware_changed)
@@ -200,6 +210,7 @@ class LocationEditor(QWidget):
         self.form.setRowVisible(self.well, kind == "well")
         self.form.setRowVisible(self.point, kind == "point")
         self.form.setRowVisible(self.level, kind in ("this_well", "well"))
+        self.form.setRowVisible(self.offset_label, kind != "here")
         self.form.setRowVisible(self.offset_row, kind != "here")
 
 
@@ -217,11 +228,14 @@ class StepEditor(QWidget):
         self.all_in_tip = QCheckBox("everything in the tip", self)
         self.all_in_tip.setToolTip("Dispense whatever the tip holds at that "
                                    "moment.")
+        # The box and its switch one above the other: side by side they
+        # are squeezed in a column of the panel.
         volume_row = QWidget(self)
-        row = QHBoxLayout(volume_row)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self.volume, 1)
-        row.addWidget(self.all_in_tip)
+        rows = QVBoxLayout(volume_row)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(4)
+        rows.addWidget(self.volume)
+        rows.addWidget(self.all_in_tip)
         self.volume_row = volume_row
         self.flow = _number(self, FLOW_RANGE, " µl/s")
         self.flow.setToolTip("How fast the plunger moves. Slow near cuboids.")
