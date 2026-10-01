@@ -3,11 +3,17 @@
 The jog panel drives the axes as before. What this page adds is the picture
 as a way of pointing:
 
-* **A click sends the camera there.** The gantry travels so that the clicked
-  point comes under the pixel map's reference pixel - the crosshair in the
-  middle of the upper camera's view. Near the edge of the frame the map is
-  extrapolating, and the move still happens, with a note that it is
-  approximate.
+* **A click sends the camera there** - in Camera mode, the default. The
+  gantry travels so that the clicked point comes under the pixel map's
+  reference pixel - the crosshair in the middle of the upper camera's view.
+  Near the edge of the frame the map is extrapolating, and the move still
+  happens, with a note that it is approximate.
+* **Or the tip**, in Tip mode: the tip goes over the clicked point - the
+  pixel map, then the pipette offset (`workflows.manual.tip_target`) - and
+  stays at the travel height, so it shows where it would go down without
+  going down. Only inside the area the map was fitted over: outside it the
+  map is extrapolating, and a tip is not something to put somewhere
+  approximately.
 * **A click on a detected crosshair sends the tip to it**, at the Crosshair
   Z. This is what the Calibration tab's Check used to be, and it belongs
   here: it is the same act as any other move by hand, and it needed the
@@ -58,8 +64,8 @@ import cv2
 import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QHBoxLayout, QLabel,
+                               QRadioButton, QVBoxLayout, QWidget)
 
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
@@ -115,7 +121,7 @@ KEYS = (("A", "aspirate", "_aspirate"),
 WELL_OFFSET_RANGE = (-50.0, 50.0)
 
 # What the mouse does on the picture, for the same box.
-MOUSE_HELP = ("click   move there (with Click to move on)",
+MOUSE_HELP = ("click   move the camera or the tip there (Click to move on)",
               "wheel   zoom",
               "middle-drag   pan",
               "double-click   fit the picture")
@@ -216,10 +222,31 @@ class ManualPage(QWidget):
         self.armed = QCheckBox("Click to move", self)
         self.armed.toggled.connect(lambda _on: self._refresh())
         box.layout().addWidget(self.armed)
-        note = QLabel("The camera goes where you click; a click on a detected "
-                      "crosshair or cuboid sends the tip to it instead. The "
-                      "tip is raised first. Off again every time this tab is "
-                      "opened.")
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("A click moves"))
+        self.click_camera = QRadioButton("Camera", self)
+        self.click_camera.setToolTip("The clicked point comes under the "
+                                     "camera's crosshair.")
+        self.click_tip = QRadioButton("Tip", self)
+        self.click_tip.setToolTip(
+            "The tip goes over the clicked point, at the travel height. Only "
+            "inside the calibrated area.")
+        self.click_camera.setChecked(True)
+        self._click_mode = QButtonGroup(self)
+        for button in (self.click_camera, self.click_tip):
+            # The keys over the picture are the robot's.
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self._click_mode.addButton(button)
+            row.addWidget(button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+
+        note = QLabel("Camera: the clicked point comes under the crosshair. "
+                      "Tip: the tip goes over it and stays at the travel "
+                      "height. Either way, a click on a detected crosshair or "
+                      "cuboid sends the tip down to it. The tip is raised "
+                      "first. Off again every time this tab is opened.")
         note.setWordWrap(True)
         box.layout().addWidget(note)
         return box
@@ -552,6 +579,31 @@ class ManualPage(QWidget):
                     log(f"aspirate {volume:g} µl at {rate:g} µl/s")
                     moves.aspirate(robot, volume, rate)
                     return f"aspirated {volume:g} µl at {rate:g} µl/s"
+                return None
+        elif self.click_tip.isChecked():
+            # Inside the map only: outside it the map extrapolates, and a
+            # camera a few hundred microns off is imprecise where a tip there
+            # is in the wrong thing.
+            if not pmap.covers(u, v):
+                self.jog.tell("REFUSED: outside the calibrated area, so the "
+                              "tip is not sent there. Use Camera mode to "
+                              "move the view first.")
+                return
+            offset = profile.calibration.pipette_offset
+            if offset is None:
+                self.jog.tell("REFUSED: no pipette offset, so the tip cannot "
+                              "be sent. Run the pipette calibration.")
+                return
+            gantry = np.array(xyz(robot)[:2])
+            xy = moves.tip_target(pmap, u, v, gantry, offset)
+            what = f"tip over ({xy[0]:.2f}, {xy[1]:.2f}) at the travel height"
+            position = (xy[0], xy[1], xyz(robot)[2])
+
+            def job(log):
+                # The gantry at the travel height is the tip at it: the same
+                # move as a camera move, to the tip's target.
+                self._z_top = moves.drive_camera(robot, xy, self._z_top,
+                                                 log=log)
                 return None
         else:
             gantry = np.array(xyz(robot)[:2])
