@@ -831,8 +831,20 @@ class Session(QObject):
         self.read_lights()
 
     def toggle_lights(self) -> None:
+        """Flip the lights from what the robot reports, not from what the
+        button last showed: a workflow may have switched them since."""
         state = self.read_lights()
         self.set_lights(not state)
+
+    def refresh_lights(self) -> None:
+        """Read the lights again after something switched them behind the
+        session's back - a picking run darkens the bench and lights it again
+        through the robot, the pipette calibration lights it. Never raises:
+        a failed read must not fail the run that asked for it."""
+        try:
+            self.read_lights()
+        except Exception as exc:                     # noqa: BLE001
+            log.warning("could not read the lights: %s", exc)
 
     def _require_probe(self) -> RunState:
         if self._api is None or self.run_state is None:

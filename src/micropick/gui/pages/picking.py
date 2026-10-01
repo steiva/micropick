@@ -609,6 +609,7 @@ class PickingPage(QWidget):
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
             picking.start()
+            session.refresh_lights()     # start() darkened the bench
             emit(("started", picking.view, picking.state.value, "starting"))
             try:
                 while not picking.done:
@@ -618,6 +619,7 @@ class PickingPage(QWidget):
                           f"{event.kind}: {event.message}"))
             finally:
                 picking.close()          # recorder detached, light restored
+                session.refresh_lights()
             return picking.state.value
 
         self._run_message = ""

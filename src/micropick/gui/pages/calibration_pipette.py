@@ -495,11 +495,15 @@ class PipetteCalibration(QWidget):
             log(f"driving to {POSITION_NAME} {tuple(round(v, 2) for v in stored)}")
             moves.drive_tip(robot, stored[:2], stored[2], None, log=log)
             time.sleep(0.5)
-            result = calibrate_pipette_offset(
-                robot, over, under, detector, pmap, target=target,
-                current_offset=current, frames=frames, verify=verify,
-                tip_type=tip_type, profile=profile, manual_touch_up=touch_up,
-                log=log)
+            try:
+                result = calibrate_pipette_offset(
+                    robot, over, under, detector, pmap, target=target,
+                    current_offset=current, frames=frames, verify=verify,
+                    tip_type=tip_type, profile=profile,
+                    manual_touch_up=touch_up, log=log)
+            finally:
+                # It switches the lights on when it finds them off.
+                session.refresh_lights()
             # As the notebook does once the offset is saved: the tip is at
             # the module height over the disc, and the next thing anyone
             # does is drive somewhere else.

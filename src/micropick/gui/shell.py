@@ -477,16 +477,19 @@ class MainWindow(QMainWindow):
     def _show_tip(self, tip) -> None:
         self.status.show_tip(tip if self.session.robot is not None else None)
 
-    def _toggle_lights(self, checked: bool) -> None:
-        """The click asks for the state the button now shows; the robot's
-        answer, through lights_changed, is what the button settles on."""
+    def _toggle_lights(self, _checked: bool) -> None:
+        """The click flips the lights from the state the robot reports, not
+        the one the button shows: had a workflow switched them since the
+        last read, asking for the button's state would do nothing on the
+        first click. The robot's answer, through lights_changed, is what the
+        button settles on."""
         if self._lights_worker is not None and self._lights_worker.running:
             self.status.show_lights(self.session.lights)
             return
         if self.session.robot is None:
             return
         self.status.lights.setEnabled(False)
-        worker = Worker(self.session.set_lights, checked)
+        worker = Worker(self.session.toggle_lights)
         self._lights_worker = worker
         worker.finished.connect(self._lights_done)
         worker.failed.connect(self._lights_failed)
