@@ -1,18 +1,27 @@
-"""Measuring the pipette offset, in four steps — the notebook's section 4.
+"""Measuring the pipette offset — the notebook's section 4, on one page.
 
-The steps are the notebook's cells in order, and each is a gate on the next:
-put the calibration disc where the routine expects it, say what the routine
-starts from, run it and finish by hand if the automatic correction is not
-good enough, read what was saved.
+The picture on the left and one panel on the right, in the notebook's order:
+Disc position, Starting offset, Calibration, Result. It used to be a wizard
+of four pages with Back and Next; the order was right, but the pages hid
+what the next one needed, and going back to fix the disc meant leaving the
+camera that showed it. Now everything is in view, and what stops the run is
+said in words under Start and in which buttons are enabled - the gate is
+still there, it is just not a page.
 
 **The disc position is a profile position, `tip_calib`.** The notebook
 teaches it once with `jog(...)` and `profile.remember`, and drives to it with
-`profile.where("tip_calib")` before every calibration. Step 1 is those two
-acts: with no stored position, the jog panel and Set position; with one, Go
-to last saved and Set position again from wherever the gantry is standing
-now. The routine's own drive to the stored position happens at the start of
-the run, as in the notebook, so Go to last saved on step 1 is for looking,
-not a step that can be forgotten.
+`profile.where("tip_calib")` before every calibration. The Disc position
+section is those two acts: with no stored position, the jog panel and Set
+position; with one, Go to last saved and Set position again from wherever
+the gantry is standing now. The routine's own drive to the stored position
+happens at the start of the run, as in the notebook, so Go to last saved is
+for looking, not a step that can be forgotten.
+
+**One picture.** It shows the upper camera while the disc is set and the
+lower one while the routine runs and waits for the operator. The disc's jog
+panel is hidden while the routine runs, so nothing but the touch-up can move
+the robot then; the touch-up has a jog panel of its own, shown only while it
+waits.
 
 **The routine needs a tip on the pipette, and asks the robot.** Every tip
 seats differently, which is why this is redone after each pick-up; a
@@ -53,7 +62,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QPlainTextEdit,
-                               QStackedWidget, QVBoxLayout, QWidget)
+                               QVBoxLayout, QWidget)
 
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
@@ -68,6 +77,7 @@ from ..theme.factory import (card, combo_box, double_spin_box, heading,
                              spin_box)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.camera_view import CameraView
+from ..widgets.card_columns import CardColumns
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..workers import Worker
@@ -83,8 +93,6 @@ PANEL_WIDTH = 420
 # The profile position the disc is taught under. The notebook's name, kept:
 # a profile taught from the notebook works here and the other way round.
 POSITION_NAME = "tip_calib"
-
-STEPS = ("Disc position", "Starting point", "Calibrate", "Result")
 
 # The jog step for the touch-up, as the notebook sets it.
 TOUCH_UP_STEP_MM = 0.05
@@ -117,29 +125,15 @@ class PipetteCalibration(QWidget):
         self._aborted = False
         self.opener = CameraOpener(session, self)
 
-        self.stack = QStackedWidget(self)
-        self.stack.addWidget(self._position_step())
-        self.stack.addWidget(self._parameters_step())
-        self.stack.addWidget(self._run_step())
-        self.stack.addWidget(self._result_step())
-
-        self.step_label = heading("", 2)
-        self.back_button = secondary_button("Back", self)
-        self.back_button.clicked.connect(self._back)
-        self.next_button = primary_button("Next", self)
-        self.next_button.clicked.connect(self._next)
-
-        footer = QHBoxLayout()
-        footer.addStretch(1)
-        footer.addWidget(self.back_button)
-        footer.addWidget(self.next_button)
-
-        layout = QVBoxLayout(self)
+        self.view = CameraView(self)
+        panel = CardColumns([self._position_card(), self.jog,
+                             self._offset_card(), self._calibration_card(),
+                             self._touch_card(), self._result_card()], self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, SPACING, 0, 0)
         layout.setSpacing(SPACING)
-        layout.addWidget(self.step_label)
-        layout.addWidget(self.stack, 1)
-        layout.addLayout(footer)
+        layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
+                         1)
 
         self.touch_up_requested.connect(self._begin_touch_up)
         session.camera_opened.connect(self._refresh_cameras)
@@ -150,29 +144,22 @@ class PipetteCalibration(QWidget):
         self._refresh_cameras()
         self._refresh()
 
-    # -- step 1: the disc ----------------------------------------------------
+    # -- construction --------------------------------------------------------
 
-    def _position_step(self) -> QWidget:
-        page = QWidget(self)
-        self.view = CameraView(page)
+    def _position_card(self) -> QWidget:
         # Both folded: the ordinary run is "go to the stored position" and
         # never touches either. They are one click away when the disc has
         # moved and the position has to be taught again.
-        self.jog = JogPanel(self.session, shortcut_host=page,
+        self.jog = JogPanel(self.session, shortcut_host=self,
                             machine_controls=False,
-                            collapsed=("move", "positions"), parent=page)
+                            collapsed=("move", "positions"), parent=self)
         self.jog.show_position_on(self.view)
 
-        panel = QWidget(page)
-        column = QVBoxLayout(panel)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-
-        box = card(panel)
-        box.layout().addWidget(heading("Calibration disc", 2))
+        box = card(self)
+        box.layout().addWidget(heading("Disc position", 2))
         row = QHBoxLayout()
         row.addWidget(QLabel("Upper camera"))
-        self.over_choice = combo_box(panel)
+        self.over_choice = combo_box(self)
         self.over_choice.currentTextChanged.connect(self._show_over)
         row.addWidget(self.over_choice, 1)
         box.layout().addLayout(row)
@@ -186,9 +173,9 @@ class PipetteCalibration(QWidget):
         buttons = QHBoxLayout()
         # Short: three buttons' worth of words do not fit a panel this
         # wide, and the sentence above already says what is stored.
-        self.goto_button = secondary_button("Go to last saved", panel)
+        self.goto_button = secondary_button("Go to last saved", self)
         self.goto_button.clicked.connect(self._goto)
-        self.remember_button = primary_button("Set position", panel)
+        self.remember_button = primary_button("Set position", self)
         self.remember_button.clicked.connect(self._remember)
         buttons.addWidget(self.goto_button)
         buttons.addWidget(self.remember_button)
@@ -198,46 +185,31 @@ class PipetteCalibration(QWidget):
         self.position_note = QLabel()
         self.position_note.setWordWrap(True)
         box.layout().addWidget(self.position_note)
-        column.addWidget(box)
-        column.addWidget(self.jog, 1)
+        return box
 
-        body = QHBoxLayout(page)
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(SPACING)
-        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
-                       1)
-        return page
-
-    # -- step 2: starting point ----------------------------------------------
-
-    def _parameters_step(self) -> QWidget:
-        page = QWidget(self)
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING)
-
-        box = card(page)
+    def _offset_card(self) -> QWidget:
+        box = card(self)
         box.layout().addWidget(heading("Starting offset", 2))
         self.offset_note = QLabel()
         self.offset_note.setWordWrap(True)
         box.layout().addWidget(self.offset_note)
 
-        self.dx = double_spin_box(page)
-        self.dy = double_spin_box(page)
+        self.dx = double_spin_box(self)
+        self.dy = double_spin_box(self)
         for spin in (self.dx, self.dy):
             spin.setRange(-300.0, 300.0)
             spin.setDecimals(3)
             spin.setSingleStep(0.1)
             spin.setSuffix(" mm")
-        self.tip_type = QLineEdit(page)
+        self.tip_type = QLineEdit(self)
         self.tip_type.setPlaceholderText("e.g. vwr_200ul_xl")
-        self.frames = spin_box(page)
+        self.frames = spin_box(self)
         self.frames.setRange(1, 30)
         self.frames.setValue(7)
-        self.verify = QCheckBox("verify after the correction", page)
+        self.verify = QCheckBox("verify after the correction", self)
         self.verify.setChecked(True)
         self.touch_up = QCheckBox("finish by hand: nudge the tip onto the "
-                                  "crosshair, then Accept", page)
+                                  "crosshair, then Accept", self)
         self.touch_up.setChecked(True)
 
         for label, widget, hint in (
@@ -263,56 +235,44 @@ class PipetteCalibration(QWidget):
             box.layout().addWidget(note)
         box.layout().addWidget(self.verify)
         box.layout().addWidget(self.touch_up)
-        layout.addWidget(box)
+        return box
 
-        box = card(page)
-        box.layout().addWidget(heading("Before it runs", 2))
+    def _calibration_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Calibration", 2))
         row = QHBoxLayout()
         row.addWidget(QLabel("Lower camera"))
-        self.under_choice = QComboBox(page)
+        self.under_choice = QComboBox(self)
         row.addWidget(self.under_choice, 1)
         box.layout().addLayout(row)
+        # What stops the run, in words: the gate the wizard's pages used to
+        # be, now under the button it holds back.
         self.checks = QLabel()
         self.checks.setWordWrap(True)
         self.checks.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.checks)
-        layout.addWidget(box)
-        layout.addStretch(1)
-        return page
-
-    # -- step 3: run ---------------------------------------------------------
-
-    def _run_step(self) -> QWidget:
-        page = QWidget(self)
-        self.run_view = CameraView(page)
-
-        panel = QWidget(page)
-        column = QVBoxLayout(panel)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-
-        box = card(panel)
-        box.layout().addWidget(heading("Calibration", 2))
-        self.run_log = QPlainTextEdit(panel)
+        self.run_log = QPlainTextEdit(self)
         self.run_log.setReadOnly(True)
         self.run_log.setMaximumBlockCount(2000)
         self.run_log.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        box.layout().addWidget(self.run_log, 1)
+        self.run_log.setMinimumHeight(140)
         row = QHBoxLayout()
-        self.start_button = primary_button("Start", panel)
+        self.start_button = primary_button("Start", self)
         self.start_button.clicked.connect(self._start)
         row.addWidget(self.start_button)
         row.addStretch(1)
         box.layout().addLayout(row)
-        column.addWidget(box, 1)
+        box.layout().addWidget(self.run_log, 1)
+        return box
 
-        # Shown only while the routine is waiting for the operator.
-        self.touch_box = card(panel)
+    def _touch_card(self) -> QWidget:
+        """Shown only while the routine is waiting for the operator."""
+        self.touch_box = card(self)
         self.touch_box.layout().addWidget(heading("Finish by hand", 2))
         note = QLabel(
-            f"The lower camera is live on the left. Nudge the tip onto the "
+            f"The lower camera is live in the picture. Nudge the tip onto the "
             f"central crosshair — the step is {TOUCH_UP_STEP_MM:g} mm — and "
             f"press Accept. Whatever you move is part of the offset. Abort "
             f"ends the calibration with nothing saved.")
@@ -320,56 +280,43 @@ class PipetteCalibration(QWidget):
         self.touch_box.layout().addWidget(note)
         # Move open: nudging the tip onto the crosshair is the whole of this
         # block. Positions folded: nothing here is a place to return to.
-        self.touch_jog = JogPanel(self.session, shortcut_host=page,
+        self.touch_jog = JogPanel(self.session, shortcut_host=self,
                                   machine_controls=False,
                                   collapsed=("positions",),
                                   parent=self.touch_box)
-        self.touch_jog.show_position_on(self.run_view)
+        self.touch_jog.show_position_on(self.view)
         self.touch_box.layout().addWidget(self.touch_jog)
         row = QHBoxLayout()
-        self.accept_button = primary_button("Accept", panel)
+        self.accept_button = primary_button("Accept", self)
         self.accept_button.clicked.connect(self._accept)
-        self.abort_button = secondary_button("Abort", panel)
+        self.abort_button = secondary_button("Abort", self)
         self.abort_button.clicked.connect(self._abort)
         row.addWidget(self.accept_button)
         row.addWidget(self.abort_button)
         row.addStretch(1)
         self.touch_box.layout().addLayout(row)
         self.touch_box.hide()
-        column.addWidget(self.touch_box, 2)
+        return self.touch_box
 
-        body = QHBoxLayout(page)
-        body.setContentsMargins(0, 0, 0, 0)
-        body.setSpacing(SPACING)
-        body.addWidget(FeedRow(self.run_view,
-                               scroll_column(panel, PANEL_WIDTH)), 1)
-        return page
-
-    # -- step 4: result ------------------------------------------------------
-
-    def _result_step(self) -> QWidget:
-        page = QWidget(self)
-        layout = QHBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING)
-
-        box = card(page)
-        box.layout().addWidget(heading("Offset", 2))
-        self.result_text = QPlainTextEdit(page)
+    def _result_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Result", 2))
+        self.result_text = QPlainTextEdit(self)
         self.result_text.setReadOnly(True)
         self.result_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self.result_text.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        box.layout().addWidget(self.result_text, 1)
-        self.result_note = QLabel()
+        self.result_text.setMinimumHeight(140)
+        self.result_text.hide()
+        self.result_note = QLabel("No calibration on this page yet.")
         self.result_note.setWordWrap(True)
         self.result_note.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.result_note)
-        layout.addWidget(box, 1)
-        return page
+        box.layout().addWidget(self.result_text, 1)
+        return box
 
-    # -- step 1 actions ------------------------------------------------------
+    # -- the disc ------------------------------------------------------------
 
     def _stored_position(self):
         profile = self.session.profile
@@ -454,7 +401,7 @@ class PipetteCalibration(QWidget):
                                 "sweep on the Camera tab first.")
             if self._stored_position() is None:
                 problems.append(f"no {POSITION_NAME} position in the profile: "
-                                f"teach it on step 1.")
+                                f"set it under Disc position.")
         over, under = self._over_camera(), self._under_camera()
         if over is None:
             problems.append("the upper camera is not open.")
@@ -581,6 +528,7 @@ class PipetteCalibration(QWidget):
         if result.homography_report is not None:
             text += f"\n\n{result.homography_report}"
         self.result_text.setPlainText(text)
+        self.result_text.show()
         profile = self.session.profile
         note = (f"Saved to {profile.path / 'calibration.json'}: offset "
                 f"({offset.dx:+.3f}, {offset.dy:+.3f}) mm, method "
@@ -593,7 +541,6 @@ class PipetteCalibration(QWidget):
         self.session.profile_changed.emit(profile)
         self.dx.setValue(offset.dx)
         self.dy.setValue(offset.dy)
-        self.stack.setCurrentIndex(3)
         self._refresh()
 
     def _on_failed(self, reason: str) -> None:
@@ -607,37 +554,28 @@ class PipetteCalibration(QWidget):
         log.error("pipette calibration %s: %s", kind, detail)
         self._refresh()
 
-    # -- navigation and display ----------------------------------------------
+    # -- display -------------------------------------------------------------
 
     def _busy(self) -> bool:
         return self._worker is not None and self._worker.running
-
-    def _back(self) -> None:
-        self.stack.setCurrentIndex(max(0, self.stack.currentIndex() - 1))
-        self._refresh()
-
-    def _next(self) -> None:
-        self.stack.setCurrentIndex(
-            min(self.stack.count() - 1, self.stack.currentIndex() + 1))
-        self._refresh()
 
     def _append(self, text: str) -> None:
         self.run_log.appendPlainText(text)
 
     def _refresh(self) -> None:
-        index = self.stack.currentIndex()
         busy = self._busy()
         waiting = not self.touch_box.isHidden()
         session = self.session
         profile = session.profile
         connected = session.robot is not None
+        running = busy or waiting
 
-        self.step_label.setText(f"Step {index + 1} of {len(STEPS)} — {STEPS[index]}")
-        self.back_button.setEnabled(index > 0 and not busy)
-        self.next_button.setEnabled(index < self.stack.count() - 1 and not busy)
-        self.next_button.setVisible(index < self.stack.count() - 1)
+        # The disc's jog panel only while nothing runs: hidden, its keys are
+        # given up, and the touch-up's panel is the only thing that moves the
+        # robot during a calibration.
+        self.jog.setVisible(not running)
 
-        # step 1
+        # the disc
         stored = self._stored_position()
         if stored is None:
             self.position_state.setText(
@@ -655,7 +593,7 @@ class PipetteCalibration(QWidget):
         self.goto_button.setEnabled(connected and stored is not None and not busy)
         self.remember_button.setEnabled(connected and profile is not None and not busy)
 
-        # step 2
+        # the starting offset
         offset = profile.calibration.pipette_offset if profile else None
         if offset is None:
             self.offset_note.setText(
@@ -671,23 +609,30 @@ class PipetteCalibration(QWidget):
                 f"{offset.method}, {when}"
                 + (f", tip {offset.tip_type}" if offset.tip_type else "")
                 + ". Used as the starting point unless changed below.")
-        if not busy and index == 1:
+        for widget in (self.dx, self.dy, self.tip_type, self.frames,
+                       self.verify, self.touch_up, self.under_choice,
+                       self.over_choice):
+            widget.setEnabled(not running)
+        if not running:
             self._prefill(offset)
-        problems = self._readiness()
-        self.checks.setText("Ready." if not problems
-                            else "\n".join("• " + p for p in problems))
 
-        # step 3
-        self.start_button.setEnabled(not busy and not problems)
+        # the calibration
+        problems = self._readiness()
+        if running:
+            self.checks.setText("Running. The lower camera is in the picture.")
+        else:
+            self.checks.setText("Ready: press Start." if not problems else
+                                "Before Start:\n"
+                                + "\n".join("• " + p for p in problems))
+        self.start_button.setEnabled(not running and not problems)
         self.accept_button.setEnabled(waiting)
         self.abort_button.setEnabled(waiting)
-        if index == 2:
-            self.run_view.set_camera(self._under_camera() if (busy or waiting)
-                                     else self._over_camera())
+        self.view.set_camera(self._under_camera() if running
+                             else self._over_camera())
 
     def _prefill(self, offset) -> None:
-        """The profile's offset into the spin boxes, once per visit to the
-        step when they are still untouched. A value the operator typed stays."""
+        """The profile's offset into the spin boxes while they are still
+        untouched. A value the operator typed stays."""
         if self.dx.value() == 0.0 and self.dy.value() == 0.0 and offset is not None:
             self.dx.setValue(offset.dx)
             self.dy.setValue(offset.dy)
@@ -726,7 +671,8 @@ class PipetteCalibration(QWidget):
         self._refresh()
 
     def _show_over(self, label: str) -> None:
-        self.view.set_camera(self.session.camera(label) if label else None)
+        if not (self._busy() or not self.touch_box.isHidden()):
+            self.view.set_camera(self.session.camera(label) if label else None)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
