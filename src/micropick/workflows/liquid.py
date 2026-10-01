@@ -7,13 +7,22 @@ worker and a notebook can call them directly.
 
 Getting there
 -------------
-Every step with a location goes there first (`go`), by the rules of manual
-control (`workflows.manual`): a well through the robot's own `move_to_well`
-after the tip is raised to the travel height, a saved point by one straight
-move at that height and then down, never higher than `reachable_z`. A step
-whose location is the one the tip already stands at does not move: an
-aspirate and a mix in the same well are not a retract apart. `here` is
-wherever the tip is.
+In a well - `this_well` or `a well` - an aspirate, a dispense, a mix and a
+blow out are the robot's well-based commands, which take the tip there
+themselves along the robot's own path over the deck, up out of the last
+well and over whatever stands between. No retract before each of them: that
+put the Z axis all the way up and down again for every step of every well.
+The tip is raised only when the robot did not put it where it is - at a
+saved point, or unknown at the start of a run - since its path starts from
+the last place it knows (`_leave_for_well`). A Move to a well is the
+robot's `move_to_well`, the same way.
+
+A saved point is the robot's coordinates, not a place it plans a path to,
+so it is reached by the rules of manual control (`workflows.manual`): the
+tip raised to the travel height, one straight move across, then down,
+never higher than `reachable_z`; and the liquid commands there are the
+in-place ones. A step whose location is the one the tip already stands at
+does not move. `here` is wherever the tip is, and its commands are in place.
 
 Pause, stop and carrying on
 ---------------------------
@@ -309,13 +318,33 @@ def go(robot: Robot, location: Location, group: Group, well: str,
         state.z_top = moves.drive_tip(robot, (x + ox, y + oy), z + oz,
                                       state.z_top, log=log)
     else:
-        slot = group.slot if location.kind == "this_well" else location.slot
-        target = well if location.kind == "this_well" else location.well
-        state.z_top = moves.drive_to_well(robot, plates[slot].labware_id,
-                                          target, location.level,
-                                          location.offset, state.z_top, log=log)
+        place = _well_target(location, group, well, plates, state)
+        _leave_for_well(robot, state, log)
+        _say(log, f"tip to {_where(place)}")
+        _in_well(robot, "move_to_well", place, verbose=False)
     state.at = key
     state.last = (location, group, well)
+
+
+def _leave_for_well(robot: Robot, state: LiquidState, log) -> None:
+    """Before a command the robot moves into a well by itself: the tip up
+    first, unless a well command of the robot's put it where it is. See
+    "Getting there"."""
+    if state.at is None or state.at[0] not in ("this_well", "well"):
+        state.z_top = moves.raise_tip(robot, state.z_top, log=log)
+
+
+def _in_well(robot: Robot, command: str, place, **params):
+    """One of the robot's well-based commands, at `place` (`_well_target`)."""
+    labware_id, well, level, offset = place
+    return require_ok(getattr(robot, command)(
+        labware_id, well, well_location=level, offset=offset, **params),
+        command.replace("_", " "))
+
+
+def _where(place) -> str:
+    _labware_id, well, level, offset = place
+    return f"well {well} ({level} {offset[2]:+g} mm)"
 
 
 def _overfill(step, state: LiquidState, capacity: float | None) -> None:
@@ -358,13 +387,56 @@ def do_step(robot: Robot, step, group: Group, well: str,
 
     _overfill(step, state, capacity)
     _gate(pause, stop)
-    go(robot, step.location, group, well, plates, positions, state, log=log)
+    location = step.location
+    # In a well the command takes the tip there itself; anywhere else the
+    # tip is driven there first. See "Getting there".
+    place = None
+    if location.kind in ("this_well", "well") and action != "move_to":
+        place = _well_target(location, group, well, plates, state)
+        if location.key(well) != state.at:
+            _leave_for_well(robot, state, log)
+    else:
+        go(robot, location, group, well, plates, positions, state, log=log)
     _gate(pause, stop)
     if action == "move_to":
         return "moved"
+    # A blow out away from a well command may still be in one: `here`
+    # after a well step.
+    blow_at = (place if place is not None else
+               _well_target(location, group, well, plates, state))
+    said = _liquid(robot, step, place, blow_at, state, pause, stop, log)
+    if place is not None:
+        state.at = location.key(well)
+        state.last = (location, group, well)
+    return said
+
+
+def _aspirate(robot: Robot, place, volume: float, rate: float) -> None:
+    if place is None:
+        moves.aspirate(robot, volume, rate)
+    else:
+        _in_well(robot, "aspirate", place, volume=float(volume),
+                 flow_rate=float(rate))
+
+
+def _dispense(robot: Robot, place, volume: float, rate: float) -> None:
+    if place is None:
+        moves.dispense(robot, volume, rate)
+    else:
+        _in_well(robot, "dispense", place, volume=float(volume),
+                 flow_rate=float(rate))
+
+
+def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
+            stop, log) -> str:
+    """The liquid part of a step: in the well `place` with the robot's
+    well-based commands, or where the tip is when `place` is None."""
+    action = step.action
+    at = f" in {_where(place)}" if place is not None else ""
     if action == "aspirate":
-        _say(log, f"aspirate {step.volume_ul:g} µl at {step.flow_rate:g} µl/s")
-        moves.aspirate(robot, step.volume_ul, step.flow_rate)
+        _say(log, f"aspirate {step.volume_ul:g} µl at {step.flow_rate:g} "
+                  f"µl/s{at}")
+        _aspirate(robot, place, step.volume_ul, step.flow_rate)
         state.in_tip += step.volume_ul
         return f"aspirated {step.volume_ul:g} µl"
     if action == "dispense":
@@ -372,21 +444,20 @@ def do_step(robot: Robot, step, group: Group, well: str,
         if volume <= VOLUME_TOL:
             _say(log, "dispense: the tip holds nothing")
             return "nothing to dispense"
-        _say(log, f"dispense {volume:g} µl at {step.flow_rate:g} µl/s")
-        moves.dispense(robot, volume, step.flow_rate)
+        _say(log, f"dispense {volume:g} µl at {step.flow_rate:g} µl/s{at}")
+        _dispense(robot, place, volume, step.flow_rate)
         state.in_tip = max(0.0, state.in_tip - volume)
         return f"dispensed {volume:g} µl"
     if action == "mix":
         for n in range(step.cycles):
             _gate(pause, stop)
-            _say(log, f"mix {n + 1}/{step.cycles}: {step.volume_ul:g} µl")
-            moves.aspirate(robot, step.volume_ul, step.flow_rate)
-            moves.dispense(robot, step.volume_ul, step.flow_rate)
+            _say(log, f"mix {n + 1}/{step.cycles}: {step.volume_ul:g} µl{at}")
+            _aspirate(robot, place, step.volume_ul, step.flow_rate)
+            _dispense(robot, place, step.volume_ul, step.flow_rate)
         return f"mixed {step.cycles}×"
     if action == "blow_out":
-        _say(log, f"blow out at {step.flow_rate:g} µl/s")
-        _blow_out(robot, step, _well_target(step.location, group, well,
-                                            plates, state))
+        _say(log, f"blow out at {step.flow_rate:g} µl/s{at}")
+        _blow_out(robot, step, blow_at)
         state.in_tip = 0.0
         return "blown out"
     raise ValueError(f"unknown step {action!r}")

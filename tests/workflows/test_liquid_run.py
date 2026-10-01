@@ -32,17 +32,17 @@ def test_every_well_gets_the_whole_chain_before_the_next():
     program = _program([Aspirate(volume_ul=20),
                         Dispense(location=WASTE)])
     liquid.run(robot, program, PLATES, POSITIONS, state)
+    # In a well the robot's well-based commands take the tip there
+    # themselves: no move before them, and no retract between them.
     assert _liquid_calls(robot) == [
-        ("move_to_well", "plate-id", "A1", "top"),
-        ("aspirate_in_place", 20.0, 50.0),
-        ("move_to_well", "res-id", "A1", "top"),
-        ("dispense_in_place", 20.0, 50.0),
-        ("move_to_well", "plate-id", "A2", "top"),
-        ("aspirate_in_place", 20.0, 50.0),
-        ("move_to_well", "res-id", "A1", "top"),
-        ("dispense_in_place", 20.0, 50.0)]
+        ("aspirate", "plate-id", "A1", 20.0, 50.0),
+        ("dispense", "res-id", "A1", 20.0, 50.0),
+        ("aspirate", "plate-id", "A2", 20.0, 50.0),
+        ("dispense", "res-id", "A1", 20.0, 50.0)]
     assert state.done == [(0, "A1"), (0, "A2")]
     assert state.in_tip == 0.0
+    # Once to learn the top before the first well, once at the end.
+    assert robot.calls.count(("retract_axis", "leftZ")) == 2
     assert robot.calls[-1] == ("retract_axis", "leftZ")
 
 
@@ -52,14 +52,12 @@ def test_the_same_place_and_here_do_not_move():
                         BlowOut(), Dispense(location=Location(kind="here"))],
                        wells=["A1"])
     liquid.run(robot, program, PLATES, POSITIONS, LiquidState())
-    moves = [c for c in robot.calls if c[0] == "move_to_well"]
-    assert moves == [("move_to_well", "plate-id", "A1", "top")]
+    assert not [c for c in robot.calls if c[0] == "move_to_well"]
     # The blow out is in the well, so it is the well-based one and the
     # shake that prepares the plunger.
-    assert [c[0] for c in _liquid_calls(robot)][1:] == [
-        "aspirate_in_place", "aspirate_in_place", "dispense_in_place",
-        "aspirate_in_place", "dispense_in_place", "blow_out", "aspirate",
-        "dispense"]
+    assert [c[0] for c in _liquid_calls(robot)] == [
+        "aspirate", "aspirate", "dispense", "aspirate", "dispense",
+        "blow_out", "aspirate", "dispense"]
 
 
 def test_a_point_is_reached_with_its_offset():
@@ -94,7 +92,7 @@ def test_a_stop_keeps_the_place_and_continue_does_not_repeat_a_step():
     robot.calls.clear()
     stop.clear()
     liquid.run(robot, program, PLATES, POSITIONS, state, stop=stop)
-    aspirates = [c for c in robot.calls if c[0] == "aspirate_in_place"]
+    aspirates = [c for c in robot.calls if c[0] == "aspirate"]
     # A1's aspirate is not done again; only A2's.
     assert len(aspirates) == 1
     assert state.done == [(0, "A1"), (0, "A2")]
