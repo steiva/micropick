@@ -78,6 +78,18 @@ that to its `CameraView`, which draws it in a box under the resolution. The
 operator jogging is watching the picture; a readout at the other side of the
 window was one more place to look.
 
+Arrows as on the picture, when the picture is turned
+---------------------------------------------------
+The arrows mean the robot's axes: right is +X, up is +Y. Through the upper
+camera that is also right and up on the picture. Through the lower camera,
+which is turned and mirrored, it is not, and the tip goes the other way from
+the arrow pressed. `view_axes` is for that: a 2x2 matrix from a step on the
+picture, in pixel directions (right is +u, down is +v), to the robot's X and
+Y - `TipTarget.axes`, for the lower camera. With it, each arrow is turned
+into a picture direction and then into the robot axis nearest to it, so the
+tip moves the way the arrow points; the pad's buttons lose their axis names
+and the help says "as on the picture". A step is still one axis at a time.
+
 The keys are listed there too, in a box in the picture's bottom-right corner
 (`help_changed`, `CameraView.set_help`), shown until H hides it. A page adds
 its own keys and mouse actions to the same list with `add_help`.
@@ -93,6 +105,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
@@ -114,7 +127,7 @@ NO_ROBOT = "no robot — connect it on the Profile page"
 from ..workers import Worker
 
 __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS", "HOME_TITLE",
-           "HOME_DETAIL", "home_robot"]
+           "HOME_DETAIL", "home_robot", "view_move", "check_view_axes"]
 
 log = logging.getLogger(__name__)
 
@@ -210,6 +223,44 @@ def _bound_layout() -> tuple:
     return tuple(key for key in LAYOUT if key.command not in UNBOUND)
 
 
+# The picture direction of each arrow, in pixel terms: right is +u, up is -v.
+# The arrows are declared in LAYOUT as robot moves (right = +x, up = +y),
+# which is what they mean with no view_axes.
+_ARROW_PIXELS = {("x", +1): (1.0, 0.0), ("x", -1): (-1.0, 0.0),
+                 ("y", +1): (0.0, -1.0), ("y", -1): (0.0, 1.0)}
+
+# What an arrow is called on the pad once it means a picture direction.
+_ARROW_TEXT = {("x", +1): "→", ("x", -1): "←", ("y", +1): "↑", ("y", -1): "↓"}
+
+
+def check_view_axes(axes):
+    """`axes` as a 2x2 tuple of floats, or None; refused if not 2x2 or
+    singular, since every arrow has to land on some robot axis."""
+    if axes is None:
+        return None
+    rows = tuple(tuple(float(v) for v in row) for row in axes)
+    if len(rows) != 2 or any(len(row) != 2 for row in rows):
+        raise ValueError(f"view_axes must be 2x2, got {axes!r}")
+    (a, b), (c, d) = rows
+    if abs(a * d - b * c) < 1e-6:
+        raise ValueError(f"view_axes {axes!r} is singular")
+    return rows
+
+
+def view_move(axes, axis: str, direction: int) -> tuple[str, int]:
+    """The robot step for an arrow, through `view_axes`: the arrow's picture
+    direction mapped onto the robot's XY, then rounded to the axis it is
+    nearest. An arrow for Z, or no `axes`, is the move as given."""
+    if axes is None or axis not in ("x", "y"):
+        return axis, direction
+    du, dv = _ARROW_PIXELS[(axis, int(direction))]
+    (a, b), (c, d) = axes
+    rx, ry = a * du + b * dv, c * du + d * dv
+    if abs(rx) >= abs(ry):
+        return "x", (1 if rx > 0 else -1)
+    return "y", (1 if ry > 0 else -1)
+
+
 class JogPanel(QWidget):
     # Where the gantry is, and what the last step ran into, as lines for
     # `CameraView.set_position`. Emitted on every change; `position_lines`
@@ -229,11 +280,16 @@ class JogPanel(QWidget):
                  shortcut_host: QWidget | None = None,
                  machine_controls: bool = True,
                  collapsed: tuple[str, ...] = (),
+                 view_axes=None,
                  parent: QWidget | None = None):
         """`collapsed` names the sections that start folded; see SECTIONS.
 
         A name that is not a section is a caller's typo rather than a new
         section, so it is refused here instead of quietly doing nothing.
+
+        `view_axes`, a 2x2 matrix from picture pixels to robot XY, makes the
+        arrows move the tip as on a turned or mirrored picture; see "Arrows
+        as on the picture". `set_view_axes` changes it later.
         """
         super().__init__(parent)
         unknown = [name for name in collapsed if name not in SECTIONS]
@@ -249,7 +305,12 @@ class JogPanel(QWidget):
         self._status = NO_ROBOT
         self._message = ""
         self._job_moves = True
-        self._help = [_reflow(line) for line in help_lines(_bound_layout())]
+        self._view_axes = check_view_axes(view_axes)
+        self._pad: dict[tuple[str, int], QWidget] = {}
+        # The page's own lines, kept apart so the jog keys' part can be
+        # generated again when an option changes what they say.
+        self._extra_help: list[str] = []
+        self._help = self._key_help()
         self._help_shown = True
         self.pose: tuple[float, float, float] | None = None
         self._marks: list[PositionMarks] = []
@@ -288,7 +349,9 @@ class JogPanel(QWidget):
         pad = {("y", +1): (0, 1, "↑ Y"), ("y", -1): (2, 1, "↓ Y"),
                ("x", -1): (1, 0, "← X"), ("x", +1): (1, 2, "X →")}
         for (axis, direction), (row, col, text) in pad.items():
-            grid.addWidget(self._move_button(text, axis, direction), row, col)
+            button = self._move_button(text, axis, direction)
+            self._pad[(axis, direction)] = button
+            grid.addWidget(button, row, col)
         grid.addWidget(self._move_button("↑ Z", "z", +1), 0, 3)
         grid.addWidget(self._move_button("↓ Z", "z", -1), 2, 3)
         grid.setColumnMinimumWidth(3, 90)
@@ -320,7 +383,24 @@ class JogPanel(QWidget):
         self.undo_button.clicked.connect(lambda: self._command("undo"))
         self._movers.append(self.undo_button)
         box.body.layout().addWidget(self.undo_button)
+        self._label_pad()
         return box
+
+    def _label_pad(self) -> None:
+        """Axis names on the pad, or bare arrows when they mean the
+        picture's directions."""
+        names = {("y", +1): "↑ Y", ("y", -1): "↓ Y", ("x", -1): "← X",
+                 ("x", +1): "X →"}
+        for key, button in self._pad.items():
+            if self._view_axes is None:
+                button.setText(names[key])
+                button.setToolTip("")
+            else:
+                axis, direction = view_move(self._view_axes, *key)
+                button.setText(_ARROW_TEXT[key])
+                button.setToolTip(f"Moves the tip this way on the picture "
+                                  f"(robot {'+' if direction > 0 else '-'}"
+                                  f"{axis.upper()}).")
 
     def _move_button(self, text: str, axis: str, direction: int):
         button = secondary_button(text, self)
@@ -434,6 +514,7 @@ class JogPanel(QWidget):
             return
 
         controller = self.controller
+        axis, direction = view_move(self._view_axes, axis, direction)
 
         def job():
             # status() re-reads the pose, so a step costs one extra GET. At a
@@ -745,7 +826,25 @@ class JogPanel(QWidget):
 
     def add_help(self, lines) -> None:
         """A page's own keys and mouse actions, after the jog keys."""
-        self._help += [str(line) for line in lines]
+        self._extra_help += [str(line) for line in lines]
+        self._help = self._key_help()
+        self._emit_help()
+
+    def _key_help(self) -> list[str]:
+        """The jog keys as the options make them, then the page's lines."""
+        layout = _bound_layout()
+        if self._view_axes is not None:
+            layout = tuple(replace(key, help="move as on the picture")
+                           if key.move is not None and key.move[0] in "xy"
+                           else key for key in layout)
+        return ([_reflow(line) for line in help_lines(layout)]
+                + list(self._extra_help))
+
+    def set_view_axes(self, axes) -> None:
+        """Change `view_axes`; None goes back to the robot's own axes."""
+        self._view_axes = check_view_axes(axes)
+        self._label_pad()
+        self._help = self._key_help()
         self._emit_help()
 
     def _emit_help(self) -> None:

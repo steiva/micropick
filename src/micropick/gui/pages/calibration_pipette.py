@@ -29,7 +29,10 @@ calibration taken with no tip measures nothing and a stored offset from it
 would send every pick to the wrong place. `Session.tip` is the robot's record,
 and the run is refused on anything but "a tip is on".
 
-**The manual touch-up is the notebook's `jog_in_window`, in Qt.** The
+**The manual touch-up is the notebook's `jog_in_window`, in Qt**, with one
+difference: its arrows follow the lower camera's picture, which is turned
+and mirrored, through `TipTarget.axes` (`JogPanel` `view_axes`) - right on
+the screen moves the tip right on the picture. The
 workflow calls `manual_touch_up(robot, camera, view)` from its own thread and
 carries on when it returns, reading the final pose to compute the offset. Here
 the callback raises a signal to the GUI thread and waits on an Event; the
@@ -491,6 +494,11 @@ class PipetteCalibration(QWidget):
 
     # ...and from the GUI's side.
     def _begin_touch_up(self) -> None:
+        # The lower camera is turned and mirrored: through TipTarget.axes the
+        # arrows move the tip the way they point on its picture.
+        profile = self.session.profile
+        if profile is not None:
+            self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
         self.touch_jog.set_step(TOUCH_UP_STEP_MM)
         self.touch_box.show()
         self._append("waiting for you: nudge the tip onto the crosshair, "
@@ -574,6 +582,8 @@ class PipetteCalibration(QWidget):
         # given up, and the touch-up's panel is the only thing that moves the
         # robot during a calibration.
         self.jog.setVisible(not running)
+        # The key box is the panel's that has the keys now.
+        self.view.set_help((self.touch_jog if waiting else self.jog).help_lines)
 
         # the disc
         stored = self._stored_position()
