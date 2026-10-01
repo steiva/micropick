@@ -305,14 +305,16 @@ class ProfilePage(QWidget):
         box.layout().addWidget(self.run_found)
 
         # Both secondary; setDefault below picks which one carries the accent.
-        self.adopt_button = secondary_button("Continue robot session", self)
-        self.adopt_button.clicked.connect(self._adopt)
+        # New first, on the left: it is the way on that always exists.
         self.new_run_button = secondary_button("New robot session + home",
                                                self)
         self.new_run_button.clicked.connect(self._new_run)
+        self.adopt_button = secondary_button(
+            "Continue with current robot session", self)
+        self.adopt_button.clicked.connect(self._adopt)
         choice = QHBoxLayout()
-        choice.addWidget(self.adopt_button)
         choice.addWidget(self.new_run_button)
+        choice.addWidget(self.adopt_button)
         choice.addStretch(1)
         box.layout().addLayout(choice)
         return box

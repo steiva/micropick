@@ -74,8 +74,9 @@ not as a page of its own.
 ### Words on screen
 
 UI strings only; code names stay. The OT-2's HTTP run is a **robot session**
-("Continue robot session", "New robot session + home", status bar "session
-<id> (continued)"); "run" on screen means a picking or liquid run. The pipette
+("New robot session + home", "Continue with current robot session", status
+bar "session <id> (continued)"); "run" on screen means a picking or liquid
+run. The pipette
 is set up under the hood and never mentioned ("pipette loaded" reads as "a
 tip is on"). A `Routine` is a **plate plan** (the Plate plan tab). Stored
 poses are set with **Set position** / **Set shake position**; the pipette
