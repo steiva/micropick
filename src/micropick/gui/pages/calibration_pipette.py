@@ -75,9 +75,9 @@ from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, double_spin_box, heading,
-                             primary_button, scroll_column, secondary_button,
-                             spin_box)
+from ..theme.factory import (Section, card, combo_box, double_spin_box,
+                             heading, primary_button, scroll_column,
+                             secondary_button, spin_box)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
@@ -126,6 +126,9 @@ class PipetteCalibration(QWidget):
         self._standin = False
         self._gate = threading.Event()
         self._aborted = False
+        self._last_line = ""
+        # How the last run ended, shown under Start until the next one.
+        self._outcome = ""
         self.opener = CameraOpener(session, self)
 
         self.view = CameraView(self)
@@ -267,7 +270,12 @@ class PipetteCalibration(QWidget):
         row.addWidget(self.start_button)
         row.addStretch(1)
         box.layout().addLayout(row)
-        box.layout().addWidget(self.run_log, 1)
+        # Folded: the line under Start says what the routine is doing, and
+        # every line also goes to the application log. The full text is for
+        # when something went wrong.
+        self.details = Section("Details", collapsed=True, parent=self)
+        self.details.body.layout().addWidget(self.run_log)
+        box.layout().addWidget(self.details)
         return box
 
     def _touch_card(self) -> QWidget:
@@ -449,6 +457,8 @@ class PipetteCalibration(QWidget):
         mock = session.mock
 
         self.run_log.clear()
+        self._outcome = ""
+        self._last_line = ""
         self._result = None
         self._standin = False
         self._append(f"starting from ({current[0]:+.3f}, {current[1]:+.3f}) mm, "
@@ -531,6 +541,8 @@ class PipetteCalibration(QWidget):
         self._result, self._standin = result, standin
         offset: PipetteOffset = result.offset
         self._append("done")
+        self._outcome = (f"Done: offset ({offset.dx:+.3f}, {offset.dy:+.3f}) "
+                         f"mm saved; see Result.")
         log.info("pipette offset calibrated: dx %+.3f dy %+.3f mm (%s)",
                  offset.dx, offset.dy, offset.method)
         text = str(result)
@@ -561,6 +573,8 @@ class PipetteCalibration(QWidget):
         self._append(f"{kind}: {detail}")
         self._append("nothing was written to the profile")
         log.error("pipette calibration %s: %s", kind, detail)
+        self._outcome = (f"Calibration {kind}: {detail}\nNothing was written "
+                         f"to the profile.")
         self._refresh()
 
     # -- display -------------------------------------------------------------
@@ -569,7 +583,13 @@ class PipetteCalibration(QWidget):
         return self._worker is not None and self._worker.running
 
     def _append(self, text: str) -> None:
+        """A line of the run: into Details and the application log, and as
+        the latest word under Start while it runs."""
         self.run_log.appendPlainText(text)
+        log.info("pipette calibration: %s", text)
+        self._last_line = text
+        if self._busy():
+            self.checks.setText(f"Running: {text}")
 
     def _refresh(self) -> None:
         busy = self._busy()
@@ -630,11 +650,14 @@ class PipetteCalibration(QWidget):
         # the calibration
         problems = self._readiness()
         if running:
-            self.checks.setText("Running. The lower camera is in the picture.")
+            self.checks.setText(f"Running: {self._last_line}"
+                                if self._last_line else
+                                "Running. The lower camera is in the picture.")
         else:
-            self.checks.setText("Ready: press Start." if not problems else
-                                "Before Start:\n"
-                                + "\n".join("• " + p for p in problems))
+            text = ("Ready: press Start." if not problems else
+                    "Before Start:\n" + "\n".join("• " + p for p in problems))
+            self.checks.setText(f"{self._outcome}\n\n{text}" if self._outcome
+                                else text)
         self.start_button.setEnabled(not running and not problems)
         self.accept_button.setEnabled(waiting)
         self.abort_button.setEnabled(waiting)
