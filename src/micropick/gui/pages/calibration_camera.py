@@ -101,6 +101,12 @@ PANEL_WIDTH = 420
 # here breaks.
 __all__ += ["DICTIONARIES"]
 
+# The sweep's usual settings, in one place: the marker printed for this rig
+# and the grid and degree the first real sweep was judged at (DESIGN section
+# 3). The boxes start at these, and Reset to defaults puts them back.
+SWEEP_DEFAULTS = {"marker_side_mm": 6.8, "dictionary": "DICT_6X6_250",
+                  "grid_n": 7, "degree": 3}
+
 # How often the page looks for the marker. Three times a second is faster than
 # a hand moves a marker and a twentieth of what the detection costs, so the
 # grab loop and the view keep the rest.
@@ -209,19 +215,16 @@ class CameraCalibration(QWidget):
         self.marker_side.setRange(1.0, 60.0)
         self.marker_side.setDecimals(2)
         self.marker_side.setSingleStep(0.1)
-        self.marker_side.setValue(6.8)
         self.marker_side.setSuffix(" mm")
 
         self.grid_n = spin_box(self)
         self.grid_n.setRange(4, 15)
-        self.grid_n.setValue(7)
 
         self.degree = spin_box(self)
         # Below 3 is refused by fit_pixel_map rather than silently useless:
         # radial distortion is cubic in image coordinates, so a quadratic
         # reduces exactly to the affine fit it is meant to improve on.
         self.degree.setRange(3, 5)
-        self.degree.setValue(3)
 
         self.dictionary = QComboBox(self)
         self.dictionary.addItems(DICTIONARIES)
@@ -251,7 +254,27 @@ class CameraCalibration(QWidget):
             note = QLabel(hint)
             note.setWordWrap(True)
             box.layout().addWidget(note)
+
+        self.defaults_button = secondary_button("Reset to defaults", self)
+        self.defaults_button.setToolTip(
+            f"Marker side {SWEEP_DEFAULTS['marker_side_mm']:g} mm, "
+            f"{SWEEP_DEFAULTS['dictionary']}, grid {SWEEP_DEFAULTS['grid_n']}, "
+            f"degree {SWEEP_DEFAULTS['degree']}.")
+        self.defaults_button.clicked.connect(self._reset_parameters)
+        box.layout().addWidget(self.defaults_button, 0,
+                               Qt.AlignmentFlag.AlignLeft)
+        # Quietly: the dictionary's change refreshes cards not built yet.
+        self.dictionary.blockSignals(True)
+        self._reset_parameters()
+        self.dictionary.blockSignals(False)
         return box
+
+    def _reset_parameters(self) -> None:
+        """The boxes back to SWEEP_DEFAULTS."""
+        self.marker_side.setValue(SWEEP_DEFAULTS["marker_side_mm"])
+        self.dictionary.setCurrentText(SWEEP_DEFAULTS["dictionary"])
+        self.grid_n.setValue(SWEEP_DEFAULTS["grid_n"])
+        self.degree.setValue(SWEEP_DEFAULTS["degree"])
 
     def _sweep_card(self) -> QWidget:
         box = card(self)
@@ -649,7 +672,7 @@ class CameraCalibration(QWidget):
         # the sweep moves the gantry.
         self.jog.setVisible(not running)
         for widget in (self.camera_choice, self.marker_side, self.grid_n,
-                       self.degree, self.dictionary):
+                       self.degree, self.dictionary, self.defaults_button):
             widget.setEnabled(not running)
         if not running:
             self._show_sighting()

@@ -50,3 +50,21 @@ def test_the_gate_says_the_upper_camera_is_missing(app, session):
     assert not page.start_button.isEnabled()
     assert "upper camera" in page.checks.text()
     page.deleteLater()
+
+
+def test_the_parameters_start_at_the_defaults_and_reset_to_them(app, session):
+    from micropick.gui.pages.calibration_camera import SWEEP_DEFAULTS
+    page = CameraCalibration(session)
+
+    def shown():
+        return {"marker_side_mm": page.marker_side.value(),
+                "dictionary": page.dictionary.currentText(),
+                "grid_n": page.grid_n.value(), "degree": page.degree.value()}
+
+    assert shown() == SWEEP_DEFAULTS
+    page.marker_side.setValue(10.0)
+    page.grid_n.setValue(9)
+    page.dictionary.setCurrentText("DICT_4X4_50")
+    page.defaults_button.click()
+    assert shown() == SWEEP_DEFAULTS
+    page.deleteLater()
