@@ -151,6 +151,10 @@ def _position_row(name: str, where) -> str:
     return f"{name:<14} {where[0]:8.2f} {where[1]:8.2f} {where[2]:7.2f}"
 
 
+# Over the list, in the same columns as `_position_row`.
+POSITION_HEADER = f"{'':<14} {'X':>8} {'Y':>8} {'Z':>7}"
+
+
 def camera_name_refusal(name: str) -> str | None:
     """Why `name` cannot be given here, or None. A camera pose is taught on
     the page that uses it, with the camera on the spot; saved from this
@@ -452,13 +456,20 @@ class JogPanel(QWidget):
                       parent=self)
         self.positions_section = box
 
+        fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        header = QLabel(POSITION_HEADER, self)
+        header.setFont(fixed)
+        # The list's frame and its items' padding, so the letters sit over
+        # the numbers' last digits.
+        header.setContentsMargins(4, 0, 0, 0)
+        box.body.layout().addWidget(header)
+
         self.saved = QListWidget(self)
         # PageUp and PageDown belong to the Z axis on this page, and a list
         # with focus would scroll on them instead.
         self.saved.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.saved.setMinimumHeight(110)
-        self.saved.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.saved.setFont(fixed)
         self.saved.itemDoubleClicked.connect(lambda _item: self._goto())
         self.saved.currentItemChanged.connect(lambda *_: self._refresh_buttons())
         box.body.layout().addWidget(self.saved)
