@@ -51,9 +51,9 @@ def test_a_step_describes_itself_with_its_place():
     assert describe(Aspirate(volume_ul=50, flow_rate=10, refill=False,
                              location=Location(level="bottom",
                                                offset=[0, 0, 1]))) == \
-        "Aspirate 50 µl at 10 µl/s @ this well, bottom +1 mm"
+        "Aspirate 50 µl at 10 µl/s @ each well, bottom +1 mm"
     assert describe(Dispense(location=Location(kind="here"))) == \
-        "Dispense all at 50 µl/s @ where the tip is"
+        "Dispense all at 50 µl/s @ same place as the step before"
     assert describe(Mix(cycles=2, location=Location(kind="point",
                                                     point="waste"))) == \
         "Mix 2× 50 µl at 50 µl/s @ point waste"

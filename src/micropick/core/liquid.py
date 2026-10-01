@@ -13,14 +13,19 @@ before moving to the next well. So "aspirate here, dispense into the waste"
 written once is done for twelve wells.
 
 Every step that touches liquid or moves says **where** itself, in a
-`Location`, and goes there first: the well the group is on (`this_well`), one
-fixed well of any labware on the deck (`well`, the same for every well of the
-group - a reservoir, a waste), a position saved in the profile (`point`), or
-where the tip already is (`here`). Putting the place on the step rather than
-in a separate "move" before it means a chain reads as what it does -
-"Aspirate 50 µl @ this well, bottom +1 mm" - and a step moved up or down the
-list takes its place with it. `MoveTo` exists for the moves that are only
-moves.
+`Location`, and goes there first: each well of the group in turn
+(`this_well`), one fixed well of any labware on the deck (`well`, the same
+for every well of the group - a reservoir, a waste), a position saved in the
+profile (`point`), or the same place as the step before (`here`: no move,
+nothing saved - wherever the step before left the tip). Putting the place on
+the step rather than in a separate "move" before it means a chain reads as
+what it does - "Aspirate 50 µl @ each well, bottom +1 mm" - and a step moved
+up or down the list takes its place with it. `MoveTo` exists for the moves
+that are only moves.
+
+The names on screen are the operator's, not the code's: "this well" read as
+a well somebody had chosen, when it is every well of the group, one after
+another.
 
 A group and a well location remember the load name of the labware they were
 made on as well as its slot, so a plate swapped for another kind is refused
@@ -33,7 +38,7 @@ The run counts what is in the tip. An aspirate is an **auto refill**
 holds enough for the dispenses that follow it, and otherwise tops the tip up
 to its volume rather than adding the whole volume to what is left
 (`aspirate_volume`). So "Refill to 200 µl from the reservoir, dispense 50 µl
-into this well" fills four wells per trip, and goes back to the reservoir
+into each well" fills four wells per trip, and goes back to the reservoir
 only when the tip runs short. With auto refill off the volume is aspirated
 every time, which is what taking a fixed amount out of each well needs.
 Programs saved before the switch existed read it as on.
@@ -64,8 +69,8 @@ __all__ = ["LEVELS", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
 LEVELS = ("top", "center", "bottom")
 
 # Where a step goes, with the words the page shows for each.
-KINDS = {"this_well": "this well", "well": "a well", "point": "a saved point",
-         "here": "where the tip is"}
+KINDS = {"this_well": "each well of the group", "well": "one fixed well",
+         "point": "a saved point", "here": "same place as the step before"}
 
 # Colours handed to new groups in turn: distinct on the dark plate map, and
 # none of them the map's white selection ring.
@@ -292,14 +297,14 @@ def _mm(value: float) -> str:
 
 def describe_location(location: Location) -> str:
     if location.kind == "here":
-        return "where the tip is"
+        return "same place as the step before"
     x, y, z = location.offset
     shift = "".join(f", {axis} {_mm(v)}" for axis, v in (("x", x), ("y", y))
                     if v)
     if location.kind == "point":
         return f"point {location.point or '?'}" + (f" {_mm(z)}" if z else "") \
             + shift
-    where = ("this well" if location.kind == "this_well" else
+    where = ("each well" if location.kind == "this_well" else
              f"slot {location.slot or '?'} {location.well or '?'}")
     return f"{where}, {location.level} {_mm(z)}{shift}"
 

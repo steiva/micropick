@@ -3,10 +3,11 @@
 A program (`core.liquid`) is a list of groups. A group is wells of one plate
 on the deck, chosen on the plate map and drawn in one colour, and the steps
 every one of those wells gets - Aspirate, Dispense, Move to, Mix, Blow out,
-Wait, Pause - each saying where it happens: the group's well, one fixed well
-of any labware on the deck, a position saved in the profile, or where the tip
-is. The run takes the groups top to bottom and, for each well of a group,
-does all its steps before the next well (`workflows.liquid`).
+Wait, Pause - each saying where it happens: each well of the group, one
+fixed well of any labware on the deck, a position saved in the profile, or
+the same place as the step before. The run takes the groups top to bottom
+and, for each well of a group, does all its steps before the next well
+(`workflows.liquid`).
 
 The page, top to bottom
 -----------------------

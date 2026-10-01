@@ -65,11 +65,13 @@ class LocationEditor(QWidget):
         for kind, text in KINDS.items():
             self.kind.addItem(text, kind)
         self.kind.setToolTip(
-            "this well: the well of the group the step is done for.\n"
-            "a well: one well of any labware on the deck, the same for every "
-            "well of the group.\n"
+            "each well of the group: the step is done in every well of the "
+            "group, one after another.\n"
+            "one fixed well: one well of any labware on the deck, the same "
+            "for every well of the group - a reservoir, a waste.\n"
             "a saved point: a position saved in the jog panel.\n"
-            "where the tip is: no move.")
+            "same place as the step before: no move; wherever the step "
+            "before left the tip.")
         self.labware = combo_box(self)
         self.well = combo_box(self)
         self.well.setEditable(True)
