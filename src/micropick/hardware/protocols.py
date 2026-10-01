@@ -164,9 +164,21 @@ def require_ok(response, what: str = "command"):
     """
     status, error = _command_status(response)
     if status == "failed":
-        detail = f"\n  robot said: {str(error)[:300]}" if error else ""
+        detail = f"\n  robot said: {_error_text(error)}" if error else ""
         raise MoveFailed(f"the robot declined the {what} (status {status}).{detail}")
     return response
+
+
+def _error_text(error) -> str:
+    """What the robot said, whole: its error type and its sentence. The
+    whole dict, cut to a length, gave its id and timestamp and stopped
+    halfway through the sentence that said what was wrong."""
+    if isinstance(error, dict):
+        kind = error.get("errorType") or error.get("errorCode") or ""
+        detail = error.get("detail") or ""
+        if detail:
+            return f"{kind}: {detail}" if kind else str(detail)
+    return str(error)
 
 
 def move_to(robot: Robot, coordinates, *, min_z_height: float | None = None,
