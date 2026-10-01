@@ -50,7 +50,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 
-__all__ = ["Worker"]
+__all__ = ["Worker", "any_running"]
 
 # The names the workflows in this repository use: `calibrate_camera` and
 # `run_sweep` declare exactly these. They are a convention, so they are applied
@@ -74,6 +74,13 @@ AUTO = object()
 # is still running". The worker therefore holds itself until its thread object
 # is destroyed, and the caller's reference is a convenience.
 _RUNNING: set["Worker"] = set()
+
+
+def any_running() -> bool:
+    """Whether any worker's thread is still running, on any page. For an act
+    that must not overlap whatever else is talking to the robot - the status
+    bar's Home - and cannot know which page started it."""
+    return any(worker.running for worker in list(_RUNNING))
 
 
 class Worker(QObject):

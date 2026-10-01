@@ -60,6 +60,10 @@ run's own moves to them) is reached no higher than that travel height
 (`reachable_z`): taught after a retract, it is out of bounds for the robot. Click-to-move is off on every entry to the
 tab.
 
+Home robot position in the status bar is reachable from every page: it is
+refused while any jog panel or any worker is busy, and goes through the
+shown page's `JogPanel.run_job` when that page has one.
+
 ### Liquid handling is a program of blocks
 
 The Liquid handling tab (right side, beside Manual control) builds a

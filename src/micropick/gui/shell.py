@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING
 import qtawesome as qta
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
-                               QStackedWidget, QStatusBar, QToolButton,
-                               QVBoxLayout, QWidget)
+                               QMessageBox, QStackedWidget, QStatusBar,
+                               QToolButton, QVBoxLayout, QWidget)
 
 from . import log_bridge
 from .pages import (calibration, labware, liquid, log, manual, picking,
@@ -42,7 +42,8 @@ from .pages import (calibration, labware, liquid, log, manual, picking,
 from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
 from .widgets.feed_window import FeedWindow
-from .workers import Worker
+from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
+from .workers import Worker, any_running
 
 if TYPE_CHECKING:                       # app imports this module; annotations
     from .app import Options            # are strings, so the cycle is only a
@@ -128,7 +129,8 @@ class NavTab(QWidget):
 
 
 class StatusBar(QStatusBar):
-    """Profile, robot, cameras, the tip and the lights, permanently visible.
+    """Profile, robot, cameras, the tip, Home and the lights, permanently
+    visible.
 
     Permanent widgets rather than `showMessage`: a transient message is
     replaced by the next one, and these answer "what is this application
@@ -138,6 +140,10 @@ class StatusBar(QStatusBar):
     is set from `Session.tip_changed`, which is re-read from the run's command
     log after connect and after every tip command. Three states, and the
     third is not the second: no tip, a tip on, and *could not tell*.
+
+    Home robot position is here so it is one click from every page, not
+    only from the pages with a jog panel. Like the lights button it is not
+    connected here; the window decides when the robot may be homed.
     """
 
     # A click on a camera button; carries the label.
@@ -180,6 +186,15 @@ class StatusBar(QStatusBar):
         row.addWidget(self._tip_icon)
         row.addWidget(self._tip)
 
+        self.home = QToolButton()
+        self.home.setAutoRaise(True)
+        self.home.setText("Home robot position")
+        self.home.setIcon(qta.icon("mdi6.home-outline"))
+        self.home.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        # The keys belong to the robot's axes; a focused button would take
+        # Space.
+        self.home.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         # Checkable, so the bulb's own state is the robot's last answer and a
         # click asks for the other one. Not connected to anything here: the
         # window wires it to the session through a worker.
@@ -189,13 +204,20 @@ class StatusBar(QStatusBar):
         self.lights.setToolTip("Rail lights")
 
         for widget in (self._profile, self._robot, self._cameras,
-                       self._deck_box, tip, self.lights):
+                       self._deck_box, tip, self.home, self.lights):
             self.addPermanentWidget(widget)
         self.show_profile(None)
         self.show_robot("not connected")
         self.show_cameras([])
         self.show_tip(None)
         self.show_lights(None)
+        self.show_home(False)
+
+    def show_home(self, connected: bool, busy: bool = False) -> None:
+        self.home.setEnabled(connected and not busy)
+        self.home.setToolTip(
+            "Send the gantry to its home position on all axes. Asks first."
+            if connected else "Home robot position: not connected")
 
     def show_profile(self, name: str | None) -> None:
         self._profile.setText(f"profile: {name or 'none'}")
@@ -353,6 +375,9 @@ class MainWindow(QMainWindow):
         self.session.lights_changed.connect(self.status.show_lights)
         self.status.lights.clicked.connect(self._toggle_lights)
         self._lights_worker: Worker | None = None
+        self.status.home.clicked.connect(self._home_robot)
+        self.session.robot_state_changed.connect(self._show_home)
+        self._home_worker: Worker | None = None
         self.status.camera_clicked.connect(self._show_feed)
         self._feeds: dict[str, FeedWindow] = {}
         self._feed_workers: dict[str, Worker] = {}
@@ -475,6 +500,69 @@ class MainWindow(QMainWindow):
         self._lights_worker = None
         _log.error("lights: %s", reason)
         self.status.show_lights(self.session.lights)
+
+    # -- home ----------------------------------------------------------------
+
+    def _show_home(self, _state=None) -> None:
+        busy = self._home_worker is not None and self._home_worker.running
+        self.status.show_home(self.session.robot is not None, busy)
+
+    def _robot_busy(self) -> bool:
+        """Anything that may be talking to the robot: a jog panel's job on
+        any page, or any worker - a picking run, a sweep, a labware load.
+        Coarse on purpose: a camera opening also counts, and waiting for it
+        costs seconds, where homing through a run costs the run."""
+        return (any(panel.busy for panel in self.findChildren(JogPanel))
+                or any_running())
+
+    def _home_robot(self) -> None:
+        """Home from the status bar. Through the shown page's jog panel when
+        it has one, so the keys and the panel's buttons are held while it
+        moves, as for every other command on such a page; on its own worker
+        otherwise."""
+        robot = self.session.robot
+        if robot is None:
+            return
+        if self._robot_busy():
+            self.status.showMessage("Not now: the robot is busy. Home it when "
+                                    "it is done.", 6000)
+            return
+        answer = QMessageBox.question(
+            self, HOME_TITLE, HOME_DETAIL,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        # `==`, not `is`: see JogPanel._confirm.
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if self._robot_busy():                       # changed while asking
+            self.status.showMessage("Not now: the robot is busy.", 6000)
+            return
+        panels = [panel for panel in
+                  self.stack.currentWidget().findChildren(JogPanel)
+                  if panel.isVisible()]
+        if panels and panels[0].run_job(lambda _log: home_robot(robot)):
+            return
+        worker = Worker(home_robot, robot)
+        self._home_worker = worker
+        worker.finished.connect(self._home_done)
+        worker.failed.connect(self._home_failed)
+        _log.info("homing from the status bar")
+        worker.start()
+        self._show_home()
+
+    def _home_done(self, _result=None) -> None:
+        self._home_worker = None
+        self._show_home()
+        self.status.showMessage("Homed.", 4000)
+        # The panels on other pages still show the pose from before.
+        for panel in self.findChildren(JogPanel):
+            panel.refresh_position()
+
+    def _home_failed(self, reason: str) -> None:
+        self._home_worker = None
+        self._show_home()
+        _log.error("home: %s", reason)
+        self.status.showMessage(f"Home failed: {reason}", 8000)
 
     def show_page(self, name: str) -> None:
         """Bring a page to the front by name, keeping the tabs in step."""

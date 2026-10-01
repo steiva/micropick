@@ -113,7 +113,8 @@ from ..theme.factory import (Section, card, combo_box, heading,
 NO_ROBOT = "no robot — connect it on the Profile page"
 from ..workers import Worker
 
-__all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS"]
+__all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS", "HOME_TITLE",
+           "HOME_DETAIL", "home_robot"]
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +128,20 @@ def _position_row(name: str, where) -> str:
 
 
 PANEL_WIDTH = 400
+
+# Home, asked the same way from the panel's Machine card and from the status
+# bar's button.
+HOME_TITLE = "Home robot position?"
+HOME_DETAIL = ("The gantry travels to the home position on all axes. Saved "
+               "positions are kept, but the undo history no longer describes "
+               "where the robot is.")
+
+
+def home_robot(robot) -> str:
+    """Home all axes. Blocking: run it on a worker or through `run_job`."""
+    robot.home_robot(verbose=False)
+    log.info("homed")
+    return "homed"
 
 # The pose at the head of `JogController.status()`, "(x, y, z) ...".
 POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
@@ -553,19 +568,14 @@ class JogPanel(QWidget):
         self._select_position(name)
 
     def _home(self) -> None:
-        if not self._confirm(
-                "Home robot position?",
-                "The gantry travels to the home position on all axes. Saved "
-                "positions are kept, but the undo history no longer describes "
-                "where the robot is."):
+        if not self._confirm(HOME_TITLE, HOME_DETAIL):
             return
         robot, controller = self.session.robot, self.controller
 
         def job():
             # None, not the HTTP response: _job_done reads the first item as
             # a MoveResult, and a home has no clamp or refusal to report.
-            robot.home_robot(verbose=False)
-            log.info("homed")
+            home_robot(robot)
             return None, controller.status()
 
         self._run(Worker(job))
@@ -622,6 +632,14 @@ class JogPanel(QWidget):
         # as an aspirate: what was detected on the picture still stands.
         self._run(Worker(job), moves=moves)
         return True
+
+    def refresh_position(self) -> None:
+        """Read the pose again, if nothing is running: after the robot was
+        moved by something that did not go through this panel."""
+        if self.controller is None or self._busy():
+            return
+        controller = self.controller
+        self._run(Worker(lambda: (None, controller.status())), moves=False)
 
     def tell(self, text: str) -> None:
         """A line under the position on the picture, as it is given."""
