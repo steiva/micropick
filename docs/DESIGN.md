@@ -1249,7 +1249,11 @@ from the definition's bottom, whatever it is, is still one choice. The
 other is a level of its own, the measured bottom: the measured rim less the
 well depth set beside it (the definition's depth to start, the operator's
 to correct, as the notebook asked for it), so a Z offset from it is as good
-as an absolute Z for that plate.
+as an absolute Z for that plate. It is reached as the notebook did, not by a
+well command: the robot refuses a well command whose point is below the
+definition's bottom, which a measured bottom often is. So: over the
+measured rim with `move_to_well`, the plunger prepared there, straight down
+with `move_to_coordinates`, and the liquid commands in place.
 
 **A group and a well location remember the labware's load name**, not only
 the slot, and a slot now holding something else is a problem the page
