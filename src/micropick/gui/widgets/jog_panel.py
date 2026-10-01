@@ -90,6 +90,14 @@ into a picture direction and then into the robot axis nearest to it, so the
 tip moves the way the arrow points; the pad's buttons lose their axis names
 and the help says "as on the picture". A step is still one axis at a time.
 
+XY only
+-------
+Nudging a tip onto a crosshair seen from below is a move in X and Y; a Z
+step there pushes the tip into the disc or out of focus. `xy_only` takes Z
+off the panel: the Z buttons are hidden, PgUp and PgDn are not bound (the
+shortcuts stay disabled, so the keys go to whatever else wants them), and
+the help does not list them.
+
 The keys are listed there too, in a box in the picture's bottom-right corner
 (`help_changed`, `CameraView.set_help`), shown until H hides it. A page adds
 its own keys and mouse actions to the same list with `add_help`.
@@ -281,6 +289,7 @@ class JogPanel(QWidget):
                  machine_controls: bool = True,
                  collapsed: tuple[str, ...] = (),
                  view_axes=None,
+                 xy_only: bool = False,
                  parent: QWidget | None = None):
         """`collapsed` names the sections that start folded; see SECTIONS.
 
@@ -290,6 +299,8 @@ class JogPanel(QWidget):
         `view_axes`, a 2x2 matrix from picture pixels to robot XY, makes the
         arrows move the tip as on a turned or mirrored picture; see "Arrows
         as on the picture". `set_view_axes` changes it later.
+
+        `xy_only` hides Z and unbinds PgUp and PgDn; see "XY only".
         """
         super().__init__(parent)
         unknown = [name for name in collapsed if name not in SECTIONS]
@@ -306,6 +317,9 @@ class JogPanel(QWidget):
         self._message = ""
         self._job_moves = True
         self._view_axes = check_view_axes(view_axes)
+        self._xy_only = bool(xy_only)
+        self._z_buttons: list[QWidget] = []
+        self._z_shortcuts: list[QShortcut] = []
         self._pad: dict[tuple[str, int], QWidget] = {}
         # The page's own lines, kept apart so the jog keys' part can be
         # generated again when an option changes what they say.
@@ -352,9 +366,14 @@ class JogPanel(QWidget):
             button = self._move_button(text, axis, direction)
             self._pad[(axis, direction)] = button
             grid.addWidget(button, row, col)
-        grid.addWidget(self._move_button("↑ Z", "z", +1), 0, 3)
-        grid.addWidget(self._move_button("↓ Z", "z", -1), 2, 3)
-        grid.setColumnMinimumWidth(3, 90)
+        self._z_buttons = [self._move_button("↑ Z", "z", +1),
+                           self._move_button("↓ Z", "z", -1)]
+        grid.addWidget(self._z_buttons[0], 0, 3)
+        grid.addWidget(self._z_buttons[1], 2, 3)
+        self._z_column = grid
+        for button in self._z_buttons:
+            button.setVisible(not self._xy_only)
+        grid.setColumnMinimumWidth(3, 0 if self._xy_only else 90)
         box.body.layout().addLayout(grid)
 
         step = QHBoxLayout()
@@ -506,11 +525,15 @@ class JogPanel(QWidget):
                     # exactly what is wanted when nothing else works yet.
                     continue
                 self._shortcuts.append(shortcut)
+                if key.move is not None and key.move[0] == "z":
+                    self._z_shortcuts.append(shortcut)
 
     # -- acting --------------------------------------------------------------
 
     def _move(self, axis: str, direction: int) -> None:
         if self.controller is None or self._busy():
+            return
+        if self._xy_only and axis == "z":
             return
 
         controller = self.controller
@@ -833,12 +856,25 @@ class JogPanel(QWidget):
     def _key_help(self) -> list[str]:
         """The jog keys as the options make them, then the page's lines."""
         layout = _bound_layout()
+        if self._xy_only:
+            layout = tuple(key for key in layout
+                           if key.move is None or key.move[0] != "z")
         if self._view_axes is not None:
             layout = tuple(replace(key, help="move as on the picture")
                            if key.move is not None and key.move[0] in "xy"
                            else key for key in layout)
         return ([_reflow(line) for line in help_lines(layout)]
                 + list(self._extra_help))
+
+    def set_xy_only(self, on: bool) -> None:
+        """Change `xy_only`; see "XY only"."""
+        self._xy_only = bool(on)
+        for button in self._z_buttons:
+            button.setVisible(not self._xy_only)
+        self._z_column.setColumnMinimumWidth(3, 0 if self._xy_only else 90)
+        self._set_enabled(getattr(self, "_enabled", False))
+        self._help = self._key_help()
+        self._emit_help()
 
     def set_view_axes(self, axes) -> None:
         """Change `view_axes`; None goes back to the robot's own axes."""
@@ -966,7 +1002,9 @@ class JogPanel(QWidget):
         # window-wide shortcut on a hidden page would compete with the one on
         # the page that is showing. hideEvent keeps this true afterwards.
         for shortcut in self._shortcuts:
-            shortcut.setEnabled(usable and self.isVisible())
+            shortcut.setEnabled(usable and self.isVisible()
+                                and not (self._xy_only
+                                         and shortcut in self._z_shortcuts))
         self._enabled = usable
         self._refresh_buttons()
 

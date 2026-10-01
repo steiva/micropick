@@ -283,9 +283,10 @@ class PipetteCalibration(QWidget):
         self.touch_box.layout().addWidget(note)
         # Move open: nudging the tip onto the crosshair is the whole of this
         # block. Positions folded: nothing here is a place to return to.
+        # XY only: a Z step here pushes the tip into the disc.
         self.touch_jog = JogPanel(self.session, shortcut_host=self,
                                   machine_controls=False,
-                                  collapsed=("positions",),
+                                  collapsed=("positions",), xy_only=True,
                                   parent=self.touch_box)
         self.touch_jog.show_position_on(self.view)
         self.touch_box.layout().addWidget(self.touch_jog)
