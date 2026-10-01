@@ -42,6 +42,11 @@ Aspirate and dispense in place, with a volume and a flow rate, are on the
 page and on A and D - the in-place commands the run uses, for trying a
 pickup by hand. They are refused unless the robot reports a tip on.
 
+A small deck map is the way across the deck: a click on a slot sends the
+camera over that slot's centre at the travel height (`deck_view.slot_centre`,
+the deck definition's geometry), so the next look is at that slot. It obeys
+Click to move like the picture does, and goes through the same queue.
+
 A cuboid picked by hand needs somewhere to go, so a well of any plate the
 run holds can be driven to: the robot's own `move_to_well`, to the top,
 centre or bottom of the well with an offset from it. Two switches make the
@@ -86,6 +91,7 @@ from ..theme.factory import (Section, card, combo_box, double_spin_box,
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.deck_view import DeckView, slot_centre
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..widgets.size_histogram import SizeHistogram
@@ -125,6 +131,9 @@ KEYS = (("A", "aspirate", "_aspirate"),
 
 # How far the tip may be sent from the chosen well level, either way.
 WELL_OFFSET_RANGE = (-50.0, 50.0)
+
+# The deck map: enough to tell the slots apart, not a second Robot & Deck.
+DECK_HEIGHT = 170
 
 # On the picture while the lower camera is shown; see the module docstring.
 LOWER_CAMERA_NOTE = "lower camera: clicks do not move the robot"
@@ -186,6 +195,7 @@ class ManualPage(QWidget):
                           + list(MOUSE_HELP))
 
         panel = CardColumns([self._camera_card(), self._click_card(),
+                             self._deck_card(),
                              self._targets_card(), self._sizes_card(),
                              self._liquid_card(), self._well_card(), self.jog],
                             self)
@@ -258,6 +268,17 @@ class ManualPage(QWidget):
                       "first. Off again every time this tab is opened.")
         note.setWordWrap(True)
         box.layout().addWidget(note)
+        return box
+
+    def _deck_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Deck", 2))
+        self.deck = DeckView(self)
+        self.deck.setFixedHeight(DECK_HEIGHT)
+        self.deck.setToolTip("Click a slot: the camera goes over its centre, "
+                             "at the travel height (with Click to move on).")
+        self.deck.slot_clicked.connect(self._slot_clicked)
+        box.layout().addWidget(self.deck)
         return box
 
     def _targets_card(self) -> QWidget:
@@ -675,10 +696,50 @@ class ManualPage(QWidget):
         _, kind, index, world = min(found, key=lambda f: f[0])
         return kind, index, world
 
+    # -- the deck ------------------------------------------------------------------
+
+    def _slot_clicked(self, slot: str) -> None:
+        """The camera over the slot's centre, at the travel height."""
+        robot = self.session.robot
+        if robot is None or self.jog.busy:
+            return
+        xy = slot_centre(slot)
+        what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
+        why = moves.unreachable(self.session.jog_limits,
+                                (xy[0], xy[1], xyz(robot)[2]))
+        if why:
+            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            return
+        if not self.armed.isChecked():
+            self.jog.tell(f"{what} - switch on Click to move to go there")
+            return
+        self.deck.select(slot)
+        log.info("%s", what)
+
+        def job(log_):
+            self._z_top = moves.drive_camera(robot, xy, self._z_top, log=log_)
+            return f"over slot {slot}"
+
+        self.jog.run_job(job)
+
+    def _show_deck(self) -> None:
+        state = self.session.run_state
+        held = (state.labware if state is not None
+                and self.session.robot is not None else {})
+        self.deck.set_labware({slot: entry.load_name
+                               for slot, entry in held.items()})
+        profile = self.session.profile
+        modules = list(profile.deck.modules) if profile is not None else []
+        self.deck.set_modules({str(slot): f"+{m.height_mm:g} mm · "
+                                          f"{m.name or 'module'}"
+                               for m in modules for slot in m.slots})
+
     # -- the well ------------------------------------------------------------------
 
     def _reload_plates(self) -> None:
-        """The run's plates in the combo, the one in hand kept."""
+        """The run's plates in the combo, the one in hand kept; the deck map
+        with them."""
+        self._show_deck()
         chosen = self.plate_choice.currentData()
         chosen_slot = chosen[0] if chosen else None
         self.plate_choice.blockSignals(True)
@@ -891,6 +952,7 @@ class ManualPage(QWidget):
 
     def _on_profile_changed(self) -> None:
         profile = self.session.profile
+        self._show_deck()                     # the modules are the profile's
         self.cuboid_z.blockSignals(True)
         if profile is not None:
             self.cuboid_z.setValue(profile.picking.pickup_height)

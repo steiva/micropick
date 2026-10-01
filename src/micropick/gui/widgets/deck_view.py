@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (QGraphicsRectItem, QGraphicsScene,
                                QGraphicsSimpleTextItem, QGraphicsTextItem,
                                QGraphicsView)
 
-__all__ = ["DeckView", "SLOTS", "TRASH_SLOT"]
+__all__ = ["DeckView", "slot_centre", "SLOTS", "TRASH_SLOT"]
 
 # One accent, as on the plate map: a deck is its own surface, like the camera
 # viewport, so its ink is fixed rather than taken from the palette.
@@ -66,6 +66,17 @@ def _slot_origin(slot: int) -> tuple[float, float]:
     column = (slot - 1) % 3
     row = (slot - 1) // 3                          # 0 is the front row
     return column * SLOT_PITCH_X, (3 - row) * SLOT_PITCH_Y
+
+
+def slot_centre(slot) -> tuple[float, float]:
+    """The centre of a slot in the robot's deck frame, in millimetres: slot
+    1's corner at the origin, x to the right, y to the back. The deck
+    definition's numbers, the same this view is drawn with."""
+    n = int(slot)
+    column = (n - 1) % 3
+    row = (n - 1) // 3
+    return (column * SLOT_PITCH_X + SLOT_WIDTH / 2,
+            row * SLOT_PITCH_Y + SLOT_HEIGHT / 2)
 
 
 class _Slot(QGraphicsRectItem):

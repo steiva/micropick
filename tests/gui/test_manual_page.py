@@ -139,3 +139,19 @@ def test_on_the_lower_camera_a_click_never_moves_and_the_picture_says_so(
     assert dict(session.robot.get_position(verbose=False)[0]) == \
         pytest.approx(before)
     assert page.jog.position_lines[-1] == LOWER_CAMERA_NOTE
+
+
+def test_a_slot_on_the_deck_map_brings_the_camera_over_its_centre(app, page,
+                                                                  session):
+    from micropick.gui.widgets.deck_view import slot_centre
+    assert slot_centre(1) == pytest.approx((63.88, 42.74))
+    assert slot_centre(5) == pytest.approx((132.5 + 63.88, 90.5 + 42.74))
+    _wait(app, page)
+    page._slot_clicked("5")                   # Click to move is off
+    _wait(app, page)
+    assert "switch on Click to move" in page.jog.position_lines[-1]
+    page.armed.setChecked(True)
+    page._slot_clicked("5")
+    _wait(app, page)
+    pos = session.robot.get_position(verbose=False)[0]
+    assert (pos["x"], pos["y"]) == pytest.approx(slot_centre(5), abs=0.05)
