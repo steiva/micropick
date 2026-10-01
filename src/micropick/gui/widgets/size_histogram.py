@@ -25,14 +25,18 @@ import pyqtgraph as pg
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
-__all__ = ["SizeHistogram", "SizeBins", "size_bins", "BAR", "INSIDE",
-           "WINDOW_EDGE", "HIST_BINS"]
+__all__ = ["SizeHistogram", "SizeBins", "size_bins", "INSIDE", "OUTSIDE",
+           "INSIDE_ALPHA", "OUTSIDE_ALPHA", "WINDOW_EDGE", "HIST_BINS"]
 
-# Histogram colours. A plot is its own surface, like the camera viewport,
-# so these are fixed; the ink follows the palette's text colour, which is
-# the one role qdarktheme really varies between light and dark.
-BAR = (94, 158, 235)
+# Histogram colours. Inside the window, translucent green: what a run
+# would take. Outside it, translucent white - nothing to look at but the
+# shape. White over the picture, where the box behind it is always dark;
+# in a panel the palette's text colour instead, which is white in the dark
+# theme and would be invisible as white in the light one.
 INSIDE = (120, 220, 130)
+OUTSIDE = (255, 255, 255)
+INSIDE_ALPHA = 150
+OUTSIDE_ALPHA = 110
 WINDOW_EDGE = (240, 160, 48)
 
 HIST_BINS = 28
@@ -164,13 +168,17 @@ class SizeHistogram(QWidget):
         # or it is not, and the eye should not have to compare a shade with
         # the band behind it.
         inside_bin = bins.inside_bins
-        for mask, colour in ((~inside_bin, BAR), (inside_bin, INSIDE)):
+        ink = self.palette().color(QPalette.ColorRole.Text)
+        outside = (ink.red(), ink.green(), ink.blue())
+        for mask, colour, alpha in ((~inside_bin, outside, OUTSIDE_ALPHA),
+                                    (inside_bin, INSIDE, INSIDE_ALPHA)):
             if not mask.any():
                 continue
             self.plot.addItem(pg.BarGraphItem(
                 x=bins.centres[mask], height=bins.counts[mask],
                 width=bins.width * 0.92,
-                brush=pg.mkBrush(*colour, 200), pen=pg.mkPen(*colour)))
+                brush=pg.mkBrush(*colour, alpha),
+                pen=pg.mkPen(*colour, min(255, alpha + 60))))
 
         region = pg.LinearRegionItem(values=(bins.low, bins.high),
                                      movable=False,

@@ -94,7 +94,8 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel,
 from ...core.vision.cuboids import center_crop_box
 from . import overlay_painter
 from .frame import to_qimage
-from .size_histogram import BAR, INSIDE, WINDOW_EDGE
+from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE, OUTSIDE_ALPHA,
+                             WINDOW_EDGE)
 
 __all__ = ["CameraView"]
 
@@ -885,7 +886,8 @@ class CameraView(QWidget):
             if not count:
                 continue
             bar_height = plot.height() * count / peak
-            colour = QColor(*(INSIDE if inside else BAR), 210)
+            colour = (QColor(*INSIDE, INSIDE_ALPHA) if inside
+                      else QColor(*OUTSIDE, OUTSIDE_ALPHA))
             painter.fillRect(QRectF(x_of(centre) - bar_width / 2,
                                     plot.bottom() - bar_height,
                                     bar_width, bar_height), colour)
