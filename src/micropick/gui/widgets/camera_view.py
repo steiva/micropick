@@ -128,10 +128,12 @@ CAPTION_GAP = 6
 STEP = re.compile(r"step (\d+(?:\.\d+)?) mm")
 STEP_ORANGE = QColor(255, 170, 40)
 STEP_RED = QColor(255, 80, 70)
-# The axes box: arrow length, box side, and a colour per axis - red and
-# green, as X and Y are drawn in most software that draws them.
+# The axes box: arrow length, the margin around the arrows and their
+# letters, and a colour per axis - red and green, as X and Y are drawn in
+# most software that draws them.
 AXIS_ARROW = 24
-AXIS_BOX = 92
+AXIS_PAD = 5
+AXIS_LETTER = 8                  # half the box a letter is centred in
 AXIS_COLOURS = {"X": QColor(255, 105, 95), "Y": QColor(110, 220, 120)}
 
 
@@ -961,19 +963,36 @@ class CameraView(QWidget):
     def _draw_axes(self, painter: QPainter, top: int) -> None:
         """+X and +Y as arrows from one point, in a box under the others.
         The view is the frame scaled and shifted, never turned, so a
-        direction in sensor pixels is the same on the screen."""
+        direction in sensor pixels is the same on the screen.
+
+        The point is in the corner the arrows leave from - bottom-left for
+        X right and Y up - and the box is only as big as the arrows and
+        their letters, so it costs a corner of the picture, not a square
+        with the arrows in its middle."""
         if not self._axes:
             return
-        box = QRect(8, top, AXIS_BOX, AXIS_BOX)
+        units = {}
+        for name, (dx, dy) in self._axes.items():
+            length = float(np.hypot(dx, dy))
+            if length > 0:
+                units[name] = (dx / length, dy / length)
+        if not units:
+            return
+        # Everything drawn, relative to the origin: the origin, the tips and
+        # the letters' boxes beyond them.
+        reach = AXIS_ARROW + AXIS_LETTER + 1
+        xs, ys = [0.0], [0.0]
+        for ux, uy in units.values():
+            xs += [ux * reach - AXIS_LETTER, ux * reach + AXIS_LETTER]
+            ys += [uy * reach - AXIS_LETTER, uy * reach + AXIS_LETTER]
+        left, right, upper, lower = min(xs), max(xs), min(ys), max(ys)
+        box = QRectF(8, top, right - left + 2 * AXIS_PAD,
+                     lower - upper + 2 * AXIS_PAD)
         painter.fillRect(box, CAPTION_BG)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setFont(QFont(self.font().family(), 9, QFont.Weight.Bold))
-        origin = QPointF(box.center())
-        for name, (dx, dy) in self._axes.items():
-            length = float(np.hypot(dx, dy))
-            if length <= 0:
-                continue
-            ux, uy = dx / length, dy / length
+        origin = QPointF(box.x() + AXIS_PAD - left, box.y() + AXIS_PAD - upper)
+        for name, (ux, uy) in units.items():
             tip = origin + QPointF(ux * AXIS_ARROW, uy * AXIS_ARROW)
             colour = AXIS_COLOURS.get(name, CAPTION_FG)
             painter.setPen(QPen(colour, 2))
@@ -983,8 +1002,10 @@ class CameraView(QWidget):
                 c, s = np.cos(turn), np.sin(turn)
                 bx, by = -(ux * c - uy * s), -(ux * s + uy * c)
                 painter.drawLine(tip, tip + QPointF(bx * 7, by * 7))
-            label = tip + QPointF(ux * 9, uy * 9)
-            painter.drawText(QRectF(label.x() - 8, label.y() - 8, 16, 16),
+            label = origin + QPointF(ux * reach, uy * reach)
+            painter.drawText(QRectF(label.x() - AXIS_LETTER,
+                                    label.y() - AXIS_LETTER,
+                                    2 * AXIS_LETTER, 2 * AXIS_LETTER),
                              Qt.AlignmentFlag.AlignCenter, name)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
