@@ -228,7 +228,7 @@ class StepEditor(QWidget):
         self.all_in_tip = QCheckBox("everything in the tip", self)
         self.all_in_tip.setToolTip("Dispense whatever the tip holds at that "
                                    "moment.")
-        self.refill = QCheckBox("only when the tip runs short", self)
+        self.refill = QCheckBox("Auto refill", self)
         self.refill.setToolTip(
             "A refill: skipped while the tip holds enough for the dispenses "
             "after it; otherwise the tip is topped up to this volume. For "

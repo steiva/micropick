@@ -48,7 +48,7 @@ def test_wells_by_row_and_by_column_come_from_the_ordering():
 
 
 def test_a_step_describes_itself_with_its_place():
-    assert describe(Aspirate(volume_ul=50, flow_rate=10,
+    assert describe(Aspirate(volume_ul=50, flow_rate=10, refill=False,
                              location=Location(level="bottom",
                                                offset=[0, 0, 1]))) == \
         "Aspirate 50 µl at 10 µl/s @ this well, bottom +1 mm"

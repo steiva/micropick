@@ -28,14 +28,15 @@ rather than driven into (`workflows.liquid.problems`).
 
 What the tip holds
 ------------------
-The run counts what is in the tip. An aspirate is done as written unless it
-is a **refill** (`Aspirate.refill`): then it is skipped while the tip holds
-enough for the dispenses that follow it, and otherwise tops the tip up to
-its volume rather than adding the whole volume to what is left
+The run counts what is in the tip. An aspirate is an **auto refill**
+(`Aspirate.refill`, on unless switched off): it is skipped while the tip
+holds enough for the dispenses that follow it, and otherwise tops the tip up
+to its volume rather than adding the whole volume to what is left
 (`aspirate_volume`). So "Refill to 200 µl from the reservoir, dispense 50 µl
 into this well" fills four wells per trip, and goes back to the reservoir
-only when the tip runs short. A plain aspirate is for taking liquid out of a
-well, which has to happen every time.
+only when the tip runs short. With auto refill off the volume is aspirated
+every time, which is what taking a fixed amount out of each well needs.
+Programs saved before the switch existed read it as on.
 
 The program says how much a tip holds (`Program.tip_ul`), and nothing may
 put more in it: the run refuses such an aspirate, and `problems` finds it on
@@ -126,7 +127,7 @@ class Aspirate(_Model):
     volume_ul: float = Field(default=50.0, gt=0)
     flow_rate: float = _flow()
     location: Location = Field(default_factory=Location)
-    refill: bool = False
+    refill: bool = True
 
 
 class Dispense(_Model):

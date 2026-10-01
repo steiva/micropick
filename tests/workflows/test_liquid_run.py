@@ -154,7 +154,8 @@ def test_problems_name_what_is_missing():
 
 
 def test_problems_catch_a_dispense_of_more_than_the_tip_holds():
-    program = _program([Aspirate(volume_ul=10), Dispense(volume_ul=15)])
+    program = _program([Aspirate(volume_ul=10, refill=False),
+                        Dispense(volume_ul=15)])
     found = liquid.problems(program, PLATES, POSITIONS)
     assert any("dispenses 15 µl" in p for p in found)
     ok = _program([Aspirate(volume_ul=10), Dispense()])

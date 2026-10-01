@@ -29,7 +29,7 @@ it.
 What the tip holds
 ------------------
 The run counts it (`LiquidState.in_tip`, shown under Run and on the
-picture), and an Aspirate marked "only when the tip runs short" is a refill:
+picture), and an Aspirate with "Auto refill" on - the default - is a refill:
 skipped while the tip holds enough for the dispenses after it, else a top-up
 to its volume (`core.liquid`, "What the tip holds"). The program says how
 much a tip takes, and nothing is let overfill it. The count is the page's:
