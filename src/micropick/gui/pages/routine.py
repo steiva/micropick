@@ -37,6 +37,12 @@ or a row letter or column number for the whole line — and the count is
 applied to whatever is selected. The two are separate everywhere: the
 selection is a white ring, the plan is the number inside the well.
 
+**Every change to the plan can be undone.** Undo and Redo, on the buttons
+and on Ctrl+Z / Ctrl+Y, walk a stack of plan snapshots taken before each
+change. Typing a number into the box applies it as it is typed, so "12"
+would be two changes; typing into the same selection is one step instead.
+Choosing another plate starts a new history.
+
 The version note. `check_labware` prints a line to stdout when the slot reports
 a different definition revision, and from a GUI that goes nowhere anyone can
 see. Since `ot2_api.load_labware` hard-codes version 1 in the load command, that
@@ -50,7 +56,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase
+from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel,
                                QPlainTextEdit, QVBoxLayout, QWidget)
 
@@ -82,6 +88,10 @@ PANEL_WIDTH = 420
 MINI_DECK_HEIGHT = 190
 
 
+# How many plan snapshots Undo keeps.
+UNDO_LIMIT = 100
+
+
 def routines_dir() -> Path:
     directory = paths.outputs_dir() / "routines"
     directory.mkdir(parents=True, exist_ok=True)
@@ -96,6 +106,12 @@ class RoutinePage(QWidget):
         self.destination: Destination | None = None
         self._plan: dict[str, int] = {}
         self._worker: Worker | None = None
+        # Plan snapshots: the plan before each change, and the ones undone.
+        self._undo: list[dict[str, int]] = []
+        self._redo: list[dict[str, int]] = []
+        # What the last change was, so typing "12" into one selection is one
+        # step rather than two.
+        self._last_change = None
 
         self._selection: set[str] = set()
 
@@ -133,8 +149,34 @@ class RoutinePage(QWidget):
 
         session.robot_state_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._reload_plates())
+        self._install_shortcuts()
         self._reload_plates()
         self._refresh()
+
+    def _install_shortcuts(self) -> None:
+        """Window-wide while the page is showing, as every page's keys are:
+        enabled only on screen, so no hidden page claims the key."""
+        self._shortcuts = []
+        for sequence, handler in ((QKeySequence.StandardKey.Undo,
+                                   self._undo_plan),
+                                  (QKeySequence("Ctrl+Y"), self._redo_plan),
+                                  (QKeySequence.StandardKey.Redo,
+                                   self._redo_plan)):
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(handler)
+            shortcut.setEnabled(False)
+            self._shortcuts.append(shortcut)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        for shortcut in self._shortcuts:
+            shortcut.setEnabled(True)
+
+    def hideEvent(self, event) -> None:
+        for shortcut in self._shortcuts:
+            shortcut.setEnabled(False)
+        super().hideEvent(event)
 
     # -- construction --------------------------------------------------------
 
@@ -211,6 +253,19 @@ class RoutinePage(QWidget):
         buttons.addWidget(row_order)
         buttons.addWidget(self.strategy, 1)
         box.layout().addLayout(buttons)
+
+        history = QHBoxLayout()
+        self.undo_button = secondary_button("Undo", self)
+        self.undo_button.setToolTip("Undo the last change to the plan. "
+                                    "Ctrl+Z")
+        self.undo_button.clicked.connect(self._undo_plan)
+        self.redo_button = secondary_button("Redo", self)
+        self.redo_button.setToolTip("Redo what was undone. Ctrl+Y")
+        self.redo_button.clicked.connect(self._redo_plan)
+        history.addWidget(self.undo_button)
+        history.addWidget(self.redo_button)
+        history.addStretch(1)
+        box.layout().addLayout(history)
 
         self.plan_state = QLabel("select wells on the plate")
         self.plan_state.setWordWrap(True)
@@ -336,6 +391,7 @@ class RoutinePage(QWidget):
         self.routine = None
         self.session.set_routine(None)
         self._plan = {}
+        self._forget_history()
         self._selection = set()
         self.plate.set_destination(destination)
         self.plate.set_plan({})
@@ -362,6 +418,7 @@ class RoutinePage(QWidget):
         impossible to say twice in a row.
         """
         self._selection = set(names)
+        self._last_change = None
         self._refresh()
 
     def _well_activated(self, name: str) -> None:
@@ -385,20 +442,60 @@ class RoutinePage(QWidget):
                                     "row letter, or drag a box.")
             return
         count = self.per_well.value()
+        plan = dict(self._plan)
         for name in self._selection:
             if count > 0:
-                self._plan[name] = count
+                plan[name] = count
             else:
-                self._plan.pop(name, None)
-        self.plate.set_plan(self._plan)
-        self._refresh()
+                plan.pop(name, None)
+        self._change_plan(plan, ("count", frozenset(self._selection)))
 
     def _clear_plan(self) -> None:
         if self.routine is not None:
             return
-        self._plan = {}
+        self._change_plan({})
+
+    # -- history -------------------------------------------------------------
+
+    def _change_plan(self, plan: dict[str, int], kind=None) -> None:
+        """Make `plan` the plan, remembering the one before. A change of the
+        same `kind` as the last one replaces it in the history rather than
+        adding to it."""
+        if plan == self._plan:
+            return
+        if kind is None or kind != self._last_change:
+            self._undo.append(dict(self._plan))
+            del self._undo[:-UNDO_LIMIT]
+        self._redo.clear()
+        self._last_change = kind
+        self._show_plan(plan)
+
+    def _show_plan(self, plan: dict[str, int]) -> None:
+        self._plan = dict(plan)
         self.plate.set_plan(self._plan)
         self._refresh()
+
+    def _undo_plan(self) -> None:
+        if not self._undo or not self._editable():
+            return
+        self._redo.append(dict(self._plan))
+        self._last_change = None
+        self._show_plan(self._undo.pop())
+
+    def _redo_plan(self) -> None:
+        if not self._redo or not self._editable():
+            return
+        self._undo.append(dict(self._plan))
+        self._last_change = None
+        self._show_plan(self._redo.pop())
+
+    def _forget_history(self) -> None:
+        self._undo.clear()
+        self._redo.clear()
+        self._last_change = None
+
+    def _editable(self) -> bool:
+        return self.destination is not None and self.routine is None
 
     # -- routine -------------------------------------------------------------
 
@@ -443,6 +540,7 @@ class RoutinePage(QWidget):
             return
         self.destination = routine.destination
         self._plan = dict(routine.plan)
+        self._forget_history()
         self.plate.set_destination(routine.destination)
         self._adopt(routine)
 
@@ -545,7 +643,9 @@ class RoutinePage(QWidget):
     def _refresh(self) -> None:
         busy = self._worker is not None and self._worker.running
         has_plate = self.destination is not None
-        editable = has_plate and self.routine is None
+        editable = self._editable()
+        self.undo_button.setEnabled(editable and bool(self._undo))
+        self.redo_button.setEnabled(editable and bool(self._redo))
 
         self.use_button.setEnabled(not busy and self.definition.count() > 0)
         self.all_button.setEnabled(has_plate)
