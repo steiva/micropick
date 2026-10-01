@@ -17,6 +17,11 @@ saved point, or unknown at the start of a run - since its path starts from
 the last place it knows (`_leave_for_well`). A Move to a well is the
 robot's `move_to_well`, the same way.
 
+Where a plate's well centre was measured (`config.schema.WellCentre`,
+handed in as `Plate.centre`), it is added to every well command's offset on
+that plate, so a step's offset is from the real centre and rim rather than
+from the labware definition's.
+
 A saved point is the robot's coordinates, not a place it plans a path to,
 so it is reached by the rules of manual control (`workflows.manual`): the
 tip raised to the travel height, one straight move across, then down,
@@ -94,12 +99,15 @@ class Overfill(RuntimeError):
 
 @dataclass(frozen=True)
 class Plate:
-    """Labware the run holds, as a program needs it."""
+    """Labware the run holds, as a program needs it. `centre` is its
+    measured well centre, (x, y, z) from the robot's own well top, or None
+    where it was not measured."""
 
     slot: str
     labware_id: str
     load_name: str
     ordering: list
+    centre: tuple | None = None
 
     @property
     def wells(self) -> set[str]:
@@ -472,12 +480,22 @@ def _well_target(location: Location, group: Group, well: str,
             return None
         location, group, well = state.last
     if location.kind == "this_well":
-        return (plates[group.slot].labware_id, well, location.level,
-                tuple(float(v) for v in location.offset))
+        plate = plates[group.slot]
+        return (plate.labware_id, well, location.level,
+                _corrected(location.offset, plate))
     if location.kind == "well":
-        return (plates[location.slot].labware_id, location.well,
-                location.level, tuple(float(v) for v in location.offset))
+        plate = plates[location.slot]
+        return (plate.labware_id, location.well, location.level,
+                _corrected(location.offset, plate))
     return None
+
+
+def _corrected(offset, plate: Plate) -> tuple:
+    """A location's offset, from the plate's measured well centre where it
+    has one."""
+    centre = plate.centre or (0.0, 0.0, 0.0)
+    return tuple(round(float(v) + float(c), 3)
+                 for v, c in zip(offset, centre))
 
 
 def _blow_out(robot: Robot, step, target) -> None:

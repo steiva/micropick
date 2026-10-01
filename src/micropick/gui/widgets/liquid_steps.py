@@ -60,6 +60,9 @@ class LocationEditor(QWidget):
         self._plates: list[PlateChoice] = []
         self._points: list[str] = []
         self._loading = False
+        # The plates with a measured well centre, and the group's plate.
+        self._measured: set = set()
+        self._group_plate = None
 
         self.kind = combo_box(self)
         for kind, text in KINDS.items():
@@ -131,6 +134,14 @@ class LocationEditor(QWidget):
         self._plates = list(plates)
         self._points = sorted(points)
         self.set_location(location)
+
+    def set_measured(self, measured, group_plate) -> None:
+        """(slot, load name) of the plates with a measured well centre, and
+        of the plate the group is on: the offset's label says what it is
+        measured from."""
+        self._measured = set(measured)
+        self._group_plate = group_plate
+        self._show_rows()
 
     # -- in and out ----------------------------------------------------------
 
@@ -213,6 +224,17 @@ class LocationEditor(QWidget):
         self.form.setRowVisible(self.point, kind == "point")
         self.form.setRowVisible(self.level, kind in ("this_well", "well"))
         self.form.setRowVisible(self.offset_label, kind != "here")
+        if kind == "this_well":
+            plate = self._group_plate
+        elif kind == "well":
+            data = self.labware.currentData()
+            plate = tuple(data.split("|", 1)) if data else None
+        else:
+            plate = None
+        self.offset_label.setText(
+            "Offset from the point, mm" if kind == "point" else
+            "Offset from the measured centre, mm" if plate in self._measured
+            else "Offset from there, mm")
         self.form.setRowVisible(self.offset_row, kind != "here")
 
 

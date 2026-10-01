@@ -19,6 +19,17 @@ the chosen step's fields. "Try this step" does that one step for one well -
 the selected one if it is in the group, else the group's first - and leaves
 the tip there to be looked at.
 
+The well centre
+---------------
+Under the plate map, a plate's wells can be measured where they really are
+(`config.schema.WellCentre`, kept in the profile per slot and plate type):
+select one well, Go to well top puts the tip where the robot thinks its top
+centre is, the jog panel walks it onto the real centre level with the rim,
+and Set well centre stores the difference. From then on every step on that
+plate is measured from the real centre and rim (`workflows.liquid`,
+`Plate.centre`), which is what drawing beside a cuboid near the bottom
+needs. Go to centre checks it; Forget drops it.
+
 Saved points are the profile's positions, the same list as the jog panel's
 Positions: jog the tip to the spot, save it there, and it is on offer as a
 location at once. The "points" box on the picture draws them where they are.
@@ -67,6 +78,7 @@ from ... import paths
 from ...core.liquid import (ACTIONS, Group, Program, ProgramError, describe,
                             new_step, ordered_wells)
 from ...core.routine import Destination, RoutineError
+from ...hardware.protocols import xyz
 from ...workflows import liquid
 from ...workflows import manual as moves
 from ..auto_camera import CameraOpener
@@ -158,6 +170,10 @@ class LiquidHandlingPage(QWidget):
         self._progress = ""
         self._outcome = ""
         self._current: tuple[int, str] | None = None
+        # (slot, load name, well, pose) of the last Go to well top: the
+        # robot's own idea of that well's top centre, which Set well centre
+        # measures the real one against.
+        self._nominal: tuple | None = None
         self._log_path = None
         self._loading = False
         # session.plates(), read when the deck changes rather than on every
@@ -245,6 +261,38 @@ class LiquidHandlingPage(QWidget):
         box.layout().addLayout(row)
         self.plate_state = _label()
         box.layout().addWidget(self.plate_state)
+
+        # The well centre: two rows of two, so they fit half the panel.
+        self.centre_state = _label()
+        box.layout().addWidget(self.centre_state)
+        self.go_top_button = secondary_button("Go to well top", self)
+        self.go_top_button.setToolTip(
+            "The tip to the selected well's top centre as the robot has it, "
+            "from the labware definition. Then jog it onto the real centre, "
+            "level with the rim.")
+        self.go_top_button.clicked.connect(self._go_to_well_top)
+        self.set_centre_button = primary_button("Set well centre", self)
+        self.set_centre_button.setToolTip(
+            "Store where the tip is now as the real centre and rim of this "
+            "plate's wells, in the profile. Every step on this plate is then "
+            "measured from it.")
+        self.set_centre_button.clicked.connect(self._set_well_centre)
+        self.go_centre_button = secondary_button("Go to centre", self)
+        self.go_centre_button.setToolTip(
+            "The tip to the measured centre and rim of the selected well, or "
+            "of the well it was measured on: to check it.")
+        self.go_centre_button.clicked.connect(self._go_to_well_centre)
+        self.forget_centre_button = secondary_button("Forget", self)
+        self.forget_centre_button.setToolTip(
+            "Drop the measured centre: wells are then where the labware "
+            "definition puts them.")
+        self.forget_centre_button.clicked.connect(self._forget_well_centre)
+        for pair in ((self.go_top_button, self.set_centre_button),
+                     (self.go_centre_button, self.forget_centre_button)):
+            row = QHBoxLayout()
+            for button in pair:
+                row.addWidget(button, 1)
+            box.layout().addLayout(row)
         return box
 
     def _groups_card(self) -> QWidget:
@@ -429,8 +477,18 @@ class LiquidHandlingPage(QWidget):
 
     def _plates(self) -> dict[str, liquid.Plate]:
         return {slot: liquid.Plate(slot, entry.labware_id, entry.load_name,
-                                   definition.ordering)
+                                   definition.ordering,
+                                   self._centre_offset(slot, entry.load_name))
                 for slot, entry, definition in self._deck}
+
+    def _well_centre(self, slot, load_name):
+        profile = self.session.profile
+        return (profile.deck.well_centre(slot, load_name)
+                if profile is not None else None)
+
+    def _centre_offset(self, slot, load_name) -> tuple | None:
+        centre = self._well_centre(slot, load_name)
+        return tuple(centre.offset) if centre is not None else None
 
     def _positions(self) -> dict:
         profile = self.session.profile
@@ -603,6 +661,7 @@ class LiquidHandlingPage(QWidget):
 
     def _deck_changed(self) -> None:
         self._lose_top()
+        self._nominal = None
         self._reload_plates()
         self._offer_choices()
 
@@ -626,6 +685,7 @@ class LiquidHandlingPage(QWidget):
     def _group_chosen(self, follow: bool = True) -> None:
         if self._loading:
             return
+        self._show_measured()
         group = self._group()
         self._loading = True
         if group is not None:
@@ -829,7 +889,112 @@ class LiquidHandlingPage(QWidget):
             plates.append((slot, definition.load_name,
                            f"slot {slot} — {definition.display_name}", wells))
         self.editor.set_choices(plates, list(self._positions()))
+        self._show_measured()
         self._refresh()
+
+    def _show_measured(self) -> None:
+        """Tell the step editor which plates have a measured centre, so its
+        offset says what it is measured from."""
+        measured = {(slot, entry.load_name) for slot, entry, _d in self._deck
+                    if self._well_centre(slot, entry.load_name) is not None}
+        group = self._group()
+        self.editor.where.set_measured(
+            measured, (group.slot, group.load_name) if group else None)
+
+    # -- the well centre ---------------------------------------------------------
+
+    def _labware_id(self, slot) -> str | None:
+        return next((entry.labware_id for s, entry, _d in self._deck
+                     if s == slot), None)
+
+    def _one_selected(self) -> str | None:
+        selection = self.plate.selection
+        return next(iter(selection)) if len(selection) == 1 else None
+
+    def _go_to_well_top(self) -> None:
+        shown, well = self._shown_plate(), self._one_selected()
+        if shown is None or well is None or self._running or self.jog.busy:
+            return
+        slot, load_name = shown
+        labware_id, robot, state = (self._labware_id(slot),
+                                     self.session.robot, self.state)
+        emit = self.job_said.emit
+
+        def job(log_):
+            state.z_top = moves.drive_to_well(robot, labware_id, well, "top",
+                                              (0.0, 0.0, 0.0), state.z_top,
+                                              log=log_)
+            emit(("nominal", (slot, load_name, well, xyz(robot))))
+            return (f"at the top of {well} as the robot has it: jog onto the "
+                    f"real centre, level with the rim, then Set well centre.")
+
+        log.info("liquid handling: to the top of %s in slot %s", well, slot)
+        if not self.jog.run_job(job):
+            self.jog.tell("not now: the robot is busy.")
+
+    def _set_well_centre(self) -> None:
+        nominal, pose = self._nominal, self.jog.pose
+        shown = self._shown_plate()
+        if (nominal is None or pose is None or shown is None
+                or tuple(nominal[:2]) != tuple(shown)
+                or self._running or self.jog.busy):
+            return
+        slot, load_name, well, at = nominal
+        offset = [float(p) - float(a) for p, a in zip(pose, at)]
+        if self._well_centre(slot, load_name) is not None:
+            answer = QMessageBox.question(
+                self, "Set well centre",
+                f"Replace the measured centre of {load_name} in slot {slot}? "
+                f"Every step on this plate moves with it.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        try:
+            self.session.set_well_centre(slot, load_name, offset, well)
+        except Exception as exc:                 # noqa: BLE001
+            self.jog.tell(f"not saved: {exc}")
+            return
+        # Measured: measuring again starts from Go to well top.
+        self._nominal = None
+        self._refresh()
+        self.jog.tell(f"well centre of slot {slot} saved: ({offset[0]:+.2f}, "
+                      f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
+
+    def _go_to_well_centre(self) -> None:
+        shown = self._shown_plate()
+        if shown is None or self._running or self.jog.busy:
+            return
+        slot, load_name = shown
+        centre = self._well_centre(slot, load_name)
+        well = self._one_selected() or (centre.well if centre else None)
+        if centre is None or not well:
+            return
+        labware_id, robot, state = (self._labware_id(slot),
+                                     self.session.robot, self.state)
+        offset = tuple(centre.offset)
+
+        def job(log_):
+            state.z_top = moves.drive_to_well(robot, labware_id, well, "top",
+                                              offset, state.z_top, log=log_)
+            return f"at the measured centre and rim of {well}."
+
+        if not self.jog.run_job(job):
+            self.jog.tell("not now: the robot is busy.")
+
+    def _forget_well_centre(self) -> None:
+        shown = self._shown_plate()
+        if shown is None or self._well_centre(*shown) is None:
+            return
+        slot, load_name = shown
+        answer = QMessageBox.question(
+            self, "Forget well centre",
+            f"Forget the measured centre of {load_name} in slot {slot}? Its "
+            f"wells are then where the labware definition puts them.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.session.forget_well_centre(slot, load_name)
 
     def _try_well(self, group: Group) -> str | None:
         plate = self._plates().get(group.slot)
@@ -1020,6 +1185,10 @@ class LiquidHandlingPage(QWidget):
 
     def _on_job_said(self, payload) -> None:
         kind, value = payload
+        if kind == "nominal":
+            self._nominal = value
+            self._refresh()
+            return
         if kind == "well":
             self._current = value
             gi, well = value
@@ -1086,6 +1255,35 @@ class LiquidHandlingPage(QWidget):
 
     # -- display ------------------------------------------------------------------
 
+    def _show_centre(self, shown, selection, idle: bool) -> None:
+        """The well centre line and its buttons, for the plate on the map."""
+        robot = self.session.robot is not None
+        centre = self._well_centre(*shown) if shown is not None else None
+        nominal = (self._nominal if self._nominal is not None and shown
+                   is not None and tuple(self._nominal[:2]) == tuple(shown)
+                   else None)
+        one = len(selection) == 1
+        self.go_top_button.setEnabled(idle and robot and shown is not None
+                                      and one)
+        self.set_centre_button.setEnabled(idle and nominal is not None
+                                          and self.jog.pose is not None)
+        self.go_centre_button.setEnabled(idle and robot and centre is not None)
+        self.forget_centre_button.setEnabled(idle and centre is not None)
+        if shown is None:
+            text = ""
+        elif centre is not None:
+            text = f"Well centre {centre.describe()}."
+        else:
+            text = ("Well centre not measured: the wells are where the "
+                    "labware definition puts them. To measure, select one "
+                    "well and Go to well top.")
+        if nominal is not None:
+            text += (f"\nAt the top of {nominal[2]} as the robot has it: jog "
+                     f"the tip onto the real centre, level with the rim, then "
+                     f"Set well centre.")
+        self.centre_state.setText(text)
+        self.centre_state.setVisible(bool(text))
+
     def _refresh(self) -> None:
         running, busy = self._running, self.jog.busy
         idle = not running and not busy
@@ -1112,6 +1310,7 @@ class LiquidHandlingPage(QWidget):
             self.plate_state.setText(f"{len(selection)} wells selected."
                                      if selection else "")
         self.plate_state.setVisible(bool(self.plate_state.text()))
+        self._show_centre(shown, selection, idle)
 
         # Groups and steps.
         has_group = group is not None

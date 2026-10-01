@@ -577,6 +577,39 @@ class ModuleType(BaseModel):
     height_mm: float
 
 
+class WellCentre(BaseModel):
+    """Where the wells of one plate really are, measured on the deck.
+
+    The robot's idea of a well comes from the labware definition - the
+    catalogue part - and the slot; the plate on the deck sits a fraction of a
+    millimetre off it, and a long tip bends. Washing draws beside a cuboid
+    near the bottom, where that fraction matters. So the tip is walked onto
+    one well's real centre, level with its rim, and `offset` is that pose
+    less the robot's own `move_to_well(well, "top")`. Every well command on
+    this plate then adds it, so a step's own offset is from the real centre
+    and rim (notebook 03's "centre offset").
+
+    Per slot and load name: the same kind of plate in another slot, or
+    another kind in this one, is not the plate that was measured. `well` is
+    the one it was measured on, for the operator to look at again.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    slot: Annotated[int, Field(ge=1, le=11)]
+    load_name: str
+    offset: Vec3
+    well: str = ""
+    measured_at: datetime | None = None
+
+    def describe(self) -> str:
+        x, y, z = self.offset
+        when = (f", {self.measured_at:%Y-%m-%d}" if self.measured_at
+                else "")
+        return (f"measured on {self.well or '?'}{when}: ({x:+.2f}, {y:+.2f}, "
+                f"{z:+.2f}) mm from the robot's well top")
+
+
 # The height a module starts with, until it is measured: the picking
 # platform's, which is what this rig's modules raise the labware by.
 DEFAULT_MODULE_HEIGHT_MM = 64.2
@@ -596,16 +629,18 @@ def _default_module_types() -> list[ModuleType]:
 
 class DeckConfig(BaseModel):
     """deck.json: the modules on this installation's deck, the kinds of
-    module there are to choose from, and the labware loaded most recently.
+    module there are to choose from, the labware loaded most recently, and
+    the measured well centres of the plates on it (`WellCentre`).
 
-    The last two are optional, so a deck.json from before them reads as the
-    default catalogue and an empty history."""
+    All but the modules are optional, so a deck.json from before them reads
+    as the default catalogue, an empty history and no centres."""
 
     model_config = ConfigDict(extra="forbid")
 
     modules: list[DeckModule] = Field(default_factory=list)
     module_types: list[ModuleType] = Field(default_factory=_default_module_types)
     recent_labware: list[str] = Field(default_factory=list)
+    well_centres: list[WellCentre] = Field(default_factory=list)
 
     def module_type(self, name: str) -> ModuleType | None:
         return next((t for t in self.module_types if t.name == name), None)
@@ -614,6 +649,11 @@ class DeckConfig(BaseModel):
         """Put `load_name` first in the recent list, keeping RECENT_LABWARE."""
         rest = [n for n in self.recent_labware if n != load_name]
         self.recent_labware = [load_name] + rest[:RECENT_LABWARE - 1]
+
+    def well_centre(self, slot, load_name: str) -> WellCentre | None:
+        wanted = int(slot)
+        return next((c for c in self.well_centres
+                     if c.slot == wanted and c.load_name == load_name), None)
 
     def module_for(self, slot) -> DeckModule | None:
         wanted = int(slot)

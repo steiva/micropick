@@ -21,6 +21,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 # Before anything that resolves a path. `paths` reads MICROPICK_ROOT at call
@@ -43,7 +44,7 @@ from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              DeckConfig, DeckModule, ModuleType,
-                             PickingConfig,
+                             PickingConfig, WellCentre,
                              ProfileMeta)
 from ..hardware import labware                      # noqa: E402
 from ..hardware.camera import CameraManager         # noqa: E402
@@ -650,7 +651,8 @@ class Session(QObject):
         deck = self.profile.deck
         self.profile.deck = DeckConfig(modules=list(modules),
                                        module_types=list(deck.module_types),
-                                       recent_labware=list(deck.recent_labware))
+                                       recent_labware=list(deck.recent_labware),
+                                       well_centres=list(deck.well_centres))
         self.profile.save_deck()
         log.info("deck modules saved to profile %r: %s", self.profile.name,
                  "; ".join(m.describe() for m in modules) or "none")
@@ -668,11 +670,44 @@ class Session(QObject):
         deck = self.profile.deck
         self.profile.deck = DeckConfig(modules=list(deck.modules),
                                        module_types=list(types),
-                                       recent_labware=list(deck.recent_labware))
+                                       recent_labware=list(deck.recent_labware),
+                                       well_centres=list(deck.well_centres))
         self.profile.save_deck()
         log.info("module types in profile %r: %s", self.profile.name,
                  ", ".join(f"{t.name} {t.height_mm:g} mm" for t in types)
                  or "none")
+        self.profile_changed.emit(self.profile)
+
+    def set_well_centre(self, slot, load_name: str, offset,
+                        well: str) -> None:
+        """Save where the wells of the plate in `slot` really are (see
+        `WellCentre`), replacing any earlier measurement of it."""
+        if self.profile is None:
+            raise SessionError("no profile to save the well centre into")
+        deck = self.profile.deck
+        centre = WellCentre(slot=int(slot), load_name=load_name,
+                            offset=[round(float(v), 3) for v in offset],
+                            well=well, measured_at=datetime.now())
+        deck.well_centres = [c for c in deck.well_centres
+                             if (c.slot, c.load_name) != (centre.slot,
+                                                          load_name)]
+        deck.well_centres.append(centre)
+        self.profile.save_deck()
+        log.info("well centre of %s in slot %s: %s", load_name, slot,
+                 centre.describe())
+        self.profile_changed.emit(self.profile)
+
+    def forget_well_centre(self, slot, load_name: str) -> None:
+        if self.profile is None:
+            return
+        deck = self.profile.deck
+        kept = [c for c in deck.well_centres
+                if (c.slot, c.load_name) != (int(slot), load_name)]
+        if len(kept) == len(deck.well_centres):
+            return
+        deck.well_centres = kept
+        self.profile.save_deck()
+        log.info("well centre of %s in slot %s forgotten", load_name, slot)
         self.profile_changed.emit(self.profile)
 
     def remember_labware(self, load_name: str) -> None:
