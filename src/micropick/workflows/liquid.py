@@ -69,7 +69,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..core.liquid import (Group, Location, Program, aspirate_volume,
-                           needed_after, ordered_wells)
+                           needed_after, ordered_wells, refills)
 from ..hardware.protocols import Robot, prepare_to_aspirate, require_ok
 from . import manual as moves
 
@@ -255,7 +255,7 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
         wells = (ordered_wells(group, plate.ordering) if plate is not None
                  else list(group.wells))
         for si, step in enumerate(steps, 1):
-            if step.action != "aspirate" or not step.refill:
+            if not refills(step):
                 continue
             where = f"group {group.name!r}, step {si}"
             if step.volume_ul > tip + VOLUME_TOL:

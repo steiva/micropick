@@ -254,10 +254,11 @@ class StepEditor(QWidget):
                                    "moment.")
         self.refill = QCheckBox("Auto refill", self)
         self.refill.setToolTip(
-            "A refill: skipped while the tip holds enough for the dispenses "
-            "after it; otherwise the tip is topped up to this volume. For "
-            "filling from a reservoir. Off: the volume is aspirated every "
-            "time, as for taking liquid out of a well.")
+            "Skipped while the tip holds enough for the dispenses after it; "
+            "otherwise the tip is topped up to this volume. Off: the volume "
+            "is aspirated every time. Only from a source - one fixed well or "
+            "a saved point; from each well of the group the volume is always "
+            "taken.")
         # The box and its switch one above the other: side by side they
         # are squeezed in a column of the panel.
         volume_row = QWidget(self)
@@ -297,6 +298,8 @@ class StepEditor(QWidget):
         self.cycles.valueChanged.connect(self._edited)
         self.all_in_tip.toggled.connect(self._all_toggled)
         self.refill.toggled.connect(self._edited)
+        # Auto refill is offered only for a source, so it follows Where.
+        self.where.changed.connect(self._show_refill)
         self.message.editingFinished.connect(self._edited)
         self.where.changed.connect(self._edited)
         self.set_step(None)
@@ -315,7 +318,6 @@ class StepEditor(QWidget):
             self.volume.setValue(step.volume_ul if step.volume_ul is not None
                                  else self.volume.value())
             self.volume.setEnabled(step.volume_ul is not None)
-        self.refill.setVisible(action == "aspirate")
         if action == "aspirate":
             self.refill.setChecked(step.refill)
         if has("flow_rate"):
@@ -334,6 +336,7 @@ class StepEditor(QWidget):
         self.form.setRowVisible(self.seconds, has("seconds"))
         self.form.setRowVisible(self.message, has("message"))
         self.where.setVisible(has("location"))
+        self._show_refill()
         self._loading = False
 
     def step(self):
@@ -366,6 +369,12 @@ class StepEditor(QWidget):
     def _all_toggled(self, on: bool) -> None:
         self.volume.setEnabled(not on)
         self._edited()
+
+    def _show_refill(self) -> None:
+        step = self._step
+        self.refill.setVisible(
+            step is not None and step.action == "aspirate"
+            and self.where.location().kind in ("well", "point"))
 
     def _edited(self, *_args) -> None:
         if self._loading or self._step is None:

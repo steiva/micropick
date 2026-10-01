@@ -33,14 +33,16 @@ rather than driven into (`workflows.liquid.problems`).
 
 What the tip holds
 ------------------
-The run counts what is in the tip. An aspirate is an **auto refill**
-(`Aspirate.refill`, on unless switched off): it is skipped while the tip
-holds enough for the dispenses that follow it, and otherwise tops the tip up
-to its volume rather than adding the whole volume to what is left
-(`aspirate_volume`). So "Refill to 200 µl from the reservoir, dispense 50 µl
-into each well" fills four wells per trip, and goes back to the reservoir
-only when the tip runs short. With auto refill off the volume is aspirated
-every time, which is what taking a fixed amount out of each well needs.
+The run counts what is in the tip. An aspirate from a source - one fixed
+well or a saved point - is an **auto refill** (`Aspirate.refill`, on unless
+switched off; `refills`): it is skipped while the tip holds enough for the
+dispenses that follow it, and otherwise tops the tip up to its volume rather
+than adding the whole volume to what is left (`aspirate_volume`). So "Refill
+to 200 µl from the reservoir, dispense 50 µl into each well" fills four
+wells per trip, and goes back to the reservoir only when the tip runs short.
+From each well of the group, or the same place as before, an aspirate takes
+its volume every time whatever the switch says: that is taking liquid out
+of every well - washing - where skipping one would leave a well unwashed.
 Programs saved before the switch existed read it as on.
 
 The program says how much a tip holds (`Program.tip_ul`), and nothing may
@@ -62,7 +64,7 @@ __all__ = ["LEVELS", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
            "MoveTo", "Mix", "BlowOut", "Wait", "Pause", "Step", "Group",
            "Program", "ProgramError", "ordered_wells", "describe",
            "describe_location", "new_step", "GROUP_COLOURS",
-           "needed_after", "aspirate_volume", "TIP_UL"]
+           "needed_after", "aspirate_volume", "refills", "TIP_UL"]
 
 # The robot's own well origins; the same as workflows.manual.WELL_LEVELS,
 # restated because core does not import workflows.
@@ -279,11 +281,18 @@ def needed_after(steps: list, index: int) -> float | None:
     return total if dispensed else None
 
 
+def refills(step) -> bool:
+    """Whether `step` is an auto refill: an aspirate with the switch on,
+    from a source - one fixed well or a saved point."""
+    return (step.action == "aspirate" and bool(step.refill)
+            and step.location.kind in ("well", "point"))
+
+
 def aspirate_volume(step, steps: list, index: int, in_tip: float) -> float:
     """How much the aspirate `step`, at `index` of `steps`, takes with
     `in_tip` µl already in the tip: its volume, or for a refill nothing while
     the tip holds enough and else what tops it up to its volume."""
-    if not getattr(step, "refill", False):
+    if not refills(step):
         return step.volume_ul
     need = needed_after(steps, index)
     if need is not None and in_tip >= need - VOLUME_TOL:
@@ -314,7 +323,7 @@ def describe(step) -> str:
     action = step.action
     if action == "aspirate":
         text = (f"Refill to {step.volume_ul:g} µl when short"
-                if step.refill else f"Aspirate {step.volume_ul:g} µl")
+                if refills(step) else f"Aspirate {step.volume_ul:g} µl")
         text += f" at {step.flow_rate:g} µl/s"
     elif action == "dispense":
         amount = "all" if step.volume_ul is None else f"{step.volume_ul:g} µl"
