@@ -106,3 +106,25 @@ def test_ctrl_a_selects_all_and_delete_takes_the_selection_out(app, page):
                    Qt.KeyboardModifier.ControlModifier)
     assert page._plan == {"A1": 2, "A2": 2, "B1": 2}
     page.hide()
+
+
+def test_a_preset_saved_from_one_plan_starts_the_next(app, page, tmp_path):
+    from micropick.core.routine import PlanPreset
+    _set(page, {"A1", "A2"}, 3)
+    preset = PlanPreset.from_plan(page.destination, page._plan,
+                                  strategy="by_row", name="row A")
+    path = tmp_path / "row_a.json"
+    preset.save(path)
+    page._clear_plan()
+    page._apply_preset(PlanPreset.load(path))
+    assert page._plan == {"A1": 3, "A2": 3}
+    assert page.routine is None                       # a plan, not under way
+    assert page.strategy.currentText() == "by_row"
+    assert page.create_button.isEnabled()
+
+
+def test_a_preset_for_a_plate_not_on_the_deck_says_so(page):
+    from micropick.core.routine import PlanPreset
+    page._apply_preset(PlanPreset("nest_96_wellplate_100ul_pcr_full_skirt",
+                                  {"A1": 1}))
+    assert "No slot holds" in page.summary.toPlainText()

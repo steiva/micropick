@@ -43,6 +43,11 @@ change. Typing a number into the box applies it as it is typed, so "12"
 would be two changes; typing into the same selection is one step instead.
 Choosing another plate starts a new history.
 
+**Presets.** Save plan as preset keeps the plate's kind and the counts -
+no slot, no name, no progress - and New from preset puts them on a plate
+of that kind the robot holds, as a plan to edit and Create, never as a
+plan already under way (`core.routine.PlanPreset`).
+
 Ctrl+A selects every well and Delete takes the selected ones out of the
 plan. Every gesture and key is listed on the page, one per line, from
 `GESTURES` - the same list a new key has to be added to.
@@ -66,7 +71,8 @@ from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel,
 
 from ... import paths
 from ...config.labware import LabwareError
-from ...core.routine import STRATEGIES, Destination, Routine, RoutineError
+from ...core.routine import (STRATEGIES, Destination, PlanPreset, Routine,
+                             RoutineError)
 from ...hardware.labware import loaded_labware
 from ..session import Session
 from ..theme import SPACING
@@ -112,6 +118,12 @@ GESTURES = (
     ("Delete", "take the selected wells out of the plan"),
     ("Ctrl+Z / Ctrl+Y", "undo / redo"),
 )
+
+
+def presets_dir() -> Path:
+    directory = paths.outputs_dir() / "plate_plan_presets"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 def routines_dir() -> Path:
@@ -312,6 +324,23 @@ class RoutinePage(QWidget):
         self.open_button.clicked.connect(self._open)
         row.addWidget(self.create_button)
         row.addWidget(self.open_button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+
+        row = QHBoxLayout()
+        self.save_preset_button = secondary_button("Save plan as preset…",
+                                                   self)
+        self.save_preset_button.setToolTip(
+            "Keep this plate's kind and the counts, to start another plan "
+            "from. No progress is kept.")
+        self.save_preset_button.clicked.connect(self._save_preset)
+        self.from_preset_button = secondary_button("New from preset…", self)
+        self.from_preset_button.setToolTip(
+            "A new plan from a preset, on a plate of its kind the robot "
+            "holds. Create it as usual.")
+        self.from_preset_button.clicked.connect(self._from_preset)
+        row.addWidget(self.save_preset_button)
+        row.addWidget(self.from_preset_button)
         row.addStretch(1)
         box.layout().addLayout(row)
 
@@ -585,6 +614,73 @@ class RoutinePage(QWidget):
         self.plate.set_destination(routine.destination)
         self._adopt(routine)
 
+    # -- presets -------------------------------------------------------------
+
+    def _save_preset(self) -> None:
+        if self.destination is None or not self._plan:
+            return
+        try:
+            preset = PlanPreset.from_plan(self.destination, self._plan,
+                                          strategy=self.strategy.currentText())
+        except RoutineError as exc:
+            self.summary.setPlainText(str(exc))
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save plan as preset",
+            str(presets_dir() / f"{self.destination.load_name}.json"),
+            "Plate plan presets (*.json)")
+        if not path:
+            return
+        preset.name = Path(path).stem
+        preset.save(path)
+        log.info("plate plan preset %s saved: %s, %d wells", path,
+                 preset.load_name, len(preset.plan))
+        self.summary.setPlainText(f"Preset saved: {path}")
+
+    def _from_preset(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "New from preset", str(presets_dir()),
+            "Plate plan presets (*.json)")
+        if not path:
+            return
+        try:
+            preset = PlanPreset.load(path)
+        except (RoutineError, OSError) as exc:
+            self.summary.setPlainText(str(exc))
+            return
+        self._apply_preset(preset)
+
+    def _apply_preset(self, preset: PlanPreset) -> None:
+        """The preset on a plate of its kind: the one chosen if it is, else
+        the first slot holding one. A plan to edit, not yet a routine."""
+        slots = [slot for slot, load_name, _d in self._loaded_plates()
+                 if load_name == preset.load_name]
+        chosen = self.definition.currentData()
+        slot = (chosen[0] if chosen is not None and chosen[0] in slots
+                else (slots[0] if slots else None))
+        if slot is None:
+            self.summary.setPlainText(
+                f"No slot holds {preset.load_name}, the plate this preset is "
+                f"for. Load one on the Robot & Deck page.")
+            return
+        try:
+            destination = preset.destination(int(slot))
+            plan = preset.plan_for(destination)
+        except (RoutineError, LabwareError) as exc:
+            self.summary.setPlainText(str(exc))
+            return
+        for index in range(self.definition.count()):
+            if self.definition.itemData(index)[0] == slot:
+                self.definition.setCurrentIndex(index)
+        self._use_plate()
+        self._show_plan(plan)
+        self.strategy.setCurrentText(preset.strategy)
+        self.summary.setPlainText(
+            f"From preset {preset.name or preset.load_name}: "
+            f"{len(plan)} wells, {sum(plan.values())} objects. Edit it if "
+            f"needed, then Create.")
+        log.info("plan from preset %r on slot %s", preset.name, slot)
+
     def _adopt(self, routine: Routine) -> None:
         self.routine = routine
         # The Picking page needs it and the two pages never meet; the
@@ -696,6 +792,8 @@ class RoutinePage(QWidget):
         self.per_well.setEnabled(editable)
         self.strategy.setEnabled(editable)
         self.create_button.setEnabled(editable and bool(self._plan))
+        self.save_preset_button.setEnabled(has_plate and bool(self._plan))
+        self.from_preset_button.setEnabled(not busy)
         self.open_button.setEnabled(not busy)
 
         if self.definition.count() == 0:

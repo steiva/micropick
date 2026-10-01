@@ -150,3 +150,46 @@ def test_check_labware_matches_empty_and_wrong():
     # The version is the definition file's revision, not the plate's, and
     # the robot reports 1 whatever was loaded: noted, never refused.
     r.check_labware({"3": ("myplate", 1)})
+
+
+# ---------------------------------------------------------------------------
+# presets: a plan without a plate
+# ---------------------------------------------------------------------------
+
+def test_a_preset_round_trips_and_starts_a_plan_on_its_plate(tmp_path):
+    from micropick.core.routine import PlanPreset
+    d = Destination.from_definition(tiny_def("myplate", version=2), slot=3)
+    preset = PlanPreset.from_plan(d, {"A1": 2, "B3": 1}, strategy="by_row",
+                                  name="two and one")
+    path = tmp_path / "p.json"
+    preset.save(path)
+    back = PlanPreset.load(path)
+    assert (back.load_name, back.version, back.strategy, back.name) == \
+        ("myplate", 2, "by_row", "two and one")
+    other_slot = Destination.from_definition(tiny_def("myplate", version=2),
+                                             slot=7)
+    assert back.plan_for(other_slot) == {"A1": 2, "B3": 1}
+
+
+def test_a_preset_carries_no_progress_and_refuses_another_plate(tmp_path):
+    from micropick.core.routine import PlanPreset
+    d = Destination.from_definition(tiny_def("myplate"), slot=3)
+    preset = PlanPreset.from_plan(d, {"A1": 1})
+    assert "progress" not in preset.to_dict()
+    with pytest.raises(RoutineError, match="for myplate"):
+        preset.plan_for(Destination.from_definition(tiny_def("other"), slot=3))
+    with pytest.raises(RoutineError):
+        PlanPreset.from_plan(d, {"Z9": 1})          # not a well of the plate
+
+
+def test_a_preset_and_a_plan_are_not_taken_for_each_other(tmp_path):
+    from micropick.core.routine import PlanPreset
+    d = Destination.from_definition(tiny_def("myplate"), slot=3)
+    plan_path = tmp_path / "plan.json"
+    Routine(d, {"A1": 1}, name="run", path=plan_path).save()
+    with pytest.raises(RoutineError, match="plan with progress"):
+        PlanPreset.load(plan_path)
+    preset_path = tmp_path / "preset.json"
+    PlanPreset.from_plan(d, {"A1": 1}).save(preset_path)
+    with pytest.raises(RoutineError, match="is a preset"):
+        Routine.load(preset_path)

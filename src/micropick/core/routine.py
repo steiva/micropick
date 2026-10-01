@@ -36,7 +36,7 @@ import pandas as pd
 from ..config.labware import LabwareDefinition, resolve_definition
 
 __all__ = ["grid_labels", "Destination", "Routine", "RoutineError", "STRATEGIES",
-           "empty_plate_table", "plan_from_table"]
+           "PlanPreset", "empty_plate_table", "plan_from_table"]
 
 # OT-2 addressable slots. Slot 12 is the fixed trash, never a destination.
 MAX_SLOT = 11
@@ -541,6 +541,9 @@ class Routine:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise RoutineError(f"{path} is not valid JSON: {exc}") from exc
+        if data.get("kind") == PlanPreset.KIND:
+            raise RoutineError(f"{path} is a preset, not a plan with a plate "
+                               f"and progress: start a new plan from it")
 
         destination = Destination.from_dict(data["destination"])
         plan = {cls._decode_target(entry["target"]): entry["count"]
@@ -568,6 +571,96 @@ class Routine:
         want = sum(self.plan.values())
         return (f"<Routine {self.destination!r} strategy={self.strategy!r} "
                 f"{done}/{want} objects>")
+
+
+# ---------------------------------------------------------------------------
+# a plan to start from
+# ---------------------------------------------------------------------------
+
+class PlanPreset:
+    """A plan without a plate: which wells of a kind of plate get how many.
+
+    What a routine has minus everything that belongs to one physical plate -
+    no slot, no name, no run_id, no progress - so it can start any number of
+    routines. The kind of plate is a load name (and the version it was made
+    with), and a preset is only ever applied to a destination of that load
+    name: the same well names on another plate are another layout. A preset
+    file says what it is (`kind`), so neither loader takes the other's file
+    for its own.
+    """
+
+    KIND = "plate_plan_preset"
+    VERSION = 1
+
+    def __init__(self, load_name: str, plan: dict[str, int], *,
+                 version: int | None = None, namespace: str | None = None,
+                 strategy: str = "by_column", name: str = ""):
+        if not load_name:
+            raise RoutineError("a preset needs the load name of its plate")
+        if strategy not in STRATEGIES:
+            raise RoutineError(f"unknown strategy {strategy!r}")
+        if not plan or any(isinstance(n, bool) or not isinstance(n, int)
+                           or n < 0 for n in plan.values()):
+            raise RoutineError("a preset needs counts: whole numbers, none "
+                               "negative")
+        self.load_name = load_name
+        self.version = version
+        self.namespace = namespace
+        self.plan = dict(plan)
+        self.strategy = strategy
+        self.name = name
+
+    @classmethod
+    def from_plan(cls, destination: Destination, plan: dict[str, int], *,
+                  strategy: str = "by_column", name: str = "") -> "PlanPreset":
+        """The plan of a plate destination, as a preset. Checked against the
+        destination first, so a preset never names a well its plate lacks."""
+        if not destination.is_plate:
+            raise RoutineError("only a plate plan can be a preset")
+        checked = Routine._check_plan(plan, destination)
+        return cls(destination.load_name, checked, version=destination.version,
+                   namespace=destination.namespace, strategy=strategy, name=name)
+
+    def plan_for(self, destination: Destination) -> dict[str, int]:
+        """The counts, checked against `destination`, which must be a plate
+        of this preset's load name."""
+        if not destination.is_plate or destination.load_name != self.load_name:
+            raise RoutineError(
+                f"the preset is for {self.load_name}, not "
+                f"{destination.load_name or 'a coordinate destination'}")
+        return Routine._check_plan(self.plan, destination)
+
+    def destination(self, slot: int) -> Destination:
+        """This preset's plate in `slot`, from its definition."""
+        return Destination.from_labware(self.load_name, int(slot),
+                                        version=self.version)
+
+    def to_dict(self) -> dict:
+        return {"kind": self.KIND, "version": self.VERSION, "name": self.name,
+                "plate": {"load_name": self.load_name, "version": self.version,
+                          "namespace": self.namespace},
+                "strategy": self.strategy, "plan": dict(self.plan)}
+
+    def save(self, path: str | Path) -> None:
+        _write_atomic(Path(path), json.dumps(self.to_dict(), indent=2) + "\n")
+
+    @classmethod
+    def load(cls, path: str | Path) -> "PlanPreset":
+        path = Path(path)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RoutineError(f"{path} is not valid JSON: {exc}") from exc
+        if data.get("kind") != cls.KIND:
+            raise RoutineError(f"{path} is not a preset"
+                               + (": it is a plan with progress; open it "
+                                  "instead" if "progress" in data else ""))
+        plate = data.get("plate", {})
+        return cls(plate.get("load_name", ""), dict(data.get("plan", {})),
+                   version=plate.get("version"),
+                   namespace=plate.get("namespace"),
+                   strategy=data.get("strategy", "by_column"),
+                   name=data.get("name", ""))
 
 
 # ---------------------------------------------------------------------------
