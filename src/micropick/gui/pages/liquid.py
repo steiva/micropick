@@ -26,9 +26,11 @@ Under the plate map, a plate's wells can be measured where they really are
 select one well, Go to well top puts the tip where the robot thinks its top
 centre is, the jog panel walks it onto the real centre level with the rim,
 and Set well centre stores the difference. From then on every step on that
-plate is measured from the real centre and rim (`workflows.liquid`,
-`Plate.centre`), which is what drawing beside a cuboid near the bottom
-needs. Go to centre checks it; Forget drops it.
+plate is measured sideways from the real centre (`workflows.liquid`,
+`Plate.centre`), which is what drawing beside a cuboid needs. The well depth
+under it - the definition's to begin with, the operator's to correct -
+makes the measured bottom, rim less depth, a level a step can use. Go to
+centre checks it; Forget drops it.
 
 Saved points are the profile's positions, the same list as the jog panel's
 Positions: jog the tip to the spot, save it there, and it is on offer as a
@@ -265,6 +267,25 @@ class LiquidHandlingPage(QWidget):
         # The well centre: two rows of two, so they fit half the panel.
         self.centre_state = _label()
         box.layout().addWidget(self.centre_state)
+        # A layout, not a widget around it: a plain widget in a card is
+        # painted a shade lighter than the card.
+        row = QHBoxLayout()
+        self.depth_label = QLabel("Well depth", self)
+        row.addWidget(self.depth_label)
+        self.well_depth = double_spin_box(self)
+        self.well_depth.setRange(0.1, 200.0)
+        self.well_depth.setDecimals(2)
+        self.well_depth.setSingleStep(0.1)
+        self.well_depth.setSuffix(" mm")
+        self.well_depth.setToolTip(
+            "Rim to bottom of the wells of this plate. The measured bottom - "
+            "a step's level - is the measured rim less this. It starts as the "
+            "labware definition's, which describes the catalogue part; "
+            "measure and correct it.")
+        self.well_depth.editingFinished.connect(self._well_depth_edited)
+        row.addWidget(self.well_depth)
+        row.addStretch(1)
+        box.layout().addLayout(row)
         self.go_top_button = secondary_button("Go to well top", self)
         self.go_top_button.setToolTip(
             "The tip to the selected well's top centre as the robot has it, "
@@ -484,19 +505,30 @@ class LiquidHandlingPage(QWidget):
     # -- what is in hand -----------------------------------------------------
 
     def _plates(self) -> dict[str, liquid.Plate]:
-        return {slot: liquid.Plate(slot, entry.labware_id, entry.load_name,
-                                   definition.ordering,
-                                   self._centre_offset(slot, entry.load_name))
-                for slot, entry, definition in self._deck}
+        out = {}
+        for slot, entry, definition in self._deck:
+            centre = self._well_centre(slot, entry.load_name)
+            out[slot] = liquid.Plate(
+                slot, entry.labware_id, entry.load_name, definition.ordering,
+                tuple(centre.offset) if centre is not None else None,
+                centre.depth_mm if centre is not None else None)
+        return out
 
     def _well_centre(self, slot, load_name):
         profile = self.session.profile
         return (profile.deck.well_centre(slot, load_name)
                 if profile is not None else None)
 
-    def _centre_offset(self, slot, load_name) -> tuple | None:
-        centre = self._well_centre(slot, load_name)
-        return tuple(centre.offset) if centre is not None else None
+    def _definition_depth(self, slot, well: str) -> float | None:
+        """The labware definition's depth of `well`: where the well depth
+        starts from, not what it is."""
+        for s, _entry, definition in self._deck:
+            if s == slot:
+                try:
+                    return float(definition.data["wells"][well]["depth"])
+                except (KeyError, TypeError, ValueError):
+                    return None
+        return None
 
     def _positions(self) -> dict:
         profile = self.session.profile
@@ -967,7 +999,9 @@ class LiquidHandlingPage(QWidget):
             if answer != QMessageBox.StandardButton.Yes:
                 return
         try:
-            self.session.set_well_centre(slot, load_name, offset, well)
+            self.session.set_well_centre(
+                slot, load_name, offset, well,
+                depth_mm=self._definition_depth(slot, well))
         except Exception as exc:                 # noqa: BLE001
             self.jog.tell(f"not saved: {exc}")
             return
@@ -976,6 +1010,15 @@ class LiquidHandlingPage(QWidget):
         self._refresh()
         self.jog.tell(f"well centre of slot {slot} saved: ({offset[0]:+.2f}, "
                       f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
+
+    def _well_depth_edited(self) -> None:
+        shown = self._shown_plate()
+        if shown is None or self._well_centre(*shown) is None:
+            return
+        try:
+            self.session.set_well_depth(*shown, self.well_depth.value())
+        except Exception as exc:                 # noqa: BLE001
+            self.jog.tell(f"not saved: {exc}")
 
     def _go_to_well_centre(self) -> None:
         shown = self._shown_plate()
@@ -1285,6 +1328,14 @@ class LiquidHandlingPage(QWidget):
                                           and self.jog.pose is not None)
         self.go_centre_button.setEnabled(idle and robot and centre is not None)
         self.forget_centre_button.setEnabled(idle and centre is not None)
+        self.depth_label.setVisible(centre is not None)
+        self.well_depth.setVisible(centre is not None)
+        self.well_depth.setEnabled(idle)
+        if (centre is not None and centre.depth_mm is not None
+                and not self.well_depth.hasFocus()):
+            self.well_depth.blockSignals(True)
+            self.well_depth.setValue(centre.depth_mm)
+            self.well_depth.blockSignals(False)
         if shown is None:
             text = ""
         elif centre is not None:

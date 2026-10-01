@@ -68,7 +68,7 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-__all__ = ["LEVELS", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
+__all__ = ["LEVELS", "MEASURED_BOTTOM", "LEVEL_NAMES", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
            "MoveTo", "Mix", "BlowOut", "Wait", "Pause", "Step", "Group",
            "Program", "ProgramError", "ordered_wells", "describe",
            "describe_location", "new_step", "GROUP_COLOURS",
@@ -78,6 +78,17 @@ __all__ = ["LEVELS", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
 # The robot's own well origins; the same as workflows.manual.WELL_LEVELS,
 # restated because core does not import workflows.
 LEVELS = ("top", "center", "bottom")
+
+# One more, of this application's: the plate's measured rim less the well
+# depth set for it (`config.schema.WellCentre`). The robot's "bottom" is the
+# labware definition's, which is the catalogue part and not always the plate
+# on the deck; a Z offset from the measured bottom is as good as an absolute
+# Z, for the plate that was measured.
+MEASURED_BOTTOM = "measured_bottom"
+
+# The levels with the words the page shows for each.
+LEVEL_NAMES = {"top": "top", "center": "center", "bottom": "bottom",
+               MEASURED_BOTTOM: "bottom (measured)"}
 
 # Where a step goes, with the words the page shows for each.
 KINDS = {"this_well": "each well of the group", "well": "one fixed well",
@@ -114,7 +125,7 @@ class Location(_Model):
     load_name: str | None = None
     well: str | None = None
     point: str | None = None
-    level: Literal["top", "center", "bottom"] = "top"
+    level: Literal["top", "center", "bottom", "measured_bottom"] = "top"
     offset: Annotated[list[float], Field(min_length=3, max_length=3)] = \
         Field(default_factory=lambda: [0.0, 0.0, 0.0])
 
@@ -355,7 +366,7 @@ def describe_location(location: Location) -> str:
             + shift
     where = ("each well" if location.kind == "this_well" else
              f"slot {location.slot or '?'} {location.well or '?'}")
-    return f"{where}, {location.level} {_mm(z)}{shift}"
+    return f"{where}, {LEVEL_NAMES[location.level]} {_mm(z)}{shift}"
 
 
 def describe(step) -> str:

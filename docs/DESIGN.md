@@ -1240,10 +1240,16 @@ of the cuboid, slow, with the slow lift (small rises with a wait, an
 aspirate option); an auto empty into a waste well. What it needed that a
 program did not have was the plate's real well centre: measured once from
 the Wells card (Go to well top, jog onto the real centre and rim, Set well
-centre) and kept in deck.json per slot and plate type (`WellCentre`), it is
-added to every well command on that plate, so a step's offset is from the
-real centre and rim - the notebook's centre offset, with the shift aside of
-the cuboid left to the step, as the notebook kept them apart.
+centre) and kept in deck.json per slot and plate type (`WellCentre`), its
+x and y are added to every well command on that plate, so a step's sideways
+offset is from the real centre - the notebook's centre offset, with the
+shift aside of the cuboid left to the step, as the notebook kept them
+apart. Heights stay the robot's for top, center and bottom: a rough wash
+from the definition's bottom, whatever it is, is still one choice. The
+other is a level of its own, the measured bottom: the measured rim less the
+well depth set beside it (the definition's depth to start, the operator's
+to correct, as the notebook asked for it), so a Z offset from it is as good
+as an absolute Z for that plate.
 
 **A group and a well location remember the labware's load name**, not only
 the slot, and a slot now holding something else is a problem the page

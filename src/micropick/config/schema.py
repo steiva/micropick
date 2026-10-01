@@ -585,9 +585,15 @@ class WellCentre(BaseModel):
     millimetre off it, and a long tip bends. Washing draws beside a cuboid
     near the bottom, where that fraction matters. So the tip is walked onto
     one well's real centre, level with its rim, and `offset` is that pose
-    less the robot's own `move_to_well(well, "top")`. Every well command on
-    this plate then adds it, so a step's own offset is from the real centre
-    and rim (notebook 03's "centre offset").
+    less the robot's own `move_to_well(well, "top")`.
+
+    Its x and y are added to every well command on this plate, so a step's
+    sideways offset is from the real centre (notebook 03's "centre offset").
+    Its z is the measured rim, and with `depth_mm` - the well's depth, as
+    the operator knows it, the definition's only a starting value - it gives
+    the measured bottom: rim less depth, the level a step can be measured
+    from (`core.liquid.MEASURED_BOTTOM`). The robot's own top, center and
+    bottom keep the definition's heights.
 
     Per slot and load name: the same kind of plate in another slot, or
     another kind in this one, is not the plate that was measured. `well` is
@@ -601,6 +607,7 @@ class WellCentre(BaseModel):
     offset: Vec3
     well: str = ""
     measured_at: datetime | None = None
+    depth_mm: float | None = Field(default=None, gt=0)
 
     def describe(self) -> str:
         x, y, z = self.offset

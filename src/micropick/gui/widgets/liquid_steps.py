@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QCheckBox, QFormLayout, QHBoxLayout, QLabel,
                                QLineEdit, QVBoxLayout, QWidget)
 
-from ...core.liquid import KINDS, LEVELS, Location
+from ...core.liquid import KINDS, LEVEL_NAMES, Location
 from ..theme.factory import combo_box, double_spin_box, spin_box
 
 __all__ = ["LocationEditor", "StepEditor", "PlateChoice"]
@@ -83,9 +83,15 @@ class LocationEditor(QWidget):
         self.point.setToolTip("A position saved in the jog panel's Positions. "
                               "The tip goes there, plus the offset.")
         self.level = combo_box(self)
-        self.level.addItems(LEVELS)
-        self.level.setToolTip("Where in the well the offset is measured "
-                              "from: its rim, its middle or its bottom.")
+        for level, text in LEVEL_NAMES.items():
+            self.level.addItem(text, level)
+        self.level.setToolTip(
+            "What the Z offset is measured from.\n"
+            "top, center, bottom: the robot's own, from the labware "
+            "definition.\n"
+            "bottom (measured): the plate's measured rim less the well depth "
+            "set on the Wells card - as good as an absolute Z, for that "
+            "plate.")
         # The axis inside the box and the unit on the row's label: three
         # boxes with a letter beside each and "mm" in each do not fit a
         # column of the panel.
@@ -168,7 +174,7 @@ class LocationEditor(QWidget):
             index = self.point.findData(location.point)
         if index >= 0:
             self.point.setCurrentIndex(index)
-        self.level.setCurrentText(location.level)
+        self.level.setCurrentIndex(max(0, self.level.findData(location.level)))
         for box, value in zip(self.offsets, location.offset):
             box.setValue(float(value))
         self._loading = False
@@ -185,7 +191,7 @@ class LocationEditor(QWidget):
         elif kind == "point":
             point = self.point.currentData() or self.point.currentText() or None
         return Location(kind=kind, slot=slot, load_name=load_name, well=well,
-                        point=point, level=self.level.currentText() or "top",
+                        point=point, level=self.level.currentData() or "top",
                         offset=[round(b.value(), 3) for b in self.offsets])
 
     # -- reacting ----------------------------------------------------------
@@ -233,7 +239,8 @@ class LocationEditor(QWidget):
             plate = None
         self.offset_label.setText(
             "Offset from the point, mm" if kind == "point" else
-            "Offset from the measured centre, mm" if plate in self._measured
+            "Offset, mm (x, y from the measured centre)"
+            if plate in self._measured
             else "Offset from there, mm")
         self.form.setRowVisible(self.offset_row, kind != "here")
 

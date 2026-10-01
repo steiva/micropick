@@ -18,9 +18,12 @@ the last place it knows (`_leave_for_well`). A Move to a well is the
 robot's `move_to_well`, the same way.
 
 Where a plate's well centre was measured (`config.schema.WellCentre`,
-handed in as `Plate.centre`), it is added to every well command's offset on
-that plate, so a step's offset is from the real centre and rim rather than
-from the labware definition's.
+handed in as `Plate.centre`), its x and y are added to every well command's
+offset on that plate, so a step's sideways offset is from the real centre.
+Heights stay the robot's for top, center and bottom. The measured bottom
+(`core.liquid.MEASURED_BOTTOM`) is the measured rim less the depth set for
+the plate (`Plate.depth`): the command is sent from the robot's top with
+the z that puts the tip there, plus the step's own.
 
 A saved point is the robot's coordinates, not a place it plans a path to,
 so it is reached by the rules of manual control (`workflows.manual`): the
@@ -71,8 +74,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.liquid import (Group, Location, Program, aspirate_volume,
-                           empties_now, needed_after, ordered_wells, refills)
+from ..core.liquid import (MEASURED_BOTTOM, Group, Location, Program,
+                           aspirate_volume, empties_now, needed_after,
+                           ordered_wells, refills)
 from ..hardware.protocols import (Robot, move_relative, prepare_to_aspirate,
                                   require_ok)
 from . import manual as moves
@@ -105,13 +109,20 @@ class Overfill(RuntimeError):
 class Plate:
     """Labware the run holds, as a program needs it. `centre` is its
     measured well centre, (x, y, z) from the robot's own well top, or None
-    where it was not measured."""
+    where it was not measured; `depth` the depth set for its wells, for the
+    measured bottom."""
 
     slot: str
     labware_id: str
     load_name: str
     ordering: list
     centre: tuple | None = None
+    depth: float | None = None
+
+    @property
+    def has_bottom(self) -> bool:
+        """Whether its measured bottom is known: a centre and a depth."""
+        return self.centre is not None and self.depth is not None
 
     @property
     def wells(self) -> set[str]:
@@ -227,6 +238,14 @@ def problems(program: Program, plates: dict[str, Plate],
                            f"{', '.join(missing[:5])}.")
     for _gi, group, si, location in _locations(program):
         where = f"group {group.name!r}, step {si}"
+        if location.level == MEASURED_BOTTOM and location.kind in (
+                "this_well", "well"):
+            slot = group.slot if location.kind == "this_well" else location.slot
+            plate = plates.get(slot)
+            if plate is not None and not plate.has_bottom:
+                out.append(f"{where}: the measured bottom of slot {slot} is "
+                           f"not known - measure its well centre and set the "
+                           f"well depth on the Wells card.")
         if location.kind == "well":
             why = _plate_problem(plates, location.slot, location.load_name)
             if why:
@@ -513,22 +532,28 @@ def _well_target(location: Location, group: Group, well: str,
             return None
         location, group, well = state.last
     if location.kind == "this_well":
-        plate = plates[group.slot]
-        return (plate.labware_id, well, location.level,
-                _corrected(location.offset, plate))
-    if location.kind == "well":
-        plate = plates[location.slot]
-        return (plate.labware_id, location.well, location.level,
-                _corrected(location.offset, plate))
-    return None
+        plate, target = plates[group.slot], well
+    elif location.kind == "well":
+        plate, target = plates[location.slot], location.well
+    else:
+        return None
+    return (plate.labware_id, target) + _corrected(location, plate)
 
 
-def _corrected(offset, plate: Plate) -> tuple:
-    """A location's offset, from the plate's measured well centre where it
-    has one."""
-    centre = plate.centre or (0.0, 0.0, 0.0)
-    return tuple(round(float(v) + float(c), 3)
-                 for v, c in zip(offset, centre))
+def _corrected(location: Location, plate: Plate) -> tuple:
+    """(level, offset) to send for `location` on `plate`: x and y from the
+    measured centre where there is one; for the measured bottom, the
+    robot's top with the z of the measured rim less the depth."""
+    x, y, z = (float(v) for v in location.offset)
+    cx, cy, cz = plate.centre or (0.0, 0.0, 0.0)
+    level = location.level
+    if level == MEASURED_BOTTOM:
+        if not plate.has_bottom:
+            raise ValueError(f"slot {plate.slot}: the measured bottom needs "
+                             f"the well centre and the well depth")
+        level, z = "top", float(cz) - float(plate.depth) + z
+    return level, (round(x + float(cx), 3), round(y + float(cy), 3),
+                   round(z, 3))
 
 
 def _blow_out(robot: Robot, step, target) -> None:

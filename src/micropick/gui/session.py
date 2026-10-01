@@ -678,16 +678,21 @@ class Session(QObject):
                  or "none")
         self.profile_changed.emit(self.profile)
 
-    def set_well_centre(self, slot, load_name: str, offset,
-                        well: str) -> None:
+    def set_well_centre(self, slot, load_name: str, offset, well: str,
+                        depth_mm: float | None = None) -> None:
         """Save where the wells of the plate in `slot` really are (see
-        `WellCentre`), replacing any earlier measurement of it."""
+        `WellCentre`), replacing any earlier measurement of it. The depth
+        set for it before is kept; `depth_mm` is used when there was none."""
         if self.profile is None:
             raise SessionError("no profile to save the well centre into")
         deck = self.profile.deck
+        before = deck.well_centre(slot, load_name)
+        if before is not None and before.depth_mm is not None:
+            depth_mm = before.depth_mm
         centre = WellCentre(slot=int(slot), load_name=load_name,
                             offset=[round(float(v), 3) for v in offset],
-                            well=well, measured_at=datetime.now())
+                            well=well, measured_at=datetime.now(),
+                            depth_mm=depth_mm)
         deck.well_centres = [c for c in deck.well_centres
                              if (c.slot, c.load_name) != (centre.slot,
                                                           load_name)]
@@ -695,6 +700,21 @@ class Session(QObject):
         self.profile.save_deck()
         log.info("well centre of %s in slot %s: %s", load_name, slot,
                  centre.describe())
+        self.profile_changed.emit(self.profile)
+
+    def set_well_depth(self, slot, load_name: str, depth_mm: float) -> None:
+        """The depth of the measured plate's wells, for its measured
+        bottom."""
+        centre = (self.profile.deck.well_centre(slot, load_name)
+                  if self.profile is not None else None)
+        if centre is None:
+            raise SessionError("measure the well centre first")
+        depth = round(float(depth_mm), 3)
+        if centre.depth_mm == depth:
+            return
+        centre.depth_mm = depth
+        self.profile.save_deck()
+        log.info("well depth of %s in slot %s: %g mm", load_name, slot, depth)
         self.profile_changed.emit(self.profile)
 
     def forget_well_centre(self, slot, load_name: str) -> None:
