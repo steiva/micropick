@@ -48,6 +48,18 @@ the other dictionaries are tried. It reads the frame the view is already
 showing rather than the camera, so what is drawn belongs to the picture it
 is drawn on.
 
+The result is a verdict first
+-----------------------------
+One line at the top of Result - Good, Acceptable or Redo - judged from the
+FitReport on four things, each against two limits (`VERDICT_LIMITS`): the
+held-out error, the largest residual, how far the recovered marker side is
+from the printed one, and how much of the frame the sweep covered. The
+worst of the four is the verdict, and the line names what made it so. The
+limits are set from the first real sweep (DESIGN section 3: 24 µm held out,
+the side 0.4 % off, the edges of the frame reached). The report and the two
+plots that used to fill the step are behind Statistics: what an operator
+needs to decide is the line; why is one click away.
+
 The sweep draws what it is tracking
 -----------------------------------
 `calibrate_camera` already offers `on_frame(frame, corners, i, total)` at
@@ -63,14 +75,16 @@ nothing, which is the pose worth noticing.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 import cv2
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QPalette
-from PySide6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QPlainTextEdit,
-                               QProgressBar, QWidget)
+from PySide6.QtWidgets import (QComboBox, QDialog, QHBoxLayout, QLabel,
+                               QMessageBox, QPlainTextEdit, QProgressBar,
+                               QVBoxLayout, QWidget)
 
 from ...viz import markers
 from ..auto_camera import CameraOpener
@@ -107,6 +121,74 @@ __all__ += ["DICTIONARIES"]
 SWEEP_DEFAULTS = {"marker_side_mm": 6.8, "dictionary": "DICT_6X6_250",
                   "grid_n": 7, "degree": 3}
 
+# How a fit is judged: (what, unit, good, acceptable, higher is better).
+# Past `acceptable` is Redo. From the first real sweep, which held out at
+# 24 µm with the side 0.4 % off: twice that is still usable, more is a
+# sweep to repeat.
+VERDICT_LIMITS = {
+    "held-out error": ("µm", 40.0, 80.0, False),
+    "largest residual": ("µm", 100.0, 200.0, False),
+    "marker side": ("% off", 1.0, 2.0, False),
+    "frame covered": ("%", 80.0, 60.0, True),
+}
+GOOD, ACCEPTABLE, REDO = "Good", "Acceptable", "Redo"
+_RANK = {GOOD: 0, ACCEPTABLE: 1, REDO: 2}
+
+
+@dataclass(frozen=True)
+class Verdict:
+    level: str                       # GOOD, ACCEPTABLE or REDO
+    line: str                        # the one line for the top of Result
+    checks: tuple                    # (what, value, unit, level) for each
+
+
+def _grade(what: str, value: float) -> str:
+    _unit, good, acceptable, higher = VERDICT_LIMITS[what]
+    if higher:
+        return GOOD if value >= good else ACCEPTABLE if value >= acceptable \
+            else REDO
+    return GOOD if value <= good else ACCEPTABLE if value <= acceptable \
+        else REDO
+
+
+def judge(report, printed_side_mm: float | None) -> Verdict:
+    """Good, Acceptable or Redo for a fit, and the line that says why.
+
+    The marker side is judged only when both the printed and the recovered
+    sides are known; the other three always are."""
+    values = {"held-out error": float(report.holdout_mean_um),
+              "largest residual": float(report.resid_max_um),
+              "frame covered": 100.0 * float(min(report.coverage_frac))}
+    if report.track_side_mm and printed_side_mm:
+        values["marker side"] = (100.0 * abs(report.track_side_mm
+                                             - printed_side_mm)
+                                 / printed_side_mm)
+    checks = tuple((what, value, VERDICT_LIMITS[what][0], _grade(what, value))
+                   for what, value in values.items())
+    level = max((c[3] for c in checks), key=_RANK.__getitem__)
+
+    def said(what, value, unit):
+        return f"{what} {value:.1f} {unit}" if unit != "%" else \
+            f"{value:.0f} % of the frame covered"
+
+    if level == GOOD:
+        line = f"{GOOD}: " + ", ".join(said(*c[:3]) for c in checks) + "."
+    else:
+        worst = [c for c in checks if c[3] == level]
+        parts = []
+        for what, value, unit, _ in worst:
+            _u, good, acceptable, higher = VERDICT_LIMITS[what]
+            limit = good if level == ACCEPTABLE else acceptable
+            word = ("under" if higher else "over") if level == REDO else \
+                ("below" if higher else "above")
+            parts.append(f"{said(what, value, unit)} ({word} "
+                         f"{limit:g} {'%' if unit == '%' else unit})")
+        line = f"{level}: " + "; ".join(parts) + "."
+        if level == REDO:
+            line += " Centre the marker and sweep again."
+    return Verdict(level, line, checks)
+
+
 # How often the page looks for the marker. Three times a second is faster than
 # a hand moves a marker and a twentieth of what the detection costs, so the
 # grab loop and the view keep the rest.
@@ -136,6 +218,7 @@ class CameraCalibration(QWidget):
         self._watch_worker: Worker | None = None
         self._sighting = None
         self._last_line = ""
+        self._verdict: Verdict | None = None
         # How the last sweep ended, under Start until the next one.
         self._outcome = ""
 
@@ -317,32 +400,17 @@ class CameraCalibration(QWidget):
     def _report_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Result", 2))
-        self.result_state = QLabel("No sweep on this page yet.")
-        self.result_state.setWordWrap(True)
-        box.layout().addWidget(self.result_state)
-        self.report_text = QPlainTextEdit(self)
-        self.report_text.setReadOnly(True)
-        self.report_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.report_text.setMinimumHeight(150)
-        self.report_text.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        box.layout().addWidget(self.report_text)
-
-        self.coverage_title = heading("Coverage", 3)
-        box.layout().addWidget(self.coverage_title)
-        self.coverage_plot = self._plot("u, px", "v, px")
-        self.coverage_plot.setMinimumHeight(200)
-        box.layout().addWidget(self.coverage_plot)
-        self.resid_title = heading("Residual per pose", 3)
-        box.layout().addWidget(self.resid_title)
-        self.resid_plot = self._plot("pose", "residual, µm")
-        self.resid_plot.setMinimumHeight(200)
-        box.layout().addWidget(self.resid_plot)
-        self._report_widgets = (self.report_text, self.coverage_title,
-                                self.coverage_plot, self.resid_title,
-                                self.resid_plot)
-        for widget in self._report_widgets:
-            widget.hide()
+        self.verdict = QLabel("No sweep on this page yet.")
+        self.verdict.setWordWrap(True)
+        self.verdict.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.verdict)
+        self.stats_button = secondary_button("Statistics", self)
+        self.stats_button.setToolTip("The full report and the coverage and "
+                                     "residual plots.")
+        self.stats_button.clicked.connect(self._show_statistics)
+        self.stats_button.hide()
+        box.layout().addWidget(self.stats_button, 0, Qt.AlignmentFlag.AlignLeft)
 
         self.write_note = QLabel()
         self.write_note.setWordWrap(True)
@@ -350,7 +418,33 @@ class CameraCalibration(QWidget):
         self.save_button = primary_button("Save to profile", self)
         self.save_button.clicked.connect(self._save)
         box.layout().addWidget(self.save_button)
+        self._build_statistics()
         return box
+
+    def _build_statistics(self) -> None:
+        """The report and the plots, in a window of their own."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Sweep statistics")
+        dialog.resize(760, 860)
+        column = QVBoxLayout(dialog)
+        self.report_text = QPlainTextEdit(dialog)
+        self.report_text.setReadOnly(True)
+        self.report_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.report_text.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.report_text.setMaximumHeight(170)
+        column.addWidget(self.report_text)
+        column.addWidget(heading("Coverage", 3))
+        self.coverage_plot = self._plot("u, px", "v, px")
+        column.addWidget(self.coverage_plot, 1)
+        column.addWidget(heading("Residual per pose", 3))
+        self.resid_plot = self._plot("pose", "residual, µm")
+        column.addWidget(self.resid_plot, 1)
+        self.statistics = dialog
+
+    def _show_statistics(self) -> None:
+        self.statistics.show()
+        self.statistics.raise_()
 
     def _plot(self, x_label: str, y_label: str):
         """A transparent plot, inked with the palette's text colour.
@@ -467,6 +561,11 @@ class CameraCalibration(QWidget):
         self._last_line = ""
         self.progress.setRange(0, 0)         # indeterminate until the first pose
         self._result = None
+        self._verdict = None
+        self.verdict.setText("Sweeping: the result comes when the fit is "
+                             "done.")
+        self.stats_button.hide()
+        self.statistics.hide()
         self.view.set_overlay_items([])
         self._append(f"sweeping with grid {self.grid_n.value()}, "
                      f"degree {self.degree.value()}, marker "
@@ -535,14 +634,14 @@ class CameraCalibration(QWidget):
         pmap, report, sweep = result
         self._append("fit complete")
         log.info("camera calibration fitted:\n%s", report)
-        self.report_text.setPlainText(str(report))
+        self._verdict = judge(report, self.marker_side.value())
+        log.info("camera calibration verdict: %s", self._verdict.line)
+        self.report_text.setPlainText(f"{self._verdict.line}\n\n{report}")
         self._draw_coverage(report, sweep)
         self._draw_residuals(report)
-        for widget in self._report_widgets:
-            widget.show()
-        self.result_state.setText("Fitted. Look at the report, then save it "
-                                  "to the profile.")
-        self._outcome = "Done: the fit is under Result."
+        self.verdict.setText(f"<b>{self._verdict.line}</b>")
+        self.stats_button.show()
+        self._outcome = f"Done: {self._verdict.level}. See Result."
         self._describe_write(pmap)
         self._refresh()
         # The sweep moved the gantry with the panel hidden.
@@ -647,6 +746,15 @@ class CameraCalibration(QWidget):
     def _save(self) -> None:
         if self._result is None or self.session.profile is None:
             return
+        if self._verdict is not None and self._verdict.level == REDO:
+            answer = QMessageBox.question(
+                self, "Save to profile",
+                f"{self._verdict.line}\n\nSave this map anyway? Everything "
+                f"that turns a pixel into a deck position will use it.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         pmap, _report, _sweep = self._result
         profile = self.session.profile
         config = pmap.to_config()

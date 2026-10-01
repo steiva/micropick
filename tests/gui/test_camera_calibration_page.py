@@ -68,3 +68,39 @@ def test_the_parameters_start_at_the_defaults_and_reset_to_them(app, session):
     page.defaults_button.click()
     assert shown() == SWEEP_DEFAULTS
     page.deleteLater()
+
+
+def _report(holdout=24.0, resid_max=60.0, side=6.772, frac=(0.9, 0.85)):
+    from micropick.core.calibration.pixel_map import FitReport
+    return FitReport(degree=3, n_poses=49, n_points=196, resid_mean_um=10.0,
+                     resid_max_um=resid_max, holdout_mean_um=holdout,
+                     holdout_max_um=80.0, track_side_mm=side,
+                     coverage=(0, 0, 100, 100), coverage_frac=frac,
+                     scale_centre_um=26.0, scale_edge_um=28.8)
+
+
+def test_the_first_real_sweep_is_good():
+    from micropick.gui.pages.calibration_camera import GOOD, judge
+    verdict = judge(_report(), 6.8)
+    assert verdict.level == GOOD
+    assert verdict.line.startswith("Good:")
+    assert "marker side 0.4 % off" in verdict.line
+
+
+def test_the_worst_check_decides_and_is_named():
+    from micropick.gui.pages.calibration_camera import (ACCEPTABLE, REDO,
+                                                        judge)
+    acceptable = judge(_report(side=6.7127), 6.8)          # degree 2's 1.3 %
+    assert acceptable.level == ACCEPTABLE
+    assert "marker side 1.3 % off (above 1 % off)" in acceptable.line
+    redo = judge(_report(holdout=213.0, frac=(0.5, 0.9)), 6.8)   # affine
+    assert redo.level == REDO
+    assert "held-out error 213.0 µm (over 80 µm)" in redo.line
+    assert "50 % of the frame covered (under 60 %)" in redo.line
+    assert redo.line.endswith("sweep again.")
+
+
+def test_without_a_recovered_side_the_side_is_not_judged():
+    from micropick.gui.pages.calibration_camera import judge
+    verdict = judge(_report(side=None), 6.8)
+    assert all(c[0] != "marker side" for c in verdict.checks)
