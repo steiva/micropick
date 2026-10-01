@@ -216,6 +216,10 @@ def new_step(action: str):
 
 
 class Group(_Model):
+    """`pause_after_first`: hold the run once the group's first well is
+    done, for the operator to look at it - in washing, whether the cuboid
+    is still there - before the rest."""
+
     name: str
     color: str = GROUP_COLOURS[0]
     slot: str
@@ -223,6 +227,7 @@ class Group(_Model):
     wells: list[str] = Field(default_factory=list)
     order: Literal["by_row", "by_column"] = "by_row"
     steps: list[Step] = Field(default_factory=list)
+    pause_after_first: bool = False
 
 
 class Program(_Model):

@@ -69,8 +69,8 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPixmap, QShortcut
-from PySide6.QtWidgets import (QColorDialog, QFileDialog, QHBoxLayout,
-                               QInputDialog, QLabel, QListWidget,
+from PySide6.QtWidgets import (QCheckBox, QColorDialog, QFileDialog,
+                               QHBoxLayout, QInputDialog, QLabel, QListWidget,
                                QListWidgetItem, QMenu, QMessageBox,
                                QVBoxLayout, QWidget)
 
@@ -335,6 +335,14 @@ class LiquidHandlingPage(QWidget):
         row.addWidget(self.group_down)
         row.addWidget(self.order_choice, 1)
         box.layout().addLayout(row)
+        self.pause_first = QCheckBox("Pause after the first well", self)
+        self.pause_first.setToolTip(
+            "Hold the run once this group's first well is done, to look at "
+            "it - whether the cuboid is still there - before the rest. "
+            "Continue goes on.")
+        self.pause_first.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.pause_first.toggled.connect(self._pause_first_toggled)
+        box.layout().addWidget(self.pause_first)
         return box
 
     def _steps_card(self) -> QWidget:
@@ -691,6 +699,7 @@ class LiquidHandlingPage(QWidget):
         if group is not None:
             self.order_choice.setCurrentIndex(
                 max(0, self.order_choice.findData(group.order)))
+            self.pause_first.setChecked(group.pause_after_first)
         self._loading = False
         if follow and group is not None:
             # The map goes to the group's plate, with its wells selected.
@@ -798,6 +807,13 @@ class LiquidHandlingPage(QWidget):
         self.program.tip_ul = float(value)
         self._save_timer.start()
         self._refresh()
+
+    def _pause_first_toggled(self, on: bool) -> None:
+        group = self._group()
+        if self._loading or group is None:
+            return
+        group.pause_after_first = bool(on)
+        self._save_timer.start()
 
     def _order_chosen(self, _index: int) -> None:
         group = self._group()
@@ -1317,7 +1333,7 @@ class LiquidHandlingPage(QWidget):
         index = self._group_index()
         for button in (self.rename_group_button, self.colour_button,
                        self.delete_group_button, self.order_choice,
-                       self.add_step_button):
+                       self.pause_first, self.add_step_button):
             button.setEnabled(has_group)
         self.group_up.setEnabled(has_group and index > 0)
         self.group_down.setEnabled(has_group

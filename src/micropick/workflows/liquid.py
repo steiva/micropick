@@ -581,8 +581,12 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
     jobs = plan(program, plates)
     total = len(jobs)
     capacity = program.tip_ul
-    # The last well of each group: an auto empty there always empties.
+    # The last well of each group: an auto empty there always empties. The
+    # first: a group may pause after it.
     last = {gi: well for gi, _group, well in jobs}
+    first_well = {}
+    for gi, _group, well in jobs:
+        first_well.setdefault(gi, well)
     state.at = None
     try:
         for gi, group, well in jobs:
@@ -624,6 +628,17 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
                       f"(tip holds {state.in_tip:g} µl)")
             if on_progress is not None:
                 on_progress(len(state.done), total, gi, well)
+            if (group.pause_after_first and well == first_well[gi]
+                    and pause is not None):
+                # After the well is counted done, so a Stop here and a
+                # Continue do not pause on it again.
+                message = (f"check {well}, the first well of {group.name}, "
+                           f"then Continue")
+                _say(log, f"paused: {message}")
+                pause.set()
+                if on_paused is not None:
+                    on_paused(message)
+                _gate(pause, stop)
     finally:
         if state.in_tip > VOLUME_TOL:
             _log_row(log_path, note=f"ended holding {state.in_tip:g} ul")
