@@ -79,6 +79,11 @@ bottom-left corner. Chrome like the caption - drawn in widget pixels,
 never into the frame, and not a widget, so a click on it still reaches the
 picture. On by default when it appears.
 
+Under the boxes, the robot's axes as they lie in the picture (`set_axes`):
+an arrow for +X and one for +Y, from the pixel map, so the operator knows
+which way a jog key will carry the view without trying it. Only for a
+camera with a map; the page that has one hands the directions over.
+
 In the position box the jog step ("step 10 mm") is coloured by how far one
 key press moves the gantry (`step_colour`): white up to 3 mm, orange to
 5 mm, red above - a press at 10 mm near the dish is the one to notice.
@@ -123,6 +128,11 @@ CAPTION_GAP = 6
 STEP = re.compile(r"step (\d+(?:\.\d+)?) mm")
 STEP_ORANGE = QColor(255, 170, 40)
 STEP_RED = QColor(255, 80, 70)
+# The axes box: arrow length, box side, and a colour per axis - red and
+# green, as X and Y are drawn in most software that draws them.
+AXIS_ARROW = 24
+AXIS_BOX = 92
+AXIS_COLOURS = {"X": QColor(255, 105, 95), "Y": QColor(110, 220, 120)}
 
 
 def step_colour(mm: float) -> QColor:
@@ -193,6 +203,7 @@ class CameraView(QWidget):
         self._fps_count = 0
         self._overlay: list = []
         self._marks: list = []
+        self._axes: dict | None = None
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
         self._status: list[str] = []
@@ -384,6 +395,13 @@ class CameraView(QWidget):
         """The marks layer, in sensor coordinates like `set_overlay_items`;
         drawn while the "points" box is ticked."""
         self._marks = list(primitives or ())
+        self.update()
+
+    def set_axes(self, axes) -> None:
+        """{"X": (dx, dy), "Y": (dx, dy)}: the direction of each robot axis
+        in sensor pixels, or None to draw no axes. See the module
+        docstring."""
+        self._axes = dict(axes) if axes else None
         self.update()
 
     def set_histogram(self, bins) -> None:
@@ -857,9 +875,12 @@ class CameraView(QWidget):
         parts.append("held" if not self._live else f"{self._fps:.0f} fps")
 
         # The caption, then where the gantry is, then what the page is
-        # doing: boxes of one kind, stacked down the corner.
-        self._draw_boxes(painter, [["   ".join(parts)], self._lost_lines(),
-                                   self._position, self._status])
+        # doing: boxes of one kind, stacked down the corner; the axes under
+        # them.
+        top = self._draw_boxes(painter, [["   ".join(parts)],
+                                         self._lost_lines(), self._position,
+                                         self._status])
+        self._draw_axes(painter, top)
 
     def _draw_histogram(self, painter: QPainter) -> None:
         """The size histogram, small, in the bottom-left corner: clear of
@@ -935,6 +956,37 @@ class CameraView(QWidget):
         for lines in groups:
             if lines:
                 top = self._draw_box(painter, top, lines) + CAPTION_GAP
+        return top
+
+    def _draw_axes(self, painter: QPainter, top: int) -> None:
+        """+X and +Y as arrows from one point, in a box under the others.
+        The view is the frame scaled and shifted, never turned, so a
+        direction in sensor pixels is the same on the screen."""
+        if not self._axes:
+            return
+        box = QRect(8, top, AXIS_BOX, AXIS_BOX)
+        painter.fillRect(box, CAPTION_BG)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setFont(QFont(self.font().family(), 9, QFont.Weight.Bold))
+        origin = QPointF(box.center())
+        for name, (dx, dy) in self._axes.items():
+            length = float(np.hypot(dx, dy))
+            if length <= 0:
+                continue
+            ux, uy = dx / length, dy / length
+            tip = origin + QPointF(ux * AXIS_ARROW, uy * AXIS_ARROW)
+            colour = AXIS_COLOURS.get(name, CAPTION_FG)
+            painter.setPen(QPen(colour, 2))
+            painter.drawLine(origin, tip)
+            # The head: two strokes back from the tip, 30 degrees apart.
+            for turn in (0.5, -0.5):
+                c, s = np.cos(turn), np.sin(turn)
+                bx, by = -(ux * c - uy * s), -(ux * s + uy * c)
+                painter.drawLine(tip, tip + QPointF(bx * 7, by * 7))
+            label = tip + QPointF(ux * 9, uy * 9)
+            painter.drawText(QRectF(label.x() - 8, label.y() - 8, 16, 16),
+                             Qt.AlignmentFlag.AlignCenter, name)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     def _draw_help(self, painter: QPainter) -> None:
         """The keys box, in the bottom-right corner, clear of the focus
