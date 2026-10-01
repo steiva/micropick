@@ -565,12 +565,44 @@ class DeckModule(BaseModel):
                + (f" - {self.name}" if self.name else "")
 
 
+class ModuleType(BaseModel):
+    """A kind of deck module, to choose from rather than type in: a name and
+    how much it usually raises the labware. Placing one on the deck copies
+    the height into a `DeckModule`, where it can still be changed, so editing
+    or deleting a type never moves a module that is already placed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    height_mm: float
+
+
+# The catalogue a profile starts with. The heights are this rig's: the
+# picking platform's 64.2 mm, and the calibration module at the tip target's
+# module_height.
+DEFAULT_MODULE_TYPES = (("Picking platform", 64.2),
+                        ("Calibration module", 67.1))
+
+
+def _default_module_types() -> list[ModuleType]:
+    return [ModuleType(name=name, height_mm=height)
+            for name, height in DEFAULT_MODULE_TYPES]
+
+
 class DeckConfig(BaseModel):
-    """deck.json: the modules on this installation's deck."""
+    """deck.json: the modules on this installation's deck, and the kinds of
+    module there are to choose from.
+
+    The catalogue is optional, so a deck.json from before it reads as the
+    default one."""
 
     model_config = ConfigDict(extra="forbid")
 
     modules: list[DeckModule] = Field(default_factory=list)
+    module_types: list[ModuleType] = Field(default_factory=_default_module_types)
+
+    def module_type(self, name: str) -> ModuleType | None:
+        return next((t for t in self.module_types if t.name == name), None)
 
     def module_for(self, slot) -> DeckModule | None:
         wanted = int(slot)
@@ -589,6 +621,9 @@ class DeckConfig(BaseModel):
                         f"slot {slot} is claimed by two modules; a slot can "
                         f"carry one offset")
                 seen[slot] = index
+        names = [t.name for t in self.module_types]
+        if len(names) != len(set(names)):
+            raise ValueError("two module types have the same name")
         return self
 
 

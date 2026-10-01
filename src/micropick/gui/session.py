@@ -42,7 +42,8 @@ from ..config import store                          # noqa: E402
 from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
-                             DeckConfig, DeckModule, PickingConfig,
+                             DeckConfig, DeckModule, ModuleType,
+                             PickingConfig,
                              ProfileMeta)
 from ..hardware import labware                      # noqa: E402
 from ..hardware.camera import CameraManager         # noqa: E402
@@ -644,7 +645,11 @@ class Session(QObject):
         a problem just changed."""
         if self.profile is None:
             raise SessionError("no profile to save deck modules into")
-        self.profile.deck = DeckConfig(modules=list(modules))
+        # Built again, not copied: the constructor is what refuses two
+        # modules in one slot. The catalogue is kept.
+        deck = self.profile.deck
+        self.profile.deck = DeckConfig(modules=list(modules),
+                                       module_types=list(deck.module_types))
         self.profile.save_deck()
         log.info("deck modules saved to profile %r: %s", self.profile.name,
                  "; ".join(m.describe() for m in modules) or "none")
@@ -653,6 +658,20 @@ class Session(QObject):
         self.profile_changed.emit(self.profile)
         if self.run_state is not None:
             self.labware_changed.emit(self.run_state)
+
+    def set_module_types(self, types: list[ModuleType]) -> None:
+        """Replace the catalogue of module kinds and save. Placed modules
+        keep the heights they were placed with."""
+        if self.profile is None:
+            raise SessionError("no profile to save module types into")
+        deck = self.profile.deck
+        self.profile.deck = DeckConfig(modules=list(deck.modules),
+                                       module_types=list(types))
+        self.profile.save_deck()
+        log.info("module types in profile %r: %s", self.profile.name,
+                 ", ".join(f"{t.name} {t.height_mm:g} mm" for t in types)
+                 or "none")
+        self.profile_changed.emit(self.profile)
 
     # -- tips ----------------------------------------------------------------
     #

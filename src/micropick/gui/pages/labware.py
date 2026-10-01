@@ -56,6 +56,15 @@ button to load it again, and flagged in the status bar on every page. That
 is the case that was one forgotten cell away in the notebook: a plate loaded
 before the offsets, or a run carried on from a session that never set them.
 
+A module is placed from a catalogue of module types - "Picking platform",
+"Calibration module", and any the operator adds - each with the height it
+usually raises the labware by. Choose the type, the height is filled in and
+can still be changed, click the slot on the deck, Place. What is stored is a
+`DeckModule` with its own height, as before, so the hazard check reads the
+same thing it always did, and a type edited or deleted later moves nothing
+that is already placed. Modules are the profile's, not the run's: they stay
+where they were placed across robot sessions.
+
 Loading and unloading are HTTP and go to a `Worker` like every blocking call.
 Neither moves the gantry; picking up a tip and dropping it in the trash do.
 """
@@ -66,13 +75,14 @@ import logging
 import re
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QComboBox, QCompleter, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QCompleter, QDialog,
+                               QDialogButtonBox, QFormLayout, QHBoxLayout,
+                               QLabel, QLineEdit, QListWidget, QListWidgetItem,
+                               QMessageBox, QVBoxLayout, QWidget)
 
 from ...config.labware import (LabwareDefinition, LabwareError,
                                local_definitions, shared_definitions)
-from ...config.schema import DeckModule
+from ...config.schema import DeckModule, ModuleType
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, double_spin_box, heading,
@@ -95,6 +105,41 @@ DEFINITIONS_HEIGHT = 195
 # A definition rides on its list item under this role, so the list is the
 # only place the catalogue is kept.
 DEFINITION_ROLE = Qt.ItemDataRole.UserRole
+
+HEIGHT_RANGE = (-200.0, 200.0)
+
+
+def _height_box(parent: QWidget):
+    box = double_spin_box(parent)
+    box.setRange(*HEIGHT_RANGE)
+    box.setDecimals(2)
+    box.setSingleStep(0.1)
+    box.setSuffix(" mm")
+    box.setMinimumWidth(110)
+    return box
+
+
+class _TypeDialog(QDialog):
+    """A name and a height: a new module type."""
+
+    def __init__(self, parent: QWidget, height: float):
+        super().__init__(parent)
+        self.setWindowTitle("New module type")
+        self.name = QLineEdit(self)
+        self.name.setPlaceholderText("e.g. Cooling block")
+        self.height = _height_box(self)
+        self.height.setValue(height)
+        self.height.setToolTip("How much the module usually raises the "
+                               "labware in its slot.")
+        form = QFormLayout(self)
+        form.addRow("Name", self.name)
+        form.addRow("Height", self.height)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel,
+                                   parent=self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
 
 
 class LabwarePage(QWidget):
@@ -132,8 +177,10 @@ class LabwarePage(QWidget):
         session.robot_state_changed.connect(self._on_robot_changed)
         session.labware_changed.connect(self._on_labware_changed)
         session.tip_changed.connect(self._on_tip_changed)
+        session.profile_changed.connect(lambda _p: self._on_profile_changed())
 
         self._reload_definitions()
+        self._show_types()
         self._refresh()
 
     # -- construction --------------------------------------------------------
@@ -166,26 +213,49 @@ class LabwarePage(QWidget):
         self.modules_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         box.layout().addWidget(self.modules_list)
 
+        # Placing one: a type from the catalogue, its height filled in and
+        # still editable, and the slot chosen on the deck.
         row = QHBoxLayout()
-        self.module_slots = QLineEdit(self)
-        self.module_slots.setPlaceholderText("slots, e.g. 5, 8, 9")
-        self.module_slots.setMaximumWidth(120)
-        self.module_height = double_spin_box(self)
-        self.module_height.setRange(-200.0, 200.0)
-        self.module_height.setDecimals(2)
-        self.module_height.setSingleStep(0.1)
-        self.module_height.setSuffix(" mm")
-        self.module_height.setToolTip("how much the module raises the labware")
-        self.module_name = QLineEdit(self)
-        self.module_name.setPlaceholderText("name (optional)")
-        row.addWidget(self.module_slots)
-        row.addWidget(self.module_height)
-        row.addWidget(self.module_name, 1)
+        row.addWidget(QLabel("Type"))
+        self.module_type = combo_box(self)
+        self.module_type.setToolTip("The kind of module. Its usual height is "
+                                    "filled in below.")
+        self.module_type.currentIndexChanged.connect(self._type_chosen)
+        row.addWidget(self.module_type, 1)
         box.layout().addLayout(row)
+        row = QHBoxLayout()
+        self.new_type_button = secondary_button("New type…", self)
+        self.new_type_button.setToolTip("Add a kind of module to the list, "
+                                        "with its usual height.")
+        self.new_type_button.clicked.connect(self._new_type)
+        self.delete_type_button = secondary_button("Delete type", self)
+        self.delete_type_button.setToolTip(
+            "Take this kind of module off the list. Modules already placed "
+            "stay where they are, with their heights.")
+        self.delete_type_button.clicked.connect(self._delete_type)
+        row.addWidget(self.new_type_button)
+        row.addWidget(self.delete_type_button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Height"))
+        self.module_height = _height_box(self)
+        self.module_height.setToolTip("How much this module raises the "
+                                      "labware in its slot.")
+        row.addWidget(self.module_height)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+
         buttons = QHBoxLayout()
-        self.add_module_button = secondary_button("Add module", self)
+        self.add_module_button = primary_button("Place on slot", self)
+        self.add_module_button.setToolTip(
+            "Put this module in the slot chosen on the deck, replacing any "
+            "module there.")
         self.add_module_button.clicked.connect(self._add_module)
-        self.remove_module_button = secondary_button("Remove selected", self)
+        self.remove_module_button = secondary_button("Remove from slot", self)
+        self.remove_module_button.setToolTip("Take the module out of the slot "
+                                             "chosen on the deck.")
         self.remove_module_button.clicked.connect(self._remove_module)
         buttons.addWidget(self.add_module_button)
         buttons.addWidget(self.remove_module_button)
@@ -348,6 +418,7 @@ class LabwarePage(QWidget):
     def _slot_clicked(self, name: str) -> None:
         self._slot = name
         self.deck.select(name)
+        self._show_slot_module()
         self._refresh()
 
     def _load(self) -> None:
@@ -407,33 +478,125 @@ class LabwarePage(QWidget):
 
     # -- deck modules --------------------------------------------------------
 
+    def _module_slot(self) -> int | None:
+        """The slot chosen on the deck, if a module can go there."""
+        if self._slot is None or not self._slot.isdigit():
+            return None
+        slot = int(self._slot)
+        return slot if 1 <= slot <= 11 else None
+
+    @staticmethod
+    def _without_slot(modules, slot: int) -> list[DeckModule]:
+        """The modules with `slot` taken out; one left with no slot goes.
+        A module placed before types, over several slots, loses only the
+        slot asked for."""
+        out = []
+        for module in modules:
+            if slot not in module.slots:
+                out.append(module)
+            elif len(module.slots) > 1:
+                out.append(module.model_copy(update={
+                    "slots": [s for s in module.slots if s != slot]}))
+        return out
+
     def _add_module(self) -> None:
+        profile, slot = self.session.profile, self._module_slot()
+        name = self.module_type.currentText()
+        if profile is None or slot is None or not name:
+            return
+        height = round(self.module_height.value(), 3)
+        module = DeckModule(slots=[slot], offset=[0.0, 0.0, height], name=name)
+        try:
+            self.session.set_deck_modules(
+                self._without_slot(profile.deck.modules, slot) + [module])
+        except Exception as exc:                     # noqa: BLE001
+            self._say(f"not placed: {exc}")
+            return
+        self._say("")
+        self._refresh()
+
+    def _remove_module(self) -> None:
+        profile, slot = self.session.profile, self._module_slot()
+        if profile is None or slot is None \
+                or profile.deck.module_for(slot) is None:
+            return
+        self.session.set_deck_modules(
+            self._without_slot(profile.deck.modules, slot))
+        self._refresh()
+
+    # -- module types --------------------------------------------------------
+
+    def _show_types(self) -> None:
+        """The profile's catalogue in the chooser, the chosen one kept."""
+        profile = self.session.profile
+        chosen = self.module_type.currentText()
+        self.module_type.blockSignals(True)
+        self.module_type.clear()
+        if profile is not None:
+            for kind in profile.deck.module_types:
+                self.module_type.addItem(kind.name)
+        index = self.module_type.findText(chosen)
+        if self.module_type.count():
+            self.module_type.setCurrentIndex(max(0, index))
+        self.module_type.blockSignals(False)
+        if index < 0:
+            self._type_chosen()
+
+    def _type_chosen(self, _index: int = 0) -> None:
+        profile = self.session.profile
+        kind = (profile.deck.module_type(self.module_type.currentText())
+                if profile is not None else None)
+        if kind is not None:
+            self.module_height.setValue(kind.height_mm)
+
+    def _show_slot_module(self) -> None:
+        """A slot that holds a module shows it in the editor, so Place with
+        a changed height is how its height is changed."""
+        profile, slot = self.session.profile, self._module_slot()
+        module = (profile.deck.module_for(slot)
+                  if profile is not None and slot is not None else None)
+        if module is None:
+            return
+        index = self.module_type.findText(module.name)
+        if index >= 0:
+            self.module_type.blockSignals(True)
+            self.module_type.setCurrentIndex(index)
+            self.module_type.blockSignals(False)
+        self.module_height.setValue(module.height_mm)
+
+    def _new_type(self) -> None:
         profile = self.session.profile
         if profile is None:
             return
-        text = self.module_slots.text().replace(";", ",").replace(" ", ",")
-        try:
-            slots = sorted({int(part) for part in text.split(",") if part})
-            if not slots:
-                raise ValueError("no slots")
-            module = DeckModule(slots=slots,
-                                offset=[0.0, 0.0, self.module_height.value()],
-                                name=self.module_name.text().strip())
-            self.session.set_deck_modules(list(profile.deck.modules) + [module])
-        except Exception as exc:                     # noqa: BLE001
-            self._say(f"not added: {exc}")
+        dialog = _TypeDialog(self, self.module_height.value())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        self.module_slots.clear()
-        self.module_name.clear()
+        name = dialog.name.text().strip()
+        if not name:
+            return
+        if profile.deck.module_type(name) is not None:
+            QMessageBox.warning(self, "New module type",
+                                f"There is already a type called {name!r}.")
+            return
+        types = list(profile.deck.module_types) + [
+            ModuleType(name=name, height_mm=round(dialog.height.value(), 3))]
+        self.session.set_module_types(types)
+        self.module_type.setCurrentText(name)
 
-    def _remove_module(self) -> None:
-        profile = self.session.profile
-        row = self.modules_list.currentRow()
-        if profile is None or row < 0:
+    def _delete_type(self) -> None:
+        profile, name = self.session.profile, self.module_type.currentText()
+        if profile is None or not name:
             return
-        modules = list(profile.deck.modules)
-        del modules[row]
-        self.session.set_deck_modules(modules)
+        answer = QMessageBox.question(
+            self, "Delete module type",
+            f"Take {name!r} off the list of module types? Modules already "
+            f"placed stay where they are.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.session.set_module_types(
+            [t for t in profile.deck.module_types if t.name != name])
 
     def _reload_problems(self) -> None:
         """Load again every labware the run holds without its module's
@@ -493,6 +656,11 @@ class LabwarePage(QWidget):
     def _on_labware_changed(self, _state) -> None:
         self._refresh()
 
+    def _on_profile_changed(self) -> None:
+        """Another profile has other module types."""
+        self._show_types()
+        self._refresh()
+
     def _on_tip_changed(self, tip) -> None:
         # A rack is used in order: after a pick-up the chooser moves on to
         # the next well, so the next press takes a fresh tip rather than an
@@ -531,7 +699,10 @@ class LabwarePage(QWidget):
 
         # -- deck modules
         modules = list(profile.deck.modules) if profile is not None else []
-        self.deck.set_modules({str(slot): f"module +{m.height_mm:g} mm"
+        # The height first: it is what the band is for, and what is left
+        # when a long type name is cut short.
+        self.deck.set_modules({str(slot): f"+{m.height_mm:g} mm · "
+                                          f"{m.name or 'module'}"
                                for m in modules for slot in m.slots})
         problems = session.deck_problems()
         self.deck.set_problems({p.slot: p.describe() for p in problems})
@@ -547,8 +718,9 @@ class LabwarePage(QWidget):
             self.modules_state.setText(
                 "No modules in the profile. If anything on the deck raises "
                 "the labware in its slot - the picking platform, the "
-                "calibration module - add it here, or the robot will plan "
-                "its well moves to the slot floor and hit it.")
+                "calibration module - place it here (type, height, click its "
+                "slot on the deck), or the robot will plan its well moves to "
+                "the slot floor and hit it.")
         elif connected:
             self.modules_state.setText(
                 "Registered for loading: every labware loaded into these "
@@ -564,9 +736,22 @@ class LabwarePage(QWidget):
         self.hazard.setVisible(bool(problems))
         self.reload_button.setVisible(bool(problems))
         self.reload_button.setEnabled(bool(problems) and not busy)
-        self.add_module_button.setEnabled(profile is not None and not busy)
+        slot = self._module_slot()
+        here = (profile.deck.module_for(slot)
+                if profile is not None and slot is not None else None)
+        self.add_module_button.setText(f"Place on slot {slot}"
+                                       if slot is not None else "Place on slot")
+        self.add_module_button.setEnabled(
+            profile is not None and not busy and slot is not None
+            and self.module_type.count() > 0)
+        self.remove_module_button.setText(f"Remove from slot {slot}"
+                                          if slot is not None
+                                          else "Remove from slot")
         self.remove_module_button.setEnabled(
-            profile is not None and not busy and bool(modules))
+            profile is not None and not busy and here is not None)
+        self.new_type_button.setEnabled(profile is not None)
+        self.delete_type_button.setEnabled(profile is not None
+                                           and self.module_type.count() > 0)
 
         definition = self.chosen_definition()
         entry = held.get(self._slot) if self._slot is not None else None

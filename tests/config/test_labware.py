@@ -147,3 +147,25 @@ def test_deck_json_round_trips_through_the_profile(tmp_path):
     assert again.deck.module_for(8).height_mm == 64.2
     assert again.deck.module_for(1) is None
     assert again.deck.modules[0].describe() == "slots 5, 8, 9: +64.2 mm - platform"
+
+
+def test_a_deck_json_without_types_reads_as_the_default_catalogue(tmp_path):
+    import json
+
+    from micropick.config import store
+    from micropick.config.schema import DEFAULT_MODULE_TYPES
+    profile = store.create_profile("old", directory=tmp_path / "old")
+    (profile.path / "deck.json").write_text(json.dumps(
+        {"modules": [{"slots": [5], "offset": [0, 0, 64.2], "name": ""}]}))
+    again = store.load_profile("old", directory=tmp_path / "old")
+    assert [(t.name, t.height_mm) for t in again.deck.module_types] == \
+        list(DEFAULT_MODULE_TYPES)
+    assert again.deck.module_for(5).height_mm == 64.2
+
+
+def test_module_type_names_are_unique():
+    from micropick.config.schema import DeckConfig, ModuleType
+    with pytest.raises(ValueError, match="same name"):
+        DeckConfig(module_types=[ModuleType(name="a", height_mm=1.0),
+                                 ModuleType(name="a", height_mm=2.0)])
+

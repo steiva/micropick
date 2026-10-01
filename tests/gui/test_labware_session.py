@@ -296,3 +296,15 @@ def test_the_routine_page_offers_only_what_can_be_delivered_into(app, session,
     assert slots["2"] == "nest_12_reservoir_15ml"   # a reservoir is a target
     # Sorted by slot, so the list reads like the deck.
     assert [slot for slot, _, _ in offered] == ["2", "5"]
+
+
+def test_set_deck_modules_keeps_the_catalogue(app, tmp_path, monkeypatch):
+    from micropick.config.schema import ModuleType
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    s = Session(Options(mock=True))
+    s.load_profile("mock")
+    s.set_module_types([ModuleType(name="Block", height_mm=12.0)])
+    s.set_deck_modules([PLATFORM])
+    deck = s.profile.deck
+    assert [t.name for t in deck.module_types] == ["Block"]
+    s.shutdown()

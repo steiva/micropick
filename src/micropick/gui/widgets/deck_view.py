@@ -23,7 +23,7 @@ means is the page's business.
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtGui import QBrush, QColor, QFont, QFontMetricsF, QPainter, QPen
 from PySide6.QtWidgets import (QGraphicsRectItem, QGraphicsScene,
                                QGraphicsSimpleTextItem, QGraphicsTextItem,
                                QGraphicsView)
@@ -169,7 +169,7 @@ class DeckView(QGraphicsView):
 
     def set_modules(self, modules: dict[str, str]) -> None:
         """Which slots carry a module, and what to write on its band, e.g.
-        "module +64.2 mm"."""
+        "+64.2 mm · Picking platform"; cut to the band's width if longer."""
         self._modules = {str(k): v for k, v in (modules or {}).items()}
         self._repaint()
 
@@ -217,7 +217,10 @@ class DeckView(QGraphicsView):
             band, band_label = self._bands[name], self._band_labels[name]
             band.setVisible(bool(module))
             band_label.setVisible(bool(module))
-            band_label.setText(module or "")
+            # Cut to the band with an ellipsis: a module type's name can be
+            # longer than a slot is wide. The tooltip has all of it.
+            band_label.setText(QFontMetricsF(band_label.font()).elidedText(
+                module or "", Qt.TextElideMode.ElideRight, SLOT_WIDTH - 12))
             band.setPen(QPen(HAZARD if problem else MODULE_EDGE, 0.8))
             band.setBrush(QBrush(HAZARD if problem else MODULE_FILL,
                                  Qt.BrushStyle.BDiagPattern))
