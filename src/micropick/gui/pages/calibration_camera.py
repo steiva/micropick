@@ -1,5 +1,8 @@
 """Calibrating the upper camera: one sweep, on one page.
 
+The sweep is the upper camera's: the chooser offers no other, since the
+lower camera looks up at the tip and a map of it is used by nothing.
+
 One of the two tabs of the Calibration page (`pages/calibration.py`); the
 other measures the pipette offset. They share nothing but the page, and the
 order on it - camera first - is the order they have to happen in, since the
@@ -168,6 +171,8 @@ class CameraCalibration(QWidget):
         box.layout().addWidget(heading("Camera", 2))
         row = QHBoxLayout()
         self.camera_choice = combo_box(self)
+        self.camera_choice.setToolTip("The sweep maps the upper camera, the "
+                                      "one that looks down at the deck.")
         self.camera_choice.currentTextChanged.connect(self._show_camera)
         row.addWidget(self.camera_choice, 1)
         box.layout().addLayout(row)
@@ -418,7 +423,10 @@ class CameraCalibration(QWidget):
         if self.session.robot is None:
             out.append("no robot: connect it on the Profile page.")
         if self._camera() is None:
-            out.append("the camera is not open.")
+            upper = self.session.upper_camera_label
+            out.append(f"the upper camera ({upper}) is not open: open it on "
+                       f"the Profile page." if upper else
+                       "no upper camera in the profile.")
         return out
 
     def _start(self) -> None:
@@ -673,7 +681,12 @@ class CameraCalibration(QWidget):
     # -- cameras -------------------------------------------------------------
 
     def _refresh_cameras(self, _label: str = "") -> None:
-        labels = self.session.open_cameras
+        # The upper camera only: the pixel map is that camera's, and a sweep
+        # through the lower one, which looks up at the tip, maps nothing the
+        # rest of the application uses.
+        upper = self.session.upper_camera_label
+        labels = [label for label in self.session.open_cameras
+                  if label == upper]
         current = self.camera_choice.currentText()
         self.camera_choice.blockSignals(True)
         self.camera_choice.clear()
