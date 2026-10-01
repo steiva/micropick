@@ -72,8 +72,9 @@ steps that each carry their own `Location` (this well, a fixed well, a saved
 point, here); `workflows.liquid` runs it through `JogPanel.run_job`. Saved
 points are `profile.positions`, not a list of the page's own. The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
-with a jog panel has it. Washing was removed and is to return as a program,
-not as a page of its own.
+with a jog panel has it. Washing is a program written with these blocks
+(measured well centre, auto empty, slow lift, pause after the first well),
+not a page of its own.
 
 ### Words on screen
 

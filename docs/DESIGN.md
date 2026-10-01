@@ -1212,15 +1212,38 @@ written once is done for a row. A well is in one group of its plate at
 most: adding it to one takes it out of another, because two chains on one
 well in an order nobody wrote down is a mistake, not a feature.
 
-**Every step says where it happens.** A `Location` is the group's well, one
-fixed well of any labware on the deck (the same for every well of the
-group: a reservoir, a waste), a saved point, or where the tip is; with a
-level in the well and an offset. Putting the place on the step instead of in
-a Move before it makes a chain read as what it does and keeps a step's
-place with it when it is moved up or down the list. Two steps in the same
-place do not move between them, so an aspirate and a mix in one well are
-not a retract apart. Wells go through `drive_to_well` and points through
-`drive_tip`, so the travel rules of manual control hold here too.
+**Every step says where it happens.** A `Location` is each well of the
+group in turn, one fixed well of any labware on the deck (the same for every
+well of the group: a reservoir, a waste), a saved point, or the same place
+as the step before; with a level in the well and an offset. On screen they
+are named for what they do - "this well" read as one chosen well. Putting
+the place on the step instead of in a Move before it makes a chain read as
+what it does and keeps a step's place with it when it is moved up or down
+the list. In a well a step is the robot's well-based command, which takes
+the tip there along the robot's own path, with no retract before it; the
+tip is raised only when the robot did not put it where it is. Saved points
+go through `drive_tip`, so the travel rules of manual control hold there.
+
+**What the tip holds is counted, and the program says how much it takes.**
+An aspirate from a source (one fixed well, a saved point) is an auto
+refill: skipped while the tip holds enough for the dispenses after it,
+else a top-up to its volume. From each well of the group it always takes
+its volume - skipping one would leave a well unwashed. A dispense can be an
+auto empty: everything and a blow out, only when the tip could not take the
+next aspirate, and after the group's last well. Nothing may overfill the
+tip; the run refuses it before moving and the paper run says so first.
+
+**Washing is a program, not a page.** Notebook 03's procedure is written
+with these blocks: the wells with cuboids as a group, paused after the first
+well to look; an aspirate at each well, from the bottom with a shift aside
+of the cuboid, slow, with the slow lift (small rises with a wait, an
+aspirate option); an auto empty into a waste well. What it needed that a
+program did not have was the plate's real well centre: measured once from
+the Wells card (Go to well top, jog onto the real centre and rim, Set well
+centre) and kept in deck.json per slot and plate type (`WellCentre`), it is
+added to every well command on that plate, so a step's offset is from the
+real centre and rim - the notebook's centre offset, with the shift aside of
+the cuboid left to the step, as the notebook kept them apart.
 
 **A group and a well location remember the labware's load name**, not only
 the slot, and a slot now holding something else is a problem the page

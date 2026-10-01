@@ -958,3 +958,32 @@ Kept for the record of what washing needs when it returns as a program.
   Close and start the application: the groups and steps are as they were.
   Save as, New, Open brings the saved one back.
 
+
+## Commit 30 — washing as a liquid handling program
+
+- [ ] **Where reads as it means.**
+  The Where list offers each well of the group, one fixed well, a saved
+  point, same place as the step before.
+
+- [ ] **A plate's well centre, measured.**
+  On the Wells card select one well with a cuboid in it (D5), Go to well
+  top: the tip stops over D5 where the definition has its top. Jog it onto
+  the real centre, level with the rim, and Set well centre: the line under
+  the map says "measured on D5" with the offset, and deck.json has it.
+  Go to centre with another well selected lands on that well's real centre
+  and rim. A step on this plate now says "Offset from the measured centre".
+  Forget drops it; the line says it is not measured.
+
+- [ ] **Auto refill is for a source only.**
+  An aspirate at each well of the group has no Auto refill box; switching
+  Where to one fixed well shows it.
+
+- [ ] **A wash.**
+  Group of the wells with cuboids, Pause after the first well on, tip 200 µl:
+  Aspirate 100 µl @ each well, bottom +2.5 mm, X -2 mm, 10 µl/s, slow lift
+  4 × 0.10 mm, 0.2 s; Dispense, Auto empty @ one fixed well (waste),
+  top +5 mm, 200 µl/s. Start: the first well is drawn beside the cuboid,
+  the tip rises in four small steps, and the run pauses to look at it -
+  the cuboid is still in its well. Continue: the waste is visited after
+  every second well and after the last, with a blow out each time; no
+  retract between wells.
