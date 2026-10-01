@@ -78,10 +78,15 @@ diameters against the size window, small and translucent in the
 bottom-left corner. Chrome like the caption - drawn in widget pixels,
 never into the frame, and not a widget, so a click on it still reaches the
 picture. On by default when it appears.
+
+In the position box the jog step ("step 10 mm") is coloured by how far one
+key press moves the gantry (`step_colour`): white up to 3 mm, orange to
+5 mm, red above - a press at 10 mm near the dish is the one to notice.
 """
 
 from __future__ import annotations
 
+import re
 import time
 
 import cv2
@@ -114,6 +119,17 @@ CAPTION_BG = QColor(0, 0, 0, 140)
 CAPTION_FG = QColor(235, 235, 235)
 CAPTION_PAD = 6
 CAPTION_GAP = 6
+# The jog step in a box's text, and its colour by size.
+STEP = re.compile(r"step (\d+(?:\.\d+)?) mm")
+STEP_ORANGE = QColor(255, 170, 40)
+STEP_RED = QColor(255, 80, 70)
+
+
+def step_colour(mm: float) -> QColor:
+    """White up to 3 mm, orange up to 5 mm, red above."""
+    if mm <= 3:
+        return CAPTION_FG
+    return STEP_ORANGE if mm <= 5 else STEP_RED
 # White, thin and translucent: a reference to aim with, not a mark on the
 # dish. Solid red hid the few pixels it was being aimed at and read as
 # one of the detection colours.
@@ -943,10 +959,24 @@ class CameraView(QWidget):
         box = QRect(left, top, width + 2 * pad,
                     metrics.height() * len(lines) + 2 * pad)
         painter.fillRect(box, CAPTION_BG)
+        pen = painter.pen()
         for i, line in enumerate(lines):
-            painter.drawText(QRect(box.x() + pad,
-                                   box.y() + pad + i * metrics.height(),
-                                   width, metrics.height()),
-                             Qt.AlignmentFlag.AlignLeft
-                             | Qt.AlignmentFlag.AlignVCenter, line)
+            x, y = box.x() + pad, box.y() + pad + i * metrics.height()
+            # The step in its own colour: the line drawn in three pieces.
+            found = STEP.search(line)
+            pieces = ([(line, None)] if found is None else
+                      [(line[:found.start()], None),
+                       (found.group(0), step_colour(float(found.group(1)))),
+                       (line[found.end():], None)])
+            for text, colour in pieces:
+                if not text:
+                    continue
+                if colour is not None:
+                    painter.setPen(QPen(colour))
+                advance = metrics.horizontalAdvance(text)
+                painter.drawText(QRect(x, y, advance + 1, metrics.height()),
+                                 Qt.AlignmentFlag.AlignLeft
+                                 | Qt.AlignmentFlag.AlignVCenter, text)
+                painter.setPen(pen)
+                x += advance
         return box.bottom() + 1
