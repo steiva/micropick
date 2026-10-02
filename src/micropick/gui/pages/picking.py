@@ -77,9 +77,11 @@ So is the shake pose
 are isolated. It depends on how the dish sits that day, so it is taught
 here, beside the dish, rather than fixed: jog the tip into the medium where
 it can stir without scraping a cuboid, and Set shake position. There is one
-of it - teaching again replaces it. Both of its buttons go through the jog
+of it - teaching again replaces it. Its buttons go through the jog
 panel's queue, and Go to shake arrives as Manual control's moves do: tip
-up, across at the travel height, then straight down.
+up, across at the travel height, then straight down. Shake the dish is the
+run's AUTO_SHAKE on demand - the same strokes (`workflows.picking.stir`) -
+and ends back at the picking position, ready to analyse again.
 
 The overlay is drawn by `widgets/overlay_painter` from `viz.overlays.items`,
 which is the same list `viz.overlays.draw` renders with cv2 for the
@@ -101,7 +103,7 @@ from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
-from ...workflows.picking import PickingSession, RobotState
+from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
 from ..session import Session
@@ -251,6 +253,10 @@ class PickingPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Shaking the dish", 2))
 
+        self.shake_button = primary_button("Shake the dish", self)
+        self.shake_button.clicked.connect(self._shake)
+        box.layout().addWidget(self.shake_button)
+
         buttons = QHBoxLayout()
         self.goto_shake_button = secondary_button("Go to shake", self)
         self.goto_shake_button.clicked.connect(self._goto_shake)
@@ -352,24 +358,40 @@ class PickingPage(QWidget):
         profile = self.session.profile
         return None if profile is None else profile.positions.get(DISH_POSITION)
 
+    # Both through the jog panel's queue, like the shake pose's: a worker of
+    # the page's own could overlap a key press, and the panel would not read
+    # the pose afterwards, so the points on the picture stayed where the
+    # gantry had been.
     def _goto_dish(self) -> None:
         where = self._stored_dish()
-        if where is None or self.session.robot is None or self._busy():
+        if (where is None or self.session.robot is None or self._busy()
+                or self._running()):
             return
         robot = self.session.robot
-        self._run(Worker(lambda: moves.drive_tip(robot, where[:2], where[2],
-                                                 None)),
-                  self._moved)
+
+        def job(log):
+            moves.drive_tip(robot, where[:2], where[2], None, log=log)
+            return f"at {DISH_POSITION!r}"
+
+        if not self.jog.run_job(job):
+            self.jog.tell("not now: the robot is busy; Go to picking position "
+                          "again when it is done.")
 
     def _teach_dish(self) -> None:
-        if self.session.robot is None or self.session.profile is None or self._busy():
+        if (self.session.robot is None or self.session.profile is None
+                or self._busy() or self._running()):
             return
         robot, session = self.session.robot, self.session
-        self._run(Worker(lambda: session.remember(DISH_POSITION, xyz(robot))),
-                  self._moved)
 
-    def _moved(self, _result=None) -> None:
-        self._refresh()
+        def job(_log):
+            where = xyz(robot)
+            session.remember(DISH_POSITION, where)
+            return (f"{DISH_POSITION!r} taught at ({where[0]:.1f}, "
+                    f"{where[1]:.1f}, {where[2]:.1f})")
+
+        if not self.jog.run_job(job, moves=False):
+            self.jog.tell("not now: the robot is busy; Set position again "
+                          "when it is done.")
 
     # -- the shake pose -------------------------------------------------------
 
@@ -389,6 +411,29 @@ class PickingPage(QWidget):
 
         if not self.jog.run_job(job):
             self.jog.tell("not now: the robot is busy; Go to shake again "
+                          "when it is done.")
+
+    def _shake(self) -> None:
+        """What the run does when too few cuboids are isolated, on demand:
+        the tip into the dish at `shake`, the run's own strokes, and back to
+        the picking position to look again - or only up, without one."""
+        where = self._stored_shake()
+        if where is None or self.session.robot is None or self._running():
+            return
+        robot, back = self.session.robot, self._stored_dish()
+
+        def job(log):
+            z_top = moves.drive_tip(robot, where[:2], where[2], None, log=log)
+            log("stirring")
+            stir(robot)
+            if back is None:
+                moves.raise_tip(robot, z_top, log=log)
+                return "shaken"
+            moves.drive_tip(robot, back[:2], back[2], z_top, log=log)
+            return f"shaken; back at {DISH_POSITION!r}"
+
+        if not self.jog.run_job(job):
+            self.jog.tell("not now: the robot is busy; Shake the dish again "
                           "when it is done.")
 
     def _teach_shake(self) -> None:
@@ -886,6 +931,8 @@ class PickingPage(QWidget):
         shake = self._stored_shake()
         self.goto_shake_button.setEnabled(connected and shake is not None
                                           and not running)
+        self.shake_button.setEnabled(connected and shake is not None
+                                     and not running)
         self.teach_shake_button.setEnabled(connected and profile is not None
                                            and not running)
         if profile is None:

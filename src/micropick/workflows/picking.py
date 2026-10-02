@@ -93,7 +93,19 @@ from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
 from .manual import reachable_z
 
 __all__ = ["RobotState", "PickEvent", "PickView", "PickingSession",
-           "PickingError"]
+           "PickingError", "stir"]
+
+
+def stir(robot: Robot, *, between=None) -> None:
+    """Stir the dish with the tip where it stands: three 10 mm strokes along
+    X and back, then a 2 mm one. The run's AUTO_SHAKE and the Picking page's
+    Shake the dish both call this, so they stir alike. `between()` is called
+    before each stroke; the run's raises there to stop."""
+    strokes = [("x", 10), ("x", -10)] * 3 + [("x", -2), ("x", 2)]
+    for axis, distance in strokes:
+        if between is not None:
+            between()
+        move_relative(robot, axis, distance)
 
 
 class PickingError(RuntimeError):
@@ -1035,15 +1047,7 @@ class PickingSession:
         self._gate(pause, stop)
         move_to(self.robot, self._reachable(shake),
                 min_z_height=self.config.dish_bottom)
-        for _ in range(3):
-            self._gate(pause, stop)
-            move_relative(self.robot, "x", 10)
-            self._gate(pause, stop)
-            move_relative(self.robot, "x", -10)
-        self._gate(pause, stop)
-        move_relative(self.robot, "x", -2)
-        self._gate(pause, stop)
-        move_relative(self.robot, "x", 2)
+        stir(self.robot, between=lambda: self._gate(pause, stop))
         # Whatever was measured before this described a dish that no longer
         # exists, so the next cycle measures again whatever the interval says.
         self._last_floater_s = None
