@@ -610,9 +610,10 @@ class PipetteCalibration(QWidget):
         self._worker = None
         self.touch_box.hide()
         self.done.clear()
-        aborted = reason.startswith(TouchUpAborted.__name__)
+        error = getattr(self.sender(), "error", None)
+        aborted = isinstance(error, TouchUpAborted)
         kind = "aborted" if aborted else "failed"
-        detail = reason.split(": ", 1)[1] if ": " in reason else reason
+        detail = reason
         self._append(f"{kind}: {detail}")
         self._append("nothing was written to the profile")
         log.error("pipette calibration %s: %s", kind, detail)

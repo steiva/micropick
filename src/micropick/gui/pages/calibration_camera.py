@@ -675,9 +675,9 @@ class CameraCalibration(QWidget):
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
         # A cancellation is not a failure and reads as one if it is not named.
-        cancelled = reason.startswith(Cancelled.__name__)
+        cancelled = isinstance(getattr(self.sender(), "error", None), Cancelled)
         kind = "cancelled" if cancelled else "failed"
-        detail = reason.split(": ", 1)[1] if cancelled and ": " in reason else reason
+        detail = reason
         self._append(f"{kind}: {detail}")
         self._append("nothing was written to the profile")
         self._append("the gantry is no longer where this sweep started — "

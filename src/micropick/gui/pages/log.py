@@ -14,9 +14,10 @@ logging handler and must not become the slow part of a jog step.
 from __future__ import annotations
 
 from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import (QHBoxLayout, QPlainTextEdit, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPlainTextEdit,
+                               QVBoxLayout, QWidget)
 
+from ..report import save_report_asking
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import secondary_button
@@ -48,9 +49,18 @@ class LogPage(QWidget):
 
         self.clear_button = secondary_button("Clear", self)
         self.clear_button.clicked.connect(self.view.clear)
+        # One file with the logs, the profile and the state, to send to
+        # whoever can help (`gui.report`).
+        self.report_button = secondary_button("Save report for help…", self)
+        self.report_button.clicked.connect(
+            lambda: save_report_asking(self.session, self))
+        where = QLabel("The log is also saved to a file in the Logs folder "
+                       "(Settings).")
 
         header = QHBoxLayout()
+        header.addWidget(where)
         header.addStretch(1)
+        header.addWidget(self.report_button)
         header.addWidget(self.clear_button)
 
         layout = QVBoxLayout(self)

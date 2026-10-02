@@ -4,6 +4,6 @@ Everything below `gui` is synchronous and blocking by design — DESIGN section 
 — so the thread is this layer's business. One class does it for all of them.
 """
 
-from .base import Worker, activity, any_running
+from .base import Worker, activity, any_running, describe_error
 
-__all__ = ["Worker", "activity", "any_running"]
+__all__ = ["Worker", "activity", "any_running", "describe_error"]

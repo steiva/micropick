@@ -51,7 +51,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 
-__all__ = ["Worker", "any_running", "activity"]
+__all__ = ["Worker", "any_running", "activity", "describe_error"]
 
 # The names the workflows in this repository use: `calibrate_camera` and
 # `run_sweep` declare exactly these. They are a convention, so they are applied
@@ -82,6 +82,33 @@ def any_running() -> bool:
     that must not overlap whatever else is talking to the robot - the status
     bar's Home - and cannot know which page started it."""
     return any(worker.running for worker in list(_RUNNING))
+
+
+NO_ROBOT_ANSWER = ("The robot did not answer. Check that it is switched on "
+                   "and has finished starting up (the light on its front "
+                   "stops blinking), and that the cable is plugged in.")
+
+
+def describe_error(exc: BaseException) -> str:
+    """What a failure says on screen; the traceback goes to the log.
+
+    This application's own errors (a class from `micropick`) are written as
+    sentences for the operator, so the sentence alone is shown: "SessionError:"
+    in front of it is a word for whoever wrote it. A robot that does not
+    answer is said in words, with what to check. Anything else is unexpected
+    and keeps its class name, which is what someone reading the log looks
+    for.
+    """
+    try:
+        import requests
+        if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+            return NO_ROBOT_ANSWER
+    except ImportError:                      # the gui extra without requests
+        pass
+    text = str(exc)
+    if type(exc).__module__.startswith("micropick") and text:
+        return text
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
 
 
 def activity() -> list["Worker"]:
@@ -137,6 +164,7 @@ class Worker(QObject):
         self.started_at: float | None = None
         self.last_message = ""
         self.last_progress: tuple[int, int] | None = None
+        self.error: BaseException | None = None
 
     # -- what the callable is actually given --------------------------------
 
@@ -195,11 +223,10 @@ class Worker(QObject):
             # process down. It becomes a message here instead, and the full
             # traceback goes to the log through `message`.
             self.message.emit(traceback.format_exc().rstrip())
-            # The class's short name and its own text. The last line of the
-            # traceback carries the full dotted path, which in a dialog is a
-            # module name in front of the sentence that matters.
-            self.failed.emit(f"{type(exc).__name__}: {exc}" if str(exc)
-                             else type(exc).__name__)
+            # The exception itself, for a slot that has to tell one kind from
+            # another (a cancel from a failure) without reading the words.
+            self.error = exc
+            self.failed.emit(describe_error(exc))
         else:
             self.finished.emit(result)
 

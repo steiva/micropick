@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QStackedWidget, QStatusBar,
                                QToolButton, QVBoxLayout, QWidget)
 
+from .. import paths
 from . import log_bridge
 from .pages import (calibration, labware, liquid, log, manual, picking,
                     profile, routine, settings)
@@ -409,6 +410,9 @@ class MainWindow(QMainWindow):
         # which is what lets a worker log without touching the widget.
         self.log_bridge = log_bridge.install()
         self.log_bridge.record.connect(self.log_page.append)
+        # And to a file per day, for when the window is closed and someone
+        # asks what happened (`gui.report`).
+        self.log_file = log_bridge.install_file(paths.logs_dir())
 
         self._start()
 
