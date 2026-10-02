@@ -28,6 +28,8 @@ class Options:
 
     profile: str | None = None
     mock: bool = False
+    # The robot's address for this start only, over the saved setting.
+    robot_host: str | None = None
 
 
 def create_app(argv: list[str] | None = None) -> QApplication:

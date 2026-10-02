@@ -1,0 +1,76 @@
+"""Settings of this installation of the application, not of a profile.
+
+A profile is the bench: its cameras, its calibration, its positions. Some
+things are neither - how this computer reaches the robot, and where what
+the application produces is put - and they belong to the computer the GUI
+runs on. The robot's address is the clearest case: 169.254.x.x over a
+direct cable and something else over Wi-Fi, with the same robot and the
+same calibration either way.
+
+They are one small file, `settings.json` in the root (`paths.root()`),
+beside `profiles/`, written atomically as the profiles are. A missing file
+is the defaults; an unreadable one is the defaults too, with the reason
+returned so the Settings page can show it rather than refuse to start.
+
+`apply` hands the folders to `paths`, which every writer already asks, so a
+changed folder takes effect for the next file without anything else
+knowing settings exist.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from .. import paths
+from .store import _write_atomic
+
+__all__ = ["AppSettings", "SETTINGS_FILE", "settings_path", "load_settings",
+           "save_settings", "apply"]
+
+SETTINGS_FILE = "settings.json"
+
+
+class AppSettings(BaseModel):
+    """`robot_host` None is the robot wrapper's own default (the OT2_HOST
+    environment variable, else the link-local 169.254.241.245). A folder
+    None is the default under the root."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    robot_host: str | None = None
+    robot_port: int = Field(default=31950, ge=1, le=65535)
+    outputs_dir: str | None = None
+    logs_dir: str | None = None
+    images_dir: str | None = None
+
+
+def settings_path() -> Path:
+    return paths.root() / SETTINGS_FILE
+
+
+def load_settings() -> tuple[AppSettings, str]:
+    """The settings, and "" or why the file could not be used."""
+    path = settings_path()
+    if not path.is_file():
+        return AppSettings(), ""
+    try:
+        return AppSettings.model_validate(
+            json.loads(path.read_text(encoding="utf-8"))), ""
+    except (json.JSONDecodeError, ValidationError, OSError) as exc:
+        return AppSettings(), f"{path} could not be read, so the defaults " \
+                              f"are used: {exc}"
+
+
+def save_settings(settings: AppSettings) -> Path:
+    path = settings_path()
+    _write_atomic(path, settings.model_dump_json(indent=2) + "\n")
+    return path
+
+
+def apply(settings: AppSettings) -> None:
+    """The folders into `paths`; None keeps a folder's default."""
+    paths.set_overrides(outputs=settings.outputs_dir, logs=settings.logs_dir,
+                        images=settings.images_dir)

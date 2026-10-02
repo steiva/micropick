@@ -39,7 +39,7 @@ if (_REPO_ROOT / "src" / "micropick").is_dir():
 from PySide6.QtCore import QObject, Signal          # noqa: E402
 
 from .. import paths                                # noqa: E402
-from ..config import store                          # noqa: E402
+from ..config import app_settings, store            # noqa: E402
 from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
@@ -241,6 +241,8 @@ class Session(QObject):
     routine_changed = Signal(object)
     camera_opened = Signal(str)
     camera_closed = Signal(str)
+    # The application's settings were saved; carries the AppSettings.
+    settings_changed = Signal(object)
     error = Signal(str)
 
     def __init__(self, options, parent: QObject | None = None):
@@ -264,6 +266,13 @@ class Session(QObject):
         # control both run it, and the weights are seconds to load and
         # hundreds of megabytes to hold twice.
         self.detector = DetectorService(self)
+        # This computer's settings (config.app_settings): the robot's address
+        # and where outputs go. Applied at once, so every writer asks paths
+        # for the right folder from the first file.
+        self.settings, self.settings_note = app_settings.load_settings()
+        app_settings.apply(self.settings)
+        if self.settings_note:
+            log.error("%s", self.settings_note)
 
     # -- state ---------------------------------------------------------------
 
@@ -282,6 +291,34 @@ class Session(QObject):
                                                  self.run_origin)
             return f"{base}, session {run} ({origin})"
         return base
+
+    @property
+    def robot_address(self) -> str:
+        """Where Connect goes, as shown: the command line's address, else the
+        saved one, else the wrapper's default."""
+        host = self.options_host or self.settings.robot_host
+        if not host:
+            return "default address"
+        return host if ":" in host else f"{host}:{self.settings.robot_port}"
+
+    @property
+    def has_connection(self) -> bool:
+        """Probed or connected: the robot client exists, so its address is
+        fixed until Disconnect."""
+        return self._api is not None
+
+    @property
+    def options_host(self) -> str | None:
+        return getattr(self.options, "robot_host", None)
+
+    def set_settings(self, settings) -> None:
+        """Save the application's settings and apply them. The robot's
+        address is used at the next Connect."""
+        app_settings.save_settings(settings)
+        app_settings.apply(settings)
+        self.settings, self.settings_note = settings, ""
+        log.info("settings saved to %s", app_settings.settings_path())
+        self.settings_changed.emit(settings)
 
     @property
     def open_cameras(self) -> list[str]:
@@ -425,7 +462,12 @@ class Session(QObject):
                 self._api = MockRobot()
             else:
                 from opentrons_api import ot2_api
-                self._api = ot2_api.OpentronsAPI()
+                host = self.options_host or self.settings.robot_host
+                self._api = ot2_api.OpentronsAPI(
+                    host=host,
+                    port=None if host and ":" in host
+                    else self.settings.robot_port)
+                log.info("connecting to the robot at %s", self._api.BASE_URL)
         state = _run_state(self._api)
         self.run_state = state
         log.info("robot probed: %s", state.describe())

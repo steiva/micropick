@@ -20,8 +20,13 @@ def parse_args(argv: list[str] | None = None) -> Options:
     parser.add_argument("--mock", action="store_true",
                         help="run against the mock robot and a synthetic ArUco "
                              "scene instead of the bench")
+    parser.add_argument("--robot-host", metavar="ADDRESS",
+                        help="the robot's address for this start, over the "
+                             "one saved on the Settings page (an IP, a name, "
+                             "or host:port)")
     args = parser.parse_args(argv)
-    return Options(profile=args.profile, mock=args.mock)
+    return Options(profile=args.profile, mock=args.mock,
+                   robot_host=args.robot_host)
 
 
 def main(argv: list[str] | None = None) -> int:
