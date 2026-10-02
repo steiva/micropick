@@ -83,6 +83,16 @@ up, across at the travel height, then straight down. Shake the dish is the
 run's AUTO_SHAKE on demand - the same strokes (`workflows.picking.stir`) -
 and ends back at the picking position, ready to analyse again.
 
+Pickup clips
+------------
+Ticking Save pickup clips is the notebook's `CLIP_DIR`: the lower camera
+opens, and the run records it from the approach to the end of each
+aspirate, with a box round every cuboid of the batch where the homography
+puts it, and writes one mp4 per pickup, named for its target well, into a
+folder for the run under the Outputs folder's `clips`. The camera records
+in the mode it is open in, cut to its view crop. Off by default: no
+recorder is made, and a run does not need the lower camera at all.
+
 The overlay is drawn by `widgets/overlay_painter` from `viz.overlays.items`,
 which is the same list `viz.overlays.draw` renders with cv2 for the
 notebook. One description of the geometry, two renderers.
@@ -96,9 +106,10 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
+                               QVBoxLayout, QWidget)
 
+from ... import paths
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...viz import overlays
@@ -188,6 +199,8 @@ class PickingPage(QWidget):
         # to write by parsing what it wrote last is one refresh away from
         # forgetting it.
         self._run_message = ""
+        # Where the current or last run put its clips, if it recorded any.
+        self._clip_dir = None
 
         self.view = CameraView(self)
 
@@ -315,6 +328,17 @@ class PickingPage(QWidget):
         self.routine_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.routine_state)
+
+        # Off unless asked for: see "Pickup clips".
+        self.clips_box = QCheckBox("Save pickup clips from the lower camera",
+                                   self)
+        self.clips_box.toggled.connect(self._clips_toggled)
+        box.layout().addWidget(self.clips_box)
+        self.clips_state = QLabel()
+        self.clips_state.setWordWrap(True)
+        self.clips_state.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.clips_state)
 
         row = QHBoxLayout()
         self.start_button = primary_button("Start picking", self)
@@ -597,6 +621,10 @@ class PickingPage(QWidget):
             out.append("no detector: choose the weights on the Profile page.")
         if self._camera() is None:
             out.append("the camera is not open.")
+        if self.clips_box.isChecked() and self._lower_camera() is None:
+            out.append("the lower camera is not open, and the clips are "
+                       "recorded from it: open it on the Profile page, or "
+                       "untick Save pickup clips.")
         if session.tip.attached is not True:
             out.append("the robot reports no tip on the pipette"
                        if session.tip.attached is False else
@@ -642,6 +670,14 @@ class PickingPage(QWidget):
         slot = str(routine.destination.slot)
         labware_id = session.run_state.labware[slot].labware_id
         pmap = PixelMap.from_config(profile.pixel_map)
+        # A folder per run, so a run's clips are together and apart from the
+        # last one's; the clips in it are named for their target well.
+        under_cam = clip_dir = None
+        if self.clips_box.isChecked():
+            under_cam = self._lower_camera()
+            clip_dir = paths.clips_dir() / (
+                f"{time.strftime('%Y-%m-%d_%H%M%S')}_{profile.name}")
+        self._clip_dir = clip_dir
         pause, stop = self._pause, self._stop
         pause.clear()
         stop.clear()
@@ -650,7 +686,8 @@ class PickingPage(QWidget):
         def job(log):
             """The notebook's worker loop, with the display on the other side."""
             picking = PickingSession(robot, camera, pmap, profile, routine,
-                                     detector, labware_id=labware_id)
+                                     detector, labware_id=labware_id,
+                                     under_cam=under_cam, clip_dir=clip_dir)
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
             picking.start()
@@ -712,7 +749,7 @@ class PickingPage(QWidget):
         self._session = None
         self._view_timer.stop()
         self._view = None
-        self._run_message = f"run {state}"
+        self._run_message = f"run {state}" + self._clips_said()
         log.info("picking run %s", state)
         if state == RobotState.COMPLETED.value:
             self.done.show_done("The run filled the plate plan.")
@@ -723,9 +760,14 @@ class PickingPage(QWidget):
         self._session = None
         self._view_timer.stop()
         self._view = None
-        self._run_message = reason
+        self._run_message = reason + self._clips_said()
         log.error("picking run failed: %s", reason)
         self._back_to_live()
+
+    def _clips_said(self) -> str:
+        """Where the run's clips are, for the line it ends with."""
+        directory, self._clip_dir = self._clip_dir, None
+        return f"\nclips in {directory}" if directory is not None else ""
 
     def _back_to_live(self) -> None:
         """After a run: the feed again, without the run's status or its
@@ -875,6 +917,17 @@ class PickingPage(QWidget):
             self.view.resume()
         self._refresh()
 
+    def _lower_camera(self):
+        label = self.session.lower_camera_label
+        return self.session.camera(label) if label else None
+
+    def _clips_toggled(self, on: bool) -> None:
+        # Opened only when asked for: the lower camera is not otherwise
+        # needed here, and a run without clips does not wait for it.
+        if on:
+            self.opener.ensure(self.session.lower_camera_label)
+        self._refresh()
+
     def _open_failed(self, label: str, reason: str) -> None:
         self.dish_state.setText(f"camera {label!r} did not open: {reason}\n"
                                 f"Open it from the Profile page once the "
@@ -895,6 +948,8 @@ class PickingPage(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.opener.ensure(self._wanted_camera())
+        if self.clips_box.isChecked():
+            self.opener.ensure(self.session.lower_camera_label)
         self._ensure_detector()
         self._show_camera()
 
@@ -959,6 +1014,17 @@ class PickingPage(QWidget):
         self.routine_state.setText(
             "Plate plan: none. Make one on the Plate plan page."
             if routine is None else f"Plate plan:\n{routine.summary()}")
+
+        self.clips_box.setEnabled(not running)
+        if not self.clips_box.isChecked():
+            self.clips_state.setText("")
+        elif running and self._clip_dir is not None:
+            self.clips_state.setText(f"Clips go to {self._clip_dir}")
+        else:
+            self.clips_state.setText(
+                f"One clip per pickup, into a folder for the run in "
+                f"{paths.clips_dir(create=False)}")
+        self.clips_state.setVisible(self.clips_box.isChecked())
 
         problems = self._run_problems()
         self.start_button.setEnabled(not busy and not running and not problems)
