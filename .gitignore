@@ -160,3 +160,4 @@ profiles/*/
 # This computer's settings and its names for the robot's sessions
 /settings.json
 /robot_sessions.json
+/src/micropick/_build.py

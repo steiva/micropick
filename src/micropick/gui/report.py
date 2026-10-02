@@ -19,6 +19,7 @@ import time
 import zipfile
 from pathlib import Path
 
+from .. import _version as version
 from .. import paths
 
 __all__ = ["save_report", "save_report_asking", "summary", "REPORT_DAYS",
@@ -34,6 +35,7 @@ MAX_FILE_MB = 50
 def summary(session) -> str:
     """What the application is attached to, as plain lines."""
     lines = [f"report made {time.strftime('%Y-%m-%d %H:%M:%S')}",
+             f"micropick {version.describe()}",
              f"python {sys.version.split()[0]} on {platform.platform()}",
              f"robot: {session.robot_state} at {session.robot_address}"]
     profile = session.profile

@@ -24,13 +24,24 @@ def parse_args(argv: list[str] | None = None) -> Options:
                         help="the robot's address for this start, over the "
                              "one saved on the Settings page (an IP, a name, "
                              "or host:port)")
+    parser.add_argument("--self-test", action="store_true",
+                        help="load the models, labware and video writer "
+                             "without a window or a robot, log the result "
+                             "and exit (0 when all passed)")
     args = parser.parse_args(argv)
     return Options(profile=args.profile, mock=args.mock,
-                   robot_host=args.robot_host)
+                   robot_host=args.robot_host, self_test=args.self_test)
 
 
 def main(argv: list[str] | None = None) -> int:
-    return run(parse_args(argv))
+    options = parse_args(argv)
+    if options.self_test:
+        from .. import paths
+        from ..selftest import run_self_test
+        paths.root().mkdir(parents=True, exist_ok=True)
+        paths.seed_from_bundle()
+        return run_self_test()
+    return run(options)
 
 
 if __name__ == "__main__":

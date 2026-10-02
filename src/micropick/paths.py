@@ -19,9 +19,11 @@ profile is the bench and not what the application produces.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
-__all__ = ["root", "profiles_dir", "logs_dir", "outputs_dir", "images_dir",
+__all__ = ["root", "frozen", "bundle_dir", "seed_from_bundle", "profiles_dir",
+           "logs_dir", "outputs_dir", "images_dir",
            "clips_dir", "ml_models_dir", "labware_dir", "fixtures_dir",
            "ensure_layout", "describe", "set_overrides", "overrides"]
 
@@ -54,9 +56,47 @@ def _moved(name: str, default: str, create: bool) -> Path:
     return path
 
 
+def frozen() -> bool:
+    """Running as a packaged build (PyInstaller), not from the source tree."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def bundle_dir() -> Path | None:
+    """Where a packaged build keeps what it shipped with - labware and the
+    model weights - read-only. None from the source tree."""
+    if not frozen():
+        return None
+    return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
+
+
 def root() -> Path:
+    """`MICROPICK_ROOT` if set. Otherwise, from the source tree, the working
+    directory (the repository, as before); from a packaged build, the
+    user's Documents/micropick - an installed program's own folder is not
+    writable, and its working directory is wherever it was started from."""
     env = os.environ.get(ENV_VAR)
-    return Path(env).expanduser().resolve() if env else Path.cwd()
+    if env:
+        return Path(env).expanduser().resolve()
+    if frozen():
+        return Path.home() / "Documents" / "micropick"
+    return Path.cwd()
+
+
+def seed_from_bundle() -> list[Path]:
+    """A packaged build's first start: copy the labware and the weights it
+    shipped with into the root, where they can be added to and replaced.
+    Nothing already there is touched. Returns what was copied."""
+    import shutil
+    bundle = bundle_dir()
+    if bundle is None:
+        return []
+    copied = []
+    for name in ("labware", "ml_models"):
+        source, target = bundle / name, root() / name
+        if source.is_dir() and not target.exists():
+            shutil.copytree(source, target)
+            copied.append(target)
+    return copied
 
 
 def _writable(name: str, create: bool) -> Path:

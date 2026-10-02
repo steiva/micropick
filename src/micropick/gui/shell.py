@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QStackedWidget, QStatusBar,
                                QToolButton, QVBoxLayout, QWidget)
 
+from .. import _version as version
 from .. import paths
 from . import log_bridge
 from .pages import (calibration, labware, liquid, log, manual, picking,
@@ -369,7 +370,8 @@ class MainWindow(QMainWindow):
     def __init__(self, options: Options, parent: QWidget | None = None):
         super().__init__(parent)
         self.options = options
-        self.setWindowTitle("micropick")
+        # The version in the title: on a screenshot, which build it was.
+        self.setWindowTitle(f"micropick {version.describe()}")
         self.resize(1400, 900)
 
         self.stack = QStackedWidget()

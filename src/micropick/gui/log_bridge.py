@@ -103,5 +103,7 @@ def install_file(directory, level: int = logging.INFO):
         previous(kind, value, trace)
 
     sys.excepthook = hook
-    logging.getLogger(__name__).info("log file %s", path)
+    from .._version import describe
+    logging.getLogger(__name__).info("micropick %s; log file %s", describe(),
+                                     path)
     return path

@@ -30,6 +30,8 @@ class Options:
     mock: bool = False
     # The robot's address for this start only, over the saved setting.
     robot_host: str | None = None
+    # Check the installation and exit, no window (`micropick.selftest`).
+    self_test: bool = False
 
 
 def create_app(argv: list[str] | None = None) -> QApplication:
@@ -59,6 +61,15 @@ def run(options: Options) -> int:
     to the notebook and the Opentrons app while the robot is running, and a
     window that hides them is a window that has to be fought.
     """
+    # ultralytics pip-installs what it thinks is missing when it is first
+    # imported, which is not something a lab computer should find done.
+    import os
+    os.environ.setdefault("YOLO_AUTOINSTALL", "false")
+    # A packaged build keeps its data in Documents/micropick; its first
+    # start puts the labware and weights it shipped with there.
+    from .. import paths
+    paths.root().mkdir(parents=True, exist_ok=True)
+    paths.seed_from_bundle()
     app = create_app()
     window = MainWindow(options)
     window.showMaximized()

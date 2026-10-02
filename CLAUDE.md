@@ -12,6 +12,17 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 - GUI: `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
 - `lab` has an unrelated package named `tests` installed, so
   `python -m tests.…` resolves to it, not to this repository's `tests/`.
+- Windows build: `conda run -n lab python packaging/build.py` (PyInstaller,
+  one folder, into `dist/`, zipped). Refuses a dirty tree unless
+  `--allow-dirty`. A built app keeps its data in `Documents\micropick`
+  (or `MICROPICK_ROOT`), not beside the exe (`paths.root`).
+
+## Versions
+
+One source: `src/micropick/_version.py` (pyproject reads it). A release:
+bump it, add a CHANGELOG.md entry, commit, tag `v<version>`, build from
+the tagged commit. The window title, the log and a report show the version
+and, in a build, its commit.
 
 ## Decisions to keep
 
