@@ -146,17 +146,37 @@ def axis_directions(pmap: PixelMap) -> dict | None:
 
 class PositionMarks(QObject):
     """Keeps one view's marks up to date with the pose, the profile and the
-    camera shown."""
+    camera shown.
 
-    def __init__(self, session, jog, view):
+    One per view, whatever the number of jog panels shown on it (the pipette
+    page has two): each would otherwise draw from its own pose and the one
+    that had not read the robot yet would wipe the other's marks. The pose is
+    the last one any of them sent - it is the same gantry."""
+
+    @classmethod
+    def on(cls, session, view) -> "PositionMarks":
+        """The view's marks, made the first time."""
+        marks = view.findChild(cls)
+        return marks if marks is not None else cls(session, view)
+
+    def __init__(self, session, view):
         super().__init__(view)
         self.session = session
-        self.jog = jog
         self.view = view
-        jog.pose_changed.connect(lambda _pose: self.update())
+        self.pose = None
         session.profile_changed.connect(lambda _p: self.update())
         view.camera_changed.connect(self.update)
         view.marks_toggled.connect(lambda _on: self.update())
+        self.update()
+
+    def follow(self, jog) -> None:
+        """Take the pose from `jog` too."""
+        jog.pose_changed.connect(self._set_pose)
+        if jog.pose is not None:
+            self._set_pose(jog.pose)
+
+    def _set_pose(self, pose) -> None:
+        self.pose = pose
         self.update()
 
     def _map(self):
@@ -181,7 +201,7 @@ class PositionMarks(QObject):
         self.view.set_marks_available(found is not None)
         self.view.set_axes(axis_directions(found[0]) if found is not None
                            else None)
-        pose = self.jog.pose
+        pose = self.pose
         if found is None or pose is None or not self.view.marks_shown:
             self.view.set_marks([])
             return

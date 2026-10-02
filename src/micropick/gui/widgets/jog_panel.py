@@ -345,7 +345,6 @@ class JogPanel(QWidget):
         self._help = self._key_help()
         self._help_shown = True
         self.pose: tuple[float, float, float] | None = None
-        self._marks: list[PositionMarks] = []
 
         # Not a scroll area itself. The page that hosts it may put it in one
         # (theme.factory.scroll_column), which takes no focus, so PageUp and
@@ -874,7 +873,7 @@ class JogPanel(QWidget):
         view.set_position(self.position_lines)
         self.help_changed.connect(view.set_help)
         view.set_help(self.help_lines)
-        self._marks.append(PositionMarks(self.session, self, view))
+        PositionMarks.on(self.session, view).follow(self)
 
     @property
     def help_lines(self) -> list[str]:
