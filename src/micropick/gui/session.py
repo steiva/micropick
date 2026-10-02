@@ -400,7 +400,13 @@ class Session(QObject):
         # belong to the installation, not to the application.
         self.cameras = CameraManager.from_profile(profile)
         log.info("profile %r loaded from %s", profile.name, profile.path)
+        if self._api is not None:
+            # This profile's modules, not the last one's, for the next load.
+            self.register_deck_modules()
         self.profile_changed.emit(profile)
+        if self.run_state is not None:
+            # What counts as a deck problem is the new profile's to say.
+            self.labware_changed.emit(self.run_state)
         return profile
 
     def _load_mock_profile(self) -> store.Profile:
@@ -616,6 +622,11 @@ class Session(QObject):
             labware.upload_definition(self._api, definition)
             log.info("uploaded %s into run %s", definition.load_name,
                      getattr(self._api, "run_id", "?"))
+        # The wrapper attaches a module's offset at load from its own table,
+        # and silently loads without one when the slot is not in it. So the
+        # table is the profile's as it is now, every time, not as it was at
+        # connect: a profile loaded or a module placed since must count.
+        modules = self.register_deck_modules()
         labware.load_labware(self._api, definition.load_name, slot,
                              namespace=definition.namespace,
                              version=definition.version, verbose=False)
@@ -627,6 +638,19 @@ class Session(QObject):
             raise SessionError(
                 f"the robot session accepted {definition.load_name!r} for "
                 f"slot {slot} but does not report it there afterwards")
+        module = next((m for m in modules if slot in m.slots), None)
+        problem = next((p for p in self.deck_problems()
+                        if p.slot == str(slot)), None)
+        if module is not None and problem is not None:
+            # Said here, at the load, rather than left to the deck warning:
+            # the reload that warning asks for would fail the same way.
+            raise SessionError(
+                f"slot {slot}: the robot did not attach the {module.name or 'module'} "
+                f"offset (+{module.height_mm:g} mm) to "
+                f"{definition.load_name}; it reports "
+                f"{'none' if problem.applied is None else problem.applied}. "
+                f"A well move would hit the module: do not use this slot "
+                f"until it loads with the offset.")
         return entry
 
     def unload_labware(self, slot: int) -> None:
