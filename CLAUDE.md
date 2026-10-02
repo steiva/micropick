@@ -87,3 +87,12 @@ tip is on"). A `Routine` is a **plate plan** (the Plate plan tab). Stored
 poses are set with **Set position** / **Set shake position**; the pipette
 calibration's way back is **Go to last saved**, the Picking page's **Go to
 picking position**.
+
+### Settings belong to the computer, not the profile
+
+The robot's address and the output folders (Outputs, Logs, Images) are
+`config.app_settings`: `settings.json` beside `profiles/`, edited on the
+Settings page behind the gear in the status bar (a page with no tab).
+`paths` applies the folders as overrides, so writers keep asking `paths`.
+The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
+`--robot-host` overrides it for one start. Nothing hard-codes an address.
