@@ -73,6 +73,16 @@ Both the dispensed volume and the trip to the well itself follow the count
 actually held, never the count aimed at. A pickup that held nothing returns its
 volume to the dish and starts the cycle again without going near the plate;
 `max_empty_pickups` of those in a row hand back to the operator.
+
+Delivering first
+----------------
+On a partial miss the well comes first and the dish after: VERIFY_PICKUP ->
+TRANSFER_TO_WELL (the held cuboids' volume) -> DEPOSIT_BACK (the misses'
+volume) -> on. It was the other way round, and a partial dispense pushes out
+the bottom of the liquid in the tip, which is where the cuboids settle: the
+misses' volume went back to the dish carrying the caught cuboids with it,
+and the well got liquid without them. The progress is recorded once the
+cuboids are in the well, not when the check counted them.
 """
 
 from __future__ import annotations
@@ -297,8 +307,12 @@ class PickingSession:
         self._floater_verdict: floaters.Verdict | None = None
         self._floater_baseline: floaters.Baseline | None = None
         self._deposit_volume = 0.0
-        self._pending_transfer = False
         self._held = 0
+        self._missed = 0
+        # Where DEPOSIT_BACK goes on to when it returns the misses' volume
+        # after a delivery (`_state_transfer_to_well`); None after a pickup
+        # that held nothing.
+        self._after_return: RobotState | None = None
 
         # Lower-camera clip recording is fully optional. The recorder is created
         # and attached only when both a lower camera and a destination folder are
@@ -1179,23 +1193,21 @@ class PickingSession:
         if self.config.miss_policy == "return_all" and misses > 0:
             held = 0
         self._held = held
-        self.routine.record(delivered=held, missed=attempted - held)
+        self._missed = attempted - held
 
         if held == 0:
             # Nothing in the tip, so nothing to deliver and no reason to visit
             # the well. Everything goes back to the dish and the cycle restarts.
+            # Recorded now: nothing is claimed as delivered.
+            self.routine.record(delivered=0, missed=attempted)
             self._empty_pickups += 1
             self._deposit_volume = self.config.vol * attempted
-            self._pending_transfer = False
+            self._after_return = None
             self.state = RobotState.DEPOSIT_BACK
         else:
+            # The well first, the dish after: see "Delivering first".
             self._empty_pickups = 0
-            if misses > 0:
-                self._deposit_volume = self.config.vol * misses
-                self._pending_transfer = True
-                self.state = RobotState.DEPOSIT_BACK
-            else:
-                self.state = RobotState.TRANSFER_TO_WELL
+            self.state = RobotState.TRANSFER_TO_WELL
         return self._event("verified", "checked the pickup",
                            attempted=attempted, held=held,
                            missed=attempted - held,
@@ -1234,9 +1246,9 @@ class PickingSession:
         self._gate(pause, stop)
         move_relative(self.robot, "z", lift)
 
-        if self._pending_transfer:
-            self._pending_transfer = False
-            self.state = RobotState.TRANSFER_TO_WELL
+        if self._after_return is not None:
+            # The misses' volume, after the delivery: carry on from there.
+            self.state, self._after_return = self._after_return, None
         elif self._empty_pickups >= self.config.max_empty_pickups:
             # Cuboids keep being detected and keep not being caught: something
             # is wrong with the dish or the tip, and repeating cannot fix it.
@@ -1298,11 +1310,20 @@ class PickingSession:
             move_to(self.robot, self._reachable(self._observe),
                     min_z_height=cfg.dish_bottom, force_direct=True)
 
+        # Recorded once it is in the well, not when the check counted it:
+        # a stop or a failure before here has delivered nothing.
+        self.routine.record(delivered=self._held, missed=self._missed)
         nxt = self.routine.next()
-        if nxt is None or self.routine.is_done():
-            self.state = RobotState.COMPLETED
+        after = (RobotState.COMPLETED if nxt is None or self.routine.is_done()
+                 else RobotState.DETECT_FLOATERS)
+        if self._missed > 0:
+            # What the misses drew is still in the tip, above where the
+            # cuboids were: back to the dish now, then on.
+            self._deposit_volume = self.config.vol * self._missed
+            self._after_return = after
+            self.state = RobotState.DEPOSIT_BACK
         else:
-            self.state = RobotState.DETECT_FLOATERS
+            self.state = after
         return self._event("transferred", "deposited into the destination",
                            target=str(current), volume=volume)
 

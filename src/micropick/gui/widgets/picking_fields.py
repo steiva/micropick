@@ -127,8 +127,9 @@ FIELDS: dict[str, Field] = {
     "miss_policy": Field(
         "When some of a trip are missed",
         "Deliver what was caught: the cuboids that were picked go to the "
-        "well and the volume of the missed ones goes back to the dish. "
-        "Return everything: any miss sends the whole trip back to the dish.",
+        "well first, with their volume, and the volume the missed ones drew "
+        "goes back to the dish after. Return everything: any miss sends the "
+        "whole trip back to the dish.",
         RUN),
     "max_batch": Field(
         "Most cuboids per trip",

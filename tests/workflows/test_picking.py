@@ -381,11 +381,16 @@ def test_keep_successful_dispenses_proportional_volume():
     try:
         # stop after the first pick cycle; the permanent miss would otherwise
         # keep the target open and it would be retried indefinitely
-        drive(session, until=lambda ev: ev.kind == "transferred")
+        events = drive(session,
+                       until=lambda ev: ev.kind == "deposited_back")
         # one held (10 ul into the well), one missed (10 ul back to the dish),
         # so the well concentration is unchanged
         volumes = sorted(c[1] for c in dispenses_in_place(robot))
         assert volumes == [10.0, 10.0]
+        # The well first: a partial dispense pushes out the bottom of the
+        # tip, where the caught cuboids are.
+        kinds = [ev.kind for ev in events]
+        assert kinds.index("transferred") < kinds.index("deposited_back")
         prog = routine._progress[(200.0, 200.0)]
         assert prog.delivered == 1 and prog.missed == 1
     finally:
