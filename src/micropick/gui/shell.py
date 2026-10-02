@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
 
 from . import log_bridge
 from .pages import (calibration, labware, liquid, log, manual, picking,
-                    profile, routine)
+                    profile, routine, settings)
 from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
 from .widgets.feed_window import FeedWindow
@@ -186,6 +186,14 @@ class StatusBar(QStatusBar):
         row.addWidget(self._tip_icon)
         row.addWidget(self._tip)
 
+        # The gear: this computer's settings, a page with no tab.
+        self.settings = QToolButton()
+        self.settings.setAutoRaise(True)
+        self.settings.setIcon(qta.icon("mdi6.cog-outline"))
+        self.settings.setToolTip("Settings: the robot's address, and where "
+                                 "outputs are saved")
+        self.settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         self.home = QToolButton()
         self.home.setAutoRaise(True)
         self.home.setText("Home robot position")
@@ -204,7 +212,8 @@ class StatusBar(QStatusBar):
         self.lights.setToolTip("Rail lights")
 
         for widget in (self._profile, self._robot, self._cameras,
-                       self._deck_box, tip, self.home, self.lights):
+                       self._deck_box, tip, self.home, self.lights,
+                       self.settings):
             self.addPermanentWidget(widget)
         self.show_profile(None)
         self.show_robot("not connected")
@@ -350,6 +359,10 @@ class MainWindow(QMainWindow):
         tab_row.addStretch(1)
         for tab in aside:
             tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)
+        # Settings: in the stack, opened by the gear, with no tab.
+        self.settings_page = settings.SettingsPage(self.session)
+        self.pages["settings"] = self.settings_page
+        self.stack.addWidget(self.settings_page)
 
         self.show_page(PAGES[0][0])
 
@@ -365,7 +378,8 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status)
 
         self.session.profile_changed.connect(self._on_profile_changed)
-        self.session.robot_state_changed.connect(self.status.show_robot)
+        self.session.robot_state_changed.connect(self._show_robot)
+        self.session.settings_changed.connect(self._show_robot)
         self.session.camera_opened.connect(self._show_cameras)
         self.session.camera_closed.connect(self._show_cameras)
         self.session.tip_changed.connect(self._show_tip)
@@ -381,7 +395,9 @@ class MainWindow(QMainWindow):
         self.status.camera_clicked.connect(self._show_feed)
         self._feeds: dict[str, FeedWindow] = {}
         self._feed_workers: dict[str, Worker] = {}
-        self.status.show_robot(self.session.robot_state)
+        self._show_robot()
+        self.status.settings.clicked.connect(
+            lambda: self.show_page("settings"))
 
         # Installed before anything is loaded, so a failure during start-up
         # lands in the log rather than nowhere. Queued across threads by Qt,
@@ -470,6 +486,14 @@ class MainWindow(QMainWindow):
             window = FeedWindow(label, self)
             self._feeds[label] = window
         return window
+
+    def _show_robot(self, _arg=None) -> None:
+        """The robot's state, and where Connect goes while it is not
+        connected: the address is the first thing to check when it fails."""
+        state = self.session.robot_state
+        if not self.session.mock and self.session.robot is None:
+            state += f" ({self.session.robot_address})"
+        self.status.show_robot(state)
 
     def _show_deck_problems(self, _arg=None) -> None:
         self.status.show_deck_problems(self.session.deck_problems())
