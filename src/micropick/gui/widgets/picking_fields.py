@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Field", "FIELDS", "MAIN", "RUN", "ADVANCED_GROUPS", "MISS_POLICY",
+__all__ = ["Field", "FIELDS", "BOUNDS", "BIG_CHANGE", "MAIN", "RUN", "ADVANCED_GROUPS", "MISS_POLICY",
            "FLOATER_MODE"]
 
 MAIN = "Main"
@@ -329,4 +329,44 @@ FIELDS: dict[str, Field] = {
         "The robot's Z the tip dispenses at when the plate plan's "
         "destination is a list of coordinates rather than a plate.",
         COORDINATES, "mm"),
+}
+
+
+# What a field's box accepts. Wide enough for any real bench and narrow
+# enough that a slipped digit - 661 for 66.1, -5 for 5 - cannot be typed.
+# A stored value outside its range widens the range to it, so opening the
+# dialog never changes a value by itself. Fields not here take anything the
+# schema does.
+BOUNDS: dict[str, tuple[float, float]] = {
+    "vol": (0.5, 100.0),
+    "flow_rate": (1.0, 300.0),
+    "dish_bottom": (0.0, 150.0),
+    "pickup_offset": (0.0, 5.0),
+    "cuboid_size_threshold": (10, 5000),
+    "failure_threshold": (0.05, 5.0),
+    "minimum_distance": (0.0, 10.0),
+    "well_offset_x": (-5.0, 5.0),
+    "well_offset_y": (-5.0, 5.0),
+    "deposit_offset_z": (0.0, 20.0),
+    "max_batch": (1, 50),
+    "wait_time_after_deposit": (0.0, 60.0),
+    "lift_mm": (1.0, 60.0),
+    "max_shake_retries": (0, 20),
+    "max_empty_pickups": (1, 20),
+    "circle_center": (0, 10000),
+    "circle_radius": (10, 10000),
+    "capture_settle_s": (0.0, 10.0),
+    "verify_settle_s": (0.0, 10.0),
+    "clip_max_frames": (10, 5000),
+    "deposit_z_optional": (0.0, 150.0),
+}
+
+# A change this large to one of these is named as such when it is saved:
+# 66.1 -> 150 fits the range and is still a slip, not a calibration.
+BIG_CHANGE: dict[str, float] = {
+    "dish_bottom": 3.0,
+    "pickup_offset": 1.0,
+    "deposit_offset_z": 2.0,
+    "deposit_z_optional": 3.0,
+    "vol": 10.0,
 }

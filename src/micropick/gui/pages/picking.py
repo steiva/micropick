@@ -1011,7 +1011,9 @@ class PickingPage(QWidget):
                                 "save settings into.")
             return
         dialog = PickingSettingsDialog(profile.picking,
-                                       profile_name=profile.name, parent=self)
+                                       profile_name=profile.name,
+                                       previous=profile.previous_picking(),
+                                       parent=self)
         if dialog.exec() != PickingSettingsDialog.DialogCode.Accepted:
             return
         profile.picking = dialog.result_config

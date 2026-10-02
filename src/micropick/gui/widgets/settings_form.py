@@ -31,13 +31,14 @@ import typing
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                                QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                               QScrollArea, QVBoxLayout, QWidget)
+                               QMessageBox, QScrollArea, QVBoxLayout, QWidget)
 
 from ...config.schema import PickingConfig
 from ..theme import SPACING
 from ..theme.factory import Section, double_spin_box, heading, spin_box
-from .picking_fields import (ADVANCED_GROUPS, FIELDS, FLOATER_MODE, MAIN,
-                             MISS_POLICY, RUN)
+from .picking_fields import (ADVANCED_GROUPS, BIG_CHANGE, BOUNDS, FIELDS,
+                             FLOATER_MODE,
+                             MAIN, MISS_POLICY, RUN)
 
 __all__ = ["PickingSettingsDialog", "field_widget", "TROUBLE"]
 
@@ -84,14 +85,23 @@ def _is_window(name: str) -> bool:
     return name.endswith(("_window", "_threshold"))
 
 
-def _number(kind: type, value) -> QWidget:
+def _range(kind: type, value, bounds) -> tuple:
+    """The box's range: `bounds`, widened to take `value` - a stored value
+    is never clamped by opening the dialog - else the model's own."""
+    if bounds is None:
+        return INT_RANGE if kind is int else FLOAT_RANGE
+    lo, hi = min(bounds[0], value), max(bounds[1], value)
+    return (int(lo), int(hi)) if kind is int else (float(lo), float(hi))
+
+
+def _number(kind: type, value, bounds=None) -> QWidget:
     if kind is int:
         box = spin_box()
-        box.setRange(*INT_RANGE)
+        box.setRange(*_range(kind, int(value), bounds))
         box.setValue(int(value))
     else:
         box = double_spin_box()
-        box.setRange(*FLOAT_RANGE)
+        box.setRange(*_range(kind, float(value), bounds))
         box.setDecimals(FLOAT_DECIMALS)
         box.setValue(float(value))
     box.setMinimumWidth(NUMBER_WIDTH)
@@ -107,7 +117,7 @@ class _Row:
     """
 
     def __init__(self, name: str, annotation, value, *,
-                 labels: dict | None = None, unit: str = ""):
+                 labels: dict | None = None, unit: str = "", bounds=None):
         self.name = name
         self.widget: QWidget
         self._read = None
@@ -132,7 +142,8 @@ class _Row:
             self._write = lambda v: box.setCurrentIndex(max(0, box.findData(v)))
             self._changed = [box.currentIndexChanged]
         elif pair:
-            low, high = (_number(kind, value[0]), _number(kind, value[1]))
+            low, high = (_number(kind, value[0], bounds),
+                         _number(kind, value[1], bounds))
             holder = QWidget()
             row = QHBoxLayout(holder)
             row.setContentsMargins(0, 0, 0, 0)
@@ -148,7 +159,7 @@ class _Row:
             self._write = lambda v: (low.setValue(v[0]), high.setValue(v[1]))
             self._changed = [low.valueChanged, high.valueChanged]
         elif annotation in (int, float):
-            box = _number(annotation, value)
+            box = _number(annotation, value, bounds)
             if unit:
                 box.setSuffix(f" {unit}")
             self.widget, self._read = box, box.value
@@ -204,6 +215,7 @@ class PickingSettingsDialog(QDialog):
     Advanced (`picking_fields`)."""
 
     def __init__(self, config: PickingConfig, *, profile_name: str = "",
+                 previous: tuple[str, PickingConfig] | None = None,
                  parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle("Picking settings")
@@ -265,6 +277,18 @@ class PickingSettingsDialog(QDialog):
         ).clicked.connect(self._restore_defaults)
         buttons.button(QDialogButtonBox.StandardButton.Save).setText(
             f"Save to {profile_name}" if profile_name else "Save")
+        # The settings as they were before the last save (`Profile.
+        # previous_picking`): a typo saved over a working value is one
+        # click from undone, and still only in the form until Save.
+        self._previous = previous
+        self.previous_button = buttons.addButton(
+            "Previous settings", QDialogButtonBox.ButtonRole.ResetRole)
+        self.previous_button.setEnabled(previous is not None)
+        self.previous_button.setToolTip(
+            f"Put the settings saved before the last save ({_when(previous)}) "
+            f"into the form. Nothing is saved until Save."
+            if previous is not None else "No earlier settings are kept yet.")
+        self.previous_button.clicked.connect(self._restore_previous)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
@@ -294,7 +318,8 @@ class PickingSettingsDialog(QDialog):
                     QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
             field = fields[name]
             row = _Row(name, field.annotation, getattr(config, name),
-                       labels=LABELS.get(name), unit=spec.unit if spec else "")
+                       labels=LABELS.get(name), unit=spec.unit if spec else "",
+                       bounds=BOUNDS.get(name))
             label = QLabel(spec.label if spec else name)
             # Wrapped and capped, so a long name takes two lines rather
             # than pushing the number off the dialog.
@@ -346,6 +371,60 @@ class PickingSettingsDialog(QDialog):
         if wanted:
             self.advanced.set_collapsed(False)
 
+    def _restore_previous(self) -> None:
+        if self._previous is None:
+            return
+        _when_text, config = self._previous
+        for name, row in self._rows.items():
+            row.set_value(getattr(config, name))
+        self.message.setText(f"The settings from before the last save "
+                             f"({_when(self._previous)}) are in the form: "
+                             f"Save to use them.")
+        self.message.show()
+
+    def changes(self) -> list[tuple[str, object, object]]:
+        """(field, saved value, value in the form) for each field edited."""
+        out = []
+        for name, value in self.values().items():
+            before = getattr(self._config, name)
+            if isinstance(before, tuple):
+                same = tuple(before) == tuple(value)
+            elif isinstance(before, float):
+                same = abs(before - float(value)) < 1e-9
+            else:
+                same = before == value
+            if not same:
+                out.append((name, before, value))
+        return out
+
+    def _confirm(self, changes) -> bool:
+        """The edits, old to new, before they are saved."""
+        lines = []
+        for name, before, after in changes:
+            spec = FIELDS.get(name)
+            label = spec.label if spec else name
+            unit = f" {spec.unit}" if spec and spec.unit else ""
+            text = (f"{label}: {_shown(name, before)} → "
+                    f"{_shown(name, after)}{unit}")
+            big = BIG_CHANGE.get(name)
+            if big is not None and abs(float(after) - float(before)) > big:
+                text += (f" — a change of more than {big:g}{unit}: check it "
+                         f"is not a typing slip")
+            if spec and spec.trouble:
+                text = f"<span style='color:{TROUBLE}'><b>{text}</b></span>"
+            lines.append(text)
+        box = QMessageBox(self)
+        box.setWindowTitle("Save picking settings")
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(f"Save {len(changes)} change"
+                    f"{'s' if len(changes) != 1 else ''}?<br><br>"
+                    + "<br>".join(lines))
+        save = box.addButton("Save", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        box.exec()
+        return box.clickedButton() is save
+
     def _restore_defaults(self) -> None:
         """The model's own defaults, not this dialog's idea of them."""
         fresh = PickingConfig()
@@ -370,4 +449,35 @@ class PickingSettingsDialog(QDialog):
             self.message.setText(str(exc))
             self.message.show()
             return
+        changes = self.changes()
+        if changes and not self._confirm(changes):
+            return
         self.accept()
+
+
+def _when(previous) -> str:
+    """An archive stamp (UTC, YYYYmmdd_HHMMSS) as local "YYYY-MM-DD HH:MM"."""
+    if previous is None:
+        return ""
+    from datetime import datetime, timezone
+    try:
+        when = datetime.strptime(previous[0], "%Y%m%d_%H%M%S").replace(
+            tzinfo=timezone.utc).astimezone()
+    except ValueError:
+        return previous[0]
+    return when.strftime("%Y-%m-%d %H:%M")
+
+
+def _shown(name: str, value) -> str:
+    """A value as the form shows it: a choice by its words, a window as
+    "a to b", a number without trailing zeros."""
+    labels = LABELS.get(name)
+    if labels and value in labels:
+        return labels[value]
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    if isinstance(value, (tuple, list)):
+        return " to ".join(_shown(name, v) for v in value)
+    if isinstance(value, float):
+        return f"{value:g}"
+    return str(value)

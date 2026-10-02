@@ -240,8 +240,29 @@ class Profile:
             self._archive(target)
         _write_model(target, self.calibration)
 
-    def save_picking(self) -> None:
-        _write_model(self.path / PICKING_FILE, self.picking)
+    def save_picking(self, *, backup: bool = True) -> None:
+        """The previous settings are archived first, as a calibration's are:
+        a typo saved over a working value is otherwise gone
+        (`previous_picking`)."""
+        target = self.path / PICKING_FILE
+        if backup and target.is_file():
+            self._archive(target)
+        _write_model(target, self.picking)
+
+    def previous_picking(self) -> tuple[str, "PickingConfig"] | None:
+        """The newest archived picking settings and when they were replaced
+        (the UTC stamp of the archive), or None. Unreadable ones are
+        skipped, newest first."""
+        hist = self.path / HISTORY_DIR
+        stem, suffix = Path(PICKING_FILE).stem, Path(PICKING_FILE).suffix
+        for path in sorted(hist.glob(f"{stem}_*{suffix}"), reverse=True):
+            try:
+                config = PickingConfig.model_validate_json(
+                    path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            return path.stem[len(stem) + 1:], config
+        return None
 
     def save_positions(self) -> None:
         _write_atomic(self.path / POSITIONS_FILE,

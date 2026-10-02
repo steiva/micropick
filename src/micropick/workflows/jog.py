@@ -47,9 +47,22 @@ class Limits:
     # can leave the value a few ulps outside. Without slack the axis then
     # reports itself out of bounds and refuses the next step in that direction.
     tol: float = 1e-6
+    # Raised floors: (x0, y0, x1, y1, z, what) - over that rectangle the tip
+    # may not go below z. A deck module is a block of metal the deck model
+    # does not know; jogged down over it, the tip would be driven into it.
+    floors: tuple = ()
 
     def bounds(self, axis: str) -> tuple[float, float]:
         return getattr(self, axis)
+
+    def floor(self, x: float, y: float) -> tuple[float, str]:
+        """The lowest Z allowed over (x, y), and what raises it there ("" for
+        the box's own floor)."""
+        lo, what = self.z[0], ""
+        for x0, y0, x1, y1, z, name in self.floors:
+            if x0 <= x <= x1 and y0 <= y <= y1 and z > lo:
+                lo, what = z, name
+        return lo, what
 
     def contains(self, position) -> bool:
         return all(lo - self.tol <= v <= hi + self.tol for v, (lo, hi)
@@ -122,6 +135,24 @@ class JogController:
         current, target = pos[i], pos[i] + delta
         lo, hi = self.limits.bounds(axis)
         tol = self.limits.tol
+        floor, what = self.limits.floor(pos[0], pos[1])
+        if axis == "z" and floor > lo:
+            lo = floor
+            if lo - tol > target and current >= lo - tol:
+                return ((lo - current, f"clamped over the {what}")
+                        if self.clamp and lo < current else
+                        (0.0, f"the {what} is below: the tip is as low as "
+                              f"it may go here"))
+        elif axis in "xy":
+            # Sideways into a raised floor, below its top: into the side of
+            # the module.
+            moved = list(pos)
+            moved[i] = target
+            ahead, what_ahead = self.limits.floor(moved[0], moved[1])
+            if ahead > floor and pos[2] < ahead - tol:
+                return 0.0, (f"the {what_ahead} is in the way at this "
+                             f"height: raise the tip above {ahead:g} mm "
+                             f"first")
 
         if lo - tol <= target <= hi + tol:
             return delta, ""

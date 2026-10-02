@@ -56,6 +56,8 @@ from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..workflows.jog import Limits                  # noqa: E402
+from .widgets.deck_view import (SLOT_HEIGHT, SLOT_WIDTH,  # noqa: E402
+                                slot_centre)
 from .detector import DetectorService              # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
@@ -82,6 +84,10 @@ MOCK = "mock"
 # on with. Anything else - stopped, failed, succeeded - is a record of a run,
 # not a run, and the only thing to do with it is start a new one.
 REUSABLE_STATUSES = ("idle", "running", "paused")
+
+# A module may stand a little past its slot opening; the raised floor over
+# it reaches this much further on every side.
+MODULE_MARGIN_MM = 3.0
 
 
 @dataclass
@@ -352,7 +358,22 @@ class Session(QObject):
         # The profile schema has no limits section. When it grows one, this is
         # the only place that changes; the manual page asks the session and
         # knows nothing about where the numbers came from.
-        return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, 150.0))
+        #
+        # Each deck module raises the floor over its slot to its own top, so
+        # a jog or a click cannot drive the tip into it. The labware it
+        # carries sits above that top, so nothing a step needs is below it.
+        floors = []
+        modules = self.profile.deck.modules if self.profile is not None else []
+        for module in modules:
+            for slot in module.slots:
+                cx, cy = slot_centre(slot)
+                half_x = SLOT_WIDTH / 2 + MODULE_MARGIN_MM
+                half_y = SLOT_HEIGHT / 2 + MODULE_MARGIN_MM
+                name = f"{module.name or 'module'} in slot {slot}"
+                floors.append((cx - half_x, cy - half_y, cx + half_x,
+                               cy + half_y, float(module.height_mm), name))
+        return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, 150.0),
+                      floors=tuple(floors))
 
     @property
     def upper_camera_label(self) -> str | None:

@@ -109,6 +109,10 @@ def unreachable(limits: Limits, position) -> str:
             reasons.append(f"{axis} {value:.1f} is below the limit {lo:g}")
         elif value > hi + limits.tol:
             reasons.append(f"{axis} {value:.1f} is past the limit {hi:g}")
+    floor, what = limits.floor(position[0], position[1])
+    if what and position[2] < floor - limits.tol:
+        reasons.append(f"z {position[2]:.1f} is below the top of the {what} "
+                       f"({floor:g})")
     return "; ".join(reasons)
 
 
