@@ -328,6 +328,7 @@ class JogPanel(QWidget):
         self.session = session
         self.controller: JogController | None = None
         self._worker: Worker | None = None
+        self._then = None                  # run_job's, for the job in flight
         self._shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
         self._collapsed = tuple(collapsed)
@@ -748,8 +749,8 @@ class JogPanel(QWidget):
         is done should wait for this to clear first."""
         return self._busy()
 
-    def run_job(self, fn, *, moves: bool = True,
-                what: str | None = None) -> bool:
+    def run_job(self, fn, *, moves: bool = True, what: str | None = None,
+                then=None) -> bool:
         """Run `fn(log)` on this panel's worker, after any step in flight.
 
         The one queue for the robot on a page with a panel: a click-move or an
@@ -757,6 +758,10 @@ class JogPanel(QWidget):
         controls grey out for all of them. `fn` may return a MoveResult, None,
         or a sentence to show under the position. Returns False, and runs
         nothing, while the panel is busy or there is no robot.
+
+        `then(result)`, if given, is called on the GUI thread with what `fn`
+        returned, once it has; what it returns is shown in place of that.
+        For a job whose answer the page acts on - asking before it saves.
         """
         if self.controller is None or self._busy():
             return False
@@ -765,6 +770,7 @@ class JogPanel(QWidget):
         def job(log):
             return fn(log), controller.status()
 
+        self._then = then
         # `moves=False` for a job that leaves the gantry where it is, such
         # as an aspirate: what was detected on the picture still stands.
         self._run(Worker(job, what=what), moves=moves)
@@ -835,6 +841,9 @@ class JogPanel(QWidget):
         result, status = payload
         self._set_status(status)
         self._refresh_saved()
+        then, self._then = self._then, None
+        if then is not None:
+            result = then(result)
         if isinstance(result, str):
             self.tell(result)
         elif result is None:
@@ -852,6 +861,7 @@ class JogPanel(QWidget):
     def _job_failed(self, reason: str) -> None:
         if not self._claim():
             return
+        self._then = None
         self._say(reason, firm=True)
         self._set_enabled(True)
         # A failed move may still have gone part of the way.

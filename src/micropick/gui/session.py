@@ -450,6 +450,21 @@ class Session(QObject):
                  tuple(round(float(v), 2) for v in position), self.profile.name)
         self.profile_changed.emit(self.profile)
 
+    def set_dish_bottom(self, z: float) -> None:
+        """The Z calibration: the robot's Z with the tip on the dish bottom,
+        into the picking settings and saved. Every pickup height is measured
+        up from it (`PickingConfig.pickup_height`)."""
+        if self.profile is None:
+            raise SessionError("no profile is loaded, so there is nowhere to "
+                               "save the dish bottom")
+        before = self.profile.picking.dish_bottom
+        self.profile.picking = self.profile.picking.model_copy(
+            update={"dish_bottom": round(float(z), 2)})
+        self.profile.save_picking()
+        log.info("dish bottom %.2f -> %.2f mm in profile %r", before,
+                 self.profile.picking.dish_bottom, self.profile.name)
+        self.profile_changed.emit(self.profile)
+
     def forget(self, name: str) -> None:
         """Drop a named position from the profile."""
         if self.profile is None:

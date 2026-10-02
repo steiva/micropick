@@ -71,6 +71,18 @@ The name is the workflow's: `PickingSession` reads `profile.where("observe")`
 and refuses to start without it, so teaching it here is teaching the run's
 own starting pose rather than a second one that looks like it.
 
+The dish bottom is set here too
+------------------------------
+`dish_bottom` is the Z every pickup height is measured up from, and this
+platform has no sensor to find it: the tip is brought down onto the dish by
+hand. So the page does the two ends of that. Tip over the dish centre puts
+the tip over the middle of the working circle - `circle_center`, a pixel of
+the picture taken at the picking position, through the pixel map and the
+pipette offset - `ABOVE_BOTTOM_MM` over the dish bottom set now; the
+operator jogs it down until it touches; Set dish bottom here reads Z, asks
+with the old and new values side by side, saves it into the picking
+settings and lifts the tip. Nothing is copied into a dialog by hand.
+
 So is the shake pose
 --------------------
 `shake`, where the tip goes into the dish to stir it when too few cuboids
@@ -153,6 +165,13 @@ DISH_POSITION = "observe"
 # than met ten minutes into one.
 SHAKE_POSITION = "shake"
 
+# How high over the stored dish bottom Tip over the dish centre stops: room
+# for a dish bottom that was set a little high, and few key presses down.
+ABOVE_BOTTOM_MM = 10.0
+# A new dish bottom this far from the old one is asked about twice as
+# carefully: it is more often the tip resting on something else.
+BIG_CHANGE_MM = 3.0
+
 # How often the display looks at what the run is showing. The session's own
 # pace is set by the robot; this is only the refresh of a picture.
 VIEW_MS = 100
@@ -212,7 +231,8 @@ class PickingPage(QWidget):
 
         self.view = CameraView(self)
 
-        panel = CardColumns([self._dish_card(), self._shake_card(),
+        panel = CardColumns([self._dish_card(), self._bottom_card(),
+                             self._shake_card(),
                              self._analysis_card(),
                              self._histogram_card(), self._run_card(),
                              self._jog_section()], self)
@@ -269,6 +289,34 @@ class PickingPage(QWidget):
         self.dish_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.dish_state)
+        return box
+
+    def _bottom_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Dish bottom (Z)", 2))
+        how = QLabel(
+            "The height every pickup is measured from. With the dish in "
+            "place: Tip over the dish centre, jog the tip down (PgDn; small "
+            "steps at the end) until it just touches the bottom, then Set "
+            "dish bottom here.")
+        how.setWordWrap(True)
+        box.layout().addWidget(how)
+
+        buttons = QHBoxLayout()
+        self.over_centre_button = secondary_button("Tip over the dish centre",
+                                                   self)
+        self.over_centre_button.clicked.connect(self._tip_over_centre)
+        self.set_bottom_button = secondary_button("Set dish bottom here", self)
+        self.set_bottom_button.clicked.connect(self._set_bottom)
+        buttons.addWidget(self.over_centre_button)
+        buttons.addWidget(self.set_bottom_button)
+        box.layout().addLayout(buttons)
+
+        self.bottom_state = QLabel()
+        self.bottom_state.setWordWrap(True)
+        self.bottom_state.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.bottom_state)
         return box
 
     def _shake_card(self) -> QWidget:
@@ -425,6 +473,97 @@ class PickingPage(QWidget):
         if not self.jog.run_job(job, moves=False):
             self.jog.tell("not now: the robot is busy; Set position again "
                           "when it is done.")
+
+    # -- the dish bottom (Z calibration) ----------------------------------------
+
+    def _centre_target(self):
+        """(x, y) for the tip over the dish centre, or why there is none.
+
+        The centre is `circle_center`, a pixel of the picture taken at the
+        picking position, so the pixel map turns it into a deck point from
+        that pose and the pipette offset puts the tip there."""
+        profile = self.session.profile
+        observe = self._stored_dish()
+        if profile is None:
+            return None, "no profile loaded"
+        if observe is None:
+            return None, (f"no {DISH_POSITION!r} position: the dish centre is "
+                          f"found from the picture taken there")
+        if profile.pixel_map is None:
+            return None, "no pixel map: run the camera calibration"
+        offset = profile.calibration.pipette_offset
+        if offset is None:
+            return None, "no pipette offset: run the pipette calibration"
+        pmap = PixelMap.from_config(profile.pixel_map)
+        cx, cy = profile.picking.circle_center
+        xy = moves.tip_target(pmap, float(cx), float(cy), observe, offset)
+        return (float(xy[0]), float(xy[1])), ""
+
+    def _tip_over_centre(self) -> None:
+        if self.session.robot is None or self._running():
+            return
+        xy, why = self._centre_target()
+        if xy is None:
+            self.jog.tell(f"not possible: {why}.")
+            return
+        z = self.session.profile.picking.dish_bottom + ABOVE_BOTTOM_MM
+        refused = moves.unreachable(self.session.jog_limits, (*xy, z))
+        if refused:
+            self.jog.tell(f"not possible: {refused}.")
+            return
+        robot = self.session.robot
+
+        def job(log):
+            moves.drive_tip(robot, xy, z, None, log=log)
+            return (f"tip {ABOVE_BOTTOM_MM:g} mm over the dish bottom, at the "
+                    f"dish centre: jog it down until it touches")
+
+        if not self.jog.run_job(job, what="tip over the dish centre"):
+            self.jog.tell("not now: the robot is busy; try again when it is "
+                          "done.")
+
+    def _set_bottom(self) -> None:
+        """Read Z where the tip is, then ask before it is saved."""
+        if (self.session.robot is None or self.session.profile is None
+                or self._running()):
+            return
+        robot = self.session.robot
+        if not self.jog.run_job(lambda _log: float(xyz(robot)[2]),
+                                moves=False, what="reading Z",
+                                then=self._confirm_bottom):
+            self.jog.tell("not now: the robot is busy; Set dish bottom here "
+                          "again when it is done.")
+
+    def _confirm_bottom(self, z: float) -> str:
+        picking = self.session.profile.picking
+        old, above = picking.dish_bottom, picking.pickup_offset
+        text = (f"Set the dish bottom to {z:.2f} mm?\n\n"
+                f"It is {old:.2f} mm now ({z - old:+.2f} mm). Pickups will be "
+                f"at {z + above:.2f} mm, {above:g} mm above it.")
+        if abs(z - old) > BIG_CHANGE_MM:
+            text += ("\n\nThat is a big change: check that the tip rests on "
+                     "the bottom of the dish and not on its rim or a lid.")
+        answer = QMessageBox.question(
+            self, "Dish bottom", text + "\n\nThe tip goes up afterwards.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return "dish bottom not changed"
+        self.session.set_dish_bottom(z)
+        # After this job's own completion, which is still being delivered.
+        QTimer.singleShot(0, self._lift_after_bottom)
+        return f"dish bottom set to {z:.2f} mm"
+
+    def _lift_after_bottom(self) -> None:
+        robot = self.session.robot
+        if robot is None:
+            return
+
+        def job(log):
+            moves.raise_tip(robot, None, log=log)
+            return "tip up"
+
+        self.jog.run_job(job, what="lifting the tip")
 
     # -- the shake pose -------------------------------------------------------
 
@@ -1024,6 +1163,25 @@ class PickingPage(QWidget):
                 f"{stored[2]:.1f})")
 
         running = self._running()
+        if profile is None:
+            self.bottom_state.setText("No profile loaded.")
+        else:
+            picking = profile.picking
+            self.bottom_state.setText(
+                f"Dish bottom {picking.dish_bottom:.2f} mm; pickups at "
+                f"{picking.pickup_height:.2f} mm "
+                f"(+{picking.pickup_offset:g}).")
+        centre, why = self._centre_target()
+        self.over_centre_button.setEnabled(
+            connected and centre is not None and not running)
+        self.over_centre_button.setToolTip(
+            "Drive the tip over the middle of the working circle, "
+            f"{ABOVE_BOTTOM_MM:g} mm above the dish bottom set now."
+            if centre is not None else f"Not possible: {why}.")
+        self.set_bottom_button.setEnabled(
+            connected and profile is not None and not running)
+        self.set_bottom_button.setToolTip(
+            "Save the Z the tip is at now as the dish bottom, after asking.")
         shake = self._stored_shake()
         self.goto_shake_button.setEnabled(connected and shake is not None
                                           and not running)
