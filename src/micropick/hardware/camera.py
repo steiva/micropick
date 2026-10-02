@@ -174,6 +174,37 @@ def apply_controls(cap, controls: dict, *, tol: float = 1e-2) -> ControlReport:
 # recorder
 # ---------------------------------------------------------------------------
 
+def _video_writer(path: str, fps: float, size: tuple[int, int],
+                  color: bool) -> cv2.VideoWriter:
+    """An open writer for `path`: H.264 for .mp4, XVID otherwise.
+
+    On Windows an .mp4 goes to Media Foundation first. OpenCV's own FFMPEG
+    asks for the OpenH264 DLL, which is not installed with it, prints two
+    errors per clip, and only then falls back to Media Foundation itself -
+    a terminal full of errors over clips that were all written. Asking
+    for it outright skips that. MPEG-4 Part 2 (`mp4v`) is the last resort:
+    every player and OpenCV read it, it is just larger for the same
+    picture.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if ext != ".mp4":
+        attempts = [(None, "XVID")]
+    else:
+        attempts = [(None, "avc1"), (None, "mp4v")]
+        if os.name == "nt":
+            attempts.insert(0, (cv2.CAP_MSMF, "avc1"))
+    for backend, code in attempts:
+        fourcc = cv2.VideoWriter_fourcc(*code)
+        writer = (cv2.VideoWriter(path, fourcc, fps, size, isColor=color)
+                  if backend is None else
+                  cv2.VideoWriter(path, backend, fourcc, fps, size,
+                                  isColor=color))
+        if writer.isOpened():
+            return writer
+        writer.release()
+    raise CameraError(f"could not open a writer for {path}")
+
+
 class Recorder:
     """Accumulates frames from a camera's grab loop.
 
@@ -291,11 +322,7 @@ class Recorder:
         fps = fps or self.measured_fps() or 20.0
         h, w = frames[0].shape[:2]
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        ext = os.path.splitext(path)[1].lower()
-        fourcc = cv2.VideoWriter_fourcc(*("avc1" if ext == ".mp4" else "XVID"))
-        writer = cv2.VideoWriter(path, fourcc, fps, (w, h), isColor=color)
-        if not writer.isOpened():
-            raise CameraError(f"could not open a writer for {path}")
+        writer = _video_writer(path, fps, (w, h), color)
         try:
             for fr in frames:
                 if color and fr.ndim == 2:
@@ -315,7 +342,7 @@ class Recorder:
             try:
                 self.save(path, fps=fps, color=color)
             except Exception as exc:
-                print(f"clip not saved: {exc}")
+                log.warning("clip not saved: %s", exc)
                 return
             if on_done:
                 on_done(path)
