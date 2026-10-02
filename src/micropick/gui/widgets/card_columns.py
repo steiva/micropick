@@ -73,8 +73,16 @@ class CardColumns(QWidget):
     def _arrange(self, two: bool) -> None:
         self._two = two
         for column in self._columns:
+            # removeWidget, not takeAt: it deletes the layout's item. A card
+            # remembers its first item and invalidates only that one's cached
+            # height, so with the old item left alive the new one kept the
+            # height of the card's first text and a longer one was cut off.
             while column.count():
-                column.takeAt(0)
+                item = column.itemAt(0)
+                if item.widget() is not None:
+                    column.removeWidget(item.widget())
+                else:
+                    column.removeItem(item)
         if two and len(self._cards) > 1:
             k = self._split((self.width() - SPACING) // 2)
             groups = (self._cards[:k], self._cards[k:])
