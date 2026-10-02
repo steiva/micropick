@@ -397,6 +397,7 @@ class PipetteCalibration(QWidget):
     def _run_short(self, worker: Worker, what: str) -> None:
         """A move or a save: no log panel, just the buttons greyed out."""
         self._worker = worker
+        worker.what = worker.what or what
         worker.finished.connect(self._short_done)
         worker.failed.connect(self._short_failed)
         log.info("%s", what)
@@ -511,7 +512,7 @@ class PipetteCalibration(QWidget):
             robot.retract_axis("leftZ", verbose=False)
             return result, standin
 
-        worker = Worker(job)
+        worker = Worker(job, what="calibrating the pipette")
         self._worker = worker
         worker.message.connect(self._on_message)
         worker.finished.connect(self._on_finished)
@@ -523,6 +524,12 @@ class PipetteCalibration(QWidget):
     def _touch_up(self, robot, camera, view) -> None:
         self._gate.clear()
         self._aborted = False
+        worker = self._worker
+        if worker is not None:
+            # The activity line, and the log: the calibration is not
+            # working now, it is waiting for the operator.
+            worker._on_message("waiting for you: nudge the tip onto the "
+                               "crosshair, then Done")
         self.touch_up_requested.emit()
         self._gate.wait()
         if self._aborted:

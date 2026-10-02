@@ -496,6 +496,7 @@ class ProfilePage(QWidget):
         if self._worker is not None and self._worker.running:
             return
         self._worker = worker
+        worker.what = worker.what or what
         # Bound methods, not lambdas. Qt takes a connection's thread from the
         # receiver object, and a lambda has none: it would be connected
         # directly and would repaint this page from the worker's thread.

@@ -748,7 +748,8 @@ class JogPanel(QWidget):
         is done should wait for this to clear first."""
         return self._busy()
 
-    def run_job(self, fn, *, moves: bool = True) -> bool:
+    def run_job(self, fn, *, moves: bool = True,
+                what: str | None = None) -> bool:
         """Run `fn(log)` on this panel's worker, after any step in flight.
 
         The one queue for the robot on a page with a panel: a click-move or an
@@ -766,7 +767,7 @@ class JogPanel(QWidget):
 
         # `moves=False` for a job that leaves the gantry where it is, such
         # as an aspirate: what was detected on the picture still stands.
-        self._run(Worker(job), moves=moves)
+        self._run(Worker(job, what=what), moves=moves)
         return True
 
     def refresh_position(self) -> None:
@@ -798,6 +799,8 @@ class JogPanel(QWidget):
 
     def _run(self, worker: Worker, *, moves: bool = True) -> None:
         self._worker = worker
+        worker.what = worker.what or ("moving the robot" if moves
+                                      else "talking to the robot")
         self._job_moves = moves
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and a lambda has none, so it would touch these widgets from

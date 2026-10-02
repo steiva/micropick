@@ -480,7 +480,8 @@ class CameraCalibration(QWidget):
         if frame is None:
             return
         watch, wanted = self._watch, self.dictionary.currentText()
-        worker = Worker(watch.look, frame, wanted)
+        worker = Worker(watch.look, frame, wanted,
+                        what="looking for the marker")
         self._watch_worker = worker
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and these touch the view.
@@ -583,7 +584,8 @@ class CameraCalibration(QWidget):
                         marker_side_mm=self.marker_side.value(),
                         grid_n=self.grid_n.value(),
                         degree=self.degree.value(),
-                        on_frame=self._on_pose)
+                        on_frame=self._on_pose,
+                        what="calibrating the camera")
         self._worker = worker
         worker.progress.connect(self._on_progress)
         worker.message.connect(self._on_message)

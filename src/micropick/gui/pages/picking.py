@@ -516,7 +516,7 @@ class PickingPage(QWidget):
             return frame, detector.detect(frame, cfg, pixel_map)
 
         self.result.setText("analysing…")
-        self._run(Worker(job), self._analysed)
+        self._run(Worker(job, what="analysing the dish"), self._analysed)
 
     def _analysed(self, payload) -> None:
         frame, detection = payload
@@ -576,7 +576,8 @@ class PickingPage(QWidget):
             return
         if self._detection is None:
             self.result.setText("loading the detector…")
-        self._run(Worker(self.detector.load, wanted), self._loaded)
+        self._run(Worker(self.detector.load, wanted,
+                         what="loading the detector"), self._loaded)
 
     def _loaded(self, _description) -> None:
         if self._detection is None:
@@ -707,7 +708,7 @@ class PickingPage(QWidget):
         self._run_message = ""
         self.done.clear()
         self.run_state.setText("starting…")
-        self._run_worker = Worker(job)
+        self._run_worker = Worker(job, what="picking run")
         self._run_worker.finished.connect(self._run_finished)
         self._run_worker.failed.connect(self._run_failed)
         self._run_worker.message.connect(self._said)

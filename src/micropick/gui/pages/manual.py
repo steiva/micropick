@@ -862,6 +862,7 @@ class ManualPage(QWidget):
 
     def _run(self, worker: Worker, what: str, done) -> None:
         self._worker = worker
+        worker.what = worker.what or what
         self._done = done
         worker.message.connect(self._said)
         worker.finished.connect(self._job_done)

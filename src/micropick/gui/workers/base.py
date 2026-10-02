@@ -45,12 +45,13 @@ from __future__ import annotations
 
 import inspect
 import threading
+import time
 import traceback
 from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 
-__all__ = ["Worker", "any_running"]
+__all__ = ["Worker", "any_running", "activity"]
 
 # The names the workflows in this repository use: `calibrate_camera` and
 # `run_sweep` declare exactly these. They are a convention, so they are applied
@@ -83,6 +84,14 @@ def any_running() -> bool:
     return any(worker.running for worker in list(_RUNNING))
 
 
+def activity() -> list["Worker"]:
+    """The workers running now, the longest-running first: what the status
+    bar's activity indicator shows. Each says `what` it is doing, since
+    when (`started_at`, monotonic) and the last line it logged."""
+    running = [worker for worker in list(_RUNNING) if worker.running]
+    return sorted(running, key=lambda worker: worker.started_at or 0.0)
+
+
 class Worker(QObject):
     """Runs one blocking callable on a QThread of its own."""
 
@@ -94,6 +103,7 @@ class Worker(QObject):
 
     def __init__(self, fn: Callable[..., Any], *args,
                  progress_arg=AUTO, cancel_arg=AUTO, message_arg=AUTO,
+                 what: str | None = None,
                  parent: QObject | None = None, **kwargs):
         """`*_arg` name the parameters to inject.
 
@@ -103,6 +113,9 @@ class Worker(QObject):
         all. Named outright they are passed regardless, which is how a callable
         that spells one differently is driven: `PickingSession.step` calls its
         cancellation `stop`. None suppresses one.
+
+        `what` is the job in a few words, for the activity indicator
+        ("calibrating the pipette"); it is not passed to the callable.
 
         A name is never guessed onto a `**kwargs` signature. Forwarding `log`
         into a callable that does not understand it produces a failure a long
@@ -117,6 +130,13 @@ class Worker(QObject):
                        "message": (message_arg, MESSAGE_ARG)}
         self.cancel = threading.Event()
         self._thread: QThread | None = None
+        # Read by the activity indicator. Plain attributes, written from the
+        # worker's thread: one reference assignment each, and a reader that
+        # sees the previous value only shows it for one more tick.
+        self.what = what
+        self.started_at: float | None = None
+        self.last_message = ""
+        self.last_progress: tuple[int, int] | None = None
 
     # -- what the callable is actually given --------------------------------
 
@@ -152,10 +172,15 @@ class Worker(QObject):
     # These are plain functions as far as the workflow is concerned; the signal
     # emission behind them is what crosses to the GUI thread.
     def _on_progress(self, done: int, total: int) -> None:
+        self.last_progress = (int(done), int(total))
         self.progress.emit(int(done), int(total))
 
     def _on_message(self, *parts) -> None:
-        self.message.emit(" ".join(str(p) for p in parts))
+        text = " ".join(str(p) for p in parts)
+        line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+        if line:
+            self.last_message = line
+        self.message.emit(text)
 
     # -- running -------------------------------------------------------------
 
@@ -183,6 +208,7 @@ class Worker(QObject):
             raise RuntimeError("this worker has already been started")
         thread = QThread()
         self._thread = thread
+        self.started_at = time.monotonic()
         self.moveToThread(thread)
         thread.started.connect(self.run)
         # DirectConnection, deliberately. The worker lives in `thread` and the

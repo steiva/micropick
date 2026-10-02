@@ -278,7 +278,7 @@ class SettingsPage(QWidget):
             return api.BASE_URL, api.health(timeout=TEST_TIMEOUT_S)
 
         self.robot_state.setText("asking the robot…")
-        worker = Worker(job)
+        worker = Worker(job, what="asking the robot")
         self._worker = worker
         worker.finished.connect(self._tested)
         worker.failed.connect(self._test_failed)

@@ -42,6 +42,7 @@ from .pages import (calibration, labware, liquid, log, manual, picking,
 from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
 from .widgets.feed_window import FeedWindow
+from .widgets.activity import ActivityIndicator
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
 from .workers import Worker, any_running
 
@@ -210,6 +211,10 @@ class StatusBar(QStatusBar):
         self.lights.setCheckable(True)
         self.lights.setAutoRaise(True)
         self.lights.setToolTip("Rail lights")
+
+        # What is running, on the left; see `widgets.activity`.
+        self.activity = ActivityIndicator()
+        self.addWidget(self.activity, 1)
 
         for widget in (self._profile, self._robot, self._cameras,
                        self._deck_box, tip, self.home, self.lights,
@@ -460,7 +465,8 @@ class MainWindow(QMainWindow):
             return
         if label in self._feed_workers and self._feed_workers[label].running:
             return
-        worker = Worker(self.session.open_camera, label)
+        worker = Worker(self.session.open_camera, label,
+                        what=f"opening camera {label!r}")
         worker.label = label
         self._feed_workers[label] = worker
         # Bound methods, not lambdas: Qt queues them onto this thread, and
@@ -513,7 +519,8 @@ class MainWindow(QMainWindow):
         if self.session.robot is None:
             return
         self.status.lights.setEnabled(False)
-        worker = Worker(self.session.toggle_lights)
+        worker = Worker(self.session.toggle_lights,
+                        what="switching the lights")
         self._lights_worker = worker
         worker.finished.connect(self._lights_done)
         worker.failed.connect(self._lights_failed)
@@ -569,7 +576,7 @@ class MainWindow(QMainWindow):
                   if panel.isVisible()]
         if panels and panels[0].run_job(lambda _log: home_robot(robot)):
             return
-        worker = Worker(home_robot, robot)
+        worker = Worker(home_robot, robot, what="homing the robot")
         self._home_worker = worker
         worker.finished.connect(self._home_done)
         worker.failed.connect(self._home_failed)

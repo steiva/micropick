@@ -66,7 +66,8 @@ class CameraOpener(QObject):
         if label in self._refused:
             return False
 
-        worker = Worker(self.session.open_camera, label)
+        worker = Worker(self.session.open_camera, label,
+                        what=f"opening camera {label!r}")
         worker.label = label
         self._in_flight[label] = worker
         # Bound methods, not lambdas: Qt takes a connection's thread from the

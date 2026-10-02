@@ -662,6 +662,7 @@ class LabwarePage(QWidget):
 
     def _run(self, worker: Worker, what: str) -> None:
         self._worker = worker
+        worker.what = worker.what or what
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and a lambda has none.
         worker.finished.connect(self._job_done)
