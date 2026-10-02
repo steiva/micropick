@@ -156,3 +156,7 @@ ml_models/*.pt
 
 profiles/*/
 !profiles/example/legacy/
+
+# This computer's settings and its names for the robot's sessions
+/settings.json
+/robot_sessions.json
