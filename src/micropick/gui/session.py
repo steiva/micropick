@@ -47,6 +47,7 @@ from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              PickingConfig, WellCentre,
                              ProfileMeta)
 from ..hardware import labware                      # noqa: E402
+from ..hardware import robot_clock                  # noqa: E402
 from ..hardware.camera import CameraManager         # noqa: E402
 from ..hardware.labware import LoadedLabware        # noqa: E402
 from ..hardware.mock import (MarkerScene, MockRobot,  # noqa: E402
@@ -493,6 +494,9 @@ class Session(QObject):
                     port=None if host and ":" in host
                     else self.settings.robot_port)
                 log.info("connecting to the robot at %s", self._api.BASE_URL)
+                # Before the run is read: a session created from now on is
+                # stamped right (`hardware.robot_clock`). Never raises.
+                log.info("%s", robot_clock.sync_clock(self._api))
         state = _run_state(self._api)
         self.run_state = state
         log.info("robot probed: %s", state.describe())
