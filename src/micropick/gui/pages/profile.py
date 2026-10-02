@@ -29,10 +29,12 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
-                               QFormLayout, QGridLayout, QHBoxLayout, QLabel,
+                               QFormLayout, QGridLayout, QHBoxLayout,
+                               QInputDialog, QLabel,
                                QLineEdit, QMessageBox, QVBoxLayout, QWidget)
 
 from ... import paths
+from ...config import robot_sessions
 from ...config.store import (LegacyProfileError, ProfileError, copy_profile,
                              create_profile, delete_profile, list_profiles,
                              profile_dir)
@@ -466,19 +468,22 @@ class ProfilePage(QWidget):
                   "gantry moves to its limits on all three axes. Keep hands "
                   "and labware clear.")
         if state is not None and state.reusable:
-            detail += (f"\n\nThe current robot session {state.run_id} will "
+            detail += (f"\n\nThe current robot session {state.label} will "
                        f"be left behind, with its labware and offsets.")
-        answer = QMessageBox.question(
-            self, "New robot session and home", detail,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        # `==`, not `is`: PySide6 hands the answer back as a plain int on
-        # some builds, and an identity test against the enum member is then
-        # always false - the button did nothing and logged nothing.
-        if answer != QMessageBox.StandardButton.Yes:
+        # The name is asked here, in the same question: it is what the
+        # session is shown as from now on (`config.robot_sessions`).
+        profile = self.session.profile
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("New robot session and home")
+        dialog.setLabelText(detail + "\n\nName of the new session:")
+        dialog.setTextValue(robot_sessions.default_name(
+            profile.name if profile is not None else None))
+        dialog.setOkButtonText("New session + home")
+        if dialog.exec() != QInputDialog.DialogCode.Accepted:
             return
+        name = dialog.textValue().strip() or None
         self._clear_error()
-        self._run(Worker(self.session.new_run),
+        self._run(Worker(self.session.new_run, name),
                   "new robot session, then home")
 
     def open_camera(self, label: str) -> None:

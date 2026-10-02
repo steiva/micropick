@@ -39,7 +39,7 @@ if (_REPO_ROOT / "src" / "micropick").is_dir():
 from PySide6.QtCore import QObject, Signal          # noqa: E402
 
 from .. import paths                                # noqa: E402
-from ..config import app_settings, store            # noqa: E402
+from ..config import app_settings, robot_sessions, store            # noqa: E402
 from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
@@ -97,6 +97,22 @@ class RunState:
     status: str | None = None
     has_pipette: bool = False
     labware: dict[str, LoadedLabware] = field(default_factory=dict)
+    # The robot's `createdAt`, and the name this computer gave the session
+    # when it created it (`config.robot_sessions`), if it did.
+    created_at: str | None = None
+    name: str | None = None
+
+    @property
+    def label(self) -> str:
+        """The session as shown: its name, else when the robot started it,
+        else the id. The id is 36 characters that say nothing; the name says
+        how old a session left on the robot is."""
+        if self.name:
+            return self.name
+        created = robot_sessions.created_label(self.created_at)
+        if created:
+            return f"started {created}"
+        return str(self.run_id)
 
     @property
     def exists(self) -> bool:
@@ -113,7 +129,7 @@ class RunState:
                           for s, lw in sorted(self.labware.items())) or "no labware"
         # The pipette is left out: whether the run has one is set up under
         # the hood, and "pipette loaded" reads as "a tip is on".
-        return (f"robot session {self.run_id}, status {self.status}; {slots}"
+        return (f"robot session {self.label}, status {self.status}; {slots}"
                 + ("" if self.reusable else
                    f" - a {self.status} session cannot take commands"))
 
@@ -125,9 +141,12 @@ def _run_state(api) -> RunState:
     current = next((run for run in data if run.get("current")), None)
     if current is None:
         return RunState()
-    return RunState(run_id=current.get("id"), status=current.get("status"),
+    run_id = current.get("id")
+    return RunState(run_id=run_id, status=current.get("status"),
                     has_pipette=bool(current.get("pipettes")),
-                    labware=labware.loaded_labware(api))
+                    labware=labware.loaded_labware(api),
+                    created_at=current.get("createdAt"),
+                    name=robot_sessions.name_of(run_id))
 
 
 @dataclass(frozen=True)
@@ -285,11 +304,11 @@ class Session(QObject):
         if self.robot is None:
             return PROBED if self._api is not None else DISCONNECTED
         base = MOCK if self.mock else CONNECTED
-        run = self.run_state.run_id if self.run_state else None
-        if run and self.run_origin:
+        state = self.run_state
+        if state is not None and state.exists and self.run_origin:
             origin = {"reused": "continued"}.get(self.run_origin,
                                                  self.run_origin)
-            return f"{base}, session {run} ({origin})"
+            return f"{base}, session {state.label} ({origin})"
         return base
 
     @property
@@ -500,8 +519,12 @@ class Session(QObject):
         self._ready("reused")
         return self.robot
 
-    def new_run(self):
+    def new_run(self, name: str | None = None):
         """A fresh run, and then home. Blocking; **moves the gantry**.
+
+        `name` is what the session is called on screen from now on, kept on
+        this computer against the robot's id; None is the date, the time and
+        the profile (`config.robot_sessions.default_name`).
 
         Homing is part of this and not a separate button because nothing moves
         after a new run until the robot has been homed, and a run created
@@ -531,8 +554,25 @@ class Session(QObject):
             self._api.home_robot(verbose=False)
             log.info("homed")
             self.run_state = _run_state(self._api)
+        self._name_run(name)
         self._ready("new")
         return self.robot
+
+    def _name_run(self, name: str | None) -> None:
+        state = self.run_state
+        if state is None or not state.exists:
+            return
+        name = (name or "").strip() or robot_sessions.default_name(
+            self.profile.name if self.profile is not None else None)
+        # Not for the mock: its one run id is not a robot's, and kept on
+        # disk it would name a session no robot has.
+        if not self.mock:
+            try:
+                robot_sessions.remember_name(state.run_id, name)
+            except OSError as exc:          # a name is never worth a failure
+                log.warning("could not keep the session's name: %s", exc)
+        state.name = name
+        log.info("robot session %s is %r", state.run_id, name)
 
     def refresh_run_state(self) -> RunState:
         """Re-read what the run holds, after labware was loaded or moved."""

@@ -290,7 +290,11 @@ class MockRobot:
         self.calls.append(("move_labware", labware_id, new_location))
 
     def get_all_runs(self):
+        if not hasattr(self, "_created_at"):
+            from datetime import datetime, timezone
+            self._created_at = datetime.now(timezone.utc).isoformat()
         payload = {"data": [{"id": "mock-run", "current": True, "status": "idle",
+                             "createdAt": self._created_at,
                              "pipettes": [{"id": "mock-pip"}],
                              "labware": self._run_labware,
                              "labwareOffsets": self._run_offsets}],
