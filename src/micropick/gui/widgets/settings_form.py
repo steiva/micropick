@@ -6,11 +6,13 @@ one an operator needed at two in the morning. So the form is built by
 walking `model_fields`: the names, the order, the types and the defaults
 all come from the schema, and a field added there appears here with no edit.
 
-What that costs is prose. The schema explains itself in comments beside the
-fields, and a comment is not data — pydantic cannot hand it over. So a row
-shows the field's name, its type and its default in the tooltip, and the
-filter box is how forty of them stay usable. The alternative, copying the
-comments into a dictionary here, is the drift this module exists to avoid.
+The words are `picking_fields`: a label, a unit, a tooltip and a group per
+field, and for the few behind most failures the symptom that points at them,
+shown in amber. Those are the operator's, which the schema's comments are
+not. The walk still decides what is shown: a field the words do not cover
+yet appears under Advanced by its code name, so the cost of forgetting one
+is prose, never a setting. Main and Run are open; the technical groups fold
+under Advanced, and the filter opens it when a match is inside.
 
 Editing is refused by the model, not by the widgets
 ---------------------------------------------------
@@ -33,9 +35,19 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
 
 from ...config.schema import PickingConfig
 from ..theme import SPACING
-from ..theme.factory import double_spin_box, spin_box
+from ..theme.factory import Section, double_spin_box, heading, spin_box
+from .picking_fields import (ADVANCED_GROUPS, FIELDS, FLOATER_MODE, MAIN,
+                             MISS_POLICY, RUN)
 
-__all__ = ["PickingSettingsDialog", "field_widget"]
+__all__ = ["PickingSettingsDialog", "field_widget", "TROUBLE"]
+
+# The settings behind most failed pickups and deposits. The status bar's
+# amber, for the same reason: it has to read as "look here" in either theme.
+TROUBLE = "#f0a030"
+# Fields the schema has and `picking_fields` does not describe yet.
+OTHER = "Other"
+LABEL_WIDTH = 230
+LABELS = {"miss_policy": MISS_POLICY, "floater_mode": FLOATER_MODE}
 
 log = logging.getLogger(__name__)
 
@@ -187,37 +199,56 @@ def field_widget(name: str, annotation, value, *, labels: dict | None = None,
 
 
 class PickingSettingsDialog(QDialog):
-    """The whole of `PickingConfig`, editable, saved to the profile."""
+    """The whole of `PickingConfig`, editable, saved to the profile: the
+    settings a run is tuned with first, the technical ones folded under
+    Advanced (`picking_fields`)."""
 
     def __init__(self, config: PickingConfig, *, profile_name: str = "",
                  parent: QWidget | None = None):
         super().__init__(parent)
         self.setWindowTitle("Picking settings")
-        self.resize(640, 760)
+        self.resize(760, 820)
         self._config = config
         self._rows: dict[str, _Row] = {}
+        self._labels: dict[str, QLabel] = {}
 
         self.filter = QLineEdit(self)
-        self.filter.setPlaceholderText("filter by name…")
+        self.filter.setPlaceholderText("filter…")
         self.filter.setClearButtonEnabled(True)
         self.filter.textChanged.connect(self._apply_filter)
 
-        form_host = QWidget()
-        self._form = QFormLayout(form_host)
-        self._form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        self._form.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        for name, field in type(config).model_fields.items():
-            row = _Row(name, field.annotation, getattr(config, name))
-            label = QLabel(name)
-            label.setToolTip(self._hint(name, field))
-            row.widget.setToolTip(label.toolTip())
-            self._form.addRow(label, row.widget)
-            self._rows[name] = row
+        forms = self._forms(config)
+        host = QWidget()
+        column = QVBoxLayout(host)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        for title in (MAIN, RUN):
+            section = Section(title, parent=host)
+            section.body.layout().addLayout(forms.pop(title))
+            column.addWidget(section)
+        self.advanced = Section("Advanced", collapsed=True, parent=host)
+        for title in (*ADVANCED_GROUPS, OTHER):
+            form = forms.pop(title, None)
+            if form is None:
+                continue
+            self.advanced.body.layout().addWidget(heading(title, 3))
+            self.advanced.body.layout().addLayout(form)
+        column.addWidget(self.advanced)
+        column.addStretch(1)
 
         area = QScrollArea(self)
         area.setWidgetResizable(True)
-        area.setWidget(form_host)
+        # Down only: the labels wrap to the width there is.
+        area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        area.setWidget(host)
+
+        legend = QLabel(
+            f"Picking settings, saved into the profile's picking.json. "
+            f"<span style='color:{TROUBLE}'><b>Amber</b></span> marks the ones "
+            f"behind most failed pickups and deposits; hover over any setting "
+            f"for what it does.")
+        legend.setWordWrap(True)
 
         self.message = QLabel()
         self.message.setWordWrap(True)
@@ -239,36 +270,81 @@ class PickingSettingsDialog(QDialog):
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addWidget(QLabel(
-            "Everything the picking run reads. Saved into the profile's "
-            "picking.json; the values a run uses are the ones stored there."))
+        layout.addWidget(legend)
         layout.addWidget(self.filter)
         layout.addWidget(area, 1)
         layout.addWidget(self.message)
         layout.addWidget(buttons)
 
+    def _forms(self, config: PickingConfig) -> dict[str, QFormLayout]:
+        """A form per group, every field of the schema in one of them: the
+        described ones in `FIELDS`' order, the rest under OTHER."""
+        fields = type(config).model_fields
+        order = [n for n in FIELDS if n in fields] + [
+            n for n in fields if n not in FIELDS]
+        forms: dict[str, QFormLayout] = {}
+        for name in order:
+            spec = FIELDS.get(name)
+            group = spec.group if spec else OTHER
+            form = forms.get(group)
+            if form is None:
+                form = forms[group] = QFormLayout()
+                form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+                form.setFieldGrowthPolicy(
+                    QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+            field = fields[name]
+            row = _Row(name, field.annotation, getattr(config, name),
+                       labels=LABELS.get(name), unit=spec.unit if spec else "")
+            label = QLabel(spec.label if spec else name)
+            # Wrapped and capped, so a long name takes two lines rather
+            # than pushing the number off the dialog.
+            label.setWordWrap(True)
+            label.setFixedWidth(LABEL_WIDTH)
+            if spec and spec.trouble:
+                label.setText(f"<span style='color:{TROUBLE}'><b>"
+                              f"{spec.label}</b></span>")
+            tip = self._hint(name, field, spec)
+            label.setToolTip(tip)
+            row.widget.setToolTip(tip)
+            form.addRow(label, row.widget)
+            self._rows[name] = row
+            self._labels[name] = label
+        return forms
+
     @staticmethod
-    def _hint(name: str, field) -> str:
-        annotation = getattr(field.annotation, "__name__", None) or str(field.annotation)
-        hint = f"{name}: {annotation}\ndefault {field.default!r}"
-        if name == "model_file":
-            # A free-text box for a file name is correct and is not what
-            # anyone should be typing into by choice; the Profile page
-            # offers what is actually in ml_models/.
-            hint += "\nchosen from the weights in ml_models/ on the Profile page"
-        return hint
+    def _hint(name: str, field, spec) -> str:
+        """Rich text: what the setting does, the symptom that points at it,
+        and its code name and default for whoever reads picking.json."""
+        default = field.default
+        if isinstance(default, tuple):
+            default = " to ".join(f"{v:g}" if isinstance(v, float) else str(v)
+                                  for v in default)
+        if spec is None:
+            return (f"<b>{name}</b><br>Not described yet: see the comment "
+                    f"beside it in config/schema.py.<br><i>default {default}"
+                    f"</i>")
+        parts = [f"<b>{spec.label}</b>", spec.tip]
+        if spec.trouble:
+            parts.append(f"<span style='color:{TROUBLE}'><b>If something "
+                         f"fails:</b></span> {spec.trouble}")
+        parts.append(f"<i>{name} in picking.json, default {default}"
+                     f"{' ' + spec.unit if spec.unit else ''}</i>")
+        # Wrapped, not one line across the screen: a <p> with a width.
+        return "<p style='white-space:normal; width:360px'>" + \
+            "<br><br>".join(parts) + "</p>"
 
     def _apply_filter(self, text: str) -> None:
+        """Rows whose screen name or code name hold the text. Advanced opens
+        while a filter is typed, so a match folded inside it is seen."""
         wanted = text.strip().lower()
-        for index in range(self._form.rowCount()):
-            label = self._form.itemAt(index, QFormLayout.ItemRole.LabelRole)
-            field = self._form.itemAt(index, QFormLayout.ItemRole.FieldRole)
-            if label is None or field is None:
-                continue
-            name = label.widget().text()
-            shown = not wanted or wanted in name.lower()
-            label.widget().setVisible(shown)
-            field.widget().setVisible(shown)
+        for name, row in self._rows.items():
+            spec = FIELDS.get(name)
+            words = f"{name} {spec.label if spec else ''}".lower()
+            shown = not wanted or wanted in words
+            self._labels[name].setVisible(shown)
+            row.widget.setVisible(shown)
+        if wanted:
+            self.advanced.set_collapsed(False)
 
     def _restore_defaults(self) -> None:
         """The model's own defaults, not this dialog's idea of them."""

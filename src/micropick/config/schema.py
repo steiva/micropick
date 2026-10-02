@@ -375,7 +375,9 @@ class PickingConfig(BaseModel):
     well_offset_x: float = 0.0        # 384 well plate
     well_offset_y: float = 0.0        # 384 well plate
     deposit_offset_z: float = 0.5
-    destination_slot: int = 5
+    # Where the cuboids go is the plate plan's: its destination names the
+    # plate and the slot. The `destination_slot` this replaced was read by
+    # nothing; see `_drop_derived` for the saved files that still carry it.
     deposit_z_optional: float = 67.0
 
     # ---------------------- video ----------------------
@@ -488,9 +490,14 @@ class PickingConfig(BaseModel):
     def _drop_derived(cls, data):
         """pickup_height is serialised for readability but is derived, so it is
         accepted and discarded on the way in. This has to sit here rather than
-        in from_dict, because model_validate_json is also an entry path."""
-        if isinstance(data, dict) and "pickup_height" in data:
-            data = {k: v for k, v in data.items() if k != "pickup_height"}
+        in from_dict, because model_validate_json is also an entry path.
+
+        destination_slot is retired - the plate plan says where cuboids go -
+        and is dropped the same way, so a picking.json saved before still
+        loads under extra="forbid"."""
+        retired = ("pickup_height", "destination_slot")
+        if isinstance(data, dict) and any(k in data for k in retired):
+            data = {k: v for k, v in data.items() if k not in retired}
         return data
 
     @field_validator("cuboid_size_threshold", "aspect_ratio_window",
