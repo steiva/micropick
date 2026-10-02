@@ -198,8 +198,11 @@ class SettingsPage(QWidget):
         self.port.blockSignals(False)
         for key, line in self.folders.items():
             line.setText(getattr(settings, key) or "")
-        self.save_state.setText(self.session.settings_note
-                                or f"Saved in {settings_path()}.")
+        self.save_state.setText(
+            self.session.settings_note
+            or (f"Saved in {settings_path()}." if settings_path().is_file()
+                else f"The defaults: nothing is saved yet. Save writes "
+                     f"{settings_path()}."))
         self._refresh()
 
     def _typed(self) -> AppSettings:
