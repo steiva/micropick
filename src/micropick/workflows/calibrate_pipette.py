@@ -53,6 +53,16 @@ class TipCalibrationError(RuntimeError):
     pass
 
 
+class _TooFewCrosshairs(TipCalibrationError):
+    """One frame without the pattern: the disc is not on the module, or
+    cannot be seen."""
+
+
+# What to do, said instead of the count when no frame showed the pattern.
+NO_DISC = ("Place the crosshair calibration disc onto the calibration module "
+           "and retry; check lighting and focus.")
+
+
 def _expected_under_resolution(under_cam, given, profile) -> tuple[int, int]:
     """The lower camera mode this calibration is defined at.
 
@@ -161,7 +171,7 @@ class TipDetector:
         """
         points = np.array([d.xy for d in dets if d.label == self.point_label])
         if len(points) < 5:
-            raise TipCalibrationError(
+            raise _TooFewCrosshairs(
                 f"found {len(points)} crosshairs, need the centre plus four "
                 f"neighbours; check lighting and focus"
             )
@@ -224,7 +234,7 @@ class TipDetector:
         centre_tol_px = centre_tol_px if centre_tol_px is not None else 0.35 * w
 
         centres, tips, ratios, cvs, last, last_dets = [], [], [], [], None, []
-        problems = []
+        problems, too_few = [], 0
         for i in range(frames):
             frame = camera.read_after(time.monotonic())
             last = frame
@@ -234,6 +244,7 @@ class TipDetector:
                     dets, frame.shape, spacing_mm, centre_tol_px)
             except TipCalibrationError as exc:
                 problems.append(str(exc))
+                too_few += isinstance(exc, _TooFewCrosshairs)
                 continue
             centres.append(c)
             ratios.append(mmpp)
@@ -243,6 +254,8 @@ class TipDetector:
             if tip is not None:
                 tips.append(tip)
 
+        if not centres and too_few == frames:
+            raise TipCalibrationError(NO_DISC)
         if not centres:
             raise TipCalibrationError(
                 f"no usable reading in {frames} frames. Last problem: "
