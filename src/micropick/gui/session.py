@@ -21,7 +21,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Before anything that resolves a path. `paths` reads MICROPICK_ROOT at call
@@ -273,6 +273,9 @@ class Session(QObject):
     # Stop was pressed (the status bar's button, or Esc): every page stops
     # what it runs at its next safe point. See `request_stop`.
     stop_requested = Signal()
+    # A page asks for another to be shown, by its name in `shell.PAGES`:
+    # the checklist before a run sends the operator where a step is done.
+    page_requested = Signal(str)
 
     def __init__(self, options, parent: QObject | None = None):
         super().__init__(parent)
@@ -485,6 +488,10 @@ class Session(QObject):
         self.profile.picking = self.profile.picking.model_copy(
             update={"dish_bottom": round(float(z), 2)})
         self.profile.save_picking()
+        # When, for the checklist before a run: a calibration's fact, kept
+        # with the others. Not archived for this: nothing else changed.
+        self.profile.calibration.dish_bottom_set_at = datetime.now(timezone.utc)
+        self.profile.save_calibration(backup=False)
         log.info("dish bottom %.2f -> %.2f mm in profile %r", before,
                  self.profile.picking.dish_bottom, self.profile.name)
         self.profile_changed.emit(self.profile)

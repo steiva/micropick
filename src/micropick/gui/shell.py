@@ -440,6 +440,7 @@ class MainWindow(QMainWindow):
         # their own stop leave it to this one: two shortcuts on one key in
         # one window cancel each other out and neither fires.
         self.status.stop.clicked.connect(self._stop)
+        self.session.page_requested.connect(self.show_page)
         self._stop_key = QShortcut(QKeySequence("Esc"), self)
         self._stop_key.setContext(Qt.ShortcutContext.WindowShortcut)
         self._stop_key.activated.connect(self._stop)

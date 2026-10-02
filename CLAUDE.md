@@ -90,6 +90,22 @@ poses are set with **Set position** / **Set shake position**; the pipette
 calibration's way back is **Go to last saved**, the Picking page's **Go to
 picking position**.
 
+### For biologists: stop, guard, say what to do
+
+- **Stop** is the status bar's red button and Esc, window-wide; no page
+  binds Esc itself (two shortcuts on one key cancel out). First press:
+  `Session.stop_requested`, every page stops at its next safe point. Second
+  press within 10 s while work runs: `Session.halt_robot` stops the robot
+  session (the server's only immediate stop) and a dialog says what next.
+- A page that runs robot work listens to `stop_requested`.
+- Before a picking run the page shows a checklist (`widgets.checklist`):
+  each condition done / to do / note, with a button to the page where it
+  is done (`Session.page_requested`). Only "to do" blocks Start.
+- Picking settings have bounds (`picking_fields.BOUNDS`), Save lists the
+  changes old -> new, and the previous picking.json is archived.
+- Errors on screen are sentences (`workers.describe_error`); the log is
+  also written to a file per day, and Save report zips it with the profile.
+
 ### Settings belong to the computer, not the profile
 
 The robot's address and the output folders (Outputs, Logs, Images) are

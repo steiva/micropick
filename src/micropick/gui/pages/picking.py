@@ -141,6 +141,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.checklist import NOTE, OK, TODO, Check, Checklist
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.size_histogram import SizeHistogram
@@ -188,6 +189,26 @@ HIST_AFTER = ("Only the shape windows and the spacing rule can reject one "
               "after that, so this is the most a run could pick from this "
               "frame.")
 
+# A calibration older than this is said, not refused: an old one may be
+# perfectly good, and only the operator knows whether anything was moved.
+STALE_DAYS = 30
+
+
+def _dated(text: str, when, page: str | None = None, place: str = ""):
+    """A done check with its date, or a note when it is old."""
+    if when is None:
+        return Check(text)
+    from datetime import datetime, timezone
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - when).days
+    local = when.astimezone().strftime("%Y-%m-%d")
+    if age > STALE_DAYS:
+        return Check(f"{text} on {local}, {age} days ago: redo it if anything "
+                     f"was moved or replaced since.", NOTE, page, place)
+    return Check(f"{text} on {local}")
+
+
 CONFIRM_START = (
     "Make sure the dish and the well plate are in place and their lids are "
     "off, and that the picking settings are right.\n\n"
@@ -231,11 +252,13 @@ class PickingPage(QWidget):
 
         self.view = CameraView(self)
 
-        panel = CardColumns([self._dish_card(), self._bottom_card(),
-                             self._shake_card(),
-                             self._analysis_card(),
-                             self._histogram_card(), self._run_card(),
-                             self._jog_section()], self)
+        cards = [self._dish_card(), self._bottom_card(), self._shake_card(),
+                 self._analysis_card(), self._histogram_card(),
+                 self._run_card(), self._jog_section()]
+        # The run first: its checklist is what an operator works down, and
+        # Start is what they came for. The cards it points to follow.
+        cards.insert(0, cards.pop(5))
+        panel = CardColumns(cards, self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -426,6 +449,10 @@ class PickingPage(QWidget):
         self.run_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.run_state)
+        # Before a run: each condition with its mark and a way to it.
+        self.checklist = Checklist(self)
+        self.checklist.go.connect(self.session.page_requested)
+        box.layout().addWidget(self.checklist)
         return box
 
     def _jog_section(self) -> QWidget:
@@ -738,59 +765,112 @@ class PickingPage(QWidget):
 
     def _run_problems(self) -> list[str]:
         """Everything that stops a run from starting, in sentences."""
+        return [check.text for check in self._checks() if check.blocking]
+
+    def _checks(self) -> list[Check]:
+        """What has to be true before a run, in the order it is done, each
+        with where it is done (`widgets.checklist`). The "to do" ones stop
+        Start; the notes are said and left to the operator."""
         session, out = self.session, []
         profile = session.profile
-        if session.robot is None:
-            out.append("no robot: connect it on the Profile page.")
+        out.append(Check("Robot connected") if session.robot is not None else
+                   Check("no robot: connect it on the Profile page.", TODO,
+                         "profile", "Profile"))
         if profile is None:
-            out.append("no profile loaded.")
+            out.append(Check("no profile loaded.", TODO, "profile",
+                             "Profile"))
             return out
-        if session.routine is None:
-            out.append("no plate plan: make one on the Plate plan page. A run "
-                       "with nowhere to put a cuboid picks one up and then "
-                       "asks what to do with it.")
-        elif session.routine.needs_confirmation:
-            out.append("the plate plan was restored with progress on it and "
-                       "has not been confirmed; confirm it on the Plate plan "
-                       "page.")
+        tip = session.tip.attached
+        out.append(Check("A tip is on the pipette") if tip is True else Check(
+            ("the robot reports no tip on the pipette" if tip is False else
+             "the robot's tip state is unknown")
+            + ": pick one up on the Robot & Deck page.", TODO, "labware",
+            "Robot & Deck"))
+
+        routine = session.routine
+        if routine is None:
+            out.append(Check(
+                "no plate plan: make one on the Plate plan page. A run with "
+                "nowhere to put a cuboid picks one up and then asks what to "
+                "do with it.", TODO, "routine", "Plate plan"))
+        elif routine.needs_confirmation:
+            out.append(Check(
+                "the plate plan was restored with progress on it and has not "
+                "been confirmed; confirm it on the Plate plan page.", TODO,
+                "routine", "Plate plan"))
+        else:
+            out.append(Check(f"Plate plan {getattr(routine, 'name', '')!r}"))
+        if routine is not None and session.robot is not None:
+            slot = str(routine.destination.slot)
+            state = session.run_state
+            if state is None or slot not in state.labware:
+                out.append(Check(
+                    f"the robot session holds nothing in slot {slot}, which "
+                    f"is where this plate plan delivers. Load the plate on "
+                    f"the Robot & Deck page.", TODO, "labware",
+                    "Robot & Deck"))
+            else:
+                problem = next((p for p in session.deck_problems()
+                                if p.slot == slot), None)
+                out.append(Check(
+                    f"slot {slot}: the plate was loaded without the module's "
+                    f"offset, and a well move would hit the module. Load it "
+                    f"again on the Robot & Deck page.", TODO, "labware",
+                    "Robot & Deck") if problem is not None else
+                    Check(f"The plate is on the deck, in slot {slot}"))
+
+        calibration = profile.calibration
         if profile.pixel_map is None:
-            out.append("no pixel map: run the camera calibration.")
-        if profile.calibration.pipette_offset is None:
-            out.append("no pipette offset: run the pipette calibration.")
+            out.append(Check("no pixel map: run the camera calibration.",
+                             TODO, "calibration", "Calibration"))
+        else:
+            out.append(_dated("Camera calibrated",
+                              profile.pixel_map.fitted_at, "calibration",
+                              "Calibration"))
+        if calibration.pipette_offset is None:
+            out.append(Check("no pipette offset: run the pipette "
+                             "calibration.", TODO, "calibration",
+                             "Calibration"))
+        else:
+            out.append(_dated("Pipette offset measured",
+                              calibration.pipette_offset.measured_at,
+                              "calibration", "Calibration"))
+        bottom = calibration.dish_bottom_set_at
+        out.append(_dated(
+            f"Dish bottom set ({profile.picking.dish_bottom:.2f} mm)", bottom)
+            if bottom is not None else Check(
+                f"The dish bottom ({profile.picking.dish_bottom:.2f} mm) was "
+                f"never measured here: set it under Dish bottom (Z) if "
+                f"cuboids are not picked up.", NOTE))
+
         # Both poses the workflow drives to by name. `shake` is only
         # reached when the dish needs stirring, so without this check a run
         # can start, work for ten minutes and then fail at the one moment
         # the operator is not watching.
-        for name, what in ((DISH_POSITION,
-                            "park over the dish and Set position"),
-                           (SHAKE_POSITION,
-                            "jog the tip into the dish where it should stir "
-                            "and Set shake position")):
-            if name not in profile.positions:
-                out.append(f"no {name!r} position: {what}.")
-        if self.detector.model is None:
-            out.append("no detector: choose the weights on the Profile page.")
-        if self._camera() is None:
-            out.append("the camera is not open.")
-        if self.clips_box.isChecked() and self._lower_camera() is None:
-            w, h = self._clip_mode()
-            out.append(self._clips_failure + "; untick Save pickup clips, "
-                       "or choose another mode in Settings."
-                       if self._clips_failure else
-                       f"the lower camera is not open in {w}x{h} yet, the "
-                       f"clips' mode: it is being opened.")
-        if session.tip.attached is not True:
-            out.append("the robot reports no tip on the pipette"
-                       if session.tip.attached is False else
-                       "the robot's tip state is unknown")
-            out[-1] += ": pick one up on the Robot & Deck page."
-        if session.routine is not None and session.robot is not None:
-            slot = str(session.routine.destination.slot)
-            state = session.run_state
-            if state is None or slot not in state.labware:
-                out.append(f"the robot session holds nothing in slot "
-                           f"{slot}, which is where this plate plan delivers. "
-                           f"Load the plate on the Robot & Deck page.")
+        for name, what, done in (
+                (DISH_POSITION, "park over the dish and Set position",
+                 "Picking position set"),
+                (SHAKE_POSITION, "jog the tip into the dish where it should "
+                                 "stir and Set shake position",
+                 "Shake position set")):
+            out.append(Check(done) if name in profile.positions else
+                       Check(f"no {name!r} position: {what}.", TODO))
+        out.append(Check("Detector loaded") if self.detector.model is not None
+                   else Check("no detector: choose the weights on the "
+                              "Profile page.", TODO, "profile", "Profile"))
+        out.append(Check("Camera open") if self._camera() is not None else
+                   Check("the camera is not open.", TODO, "profile",
+                         "Profile"))
+        if self.clips_box.isChecked():
+            if self._lower_camera() is not None:
+                out.append(Check("Lower camera open for the clips"))
+            else:
+                w, h = self._clip_mode()
+                out.append(Check(
+                    self._clips_failure + "; untick Save pickup clips, or "
+                    "choose another mode in Settings." if self._clips_failure
+                    else f"the lower camera is not open in {w}x{h} yet, the "
+                         f"clips' mode: it is being opened.", TODO))
         return out
 
     def _confirm_start(self) -> bool:
@@ -1242,17 +1322,26 @@ class PickingPage(QWidget):
                 f"folder for the run in {paths.clips_dir(create=False)}")
         self.clips_state.setVisible(self.clips_box.isChecked())
 
-        problems = self._run_problems()
+        checks = self._checks()
+        problems = [check.text for check in checks if check.blocking]
         self.start_button.setEnabled(not busy and not running and not problems)
         self.resume_button.setEnabled(self._waiting())
         self.pause_button.setEnabled(running)
         self.stop_button.setEnabled(running)
+        self.checklist.setVisible(not running)
+        if not running:
+            self.checklist.show_checks(checks)
         if running:
             self.run_state.setText(
                 f"{self._state_text} — {self._last_event}\n"
                 + "  ".join(f"{key}: {what}" for key, what, _ in KEYS))
         elif problems:
-            self.run_state.setText("\n".join("• " + p for p in problems))
+            todo = len(problems)
+            self.run_state.setText(
+                (self._run_message + "\n\n" if self._run_message else "")
+                + f"Before Start: {todo} thing{'s' if todo != 1 else ''} to "
+                  f"do, marked red below.")
         else:
             self.run_state.setText(
-                self._run_message or "ready to start.")
+                (self._run_message + "\n\n" if self._run_message else "")
+                + "Ready to start.")

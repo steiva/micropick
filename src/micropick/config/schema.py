@@ -341,6 +341,10 @@ class Calibration(BaseModel):
     tip_target: TipTarget = Field(default_factory=lambda: TipTarget())
     floater_baseline: FloaterBaseline | None = None
     homography: CameraHomography | None = None
+    # When the dish bottom (PickingConfig.dish_bottom) was last set by
+    # touching the dish with the tip, on the Picking page. The value is a
+    # picking setting; when it was measured is a calibration's fact.
+    dish_bottom_set_at: datetime | None = None
 
     @property
     def is_ready(self) -> bool:
