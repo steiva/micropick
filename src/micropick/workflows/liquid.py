@@ -30,11 +30,19 @@ and a measured bottom is often just that. So it is reached as notebook 03
 did (`_descend`): a `move_to_well` to over the measured rim, the pose read
 there, the engine's `prepareToAspirate` while the tip is still above the
 liquid, and one straight `move_to_coordinates` down to the absolute Z; the
-liquid commands there are the in-place ones. Leaving it, the tip goes up
-out of the same well with a well command - `move_to_well` to the top,
-`LIFT_OUT_MM` over it, straight above where it was (`_lift_out`) - rather
-than a retract of the whole axis: from there the robot has put the tip
-where it is, and finds the next well by its own path.
+liquid commands there are the in-place ones.
+
+Leaving a well the robot does not know the tip is in
+----------------------------------------------------
+After a move by coordinates - down to a measured bottom, or the small rises
+of a slow lift - the robot no longer knows the tip is in a well, and its
+next well command plans from nowhere: up to its travel height, over, down.
+Out of the well the tip was in, that was up, down to the top of the same
+well, and up again to go anywhere. So the tip leaves such a well with one
+`move_to_well` to its top, `force_direct`: straight up, and the robot knows
+again which well it stands over (`_lift_out`, `LiquidState.loose`). From
+there it finds the next well by its own path, and a next step in the same
+well is a short move within it.
 
 A saved point is the robot's coordinates, not a place it plans a path to,
 so it is reached by the rules of manual control (`workflows.manual`): the
@@ -70,12 +78,16 @@ tip moves, and `problems` plays the run through on paper to say so first.
 Blowing out
 -----------
 The robot refuses an aspirate in place straight after a blow out until the
-plunger is prepared again. In a well - `this_well`, `a well`, or `here`
-while the tip is still where such a step put it - the blow out is the
-well-based command followed by the washing notebook's shake, a well-based
-10 µl in and out that prepares the plunger by itself and knocks the drop
-off. Anywhere else it is a blow out in place and then the engine's
-`prepareToAspirate` (`hardware.protocols.prepare_to_aspirate`).
+plunger is prepared again. In a well - `this_well`, `a well`, a measured
+bottom, or `here` while the tip is still where such a step put it - the
+blow out is done where the step is, and then the tip goes straight up to
+the top of that well for the washing notebook's shake: a well-based 10 µl
+in and out that prepares the plunger by itself and knocks the drop off. At
+the top, because a well-based aspirate with the plunger not ready first
+goes to the top to prepare it and then back down to where it was asked:
+done at the bottom, that was the tip down into the liquid again. Anywhere
+else it is a blow out in place and then the engine's `prepareToAspirate`
+(`hardware.protocols.prepare_to_aspirate`).
 """
 
 from __future__ import annotations
@@ -107,10 +119,6 @@ SHAKE_FLOW = 50.0
 # How far over the measured rim the tip stops before going straight down
 # to the measured bottom.
 APPROACH_MM = 2.0
-
-# How far over the robot's well top the tip comes up out of a measured
-# bottom before going anywhere else.
-LIFT_OUT_MM = 5.0
 
 # Volumes are compared with this much slack: 0.1 + 0.2 is not 0.3.
 VOLUME_TOL = 1e-6
@@ -159,6 +167,9 @@ class LiquidState:
     next location is driven to); `last` is the last location driven to and
     its well, for the first `here` after the tip was raised. `z_top` is the
     top of the Z travel with the tip that is fitted (`manual.raise_tip`).
+    `loose`: the tip is in a well but got there by coordinates, so the robot
+    does not know it; see "Leaving a well the robot does not know the tip is
+    in".
     """
 
     in_tip: float = 0.0
@@ -167,6 +178,7 @@ class LiquidState:
     at: tuple | None = None
     last: tuple[Location, Group, str] | None = None
     z_top: float | None = None
+    loose: bool = False
 
     def reset(self) -> None:
         """For a run from the start. What is in the tip is still there."""
@@ -174,6 +186,7 @@ class LiquidState:
         self.resume = {}
         self.at = None
         self.last = None
+        self.loose = False
 
 
 def _gate(pause, stop) -> None:
@@ -377,6 +390,9 @@ def go(robot: Robot, location: Location, group: Group, well: str,
     elif location.level == MEASURED_BOTTOM:
         _leave_for_well(robot, state, plates, log)
         _descend(robot, location, group, well, plates, log, prepare)
+        state.at, state.last = key, (location, group, well)
+        state.loose = True
+        return
     else:
         place = _well_target(location, group, well, plates, state)
         _leave_for_well(robot, state, plates, log)
@@ -384,13 +400,15 @@ def go(robot: Robot, location: Location, group: Group, well: str,
         _in_well(robot, "move_to_well", place, verbose=False)
     state.at = key
     state.last = (location, group, well)
+    state.loose = False
 
 
 def _leave_for_well(robot: Robot, state: LiquidState,
                     plates: dict[str, Plate], log) -> None:
     """Before a command the robot moves into a well by itself: the tip up
     first, unless a well command of the robot's put it where it is - out
-    of a measured bottom by one (`_lift_out`). See "Getting there"."""
+    of a well it reached by coordinates by one (`_lift_out`). See "Getting
+    there"."""
     _lift_out(robot, state, plates, log)
     if state.at is None or state.at[0] not in ("this_well", "well"):
         state.z_top = moves.raise_tip(robot, state.z_top, log=log)
@@ -398,25 +416,37 @@ def _leave_for_well(robot: Robot, state: LiquidState,
 
 def _lift_out(robot: Robot, state: LiquidState, plates: dict[str, Plate],
               log) -> None:
-    """If the tip stands at a measured bottom, up out of that well with the
-    robot's own well move: the top, `LIFT_OUT_MM` over it, straight above.
-    Then the robot has put it where it is, as after any well command."""
-    if (state.at is None or state.at[0] not in ("this_well", "well")
-            or state.at[3] != MEASURED_BOTTOM or state.last is None):
+    """If the tip is in a well the robot does not know about (`loose`),
+    straight up to that well's top (`_to_top`). Then the robot has put it
+    where it is, as after any well command."""
+    if (not state.loose or state.at is None
+            or state.at[0] not in ("this_well", "well") or state.last is None):
         return
-    location, group, well = state.last
+    _to_top(robot, state, plates, state.last, log)
+
+
+def _to_top(robot: Robot, state: LiquidState, plates: dict[str, Plate],
+            where: tuple, log):
+    """The tip straight up (or down) to the top of the well of `where` -
+    (location, group, well) - over the same point of it: a `move_to_well`
+    with `force_direct`, so it is one straight line and the robot knows the
+    well afterwards. At the measured rim where that is above the robot's
+    top. Returns the well target there, for a well command at the top."""
+    location, group, well = where
     plate, target = _plate_well(location, group, well, plates)
     x, y, _z = (float(v) for v in location.offset)
-    cx, cy, _cz = plate.centre or (0.0, 0.0, 0.0)
-    _say(log, f"up out of {target}: top +{LIFT_OUT_MM:g} mm")
+    cx, cy, cz = (float(v) for v in (plate.centre or (0.0, 0.0, 0.0)))
+    up = round(max(0.0, cz), 3)
+    _say(log, f"straight up to the top of {target}")
+    offset = (round(x + cx, 3), round(y + cy, 3), up)
     require_ok(robot.move_to_well(
-        plate.labware_id, target, well_location="top",
-        offset=(round(x + cx, 3), round(y + cy, 3), LIFT_OUT_MM),
-        verbose=False), "move to well")
-    lifted = location.model_copy(update={"level": "top",
-                                         "offset": [x, y, LIFT_OUT_MM]})
-    state.at = lifted.key(well)
-    state.last = (lifted, group, well)
+        plate.labware_id, target, well_location="top", offset=offset,
+        force_direct=True, verbose=False), "move to well")
+    top = location.model_copy(update={"level": "top", "offset": [x, y, up]})
+    state.at = top.key(well)
+    state.last = (top, group, well)
+    state.loose = False
+    return (plate.labware_id, target, "top", offset)
 
 
 def _plate_well(location: Location, group: Group, well: str,
@@ -514,7 +544,7 @@ def do_step(robot: Robot, step, group: Group, well: str,
     if (location.kind in ("this_well", "well") and action != "move_to"
             and location.level != MEASURED_BOTTOM):
         place = _well_target(location, group, well, plates, state)
-        if location.key(well) != state.at:
+        if location.key(well) != state.at or state.loose:
             _leave_for_well(robot, state, plates, log)
     else:
         # An aspirate in place needs the plunger ready; an empty tip is made
@@ -527,14 +557,18 @@ def do_step(robot: Robot, step, group: Group, well: str,
     if action == "move_to":
         return "moved"
     # A blow out away from a well command may still be in one: `here`
-    # after a well step.
-    blow_at = (place if place is not None else
-               _well_target(location, group, well, plates, state))
-    said = _liquid(robot, step, place, blow_at, state, pause, stop, log)
+    # after a well step, or a measured bottom.
+    blow_in = _well_of(location, group, well, state)
+
+    def blow() -> None:
+        _blow_out(robot, step, blow_in, state, plates, log)
+
     if place is not None:
         state.at = location.key(well)
         state.last = (location, group, well)
-    return said
+    # After a blow out in a well the tip is at its top (`_blow_out`), and
+    # that is where `state` already says it is.
+    return _liquid(robot, step, place, blow, state, pause, stop, log)
 
 
 def _aspirate(robot: Robot, place, volume: float, rate: float) -> None:
@@ -553,12 +587,15 @@ def _dispense(robot: Robot, place, volume: float, rate: float) -> None:
                  flow_rate=float(rate))
 
 
-def _slow_lift(robot: Robot, step, pause, stop, log) -> None:
+def _slow_lift(robot: Robot, step, state: LiquidState, pause, stop,
+               log) -> None:
     """The aspirate's slow lift, if it has one: small rises with a wait
     between, so the liquid going up with the tip does not pull a cuboid.
-    The next well command takes the tip the rest of the way out."""
+    Moves by coordinates, so the tip is `loose` afterwards and leaves the
+    well straight up (`_lift_out`)."""
     if not step.lift_steps:
         return
+    state.loose = state.at is not None and state.at[0] in ("this_well", "well")
     _say(log, f"slow lift: {step.lift_steps} × {step.lift_step_mm:g} mm, "
               f"{step.lift_pause_s:g} s apart")
     for _ in range(step.lift_steps):
@@ -567,10 +604,11 @@ def _slow_lift(robot: Robot, step, pause, stop, log) -> None:
         time.sleep(float(step.lift_pause_s))
 
 
-def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
+def _liquid(robot: Robot, step, place, blow, state: LiquidState, pause,
             stop, log) -> str:
     """The liquid part of a step: in the well `place` with the robot's
-    well-based commands, or where the tip is when `place` is None."""
+    well-based commands, or where the tip is when `place` is None. `blow()`
+    blows out (`_blow_out`)."""
     action = step.action
     at = f" in {_where(place)}" if place is not None else ""
     if action == "aspirate":
@@ -578,7 +616,7 @@ def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
                   f"µl/s{at}")
         _aspirate(robot, place, step.volume_ul, step.flow_rate)
         state.in_tip += step.volume_ul
-        _slow_lift(robot, step, pause, stop, log)
+        _slow_lift(robot, step, state, pause, stop, log)
         return f"aspirated {step.volume_ul:g} µl"
     if action == "dispense" and step.auto_empty:
         volume = state.in_tip
@@ -587,7 +625,7 @@ def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
                       f"µl/s{at}")
             _dispense(robot, place, volume, step.flow_rate)
         _say(log, f"blow out at {step.flow_rate:g} µl/s{at}")
-        _blow_out(robot, step, blow_at)
+        blow()
         state.in_tip = 0.0
         return f"emptied {volume:g} µl"
     if action == "dispense":
@@ -608,10 +646,23 @@ def _liquid(robot: Robot, step, place, blow_at, state: LiquidState, pause,
         return f"mixed {step.cycles}×"
     if action == "blow_out":
         _say(log, f"blow out at {step.flow_rate:g} µl/s{at}")
-        _blow_out(robot, step, blow_at)
+        blow()
         state.in_tip = 0.0
         return "blown out"
     raise ValueError(f"unknown step {action!r}")
+
+
+def _well_of(location: Location, group: Group, well: str,
+             state: LiquidState):
+    """(location, group, well) of the well the tip is in for this
+    location, a measured bottom included; None when it is not in one."""
+    if location.kind == "here":
+        if state.at is None or state.last is None:
+            return None
+        location, group, well = state.last
+    if location.kind not in ("this_well", "well"):
+        return None
+    return location, group, well
 
 
 def _well_target(location: Location, group: Group, well: str,
@@ -634,21 +685,34 @@ def _well_target(location: Location, group: Group, well: str,
             (round(x + float(cx), 3), round(y + float(cy), 3), round(z, 3)))
 
 
-def _blow_out(robot: Robot, step, target) -> None:
-    """See "Blowing out"."""
+def _blow_out(robot: Robot, step, where, state: LiquidState,
+              plates: dict[str, Plate], log) -> None:
+    """See "Blowing out". `where` is `_well_of` the step: the well the tip
+    is in, or None."""
     rate = float(step.flow_rate)
-    if target is None:
+    if where is None:
         require_ok(robot.blow_out_in_place(flow_rate=rate), "blow out")
         prepare_to_aspirate(robot)
         return
-    labware_id, well, level, offset = target
-    where = dict(well_location=level, offset=offset)
-    require_ok(robot.blow_out(labware_id, well, flow_rate=rate, **where),
-               "blow out")
-    require_ok(robot.aspirate(labware_id, well, volume=SHAKE_UL,
-                              flow_rate=SHAKE_FLOW, **where), "shake up")
-    require_ok(robot.dispense(labware_id, well, volume=SHAKE_UL,
-                              flow_rate=SHAKE_FLOW, **where), "shake down")
+    location, group, well = where
+    target = _well_target(location, group, well, plates, state)
+    if target is None or state.loose:
+        # A measured bottom, or the tip moved by coordinates since: where it
+        # is, which is where the step left it.
+        require_ok(robot.blow_out_in_place(flow_rate=rate), "blow out")
+    else:
+        labware_id, target_well, level, offset = target
+        require_ok(robot.blow_out(labware_id, target_well, flow_rate=rate,
+                                  well_location=level, offset=offset),
+                   "blow out")
+    labware_id, target_well, level, offset = _to_top(robot, state, plates,
+                                                     where, log)
+    top = dict(well_location=level, offset=offset)
+    _say(log, f"plunger reset at the top of {target_well}")
+    require_ok(robot.aspirate(labware_id, target_well, volume=SHAKE_UL,
+                              flow_rate=SHAKE_FLOW, **top), "shake up")
+    require_ok(robot.dispense(labware_id, target_well, volume=SHAKE_UL,
+                              flow_rate=SHAKE_FLOW, **top), "shake down")
 
 
 def _log_row(path: Path | None, **row) -> None:
@@ -667,6 +731,7 @@ def _log_row(path: Path | None, **row) -> None:
 
 def _retract(robot: Robot, state: LiquidState) -> None:
     state.at = None
+    state.loose = False
     try:
         require_ok(robot.retract_axis("leftZ", verbose=False), "retract")
     except Exception:                                # noqa: BLE001
@@ -773,6 +838,7 @@ def run_step(robot: Robot, step, group: Group, well: str,
     it would in a run, from what the tip holds now."""
     state.at = None
     state.last = None
+    state.loose = False
     if step.action == "aspirate":
         index = next((i for i, s in enumerate(group.steps) if s is step),
                      None)

@@ -52,12 +52,16 @@ def test_the_same_place_and_here_do_not_move():
                         BlowOut(), Dispense(location=Location(kind="here"))],
                        wells=["A1"])
     liquid.run(robot, program, PLATES, POSITIONS, LiquidState())
-    assert not [c for c in robot.calls if c[0] == "move_to_well"]
+    # One move only: after the blow out, straight up to the well's top for
+    # the shake, which a well-based aspirate would otherwise go up for and
+    # come back down from.
+    assert [c for c in robot.calls if c[0] == "move_to_well"] == [
+        ("move_to_well", "plate-id", "A1", "top")]
     # The blow out is in the well, so it is the well-based one and the
     # shake that prepares the plunger.
     assert [c[0] for c in _liquid_calls(robot)] == [
         "aspirate", "aspirate", "dispense", "aspirate", "dispense",
-        "blow_out", "aspirate", "dispense"]
+        "blow_out", "move_to_well", "aspirate", "dispense"]
 
 
 def test_a_point_is_reached_with_its_offset():
