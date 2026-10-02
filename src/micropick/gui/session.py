@@ -264,6 +264,9 @@ class Session(QObject):
     # The application's settings were saved; carries the AppSettings.
     settings_changed = Signal(object)
     error = Signal(str)
+    # Stop was pressed (the status bar's button, or Esc): every page stops
+    # what it runs at its next safe point. See `request_stop`.
+    stop_requested = Signal()
 
     def __init__(self, options, parent: QObject | None = None):
         super().__init__(parent)
@@ -1015,6 +1018,47 @@ class Session(QObject):
         button last showed: a workflow may have switched them since."""
         state = self.read_lights()
         self.set_lights(not state)
+
+    # -- stopping ------------------------------------------------------------
+
+    def request_stop(self) -> None:
+        """Ask every page to stop what it is running, at its next safe point:
+        a picking or liquid run between two moves, a calibration sweep
+        between two poses. The move in progress finishes. From the GUI
+        thread; the pages own their runs."""
+        log.warning("STOP pressed: stopping after the current move")
+        self.stop_requested.emit()
+
+    def halt_robot(self) -> None:
+        """Stop the robot where it is, at once. Blocking (one request).
+
+        The robot server's only immediate stop is to stop the robot session
+        itself (POST .../actions stop): the move in progress is cut short,
+        and the session takes no commands afterwards. So the robot is let go
+        of here as far as the pages are concerned - they grey out - while
+        the connection stays, and the Profile page offers New robot session
+        + home, which lifts the tip and homes. The labware has to be loaded
+        again into the new session."""
+        if self._api is None:
+            raise SessionError("not connected")
+        if self.mock:
+            log.warning("robot halted (mock: nothing to cut short)")
+        else:
+            self._api.control_run("stop")
+            log.warning("robot halted: robot session %s stopped",
+                        getattr(self._api, "run_id", "?"))
+        try:
+            self.run_state = _run_state(self._api)
+        except Exception as exc:                     # noqa: BLE001
+            log.warning("could not read the robot session after the stop: %s",
+                        exc)
+        if self.mock and self.run_state is not None:
+            # The mock's run never ends by itself; say what a robot would.
+            self.run_state.status = "stopped"
+        self.robot = None
+        self.run_origin = None
+        self._forget_tip()
+        self.robot_state_changed.emit(self.robot_state)
 
     def refresh_lights(self) -> None:
         """Read the lights again after something switched them behind the

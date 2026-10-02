@@ -255,6 +255,8 @@ class PickingPage(QWidget):
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.routine_changed.connect(lambda _r: self._refresh())
         session.settings_changed.connect(self._on_settings_changed)
+        # The window's Stop, and Esc: see `shell.MainWindow._stop`.
+        session.stop_requested.connect(self._stop_run)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         self.opener.failed.connect(self._open_failed)
@@ -904,6 +906,13 @@ class PickingPage(QWidget):
         self._view_timer.stop()
         self._view = None
         self._run_message = f"run {state}" + self._clips_said()
+        if state == RobotState.CANCELED.value:
+            # Stopped between two moves, which may be between drawing
+            # cuboids in and putting them anywhere.
+            self._run_message += (
+                "\nThe tip may still hold liquid and cuboids: put them back "
+                "into the dish (Liquid handling or Manual control) before "
+                "the next run.")
         log.info("picking run %s", state)
         if state == RobotState.COMPLETED.value:
             self.done.show_done("The run filled the plate plan.")
@@ -984,6 +993,10 @@ class PickingPage(QWidget):
                    "pause": lambda: self.pause_button.toggle(),
                    "stop": self._stop_run}
         for key, _what, action in KEYS:
+            if key == "Esc":
+                # Bound by the window, to Stop for every page; listed here
+                # for the picture's key box.
+                continue
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(actions[action])

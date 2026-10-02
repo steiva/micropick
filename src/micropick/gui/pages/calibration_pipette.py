@@ -156,6 +156,10 @@ class PipetteCalibration(QWidget):
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.profile_changed.connect(lambda _p: self._refresh())
+        # The window's Stop. The routine has no point to stop at between
+        # its moves; only the manual adjustment can be left, which ends it
+        # with nothing saved. A second Stop halts the robot.
+        session.stop_requested.connect(self._on_stop)
         session.tip_changed.connect(lambda _t: self._refresh())
         self._refresh_cameras()
         self._refresh()
@@ -566,6 +570,10 @@ class PipetteCalibration(QWidget):
         self._append("done adjusting")
         self._gate.set()
         self._refresh()
+
+    def _on_stop(self) -> None:
+        if not self.touch_box.isHidden():
+            self._abort()
 
     def _abort(self) -> None:
         self.touch_box.hide()

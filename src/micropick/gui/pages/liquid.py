@@ -211,6 +211,8 @@ class LiquidHandlingPage(QWidget):
 
         self.job_said.connect(self._on_job_said)
         session.profile_changed.connect(lambda _p: self._offer_choices())
+        # The window's Stop, and Esc: see `shell.MainWindow._stop`.
+        session.stop_requested.connect(self._stop_run)
         session.robot_state_changed.connect(lambda _s: self._deck_changed())
         session.labware_changed.connect(lambda _s: self._deck_changed())
         session.tip_changed.connect(self._tip_changed)
@@ -496,6 +498,10 @@ class LiquidHandlingPage(QWidget):
         on screen, so no hidden page claims the key."""
         self._shortcuts = []
         for key, _what, handler in KEYS:
+            if key == "Esc":
+                # Bound by the window, to Stop for every page; listed here
+                # for the picture's key box.
+                continue
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(getattr(self, handler))

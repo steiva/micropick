@@ -28,10 +28,12 @@ shape.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QStackedWidget, QStatusBar,
                                QToolButton, QVBoxLayout, QWidget)
@@ -45,6 +47,7 @@ from .theme import SPACING
 from .widgets.feed_window import FeedWindow
 from .widgets.activity import ActivityIndicator
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
+from .report import save_report_asking
 from .workers import Worker, any_running
 
 if TYPE_CHECKING:                       # app imports this module; annotations
@@ -82,6 +85,27 @@ PAGES = (
 # the palette cannot promise and a fixed amber can.
 TIP_ON = "#f0a030"
 ICON_PX = 18
+
+# The Stop button: a fixed red for the same reason as TIP_ON.
+STOP_TEXT = "Stop"
+STOP_NOW_TEXT = "Stop NOW"
+STOP_STYLE = ("QToolButton { background: #c62828; color: white; "
+              "font-weight: bold; border-radius: 4px; padding: 2px 10px; }"
+              "QToolButton:pressed { background: #8e0000; }")
+# After a first Stop, how long a second one halts the robot at once.
+STOP_AGAIN_S = 10
+
+# What to do after the robot was stopped at once, in order.
+HALTED_STEPS = (
+    "1. Make sure nothing is in the robot's way, then go to the Profile "
+    "page and press New robot session + home. The robot lifts the tip and "
+    "goes to its home position.\n\n"
+    "2. Load the labware again on the Robot & Deck page: the new session "
+    "starts with an empty deck.\n\n"
+    "3. If the tip holds liquid or cuboids, put them back where they came "
+    "from (Liquid handling or Manual control) before anything else.\n\n"
+    "4. Plate plans keep their progress: a picking run carries on from the "
+    "well it was at.")
 
 
 class NavTab(QWidget):
@@ -196,6 +220,20 @@ class StatusBar(QStatusBar):
                                  "outputs are saved")
         self.settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+        # Stop, on every page: red and labelled, so it is found without
+        # looking for it. What it does is the window's (`MainWindow._stop`).
+        self.stop = QToolButton()
+        self.stop.setText(STOP_TEXT)
+        self.stop.setIcon(qta.icon("mdi6.stop-circle", color="white"))
+        self.stop.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.stop.setStyleSheet(STOP_STYLE)
+        self.stop.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.stop.setToolTip(
+            "Stop what the robot is doing (Esc). Press once: everything stops "
+            "after the current move. Press again while it is still moving: "
+            "the robot stops at once, and its session has to be started "
+            "again.")
+
         self.home = QToolButton()
         self.home.setAutoRaise(True)
         self.home.setText("Home robot position")
@@ -218,7 +256,7 @@ class StatusBar(QStatusBar):
         self.addWidget(self.activity, 1)
 
         for widget in (self._profile, self._robot, self._cameras,
-                       self._deck_box, tip, self.home, self.lights,
+                       self._deck_box, tip, self.stop, self.home, self.lights,
                        self.settings):
             self.addPermanentWidget(widget)
         self.show_profile(None)
@@ -398,6 +436,18 @@ class MainWindow(QMainWindow):
         self.status.home.clicked.connect(self._home_robot)
         self.session.robot_state_changed.connect(self._show_home)
         self._home_worker: Worker | None = None
+        # Stop: the button and Esc, window-wide. The pages that bound Esc to
+        # their own stop leave it to this one: two shortcuts on one key in
+        # one window cancel each other out and neither fires.
+        self.status.stop.clicked.connect(self._stop)
+        self._stop_key = QShortcut(QKeySequence("Esc"), self)
+        self._stop_key.setContext(Qt.ShortcutContext.WindowShortcut)
+        self._stop_key.activated.connect(self._stop)
+        self._stop_again_until = 0.0
+        self._stop_reset = QTimer(self)
+        self._stop_reset.setSingleShot(True)
+        self._stop_reset.timeout.connect(self._disarm_stop)
+        self._halt_worker: Worker | None = None
         self.status.camera_clicked.connect(self._show_feed)
         self._feeds: dict[str, FeedWindow] = {}
         self._feed_workers: dict[str, Worker] = {}
@@ -552,6 +602,70 @@ class MainWindow(QMainWindow):
         costs seconds, where homing through a run costs the run."""
         return (any(panel.busy for panel in self.findChildren(JogPanel))
                 or any_running())
+
+    # -- stop ----------------------------------------------------------------
+
+    def _stop(self) -> None:
+        """First press: every page stops at its next safe point. A second
+        press within STOP_AGAIN_S while something still runs: the robot is
+        stopped at once (`Session.halt_robot`)."""
+        now = time.monotonic()
+        if now < self._stop_again_until and any_running():
+            self._halt()
+            return
+        self.session.request_stop()
+        if not any_running():
+            self.status.showMessage("Stop: nothing is moving.", 4000)
+            return
+        self._stop_again_until = now + STOP_AGAIN_S
+        self.status.stop.setText(STOP_NOW_TEXT)
+        self._stop_reset.start(STOP_AGAIN_S * 1000)
+        self.status.showMessage(
+            "Stopping after the current move. Press Stop again to stop the "
+            "robot at once (its session then has to be started again).",
+            STOP_AGAIN_S * 1000)
+
+    def _disarm_stop(self) -> None:
+        self._stop_again_until = 0.0
+        self.status.stop.setText(STOP_TEXT)
+
+    def _halt(self) -> None:
+        self._stop_reset.stop()
+        self._disarm_stop()
+        if self.session._api is None or (self._halt_worker is not None
+                                         and self._halt_worker.running):
+            return
+        worker = Worker(self.session.halt_robot, what="stopping the robot")
+        self._halt_worker = worker
+        worker.finished.connect(self._halted)
+        worker.failed.connect(self._halt_failed)
+        worker.start()
+
+    def _halted(self, _result=None) -> None:
+        self._halt_worker = None
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setWindowTitle("Robot stopped")
+        box.setText("The robot was stopped where it is.")
+        box.setInformativeText(HALTED_STEPS)
+        report = box.addButton("Save report for help…",
+                               QMessageBox.ButtonRole.ActionRole)
+        profile = box.addButton("Go to Profile",
+                                QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is report:
+            save_report_asking(self.session, self)
+        elif box.clickedButton() is profile:
+            self.show_page("profile")
+
+    def _halt_failed(self, reason: str) -> None:
+        self._halt_worker = None
+        _log.error("halt: %s", reason)
+        QMessageBox.critical(
+            self, "Stop", f"The robot could not be stopped from here: {reason}"
+                          f"\n\nUse the robot's own power switch if it is "
+                          f"still moving.")
 
     def _home_robot(self) -> None:
         """Home from the status bar. Through the shown page's jog panel when

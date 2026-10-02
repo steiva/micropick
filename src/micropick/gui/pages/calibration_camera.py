@@ -251,6 +251,8 @@ class CameraCalibration(QWidget):
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(lambda _s: self._refresh())
+        # The window's Stop: the sweep stops at its next pose.
+        session.stop_requested.connect(self._cancel)
         self._refresh_cameras()
         self._refresh()
 
