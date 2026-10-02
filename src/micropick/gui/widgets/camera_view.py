@@ -87,20 +87,32 @@ camera with a map; the page that has one hands the directions over.
 In the position box the jog step ("step 10 mm") is coloured by how far one
 key press moves the gantry (`step_colour`): white up to 3 mm, orange to
 5 mm, red above - a press at 10 mm near the dish is the one to notice.
+
+Saving the picture
+------------------
+A camera button beside the toggles writes the frame on screen to the
+Images folder (`paths.images_dir`, set on the Settings page) as a PNG named
+after the camera and the time. The frame as the camera delivered it: the
+whole sensor, no overlay, no marks, no histogram, no crop and no zoom -
+those are how it is looked at, not what was seen. A held frame is saved as
+held. The writing is on a worker, since a 4000x3000 PNG is a second of
+encoding, and where it went is said on the picture for a few seconds.
 """
 
 from __future__ import annotations
 
 import re
 import time
+from datetime import datetime
 
 import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTransform
 from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel,
-                               QSlider, QWidget)
+                               QSlider, QToolButton, QWidget)
 
+from ... import paths
 from ...core.vision.cuboids import center_crop_box
 from . import overlay_painter
 from .frame import to_qimage
@@ -161,6 +173,9 @@ ZOOM_STEP = 1.25                 # per wheel notch
 FOCUS_RANGE = (0, 1023)
 FOCUS_SETTLE_MS = 60             # coalesce slider moves into one set()
 
+# How long "saved: …" stays on the picture.
+FLASH_MS = 4000
+
 # The size histogram over the picture: its box, in widget pixels.
 HIST_BOX = (300, 150)
 
@@ -185,6 +200,8 @@ class CameraView(QWidget):
     camera_changed = Signal()
     # The "points" box was ticked or cleared.
     marks_toggled = Signal(bool)
+    # A picture was saved; carries its path.
+    snapshot_saved = Signal(str)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -206,6 +223,8 @@ class CameraView(QWidget):
         self._overlay: list = []
         self._marks: list = []
         self._axes: dict | None = None
+        self._flash: list[str] = []               # "saved: …", for a moment
+        self._snapshot_worker = None
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
         self._status: list[str] = []
@@ -270,6 +289,21 @@ class CameraView(QWidget):
         self.sizes_box.toggled.connect(lambda _on: self.update())
         self.sizes_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.sizes_box.hide()
+
+        # Saving the picture: an icon on the picture, as the toggles are.
+        import qtawesome as qta
+        self.snapshot_button = QToolButton(self)
+        self.snapshot_button.setIcon(qta.icon("mdi6.camera", color="white"))
+        self.snapshot_button.setToolTip(
+            "Save the picture as the camera took it - no overlays - to the "
+            "Images folder (set on the Settings page).")
+        self.snapshot_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.snapshot_button.setAutoRaise(True)
+        self.snapshot_button.setStyleSheet(
+            "QToolButton { background: rgba(0,0,0,140); border-radius: 4px; "
+            "padding: 3px; }")
+        self.snapshot_button.clicked.connect(self.save_snapshot)
+        self.snapshot_button.hide()
 
         self.focus_row = QWidget(self)
         row = QHBoxLayout(self.focus_row)
@@ -345,6 +379,7 @@ class CameraView(QWidget):
         self.crosshair_box.setChecked(wanted)
         self.crosshair_box.blockSignals(False)
         self.crosshair_box.setVisible(self._camera is not None)
+        self.snapshot_button.setVisible(self._camera is not None)
         self.marks_box.blockSignals(True)
         self.marks_box.setChecked(self._marks_choice.get(label, False))
         self.marks_box.blockSignals(False)
@@ -406,6 +441,54 @@ class CameraView(QWidget):
         self._axes = dict(axes) if axes else None
         self.update()
 
+    # -- saving the picture -------------------------------------------------
+
+    def save_snapshot(self) -> None:
+        """The frame on screen, whole and without overlays, to a PNG in the
+        Images folder. On a worker; `snapshot_saved` says where."""
+        frame = self._raw
+        if frame is None or (self._snapshot_worker is not None
+                             and self._snapshot_worker.running):
+            return
+        label = "".join(c if c.isalnum() or c in "-_" else "_"
+                        for c in (self._label() or "camera"))
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        path = paths.images_dir() / f"{label}_{stamp}.png"
+        frame = frame.copy()                  # the grab loop moves on
+
+        def write():
+            if not cv2.imwrite(str(path), frame):
+                raise OSError(f"could not write {path}")
+            return str(path)
+
+        from ..workers import Worker
+        worker = Worker(write)
+        self._snapshot_worker = worker
+        worker.finished.connect(self._snapshot_done)
+        worker.failed.connect(self._snapshot_failed)
+        self.snapshot_button.setEnabled(False)
+        worker.start()
+
+    def _snapshot_done(self, path: str) -> None:
+        self._snapshot_worker = None
+        self.snapshot_button.setEnabled(True)
+        self._say_for_a_moment([f"saved: {path}"])
+        self.snapshot_saved.emit(path)
+
+    def _snapshot_failed(self, reason: str) -> None:
+        self._snapshot_worker = None
+        self.snapshot_button.setEnabled(True)
+        self._say_for_a_moment([f"not saved: {reason.splitlines()[0]}"])
+
+    def _say_for_a_moment(self, lines: list[str]) -> None:
+        self._flash = list(lines)
+        self.update()
+        QTimer.singleShot(FLASH_MS, self._end_flash)
+
+    def _end_flash(self) -> None:
+        self._flash = []
+        self.update()
+
     def set_histogram(self, bins) -> None:
         """The size histogram to draw over the picture, or None. See the
         module docstring."""
@@ -443,6 +526,11 @@ class CameraView(QWidget):
         hint = self.crosshair_box.sizeHint()
         self.crosshair_box.move(self.width() - hint.width() - margin, margin)
         self.crosshair_box.resize(hint)
+        # The snapshot button, left of the crosshair toggle, as tall as it.
+        side = hint.height()
+        self.snapshot_button.setGeometry(
+            self.width() - hint.width() - margin - margin // 2 - side, margin,
+            side, side)
         # The toggles stack down the top-right corner, the shown ones only.
         top = margin + hint.height() + margin // 2
         for box in (self.marks_box, self.sizes_box):
@@ -881,7 +969,7 @@ class CameraView(QWidget):
         # them.
         top = self._draw_boxes(painter, [["   ".join(parts)],
                                          self._lost_lines(), self._position,
-                                         self._status])
+                                         self._status, self._flash])
         self._draw_axes(painter, top)
 
     def _draw_histogram(self, painter: QPainter) -> None:

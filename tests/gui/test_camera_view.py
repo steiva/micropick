@@ -205,3 +205,40 @@ def test_a_size_histogram_is_drawn_over_the_picture_without_failing(app):
     view.grab()                                       # paints
     view.set_histogram(None)
     assert view._histogram is None
+
+
+def test_a_snapshot_is_the_frame_itself_in_the_images_folder(app, tmp_path,
+                                                             monkeypatch):
+    import time
+
+    import cv2
+    import numpy as np
+
+    from micropick import paths
+    from micropick.gui.widgets.camera_view import CameraView
+    from micropick.viz import overlays
+    monkeypatch.setenv(paths.ENV_VAR, str(tmp_path))
+    paths.set_overrides(images=str(tmp_path / "pics"))
+    try:
+        frame = np.random.default_rng(0).integers(
+            0, 255, (240, 320, 3), dtype=np.uint8)
+        view = CameraView()
+        view.resize(640, 480)
+        view.hold(frame)
+        # An overlay on the picture: it must not be in the file.
+        view.set_overlay_items([overlays.Circle(center=(100, 100), radius=30,
+                                                color=(0, 0, 255))])
+        saved = []
+        view.snapshot_saved.connect(saved.append)
+        view.save_snapshot()
+        end = time.monotonic() + 5
+        while not saved and time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.01)
+        assert saved, "nothing was saved"
+        path = saved[0]
+        assert path.startswith(str(tmp_path / "pics"))
+        assert np.array_equal(cv2.imread(path), frame)
+        assert any("saved:" in line for line in view._flash)
+    finally:
+        paths.set_overrides()
