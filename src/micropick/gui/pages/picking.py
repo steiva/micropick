@@ -89,9 +89,15 @@ Ticking Save pickup clips is the notebook's `CLIP_DIR`: the lower camera
 opens, and the run records it from the approach to the end of each
 aspirate, with a box round every cuboid of the batch where the homography
 puts it, and writes one mp4 per pickup, named for its target well, into a
-folder for the run under the Outputs folder's `clips`. The camera records
-in the mode it is open in, cut to its view crop. Off by default: no
+folder for the run under the Outputs folder's `clips`. Off by default: no
 recorder is made, and a run does not need the lower camera at all.
+
+The clips' camera mode and crop are Settings (`clip_resolution`,
+`clip_crop`; 2000x1500 and the middle half by default): fewer pixels is
+more frames a second, and the pickup happens in the middle. The pipette
+calibration opens the same camera in the profile's mode, the one it was
+measured in, so this page opens it again in the clips' mode when it is
+shown with the box ticked - and the calibration does the reverse.
 
 The overlay is drawn by `widgets/overlay_painter` from `viz.overlays.items`,
 which is the same list `viz.overlays.draw` renders with cv2 for the
@@ -201,6 +207,8 @@ class PickingPage(QWidget):
         self._run_message = ""
         # Where the current or last run put its clips, if it recorded any.
         self._clip_dir = None
+        # Why the lower camera did not open for the clips, until retried.
+        self._clips_failure = ""
 
         self.view = CameraView(self)
 
@@ -226,6 +234,7 @@ class PickingPage(QWidget):
         session.profile_changed.connect(self._on_profile_changed)
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.routine_changed.connect(lambda _r: self._refresh())
+        session.settings_changed.connect(self._on_settings_changed)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         self.opener.failed.connect(self._open_failed)
@@ -623,9 +632,12 @@ class PickingPage(QWidget):
         if self._camera() is None:
             out.append("the camera is not open.")
         if self.clips_box.isChecked() and self._lower_camera() is None:
-            out.append("the lower camera is not open, and the clips are "
-                       "recorded from it: open it on the Profile page, or "
-                       "untick Save pickup clips.")
+            w, h = self._clip_mode()
+            out.append(self._clips_failure + "; untick Save pickup clips, "
+                       "or choose another mode in Settings."
+                       if self._clips_failure else
+                       f"the lower camera is not open in {w}x{h} yet, the "
+                       f"clips' mode: it is being opened.")
         if session.tip.attached is not True:
             out.append("the robot reports no tip on the pipette"
                        if session.tip.attached is False else
@@ -679,6 +691,7 @@ class PickingPage(QWidget):
             clip_dir = paths.clips_dir() / (
                 f"{time.strftime('%Y-%m-%d_%H%M%S')}_{profile.name}")
         self._clip_dir = clip_dir
+        clip_crop = float(session.settings.clip_crop)
         pause, stop = self._pause, self._stop
         pause.clear()
         stop.clear()
@@ -688,7 +701,8 @@ class PickingPage(QWidget):
             """The notebook's worker loop, with the display on the other side."""
             picking = PickingSession(robot, camera, pmap, profile, routine,
                                      detector, labware_id=labware_id,
-                                     under_cam=under_cam, clip_dir=clip_dir)
+                                     under_cam=under_cam, clip_dir=clip_dir,
+                                     clip_crop=clip_crop)
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
             picking.start()
@@ -918,21 +932,48 @@ class PickingPage(QWidget):
             self.view.resume()
         self._refresh()
 
+    def _clip_mode(self) -> tuple[int, int]:
+        """The lower camera's mode for the clips: a Settings value."""
+        return tuple(self.session.settings.clip_resolution)
+
     def _lower_camera(self):
+        """The lower camera, if it is open in the clips' mode."""
         label = self.session.lower_camera_label
-        return self.session.camera(label) if label else None
+        camera = self.session.camera(label) if label else None
+        if camera is None or tuple(camera.resolution) != self._clip_mode():
+            return None
+        return camera
+
+    def _ensure_clip_camera(self) -> None:
+        """Open the lower camera in the clips' mode - again, if a
+        calibration left it in its own. Only while clips are asked for: the
+        camera is not otherwise needed here, and a run without clips does
+        not wait for it."""
+        if self.clips_box.isChecked() and not self._running():
+            self.opener.ensure(self.session.lower_camera_label,
+                               self._clip_mode())
 
     def _clips_toggled(self, on: bool) -> None:
-        # Opened only when asked for: the lower camera is not otherwise
-        # needed here, and a run without clips does not wait for it.
-        if on:
-            self.opener.ensure(self.session.lower_camera_label)
+        self._clips_failure = ""
+        self.opener.forget(self.session.lower_camera_label)
+        self._ensure_clip_camera()
+        self._refresh()
+
+    def _on_settings_changed(self, _settings) -> None:
+        self.opener.forget(self.session.lower_camera_label)
+        if self.isVisible():
+            self._ensure_clip_camera()
         self._refresh()
 
     def _open_failed(self, label: str, reason: str) -> None:
-        self.dish_state.setText(f"camera {label!r} did not open: {reason}\n"
-                                f"Open it from the Profile page once the "
-                                f"reason is fixed.")
+        if label == self.session.lower_camera_label:
+            self._clips_failure = (f"the lower camera did not open in "
+                                   f"{self._clip_mode()[0]}x"
+                                   f"{self._clip_mode()[1]}: {reason}")
+        else:
+            self.dish_state.setText(
+                f"camera {label!r} did not open: {reason}\n"
+                f"Open it from the Profile page once the reason is fixed.")
         self._refresh()
 
     def _on_profile_changed(self, _profile) -> None:
@@ -949,8 +990,7 @@ class PickingPage(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.opener.ensure(self._wanted_camera())
-        if self.clips_box.isChecked():
-            self.opener.ensure(self.session.lower_camera_label)
+        self._ensure_clip_camera()
         self._ensure_detector()
         self._show_camera()
 
@@ -1022,9 +1062,11 @@ class PickingPage(QWidget):
         elif running and self._clip_dir is not None:
             self.clips_state.setText(f"Clips go to {self._clip_dir}")
         else:
+            w, h = self._clip_mode()
             self.clips_state.setText(
-                f"One clip per pickup, into a folder for the run in "
-                f"{paths.clips_dir(create=False)}")
+                f"One clip per pickup, the lower camera at {w}x{h}, crop "
+                f"{self.session.settings.clip_crop:g} (Settings), into a "
+                f"folder for the run in {paths.clips_dir(create=False)}")
         self.clips_state.setVisible(self.clips_box.isChecked())
 
         problems = self._run_problems()

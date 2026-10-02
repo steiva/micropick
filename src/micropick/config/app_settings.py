@@ -7,6 +7,10 @@ runs on. The robot's address is the clearest case: 169.254.x.x over a
 direct cable and something else over Wi-Fi, with the same robot and the
 same calibration either way.
 
+The pickup clips' camera mode is here too: how many frames a second this
+computer and its camera can record is about the computer, and the profile's
+camera mode is the one the calibrations were measured in.
+
 They are one small file, `settings.json` in the root (`paths.root()`),
 beside `profiles/`, written atomically as the profiles are. A missing file
 is the defaults; an unreadable one is the defaults too, with the reason
@@ -45,6 +49,12 @@ class AppSettings(BaseModel):
     outputs_dir: str | None = None
     logs_dir: str | None = None
     images_dir: str | None = None
+    # The lower camera's mode while a picking run records pickup clips, and
+    # the centre of the frame kept: fewer pixels is more frames a second, and
+    # the pickup happens in the middle. Calibrations open the camera in the
+    # profile's own mode, whatever this says.
+    clip_resolution: tuple[int, int] = (2000, 1500)
+    clip_crop: float = Field(default=0.5, gt=0.0, le=1.0)
 
 
 def settings_path() -> Path:

@@ -51,23 +51,31 @@ class CameraOpener(QObject):
         self._in_flight: dict[str, Worker] = {}
         self._refused: dict[str, str] = {}
 
-    def ensure(self, label: str | None) -> bool:
+    def ensure(self, label: str | None, resolution=None) -> bool:
         """Open `label` unless it is open, in flight, or has failed here.
 
-        Returns True when the camera is already open and there is nothing
-        to do, so a caller can tell "showing it now" from "asked for it".
+        With `resolution`, a camera open in another mode is opened again in
+        this one (`Session.open_camera`). Returns True when the camera is
+        already open as wanted and there is nothing to do, so a caller can
+        tell "showing it now" from "asked for it".
         """
         if not label or self.session.profile is None:
             return False
-        if self.session.camera(label) is not None:
+        camera = self.session.camera(label)
+        if camera is not None and (
+                resolution is None
+                or tuple(camera.resolution) == tuple(resolution)):
             return True
         if label in self._in_flight and self._in_flight[label].running:
             return False
         if label in self._refused:
             return False
 
-        worker = Worker(self.session.open_camera, label,
-                        what=f"opening camera {label!r}")
+        mode = (f" at {resolution[0]}x{resolution[1]}" if resolution
+                else "")
+        mode_arg = {"resolution": tuple(resolution)} if resolution else {}
+        worker = Worker(self.session.open_camera, label, **mode_arg,
+                        what=f"opening camera {label!r}{mode}")
         worker.label = label
         self._in_flight[label] = worker
         # Bound methods, not lambdas: Qt takes a connection's thread from the

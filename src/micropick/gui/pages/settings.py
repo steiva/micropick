@@ -17,6 +17,10 @@ The folders: Outputs (plate plans, liquid programs, presets, clips), Logs
 (run logs) and Images (pictures saved from a camera view). Empty is the
 default under the root. A folder is created when it is saved, so one that
 cannot be made is refused here rather than at the first file.
+
+Pickup clips: the lower camera's mode and crop while a picking run records
+(`gui.pages.picking`, "Pickup clips"). The modes offered are the ones the
+loaded profile lists for that camera.
 """
 
 from __future__ import annotations
@@ -32,8 +36,8 @@ from ... import paths
 from ...config.app_settings import AppSettings, settings_path
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, heading, primary_button, secondary_button,
-                             spin_box)
+from ..theme.factory import (card, combo_box, double_spin_box, heading,
+                             primary_button, secondary_button, spin_box)
 from ..workers import Worker
 
 __all__ = ["SettingsPage", "TITLE", "parse_address"]
@@ -86,6 +90,7 @@ class SettingsPage(QWidget):
         column.setSpacing(SPACING)
         column.addWidget(self._robot_card())
         column.addWidget(self._folders_card())
+        column.addWidget(self._clips_card())
         row = QHBoxLayout()
         self.save_button = primary_button("Save", self)
         self.save_button.clicked.connect(self._save)
@@ -112,6 +117,7 @@ class SettingsPage(QWidget):
 
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.settings_changed.connect(lambda _s: self._show())
+        session.profile_changed.connect(lambda _p: self._fill_clip_modes())
         self._show()
 
     # -- construction --------------------------------------------------------
@@ -187,6 +193,65 @@ class SettingsPage(QWidget):
         box.layout().addLayout(grid)
         return box
 
+    def _clips_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Pickup clips", 2))
+        box.layout().addWidget(_label(
+            "The lower camera's mode while a picking run records pickup "
+            "clips, and how much of the middle of the frame is kept. A smaller "
+            "mode records more frames a second. The pipette calibration "
+            "always opens the camera in the profile's own mode."))
+        grid = QGridLayout()
+        grid.addWidget(QLabel("Resolution"), 0, 0)
+        self.clip_resolution = combo_box(self)
+        self.clip_resolution.setToolTip(
+            "The modes the profile lists for the lower camera.")
+        self.clip_resolution.currentIndexChanged.connect(
+            lambda _i: self._edited())
+        grid.addWidget(self.clip_resolution, 0, 1, Qt.AlignmentFlag.AlignLeft)
+        grid.addWidget(QLabel("Crop"), 1, 0)
+        self.clip_crop = double_spin_box(self)
+        self.clip_crop.setRange(0.1, 1.0)
+        self.clip_crop.setSingleStep(0.05)
+        self.clip_crop.setDecimals(2)
+        self.clip_crop.setToolTip("The side of the centred square kept, as a "
+                                  "fraction of the frame's height; 1 is the "
+                                  "whole frame.")
+        self.clip_crop.valueChanged.connect(lambda _v: self._edited())
+        grid.addWidget(self.clip_crop, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        grid.setColumnStretch(2, 1)
+        box.layout().addLayout(grid)
+        return box
+
+    def _clip_modes(self, saved) -> list[tuple[int, int]]:
+        """The lower camera's modes from the loaded profile, and the saved
+        one whatever the profile says."""
+        modes = []
+        session = self.session
+        profile, label = session.profile, session.lower_camera_label
+        spec = profile.cameras.get(label) if profile and label else None
+        if spec is not None:
+            modes = [tuple(int(v) for v in mode) for mode in spec.resolutions]
+        saved = tuple(int(v) for v in saved)
+        if saved not in modes:
+            modes.append(saved)
+        return sorted(set(modes))
+
+    def _fill_clip_modes(self, selected=None) -> None:
+        """The modes into the chooser, `selected` (else the one chosen now)
+        chosen. Again on a profile change: the modes are the profile's."""
+        if selected is None:
+            selected = (self.clip_resolution.currentData()
+                        or self.session.settings.clip_resolution)
+        selected = tuple(int(v) for v in selected)
+        modes = self._clip_modes(selected)
+        self.clip_resolution.blockSignals(True)
+        self.clip_resolution.clear()
+        for mode in modes:
+            self.clip_resolution.addItem(f"{mode[0]} x {mode[1]}", mode)
+        self.clip_resolution.setCurrentIndex(modes.index(selected))
+        self.clip_resolution.blockSignals(False)
+
     # -- the values ----------------------------------------------------------
 
     def _show(self) -> None:
@@ -198,6 +263,10 @@ class SettingsPage(QWidget):
         self.port.blockSignals(False)
         for key, line in self.folders.items():
             line.setText(getattr(settings, key) or "")
+        self._fill_clip_modes(settings.clip_resolution)
+        self.clip_crop.blockSignals(True)
+        self.clip_crop.setValue(settings.clip_crop)
+        self.clip_crop.blockSignals(False)
         self.save_state.setText(
             self.session.settings_note
             or (f"Saved in {settings_path()}." if settings_path().is_file()
@@ -215,7 +284,9 @@ class SettingsPage(QWidget):
                 port = typed_port
         folders = {key: (line.text().strip() or None)
                    for key, line in self.folders.items()}
-        return AppSettings(robot_host=host, robot_port=port, **folders)
+        return AppSettings(robot_host=host, robot_port=port, **folders,
+                           clip_resolution=self.clip_resolution.currentData(),
+                           clip_crop=round(self.clip_crop.value(), 2))
 
     def _edited(self) -> None:
         self.save_state.setText("Changed: Save keeps it.")

@@ -998,20 +998,33 @@ class Session(QObject):
 
     # -- cameras -------------------------------------------------------------
 
-    def open_camera(self, label: str):
-        """Open one of the profile's cameras. Blocking: run it in a Worker."""
+    def open_camera(self, label: str, resolution=None):
+        """Open one of the profile's cameras. Blocking: run it in a Worker.
+
+        `resolution` None takes the camera as it is, or opens it in the
+        profile's mode. Given, a camera open in another mode is closed and
+        opened again in that one: the picking run's clips want the lower
+        camera fast, the pipette calibration wants it in the mode it was
+        measured in."""
         if self.profile is None:
             raise SessionError("load a profile before opening a camera")
         existing = self._open.get(label)
         if existing is not None:
-            return existing
+            if (resolution is None
+                    or tuple(existing.resolution) == tuple(resolution)):
+                return existing
+            log.info("camera %r: reopening %dx%d -> %dx%d", label,
+                     *existing.resolution, *resolution)
+            self.close_camera(label)
 
         if self.mock:
-            camera = self._open_mock_camera(label)
+            camera = self._open_mock_camera(label, resolution)
         else:
             if self.cameras is None:
                 raise SessionError("no camera manager; load a profile first")
-            camera = self.cameras.open(label, verbose=False)
+            camera = self.cameras.open(
+                label, resolution=tuple(resolution) if resolution else None,
+                verbose=False)
 
         self._open[label] = camera
         log.info("camera %r open at %dx%d%s", label, *camera.resolution,
@@ -1019,7 +1032,7 @@ class Session(QObject):
         self.camera_opened.emit(label)
         return camera
 
-    def _open_mock_camera(self, label: str):
+    def _open_mock_camera(self, label: str, resolution=None):
         """A synthetic ArUco scene rendered from the mock robot's own pose.
 
         Needs the robot, and says so rather than quietly handing back a static
@@ -1035,7 +1048,7 @@ class Session(QObject):
             raise SessionError(
                 f"no camera labelled {label!r} in profile {self.profile.name!r}; "
                 f"known: {', '.join(sorted(self.profile.cameras)) or 'none'}")
-        width, height = spec.default_resolution
+        width, height = resolution or spec.default_resolution
         scene = MarkerScene(image_size=(width, height))
         camera = open_scene_camera(self.robot, scene, label=label)
         # crop is a view property carried by the camera, applied where a person

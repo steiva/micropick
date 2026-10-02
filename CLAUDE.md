@@ -96,3 +96,6 @@ Settings page behind the gear in the status bar (a page with no tab).
 `paths` applies the folders as overrides, so writers keep asking `paths`.
 The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
 `--robot-host` overrides it for one start. Nothing hard-codes an address.
+The lower camera's mode and crop for pickup clips are settings too
+(default 2000x1500, crop 0.5); the Picking page reopens the camera in that
+mode, and the pipette calibration reopens it in the profile's own.

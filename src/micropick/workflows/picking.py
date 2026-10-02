@@ -145,7 +145,8 @@ _LIVE = {RobotState.IDLE, RobotState.NEEDS_OPERATOR, RobotState.DETECT_FLOATERS}
 _IDLE_POLL_S = 0.1
 
 
-def _clip_view(camera) -> tuple[tuple[int, int], tuple[int, int], object]:
+def _clip_view(camera, crop: float | None = None
+               ) -> tuple[tuple[int, int], tuple[int, int], object]:
     """Where the recorded frame sits in the sensor frame, and how to cut it out.
 
     Returns (origin, size, transform), and returns all three together because
@@ -158,7 +159,7 @@ def _clip_view(camera) -> tuple[tuple[int, int], tuple[int, int], object]:
     been cropped at all. A crop of 1.0 means the whole frame; it is said here
     once, rather than guarded for at each of the two places that need it.
     """
-    frac = float(getattr(camera, "crop", 1.0))
+    frac = float(getattr(camera, "crop", 1.0) if crop is None else crop)
     w, h = camera.resolution
     if frac >= 1.0:
         return (0, 0), (w, h), None
@@ -209,7 +210,7 @@ class PickingSession:
     def __init__(self, robot: Robot, camera: Camera, pixel_map, profile,
                  routine, detector, *, labware_id: str | None = None,
                  under_cam: Camera | None = None, clip_dir=None,
-                 logger=None):
+                 clip_crop: float | None = None, logger=None):
         self.robot = robot
         self.camera = camera
         self.pixel_map = pixel_map
@@ -316,7 +317,9 @@ class PickingSession:
             # The clip is a picture for a person, so it carries the camera's view
             # crop. The transform runs in the grab thread, once per frame, and
             # nothing else sees it: what the session measures stays whole.
-            self._clip_crop, self._clip_size, transform = _clip_view(under_cam)
+            # `clip_crop` None is the camera's own view crop.
+            self._clip_crop, self._clip_size, transform = _clip_view(
+                under_cam, clip_crop)
             self._recorder = under_cam.record(
                 max_frames=self.config.clip_max_frames, transform=transform)
             hcfg = profile.calibration.homography

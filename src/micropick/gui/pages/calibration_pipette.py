@@ -442,6 +442,14 @@ class PipetteCalibration(QWidget):
         if under is None:
             problems.append("the lower camera is not open (open it on the "
                             "Profile page; the routine checks its mode).")
+        else:
+            mode = self._calibration_mode(self.under_choice.currentText())
+            if mode is not None and tuple(under.resolution) != mode:
+                problems.append(
+                    f"the lower camera is open at {under.resolution[0]}x"
+                    f"{under.resolution[1]} (the clips' mode); the calibration "
+                    f"is measured at {mode[0]}x{mode[1]}, and it is being "
+                    f"opened again in that.")
         if over is not None and over is under:
             problems.append("the upper and lower camera are the same camera.")
         tip = session.tip
@@ -751,6 +759,17 @@ class PipetteCalibration(QWidget):
         super().showEvent(event)
         # Both: the upper camera finds the disc and the lower one measures
         # the tip, and the routine refuses to start without either.
+        # The lower one in the profile's mode, which is what the routine
+        # checks: the Picking page's clips may have left it in a faster one.
         self.opener.ensure(self.session.upper_camera_label)
-        self.opener.ensure(self.session.lower_camera_label)
+        lower = self.session.lower_camera_label
+        self.opener.ensure(lower, self._calibration_mode(lower))
         self._refresh_cameras()
+
+    def _calibration_mode(self, label: str | None):
+        """The mode the routine measures the lower camera in: its profile
+        default (`calibrate_pipette._expected_under_resolution`)."""
+        profile = self.session.profile
+        spec = profile.cameras.get(label) if profile and label else None
+        return (tuple(int(v) for v in spec.default_resolution)
+                if spec is not None else None)
