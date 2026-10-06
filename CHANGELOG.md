@@ -8,6 +8,13 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## Unreleased
+
+- A Windows installer (`micropick-<version>-win64-setup.exe`): installs for
+  the current user without an administrator, adds a Start menu and desktop
+  shortcut and an uninstaller; a newer installer updates in place. Profiles,
+  settings and logs stay in Documents\micropick.
+
 ## 0.1.0 - 2026-10-02
 
 The first versioned release, and the first Windows build.

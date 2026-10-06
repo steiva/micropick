@@ -13,8 +13,11 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 - `lab` has an unrelated package named `tests` installed, so
   `python -m tests.…` resolves to it, not to this repository's `tests/`.
 - Windows build: `conda run -n lab python packaging/build.py` (PyInstaller,
-  one folder, into `dist/`, zipped). Refuses a dirty tree unless
-  `--allow-dirty`. A built app keeps its data in `Documents\micropick`
+  one folder, into `dist/`, zipped, then an Inno Setup installer
+  `dist/micropick-<version>-win64-setup.exe` from `packaging/micropick.iss`;
+  needs Inno Setup 6, else `--no-installer`). Refuses a dirty tree unless
+  `--allow-dirty`. The installer's AppId is fixed: it is what makes a new
+  installer update the installed program. A built app keeps its data in `Documents\micropick`
   (or `MICROPICK_ROOT`), not beside the exe (`paths.root`).
 
 ## Versions
