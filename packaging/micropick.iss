@@ -1,4 +1,4 @@
-; Inno Setup script for the Windows installer: packaging/build.py compiles
+﻿; Inno Setup script for the Windows installer: packaging/build.py compiles
 ; it after PyInstaller, passing the version and where things are:
 ;   ISCC /DAppVersion=0.1.0 /DSourceDir=dist\micropick /DOutputDir=dist
 ;        /DSetupName=micropick-0.1.0-win64-setup packaging\micropick.iss
@@ -24,6 +24,11 @@
 #endif
 #ifndef SetupName
   #define SetupName "micropick-" + AppVersion + "-win64-setup"
+#endif
+; The longest file path inside the build, relative to its folder (build.py
+; measures it; an Opentrons labware definition, about 150 characters).
+#ifndef LongestPath
+  #define LongestPath 160
 #endif
 
 [Setup]
@@ -57,6 +62,10 @@ WizardStyle=modern
 Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 
+[CustomMessages]
+en.DirTooDeep=The folder%n%n%1%n%nis too deep: some of micropick's files would end up with paths longer than Windows allows. Choose a folder at most %2 characters long, such as%n%n%3
+ru.DirTooDeep=Папка%n%n%1%n%nслишком глубоко: пути к некоторым файлам micropick получатся длиннее, чем допускает Windows. Выберите папку не длиннее %2 символов, например%n%n%3
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
@@ -74,3 +83,46 @@ Name: "{autodesktop}\micropick"; Filename: "{app}\micropick.exe"; Tasks: desktop
 
 [Run]
 Filename: "{app}\micropick.exe"; Description: "{cm:LaunchProgram,micropick}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// A path past MAX_PATH (259 characters) cannot be created, and the
+// installer would stop half-way with "the system cannot find the path
+// specified". Checked when the folder is chosen and again before
+// installing, which also covers a silent install given /DIR.
+function LongestDir(): Integer;
+begin
+  Result := 259 - {#LongestPath};
+end;
+
+function DirTooDeep(Dir: String): String;
+begin
+  Result := '';
+  // The arguments stay on the call's line: a line starting with "[" is
+  // a section tag to the compiler, even here.
+  if Length(AddBackslash(Dir)) > LongestDir() then
+    Result := FmtMessage(CustomMessage('DirTooDeep'), [Dir,
+      IntToStr(LongestDir() - 1), ExpandConstant('{autopf}\micropick')]);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Problem: String;
+begin
+  Result := True;
+  // Silent, the page is passed without anyone to answer a message box;
+  // PrepareToInstall refuses then.
+  if (CurPageID = wpSelectDir) and not WizardSilent() then
+  begin
+    Problem := DirTooDeep(WizardDirValue());
+    if Problem <> '' then
+    begin
+      MsgBox(Problem, mbError, MB_OK);
+      Result := False;
+    end;
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := DirTooDeep(WizardDirValue());
+end;

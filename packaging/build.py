@@ -130,10 +130,14 @@ def main() -> int:
         name = f"micropick-{v}{'-dirty' if dirty else ''}-win64-setup"
         setup = DIST / f"{name}.exe"
         setup.unlink(missing_ok=True)
+        # The installer refuses a folder so deep that this file's path
+        # would pass Windows' 260 characters.
+        longest = max(len(str(p.relative_to(folder)))
+                      for p in folder.rglob("*") if p.is_file())
         print("compiling the installer (a few minutes)")
         subprocess.run([str(iscc), "/Q", f"/DAppVersion={v}",
                         f"/DSourceDir={folder}", f"/DOutputDir={DIST}",
-                        f"/DSetupName={name}",
+                        f"/DSetupName={name}", f"/DLongestPath={longest}",
                         str(ROOT / "packaging" / "micropick.iss")],
                        cwd=ROOT, check=True)
         print(f"installer {setup} ({setup.stat().st_size / 2**20:.0f} MB)")
