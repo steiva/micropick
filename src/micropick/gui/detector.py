@@ -153,9 +153,9 @@ class DetectorService(QObject):
                 f"no weights at {path}. Put the .pt file in "
                 f"{paths.ml_models_dir()}; weights are not tracked in the "
                 f"repository.")
-        from ultralytics import YOLO          # seconds, and optional
+        from ..core.vision.yolo import load_yolo   # seconds, and optional
 
-        self._model, self._name = YOLO(str(path)), name
+        self._model, self._name = load_yolo(path), name
         log.info("loaded cuboid weights %s", name)
         self.changed.emit()
         return self.description

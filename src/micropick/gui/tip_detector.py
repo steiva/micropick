@@ -111,10 +111,11 @@ def load_tip_detector(profile, *, mock: bool = False, robot=None):
             f"names {target.model_file!r}; put that file in "
             f"{paths.ml_models_dir()} (weights are not tracked in the "
             f"repository).")
+    from ..core.vision.yolo import load_yolo
     try:
-        from ultralytics import YOLO          # seconds, and optional
+        model = load_yolo(path)               # seconds, and optional
     except ImportError as exc:
         raise ImportError(
             "ultralytics is not installed, and the tip detector is a YOLO "
             "model; install the 'ml' extra (pip install -e \".[ml]\")") from exc
-    return TipDetector(YOLO(str(path)), imgsz=target.imgsz, conf=target.conf)
+    return TipDetector(model, imgsz=target.imgsz, conf=target.conf)
