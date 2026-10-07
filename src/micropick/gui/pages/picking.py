@@ -818,6 +818,13 @@ class PickingPage(QWidget):
                     f"again on the Robot & Deck page.", TODO, "labware",
                     "Robot & Deck") if problem is not None else
                     Check(f"The plate is on the deck, in slot {slot}"))
+                centre = self._well_centre()
+                if centre is not None:
+                    x, y, _z = centre.offset
+                    out.append(Check(
+                        f"Well centre measured on {centre.well or 'a well'} "
+                        f"(Liquid handling): deposits go {x:+.2f}, {y:+.2f} mm "
+                        f"from the robot's well centre, plus the well offset"))
 
         calibration = profile.calibration
         if profile.pixel_map is None:
@@ -873,6 +880,20 @@ class PickingPage(QWidget):
                          f"clips' mode: it is being opened.", TODO))
         return out
 
+    def _well_centre(self):
+        """The measured well centre of the plate the plan delivers to, if
+        the Liquid handling page measured one: the run adds its x and y to
+        every deposit (`workflows.picking`, "The measured well centre")."""
+        session = self.session
+        routine, state = session.routine, session.run_state
+        if session.profile is None or routine is None or state is None:
+            return None
+        entry = state.labware.get(str(routine.destination.slot))
+        if entry is None:
+            return None
+        return session.profile.deck.well_centre(routine.destination.slot,
+                                                entry.load_name)
+
     def _confirm_start(self) -> bool:
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
@@ -904,6 +925,8 @@ class PickingPage(QWidget):
         slot = str(routine.destination.slot)
         labware_id = session.run_state.labware[slot].labware_id
         pmap = PixelMap.from_config(profile.pixel_map)
+        centre = self._well_centre()
+        well_centre = None if centre is None else tuple(centre.offset[:2])
         # A folder per run, so a run's clips are together and apart from the
         # last one's; the clips in it are named for their target well.
         under_cam = clip_dir = None
@@ -923,7 +946,8 @@ class PickingPage(QWidget):
             picking = PickingSession(robot, camera, pmap, profile, routine,
                                      detector, labware_id=labware_id,
                                      under_cam=under_cam, clip_dir=clip_dir,
-                                     clip_crop=clip_crop)
+                                     clip_crop=clip_crop,
+                                     well_centre=well_centre)
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
             picking.start()

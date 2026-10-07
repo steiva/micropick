@@ -83,6 +83,15 @@ the bottom of the liquid in the tip, which is where the cuboids settle: the
 misses' volume went back to the dish carrying the caught cuboids with it,
 and the well got liquid without them. The progress is recorded once the
 cuboids are in the well, not when the check counted them.
+
+The measured well centre
+------------------------
+Where the plate's wells were measured on the Liquid handling page
+(`config.schema.WellCentre`, per slot and plate type), its x and y are
+handed in as `well_centre` and added to the well offset of every move into a
+well, as `workflows.liquid` adds them to its steps: one plate, one idea of
+where its wells are. Its z is not used; the deposit's heights stay the
+robot's well bottom and top.
 """
 
 from __future__ import annotations
@@ -220,7 +229,8 @@ class PickingSession:
     def __init__(self, robot: Robot, camera: Camera, pixel_map, profile,
                  routine, detector, *, labware_id: str | None = None,
                  under_cam: Camera | None = None, clip_dir=None,
-                 clip_crop: float | None = None, logger=None):
+                 clip_crop: float | None = None, well_centre=None,
+                 logger=None):
         self.robot = robot
         self.camera = camera
         self.pixel_map = pixel_map
@@ -231,6 +241,10 @@ class PickingSession:
         self.logger = logger
 
         self.config = profile.picking
+        # (x, y) of the plate's measured well centre, or None: see "The
+        # measured well centre".
+        self._centre_xy = ((0.0, 0.0) if well_centre is None else
+                           (float(well_centre[0]), float(well_centre[1])))
 
         offset = profile.calibration.pipette_offset
         if offset is None:
@@ -1272,22 +1286,22 @@ class PickingSession:
                 raise PickingError(
                     "the routine has a plate destination but no labware_id was "
                     "given to the session")
+            dx = cfg.well_offset_x + self._centre_xy[0]
+            dy = cfg.well_offset_y + self._centre_xy[1]
             self._gate(pause, stop)
             require_ok(self.robot.move_to_well(
                 self.labware_id, current, well_location="top",
-                offset=(cfg.well_offset_x, cfg.well_offset_y, 5),
-                force_direct=True), "move to well")
+                offset=(dx, dy, 5), force_direct=True), "move to well")
             self._gate(pause, stop)
             require_ok(self.robot.dispense(
                 self.labware_id, current, well_location="bottom",
-                offset=(cfg.well_offset_x, cfg.well_offset_y, cfg.deposit_offset_z),
+                offset=(dx, dy, cfg.deposit_offset_z),
                 volume=volume, flow_rate=cfg.flow_rate), "dispense to well")
             time.sleep(cfg.wait_time_after_deposit)
             self._gate(pause, stop)
             require_ok(self.robot.move_to_well(
                 self.labware_id, current, well_location="top",
-                offset=(cfg.well_offset_x, cfg.well_offset_y, 5)),
-                "retract from well")
+                offset=(dx, dy, 5)), "retract from well")
             self._gate(pause, stop)
             move_to(self.robot, self._reachable(self._observe),
                     min_z_height=cfg.dish_bottom, force_direct=True)

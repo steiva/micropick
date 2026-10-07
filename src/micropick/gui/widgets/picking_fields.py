@@ -109,7 +109,9 @@ FIELDS: dict[str, Field] = {
     "well_offset_x": Field(
         "Well offset X",
         "Where in the well the cuboid is put, from the well's centre, along "
-        "X. Zero for a 96-well plate; small wells may need it.",
+        "X. Zero for a 96-well plate; small wells may need it. Where the "
+        "plate's well centre was measured on the Liquid handling page, it is "
+        "from that centre.",
         MAIN, "mm"),
     "well_offset_y": Field(
         "Well offset Y",
