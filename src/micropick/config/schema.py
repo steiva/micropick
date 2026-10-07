@@ -420,6 +420,13 @@ class PickingConfig(BaseModel):
                                        # away from where the map was fitted. A
                                        # warning, not a refusal: an approximate
                                        # box beats the silence that hid this.
+    # A cuboid a pickup missed is tried once more, at once, lower and faster;
+    # missed again it is marked stuck and left alone until the dish is
+    # shaken. Experimental: see `workflows.picking`, "A cuboid that will not
+    # come up".
+    stuck_retry: bool = True
+    retry_pickup_offset: float = 0.3   # over dish_bottom, for the retry
+    retry_flow_rate: float = 100.0     # ul/s, the retry's aspirate
     # what to do with a partial miss. keep_successful deposits the held cuboids
     # into the well and returns only the missed volume to the dish, so the
     # per-well concentration stays constant; return_all sends everything back.

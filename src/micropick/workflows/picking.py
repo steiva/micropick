@@ -106,6 +106,21 @@ the tip are delivered. The strokes are AUTO_SHAKE's, and the tip goes back
 to the observation pose after them. In the two waiting states the session
 goes on waiting; elsewhere the cycle starts again at its head, and a pause
 still holds it there.
+
+A cuboid that will not come up
+------------------------------
+Experimental, `stuck_retry`. A chosen cuboid the check still finds where it
+was is remembered by where it now sits (`_Missed`, upper-camera pixels at
+the observation pose, which every decision frame is taken from). The next
+analysis chooses it first, if it is still isolated, and that pickup goes to
+`retry_pickup_offset` over the dish bottom and draws at `retry_flow_rate`.
+Missed again, it is stuck: labelled `stuck` like any other rejection, so
+it is never chosen, though it still counts as a neighbour. A shake - the
+run's, or one asked for - and the operator's resume out of needs_operator
+forget all of them: the dish has been stirred or handled, and a cuboid that
+stuck may not be stuck any more. Positions are all that link one frame's
+detections to the next, so "the same cuboid" is a detection within the
+miss radius (`verify_radius_px`) of where it was.
 """
 
 from __future__ import annotations
@@ -139,6 +154,16 @@ def stir(robot: Robot, *, between=None) -> None:
         if between is not None:
             between()
         move_relative(robot, axis, distance)
+
+
+@dataclass
+class _Missed:
+    """A cuboid a pickup missed, where it sits, and how many tries it has
+    had: 1 is to be retried, 2 or more is stuck."""
+
+    x: float
+    y: float
+    tries: int = 1
 
 
 class PickingError(RuntimeError):
@@ -329,6 +354,10 @@ class PickingSession:
         # pickup under way has drawn: see "A shake on request".
         self._shake_asked = False
         self._drawn = 0
+        # Cuboids pickups missed, and which of the chosen ones is a retry:
+        # see "A cuboid that will not come up".
+        self._missed_spots: list[_Missed] = []
+        self._retry: list[bool] = []
         # Z after the last retract; see `_reachable`.
         self._z_top: float | None = None
         self._empty_pickups = 0
@@ -554,7 +583,8 @@ class PickingSession:
         """
         base = {"floater_zones": self.floater_zones,
                 "circle_center": self.config.circle_center,
-                "circle_radius": self.config.circle_radius}
+                "circle_radius": self.config.circle_radius,
+                "stuck": self.stuck_zones, "retry": self.retry_zones}
         if self.state in _LIVE or self._held_frame is None:
             return PickView(live=True, overlays=base)
         return PickView(live=False, frame=self._held_frame,
@@ -602,6 +632,18 @@ class PickingSession:
         """Whether the last measurement is to be believed, and why not. Its
         `__str__` is one line and is what the log records."""
         return self._floater_verdict
+
+    @property
+    def stuck_zones(self) -> list[tuple[float, float, float]]:
+        """(x, y, radius_px) of each cuboid marked stuck, until a shake."""
+        r = self.verify_radius_px
+        return [(m.x, m.y, r) for m in self._missed_spots if m.tries >= 2]
+
+    @property
+    def retry_zones(self) -> list[tuple[float, float, float]]:
+        """(x, y, radius_px) of each missed cuboid still to be retried."""
+        r = self.verify_radius_px
+        return [(m.x, m.y, r) for m in self._missed_spots if m.tries == 1]
 
     @property
     def verify_radius_px(self) -> float:
@@ -696,7 +738,9 @@ class PickingSession:
         stir(self.robot, between=between)
         # Whatever was measured before this described a dish that no longer
         # exists, so the next cycle measures again whatever the interval says.
+        # The same for the cuboids that would not come up.
         self._last_floater_s = None
+        self._forget_missed("the dish was shaken")
 
     def _retract(self) -> None:
         """Tip to the top, and the top remembered: it depends on the tip
@@ -786,6 +830,12 @@ class PickingSession:
         labels = vision.label_rejections(df, self.config, self.floater_zones)
         for col in labels.columns:
             df[col] = labels[col]
+        # Stuck is a rejection of the run's, not of the picture: over the
+        # crowded label, which it outranks, never over the others.
+        stuck = vision.in_zones(df, self.stuck_zones)
+        df["is_stuck"] = stuck
+        df.loc[stuck & df.reject_reason.isin(("", "crowded")).to_numpy(),
+               "reject_reason"] = "stuck"
         self.cuboid_df = df
         self.pickable = df[df.reject_reason.isin(("", "crowded"))].copy()
         self.isolated = df[df.reject_reason == ""].copy()
@@ -812,8 +862,11 @@ class PickingSession:
             n_bubbles = int(df.is_bubble.sum())
         if len(df) and "core_ratio" in df:
             unmeasured = int(df.core_ratio.isna().sum())
+        rejected = vision.reject_counts(df)
+        if len(df) and "reject_reason" in df and self._missed_spots:
+            rejected["stuck"] = int((df.reject_reason == "stuck").sum())
         return {"cycle": self._cycle, "boxes": self._boxes_seen,
-                "detected": len(df), "rejected": vision.reject_counts(df),
+                "detected": len(df), "rejected": rejected,
                 "bubbles": n_bubbles, "unmeasured": unmeasured}
 
     def _log_detections(self) -> None:
@@ -1158,14 +1211,57 @@ class PickingSession:
         remaining = self.routine.remaining(current)
         want = 1 if self.config.one_by_one else min(remaining, self.config.max_batch)
         want = max(1, min(want, len(self.isolated)))
-        self._choice = (self.isolated.sample(n=want)
-                        if len(self.isolated) > want else self.isolated)
+        self._choice, self._retry = self._choose(want)
         self._log_floater_choice()
         self._show_analysis()                   # after the choice, so it shows
         self.state = RobotState.APPROACH_TARGET
         return self._event("analyzed", "chose a batch",
                            isolated=len(self.isolated),
                            batch=len(self._choice), **summary)
+
+    def _choose(self, want: int) -> tuple[pd.DataFrame, list[bool]]:
+        """`want` isolated cuboids: the ones to retry first, the rest at
+        random, as before. With which of them is a retry."""
+        isolated = self.isolated
+        retry = (vision.in_zones(isolated, self.retry_zones)
+                 if self.config.stuck_retry else np.zeros(len(isolated), bool))
+        first = isolated[retry].head(want)
+        rest = isolated[~retry]
+        n = want - len(first)
+        others = rest.sample(n=n) if len(rest) > n else rest
+        choice = pd.concat([first, others]) if len(first) else others
+        return choice, [True] * len(first) + [False] * len(others)
+
+    def _note_misses(self, missed) -> int:
+        """Remember the chosen cuboids still in the dish, and forget the ones
+        that left. Returns how many became stuck now."""
+        if not self.config.stuck_retry:
+            return 0
+        r = self.verify_radius_px
+        newly_stuck = 0
+        for (cx, cy), now in zip(self._choice[["cX", "cY"]].values, missed):
+            spot = next((m for m in self._missed_spots
+                         if np.hypot(m.x - cx, m.y - cy) <= r), None)
+            if now is None:
+                if spot is not None:
+                    self._missed_spots.remove(spot)
+                continue
+            if spot is None:
+                spot = _Missed(float(now[0]), float(now[1]), 0)
+                self._missed_spots.append(spot)
+            spot.x, spot.y = float(now[0]), float(now[1])
+            spot.tries += 1
+            if spot.tries == 2:
+                newly_stuck += 1
+                self._log(f"stuck cuboid at ({spot.x:.0f}, {spot.y:.0f}) px: "
+                          f"left alone until the dish is shaken")
+        return newly_stuck
+
+    def _forget_missed(self, why: str) -> None:
+        if self._missed_spots:
+            self._log(f"{len(self._missed_spots)} missed cuboids forgotten: "
+                      f"{why}")
+        self._missed_spots = []
 
     def _state_auto_shake(self, pause, stop) -> PickEvent:
         self._stir_dish(lambda: self._gate(pause, stop))
@@ -1239,26 +1335,31 @@ class PickingSession:
         return len(under_px)
 
     def _state_pickup_sample(self, pause, stop) -> PickEvent:
-        ph = self.config.pickup_height
-        lift = self.config.lift_mm
+        cfg = self.config
+        lift = cfg.lift_mm
         self._drawn = 0
-        for x, y in self._world:
+        retries = self._retry or [False] * len(self._world)
+        for (x, y), retry in zip(self._world, retries):
+            # A retry lower and faster: see "A cuboid that will not come up".
+            ph = (cfg.dish_bottom + cfg.retry_pickup_offset if retry
+                  else cfg.pickup_height)
+            flow = cfg.retry_flow_rate if retry else cfg.flow_rate
             self._gate(pause, stop)
             move_to(self.robot, (x, y, ph + lift),
-                    min_z_height=self.config.dish_bottom, force_direct=True)
+                    min_z_height=cfg.dish_bottom, force_direct=True)
             self._gate(pause, stop)
             move_to(self.robot, (x, y, ph),
-                    min_z_height=self.config.dish_bottom, force_direct=True)
+                    min_z_height=cfg.dish_bottom, force_direct=True)
             self._gate(pause, stop)
             require_ok(self.robot.aspirate_in_place(
-                volume=self.config.vol, flow_rate=self.config.flow_rate),
-                "aspirate")
+                volume=cfg.vol, flow_rate=flow), "aspirate")
             self._drawn += 1
             self._gate(pause, stop)
             move_relative(self.robot, "z", lift)
         self._save_clip()
         self.state = RobotState.VERIFY_PICKUP
-        return self._event("picked", "aspirated the batch", n=len(self._world))
+        return self._event("picked", "aspirated the batch", n=len(self._world),
+                           retries=sum(retries))
 
     def _save_clip(self) -> None:
         """Stop the clip and write it, named for the current target. Encoding
@@ -1286,10 +1387,12 @@ class PickingSession:
         self._show_analysis(verify_radius=self.verify_radius_px)
 
         attempted = len(self._choice)
-        misses = self._count_misses()
+        missed_at = self._missed_at()
+        misses = sum(1 for m in missed_at if m is not None)
         held = attempted - misses
         current = self.routine.current
         self._log(f"well {current}: {held} held, {misses} missed")
+        newly_stuck = self._note_misses(missed_at)
 
         # return_all treats a partial miss as a total one, so nothing is held
         # under it either; from here on only `held` decides.
@@ -1311,9 +1414,13 @@ class PickingSession:
             # The well first, the dish after: see "Delivering first".
             self._empty_pickups = 0
             self.state = RobotState.TRANSFER_TO_WELL
-        return self._event("verified", "checked the pickup",
+        message = "checked the pickup"
+        if newly_stuck:
+            message += (f"; {newly_stuck} cuboid{'s' if newly_stuck > 1 else ''}"
+                        f" stuck, left alone until the dish is shaken")
+        return self._event("verified", message,
                            attempted=attempted, held=held,
-                           missed=attempted - held,
+                           missed=attempted - held, stuck=len(self.stuck_zones),
                            **self._detection_summary())
 
     def _count_misses(self) -> int:
@@ -1321,16 +1428,23 @@ class PickingSession:
         against the full detection frame, not the pickable subset, so a cuboid
         knocked out of the shape window by the tip is not mistaken for a
         success."""
-        if self._choice is None or len(self.cuboid_df) == 0:
-            return 0
+        return sum(1 for m in self._missed_at() if m is not None)
+
+    def _missed_at(self) -> list:
+        """Per chosen cuboid, in the choice's order: None if it left, else
+        (x, y) of the nearest detection still within the miss radius."""
+        if self._choice is None:
+            return []
+        if len(self.cuboid_df) == 0:
+            return [None] * len(self._choice)
         det = self.cuboid_df[["cX", "cY"]].values
         radius = self.verify_radius_px           # the same circle overlays draw
-        misses = 0
+        out = []
         for prev_x, prev_y in self._choice[["cX", "cY"]].values:
             dist_px = np.hypot(det[:, 0] - prev_x, det[:, 1] - prev_y)
-            if np.any(dist_px <= radius):
-                misses += 1
-        return misses
+            i = int(np.argmin(dist_px))
+            out.append(tuple(det[i]) if dist_px[i] <= radius else None)
+        return out
 
     def _state_deposit_liquid_back(self, pause, stop) -> PickEvent:
         x, y = self._world[0]
@@ -1441,8 +1555,9 @@ class PickingSession:
         self._wait_for_operator(pause, stop)
         # The operator has had their hands in the dish, as they were asked to,
         # so the same rule as after a shake applies: measure again before
-        # deciding anything from it.
+        # deciding anything from it, and try the stuck cuboids again.
         self._last_floater_s = None
+        self._forget_missed("the operator resumed the run")
         self.state = RobotState.DETECT_FLOATERS
         return self._event("resumed", "operator resumed the run")
 

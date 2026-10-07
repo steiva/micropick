@@ -1126,6 +1126,11 @@ class PickingPage(QWidget):
             lines.append("PAUSED")
         if self._shake_asked:
             lines.append("shake asked")
+        # Drawn on the picture too, in orange; see "A cuboid that will not
+        # come up" in workflows.picking.
+        stuck = len(view.overlays.get("stuck", ()))
+        if stuck:
+            lines.append(f"stuck: {stuck} (tried again after a shake)")
         lines.append("   ".join(f"{key} {what}" for key, what, _ in KEYS))
         self.view.set_status(lines)
         self.view.set_overlay_items(overlays.items(frame.shape, **view.overlays))

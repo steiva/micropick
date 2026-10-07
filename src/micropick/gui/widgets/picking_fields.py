@@ -159,6 +159,22 @@ FIELDS: dict[str, Field] = {
         "How many pickups in a row may come back with nothing before the "
         "run stops and waits for you.",
         RUN),
+    "stuck_retry": Field(
+        "Retry a missed cuboid (experimental)",
+        "A cuboid still in its place after a pickup is tried once more "
+        "straight away, lower and faster (the two settings below). Missed "
+        "again, it is marked stuck on the picture and not tried until the "
+        "dish is shaken.",
+        RUN),
+    "retry_pickup_offset": Field(
+        "Retry: pickup height above the bottom",
+        "How far above the dish bottom the tip stops for the second try at a "
+        "missed cuboid.",
+        RUN, "mm"),
+    "retry_flow_rate": Field(
+        "Retry: flow rate",
+        "How fast the pipette draws on the second try at a missed cuboid.",
+        RUN, "µl/s"),
 
     # -- the dish in the picture -------------------------------------------------
     "circle_center": Field(
@@ -345,6 +361,8 @@ BOUNDS: dict[str, tuple[float, float]] = {
     "flow_rate": (1.0, 300.0),
     "dish_bottom": (0.0, 150.0),
     "pickup_offset": (0.0, 5.0),
+    "retry_pickup_offset": (0.0, 5.0),
+    "retry_flow_rate": (1.0, 300.0),
     "cuboid_size_threshold": (10, 5000),
     "failure_threshold": (0.05, 5.0),
     "minimum_distance": (0.0, 10.0),
@@ -384,6 +402,8 @@ STEPS: dict[str, float] = {
     "flow_rate": 5.0,
     "dish_bottom": 0.1,
     "pickup_offset": 0.1,
+    "retry_pickup_offset": 0.1,
+    "retry_flow_rate": 5.0,
     "cuboid_size_threshold": 10,
     "failure_threshold": 0.05,
     "minimum_distance": 0.1,

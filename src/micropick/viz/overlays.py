@@ -36,6 +36,10 @@ object but a decision: the cuboids chosen for this pickup, and the circle around
 each of them inside which `verify_pickup` looks for a detection to decide
 whether the cuboid actually left.
 
+Orange marks a cuboid a pickup missed: a thin circle and "retry" while it is
+to be tried again, a thick one and "stuck" once the second try missed too and
+it is left alone until the dish is shaken.
+
 Magenta is its own colour for objects the bubble filter recognised, rather than
 red, which already means every detection: the filter's thresholds rest on eight
 crops with 13% of margin on one of the two features, so an operator has to be
@@ -60,7 +64,7 @@ import numpy as np
 __all__ = ["annotate", "items", "draw", "Item", "Circle", "Rect", "Polyline",
            "Text", "draw_dish", "draw_contours", "draw_floaters",
            "draw_chosen", "draw_verify_zones", "draw_status",
-           "ALL", "PICKABLE", "ISOLATED", "FLOATER", "BUBBLE", "CHOSEN",
+           "ALL", "PICKABLE", "ISOLATED", "FLOATER", "BUBBLE", "CHOSEN", "STUCK",
            "STATUS_BACKDROP", "FONT"]
 
 # BGR, throughout.
@@ -70,6 +74,7 @@ ISOLATED = (0, 255, 0)       # green
 FLOATER = (0, 0, 255)        # red
 BUBBLE = (255, 0, 255)       # magenta
 CHOSEN = (255, 255, 255)     # white
+STUCK = (0, 140, 255)        # orange
 STATUS_BACKDROP = (0, 0, 0)  # black
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -174,6 +179,19 @@ def _floater_items(zones, color=FLOATER) -> list[Item]:
     return out
 
 
+def _spot_items(zones, label, thickness, color=STUCK) -> list[Item]:
+    """A missed cuboid's circle, `(x, y, radius_px)`, with what it is."""
+    out: list[Item] = []
+    for zx, zy, radius_px in zones or ():
+        out.append(Circle(center=(int(zx), int(zy)),
+                          radius=max(1, int(radius_px)), color=color,
+                          thickness=thickness))
+        out.append(Text(text=label, org=(int(zx) + int(radius_px) + 4,
+                                         int(zy) + 6),
+                        scale=0.6, color=color, thickness=2))
+    return out
+
+
 def _chosen_items(df, color=CHOSEN, thickness=2, pad=4) -> list[Item]:
     """A box around each cuboid picked out for this pickup.
 
@@ -228,7 +246,7 @@ def _status_items(frame_shape, lines, color=ISOLATED, org=(10, 40),
 
 def items(frame_shape, *, cuboid_df=None, pickable=None, isolated=None,
           bubbles=None, chosen=None, verify_radius=None, floater_zones=(),
-          circle_center=None, circle_radius=None,
+          circle_center=None, circle_radius=None, stuck=(), retry=(),
           status_lines=()) -> list[Item]:
     """The picking state as primitives, in frame coordinates.
 
@@ -247,6 +265,8 @@ def items(frame_shape, *, cuboid_df=None, pickable=None, isolated=None,
     # still pickable and would be painted over by them
     out += _contour_items(bubbles, BUBBLE)
     out += _floater_items(floater_zones)
+    out += _spot_items(retry, "retry", 1)
+    out += _spot_items(stuck, "stuck", 3)
     # the choice last: it is the decision, and it has to stay readable over the
     # class colours it sits on top of
     out += _verify_items(chosen, verify_radius)
@@ -289,7 +309,7 @@ def draw(frame: np.ndarray, primitives) -> np.ndarray:
 
 def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
              bubbles=None, chosen=None, verify_radius=None, floater_zones=(),
-             circle_center=None, circle_radius=None,
+             circle_center=None, circle_radius=None, stuck=(), retry=(),
              status_lines=()) -> np.ndarray:
     """Return a copy of `frame` with the picking state drawn on it.
 
@@ -313,6 +333,7 @@ def annotate(frame, *, cuboid_df=None, pickable=None, isolated=None,
                       floater_zones=floater_zones,
                       circle_center=circle_center,
                       circle_radius=circle_radius,
+                      stuck=stuck, retry=retry,
                       status_lines=status_lines))
 
 
