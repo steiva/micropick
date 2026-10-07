@@ -95,6 +95,13 @@ up, across at the travel height, then straight down. Shake the dish is the
 run's AUTO_SHAKE on demand - the same strokes (`workflows.picking.stir`) -
 and ends back at the picking position, ready to analyse again.
 
+During a run it works while the run is paused or waits for the operator,
+so a dish too crowded to pick from is stirred without a hand in the robot.
+The run does it then, not the jog panel, at the checkpoint the pause holds
+it at (`PickingSession.request_shake`, "A shake on request"); with cuboids
+in the tip it waits until they are delivered. A paused run stays paused
+after it, at the head of its cycle, and looks at the dish again.
+
 Pickup clips
 ------------
 Ticking Save pickup clips is the notebook's `CLIP_DIR`: the lower camera
@@ -245,6 +252,8 @@ class PickingPage(QWidget):
         # to write by parsing what it wrote last is one refresh away from
         # forgetting it.
         self._run_message = ""
+        # A shake asked of the run that it has not said it did yet.
+        self._shake_asked = False
         # Where the current or last run put its clips, if it recorded any.
         self._clip_dir = None
         # Why the lower camera did not open for the clips, until retried.
@@ -618,8 +627,11 @@ class PickingPage(QWidget):
         """What the run does when too few cuboids are isolated, on demand:
         the tip into the dish at `shake`, the run's own strokes, and back to
         the picking position to look again - or only up, without one."""
+        if self._running():
+            self._shake_during_run()
+            return
         where = self._stored_shake()
-        if where is None or self.session.robot is None or self._running():
+        if where is None or self.session.robot is None:
             return
         robot, back = self.session.robot, self._stored_dish()
 
@@ -636,6 +648,34 @@ class PickingPage(QWidget):
         if not self.jog.run_job(job):
             self.jog.tell("not now: the robot is busy; Shake the dish again "
                           "when it is done.")
+
+    def _can_shake_in_run(self) -> bool:
+        """A run paused or waiting, with no shake of it outstanding."""
+        picking = self._session
+        return (self._running() and picking is not None
+                and (self._pause.is_set() or self._waiting())
+                and not picking.shake_pending)
+
+    def _shake_during_run(self) -> None:
+        """Ask the run to stir the dish; see "So is the shake pose"."""
+        if not self._can_shake_in_run():
+            return
+        picking = self._session
+        now = picking.can_shake_now
+        picking.request_shake()
+        self._shake_asked = True
+        if not now:
+            self._last_event = ("shake asked: the tip holds cuboids, so the "
+                                "dish is shaken once they are delivered - "
+                                "unpause to let the run get there")
+        elif self._waiting():
+            self._last_event = ("shaking the dish; the run waits for Resume "
+                                "afterwards")
+        else:
+            self._last_event = ("shaking the dish; the run stays paused and "
+                                "looks at the dish again when unpaused")
+        log.info("picking run: %s", self._last_event)
+        self._refresh()
 
     def _teach_shake(self) -> None:
         if (self.session.robot is None or self.session.profile is None
@@ -1007,6 +1047,7 @@ class PickingPage(QWidget):
     def _run_finished(self, state) -> None:
         self._run_worker = None
         self._session = None
+        self._shake_asked = False
         self._view_timer.stop()
         self._view = None
         self._run_message = f"run {state}" + self._clips_said()
@@ -1025,6 +1066,7 @@ class PickingPage(QWidget):
     def _run_failed(self, reason: str) -> None:
         self._run_worker = None
         self._session = None
+        self._shake_asked = False
         self._view_timer.stop()
         self._view = None
         self._run_message = reason + self._clips_said()
@@ -1057,6 +1099,13 @@ class PickingPage(QWidget):
         """
         with self._lock:
             view = self._view
+        picking = self._session
+        if (self._shake_asked and picking is not None
+                and not picking.shake_pending):
+            # Done; in a waiting state no event says so.
+            self._shake_asked = False
+            self._last_event = "dish shaken"
+            self._refresh()
         if view is None:
             return
         if view.live:
@@ -1075,6 +1124,8 @@ class PickingPage(QWidget):
                  f"target: {self._target()}"]
         if self._pause.is_set():
             lines.append("PAUSED")
+        if self._shake_asked:
+            lines.append("shake asked")
         lines.append("   ".join(f"{key} {what}" for key, what, _ in KEYS))
         self.view.set_status(lines)
         self.view.set_overlay_items(overlays.items(frame.shape, **view.overlays))
@@ -1304,8 +1355,15 @@ class PickingPage(QWidget):
         shake = self._stored_shake()
         self.goto_shake_button.setEnabled(connected and shake is not None
                                           and not running)
-        self.shake_button.setEnabled(connected and shake is not None
-                                     and not running)
+        # During a run only while it is paused or waits for you.
+        self.shake_button.setEnabled(
+            connected and shake is not None
+            and (not running or self._can_shake_in_run()))
+        self.shake_button.setToolTip(
+            "Stir the dish at the shake position. During a run: while it is "
+            "paused or waits for you, done by the run itself."
+            if shake is not None else
+            f"Not possible: no {SHAKE_POSITION!r} position yet.")
         self.teach_shake_button.setEnabled(connected and profile is not None
                                            and not running)
         if profile is None:

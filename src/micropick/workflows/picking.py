@@ -92,6 +92,20 @@ handed in as `well_centre` and added to the well offset of every move into a
 well, as `workflows.liquid` adds them to its steps: one plate, one idea of
 where its wells are. Its z is not used; the deposit's heights stay the
 robot's well bottom and top.
+
+A shake on request
+------------------
+`request_shake()` is the Picking page's Shake the dish during a run, so a
+paused or waiting run can have its dish stirred without a hand in the
+robot. It is done by the session's own thread, at its next checkpoint
+(`_gate`, which is where a pause holds it), so it can never overlap a move
+of the run's. Only where the tip holds nothing and what the state was about
+to do can be decided again from a fresh look (`can_shake_now`); asked for
+anywhere else it waits for the next such checkpoint, after the cuboids in
+the tip are delivered. The strokes are AUTO_SHAKE's, and the tip goes back
+to the observation pose after them. In the two waiting states the session
+goes on waiting; elsewhere the cycle starts again at its head, and a pause
+still holds it there.
 """
 
 from __future__ import annotations
@@ -135,6 +149,11 @@ class _Cancelled(Exception):
     """Internal: a stop event was seen between moves."""
 
 
+class _Shaken(Exception):
+    """Internal: the dish was shaken on request, so whatever the state was
+    deciding from is gone and the cycle starts again."""
+
+
 class RobotState(Enum):
     IDLE = "idle"
     CAPTURE_FRAME = "capture_frame"
@@ -158,6 +177,14 @@ _TERMINAL = {RobotState.COMPLETED, RobotState.CANCELED}
 # while the floater measurement watches for movement. Everywhere else the stream
 # shows travel and says nothing, so it does not run.
 _LIVE = {RobotState.IDLE, RobotState.NEEDS_OPERATOR, RobotState.DETECT_FLOATERS}
+
+# The two states that wait for a person, and those where a shake asked for
+# can be done at once: the tip holds nothing, and nothing decided so far
+# outlives a stirred dish. PICKUP_SAMPLE is one too until its first aspirate
+# (`can_shake_now`). See "A shake on request".
+_WAITING = {RobotState.IDLE, RobotState.NEEDS_OPERATOR}
+_SHAKEABLE = _WAITING | {RobotState.DETECT_FLOATERS, RobotState.CAPTURE_FRAME,
+                         RobotState.AUTO_SHAKE}
 
 # How often the idle state looks to see whether it has been told to start. A step
 # of the waiting mechanism, not a parameter of the process, so it is not config.
@@ -298,6 +325,10 @@ class PickingSession:
         self._choice: pd.DataFrame | None = None
         self._world: list[tuple[float, float]] = []
         self._shake_retries = 0
+        # A shake asked for from another thread, and how many cuboids the
+        # pickup under way has drawn: see "A shake on request".
+        self._shake_asked = False
+        self._drawn = 0
         # Z after the last retract; see `_reachable`.
         self._z_top: float | None = None
         self._empty_pickups = 0
@@ -451,6 +482,13 @@ class PickingSession:
         except _Cancelled:
             self.state = RobotState.CANCELED
             return self._event("canceled", "stopped between moves")
+        except _Shaken:
+            # A clip begun for a pickup that will not happen is dropped.
+            if self._recorder is not None and self._recorder.recording:
+                self._recorder.stop()
+            self._choice = None
+            self.state = RobotState.DETECT_FLOATERS
+            return self._event("shaken", "shook the dish, as asked")
 
     def start(self) -> None:
         """The operator's go-ahead: leave the initial idle state.
@@ -476,6 +514,23 @@ class PickingSession:
             self._shake_retries = 0
             self._empty_pickups = 0
         self.start()
+
+    def request_shake(self) -> None:
+        """Stir the dish at the next checkpoint where the tip holds
+        nothing. Safe from another thread; see "A shake on request"."""
+        self._shake_asked = True
+
+    @property
+    def shake_pending(self) -> bool:
+        """A shake was asked for and has not been done yet."""
+        return self._shake_asked
+
+    @property
+    def can_shake_now(self) -> bool:
+        """Whether a shake asked for now would be done at the checkpoint the
+        session is at, rather than after the tip's cuboids are delivered."""
+        return (self.state in _SHAKEABLE
+                or (self.state is RobotState.PICKUP_SAMPLE and self._drawn == 0))
 
     @property
     def done(self) -> bool:
@@ -593,14 +648,55 @@ class PickingSession:
 
     def _gate(self, pause, stop) -> None:
         """Checkpoint between two robot moves. Blocks while paused, raises on
-        stop. This is what makes a pause take effect mid-batch."""
+        stop. This is what makes a pause take effect mid-batch, and it is
+        where a shake asked for is done (`_shake_if_asked`)."""
         if stop is not None and stop.is_set():
             raise _Cancelled
+        self._shake_if_asked(stop)
         if pause is not None:
             while pause.is_set():
                 if stop is not None and stop.is_set():
                     raise _Cancelled
+                self._shake_if_asked(stop)
                 pause.wait(0.05)
+
+    def _shake_if_asked(self, stop) -> None:
+        """Do a shake asked for, if it can be done here: stir, back to the
+        observation pose, then go on waiting or start the cycle again."""
+        if not self._shake_asked or not self.can_shake_now:
+            return
+        self._shake_asked = False
+
+        def between():
+            # Not `_gate`: the run may be paused, and this is the pause's
+            # own errand. A stop still ends it.
+            if stop is not None and stop.is_set():
+                raise _Cancelled
+
+        self._log("shaking the dish, as asked")
+        self._stir_dish(between)
+        between()
+        self._retract()
+        between()
+        move_to(self.robot, self._reachable(self._observe),
+                min_z_height=self.config.dish_bottom)
+        if self.state in _WAITING:
+            return
+        raise _Shaken
+
+    def _stir_dish(self, between) -> None:
+        """Into the dish at `shake`, the strokes, and what a stirred dish
+        makes stale. AUTO_SHAKE's and a shake on request alike."""
+        shake = self.profile.where("shake")
+        between()
+        self._retract()
+        between()
+        move_to(self.robot, self._reachable(shake),
+                min_z_height=self.config.dish_bottom)
+        stir(self.robot, between=between)
+        # Whatever was measured before this described a dish that no longer
+        # exists, so the next cycle measures again whatever the interval says.
+        self._last_floater_s = None
 
     def _retract(self) -> None:
         """Tip to the top, and the top remembered: it depends on the tip
@@ -1072,16 +1168,7 @@ class PickingSession:
                            batch=len(self._choice), **summary)
 
     def _state_auto_shake(self, pause, stop) -> PickEvent:
-        shake = self.profile.where("shake")
-        self._gate(pause, stop)
-        self._retract()
-        self._gate(pause, stop)
-        move_to(self.robot, self._reachable(shake),
-                min_z_height=self.config.dish_bottom)
-        stir(self.robot, between=lambda: self._gate(pause, stop))
-        # Whatever was measured before this described a dish that no longer
-        # exists, so the next cycle measures again whatever the interval says.
-        self._last_floater_s = None
+        self._stir_dish(lambda: self._gate(pause, stop))
         self.state = RobotState.DETECT_FLOATERS
         return self._event("shaken", "shook the dish")
 
@@ -1154,6 +1241,7 @@ class PickingSession:
     def _state_pickup_sample(self, pause, stop) -> PickEvent:
         ph = self.config.pickup_height
         lift = self.config.lift_mm
+        self._drawn = 0
         for x, y in self._world:
             self._gate(pause, stop)
             move_to(self.robot, (x, y, ph + lift),
@@ -1165,6 +1253,7 @@ class PickingSession:
             require_ok(self.robot.aspirate_in_place(
                 volume=self.config.vol, flow_rate=self.config.flow_rate),
                 "aspirate")
+            self._drawn += 1
             self._gate(pause, stop)
             move_relative(self.robot, "z", lift)
         self._save_clip()
