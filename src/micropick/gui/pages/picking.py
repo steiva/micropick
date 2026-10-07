@@ -327,15 +327,15 @@ class PickingPage(QWidget):
         how.setWordWrap(True)
         box.layout().addWidget(how)
 
-        buttons = QHBoxLayout()
+        # One above the other: side by side in half the panel, the two
+        # names did not fit their buttons.
         self.over_centre_button = secondary_button("Tip over the dish centre",
                                                    self)
         self.over_centre_button.clicked.connect(self._tip_over_centre)
         self.set_bottom_button = secondary_button("Set dish bottom here", self)
         self.set_bottom_button.clicked.connect(self._set_bottom)
-        buttons.addWidget(self.over_centre_button)
-        buttons.addWidget(self.set_bottom_button)
-        box.layout().addLayout(buttons)
+        box.layout().addWidget(self.over_centre_button)
+        box.layout().addWidget(self.set_bottom_button)
 
         self.bottom_state = QLabel()
         self.bottom_state.setWordWrap(True)
