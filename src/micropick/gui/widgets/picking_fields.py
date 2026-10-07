@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Field", "FIELDS", "BOUNDS", "BIG_CHANGE", "MAIN", "RUN", "ADVANCED_GROUPS", "MISS_POLICY",
+__all__ = ["Field", "FIELDS", "BOUNDS", "BIG_CHANGE", "STEPS", "MAIN", "RUN",
+           "ADVANCED_GROUPS", "MISS_POLICY",
            "FLOATER_MODE"]
 
 MAIN = "Main"
@@ -369,4 +370,46 @@ BIG_CHANGE: dict[str, float] = {
     "deposit_offset_z": 2.0,
     "deposit_z_optional": 3.0,
     "vol": 10.0,
+}
+
+# What one press of a box's arrows adds, by what the number is: a tenth of a
+# millimetre for a height or an offset the tip is placed by, a twentieth for
+# the miss radius, hundredths for the shape fractions, 32 px for the
+# detector's image size (it works in multiples of 32), tens for pixels and
+# microns. Fields not here step by 1.
+STEPS: dict[str, float] = {
+    "vol": 0.5,
+    "flow_rate": 5.0,
+    "dish_bottom": 0.1,
+    "pickup_offset": 0.1,
+    "cuboid_size_threshold": 10,
+    "failure_threshold": 0.05,
+    "minimum_distance": 0.1,
+    "well_offset_x": 0.1,
+    "well_offset_y": 0.1,
+    "deposit_offset_z": 0.1,
+    "wait_time_after_deposit": 0.1,
+    "circle_center": 10,
+    "circle_radius": 10,
+    "yolo_imgsz": 32,
+    "yolo_conf": 0.05,
+    "yolo_iou": 0.05,
+    "yolo_max_det": 50,
+    "aspect_ratio_window": 0.05,
+    "circularity_window": 0.05,
+    "min_solidity": 0.01,
+    "max_radial_cv": 0.01,
+    "bubble_core_r": 0.05,
+    "bubble_ring_window": 0.05,
+    "bubble_max_core_ratio": 0.05,
+    "bubble_min_spec_ratio": 0.05,
+    "floater_window_s": 0.5,
+    "floater_pad_frac": 0.1,
+    "floater_sigma_frac": 0.05,
+    "floater_k": 0.5,
+    "capture_settle_s": 0.1,
+    "verify_settle_s": 0.1,
+    "clip_max_frames": 50,
+    "homography_drift_warn_mm": 0.1,
+    "deposit_z_optional": 0.1,
 }

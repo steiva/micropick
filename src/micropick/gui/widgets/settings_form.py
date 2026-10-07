@@ -38,7 +38,7 @@ from ..theme import SPACING
 from ..theme.factory import Section, double_spin_box, heading, spin_box
 from .picking_fields import (ADVANCED_GROUPS, BIG_CHANGE, BOUNDS, FIELDS,
                              FLOATER_MODE,
-                             MAIN, MISS_POLICY, RUN)
+                             MAIN, MISS_POLICY, RUN, STEPS)
 
 __all__ = ["PickingSettingsDialog", "field_widget", "TROUBLE"]
 
@@ -94,16 +94,22 @@ def _range(kind: type, value, bounds) -> tuple:
     return (int(lo), int(hi)) if kind is int else (float(lo), float(hi))
 
 
-def _number(kind: type, value, bounds=None) -> QWidget:
+def _number(kind: type, value, bounds=None, step=None) -> QWidget:
+    """`step` is what one press of an arrow adds (`picking_fields.STEPS`);
+    Qt's own, 1, without one."""
     if kind is int:
         box = spin_box()
         box.setRange(*_range(kind, int(value), bounds))
         box.setValue(int(value))
+        if step:
+            box.setSingleStep(int(step))
     else:
         box = double_spin_box()
         box.setRange(*_range(kind, float(value), bounds))
         box.setDecimals(FLOAT_DECIMALS)
         box.setValue(float(value))
+        if step:
+            box.setSingleStep(float(step))
     box.setMinimumWidth(NUMBER_WIDTH)
     box.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     return box
@@ -113,11 +119,13 @@ class _Row:
     """One field: its widget, and how to read a value back out of it.
 
     `labels` names a literal's choices for the screen, the value itself
-    staying what is stored; `unit` goes after a number.
+    staying what is stored; `unit` goes after a number, `step` is its
+    arrows'.
     """
 
     def __init__(self, name: str, annotation, value, *,
-                 labels: dict | None = None, unit: str = "", bounds=None):
+                 labels: dict | None = None, unit: str = "", bounds=None,
+                 step=None):
         self.name = name
         self.widget: QWidget
         self._read = None
@@ -142,8 +150,8 @@ class _Row:
             self._write = lambda v: box.setCurrentIndex(max(0, box.findData(v)))
             self._changed = [box.currentIndexChanged]
         elif pair:
-            low, high = (_number(kind, value[0], bounds),
-                         _number(kind, value[1], bounds))
+            low, high = (_number(kind, value[0], bounds, step),
+                         _number(kind, value[1], bounds, step))
             holder = QWidget()
             row = QHBoxLayout(holder)
             row.setContentsMargins(0, 0, 0, 0)
@@ -159,7 +167,7 @@ class _Row:
             self._write = lambda v: (low.setValue(v[0]), high.setValue(v[1]))
             self._changed = [low.valueChanged, high.valueChanged]
         elif annotation in (int, float):
-            box = _number(annotation, value, bounds)
+            box = _number(annotation, value, bounds, step)
             if unit:
                 box.setSuffix(f" {unit}")
             self.widget, self._read = box, box.value
@@ -319,7 +327,7 @@ class PickingSettingsDialog(QDialog):
             field = fields[name]
             row = _Row(name, field.annotation, getattr(config, name),
                        labels=LABELS.get(name), unit=spec.unit if spec else "",
-                       bounds=BOUNDS.get(name))
+                       bounds=BOUNDS.get(name), step=STEPS.get(name))
             label = QLabel(spec.label if spec else name)
             # Wrapped and capped, so a long name takes two lines rather
             # than pushing the number off the dialog.
