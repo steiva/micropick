@@ -14,6 +14,19 @@ the third for fixes.
   the current user without an administrator, adds a Start menu and desktop
   shortcut and an uninstaller; a newer installer updates in place. Profiles,
   settings and logs stay in Documents\micropick.
+- Picking: Shake the dish works while a run is paused or waits for you;
+  the run does it itself, and with cuboids in the tip only once they are
+  delivered.
+- Picking (experimental, on by default): a cuboid a pickup missed is tried
+  once more straight away, 0.3 mm over the dish bottom at 100 µl/s; missed
+  again it is marked stuck (orange on the picture) and left alone until the
+  dish is shaken. Settings: Run, "Retry a missed cuboid".
+- Picking: deposits use the well centre measured on the Liquid handling
+  page for that plate (x and y, added to the well offset).
+- Picking settings: the arrows step by what each number is (0.1 mm for
+  heights and offsets, and so on).
+- Picking: the dish bottom's two buttons are one above the other, so their
+  names fit.
 
 ## 0.1.0 - 2026-10-02
 
