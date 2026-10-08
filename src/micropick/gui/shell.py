@@ -304,9 +304,10 @@ class StatusBar(QStatusBar):
             is_open = label in open_labels
             button.setIcon(qta.icon("mdi6.camera", color=TIP_ON) if is_open
                            else qta.icon("mdi6.camera-outline"))
-            button.setToolTip(f"{label}: open - click to show its feed" if is_open
-                              else f"{label}: closed - click to open it and show "
-                                   f"its feed")
+            button.setToolTip(f"{label}: open - click to show or hide its "
+                              f"window" if is_open
+                              else f"{label}: closed - click to open it in a "
+                                   f"window of its own")
 
     def show_deck_problems(self, problems: list) -> None:
         """Slots holding labware without their module's offset; [] hides."""
@@ -515,7 +516,12 @@ class MainWindow(QMainWindow):
     # -- feed windows --------------------------------------------------------
 
     def _show_feed(self, label: str) -> None:
-        """The feed in its window; the camera opened first if it is not."""
+        """The feed in its window; the camera opened first if it is not.
+        A window already on screen is hidden instead: the button toggles."""
+        window = self._feeds.get(label)
+        if window is not None and window.shown:
+            window.hide()
+            return
         camera = self.session.camera(label)
         if camera is not None:
             self._feed(label).show_camera(camera)
@@ -546,7 +552,9 @@ class MainWindow(QMainWindow):
     def _feed(self, label: str) -> FeedWindow:
         window = self._feeds.get(label)
         if window is None:
-            window = FeedWindow(label, self)
+            window = FeedWindow(
+                label, self,
+                save_controls=self.session.save_camera_controls)
             self._feeds[label] = window
         return window
 

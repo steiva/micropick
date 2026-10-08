@@ -129,6 +129,7 @@ def test_crosshair_default_follows_the_label_and_is_remembered(app):
 def test_focus_slider_only_for_a_camera_with_a_focus(app):
     plain = _Camera("under")
     view = _view(app, plain)
+    view.enable_focus_tools()
     assert view.focus_row.isHidden()
     focused = _Camera("under", controls=ControlReport(applied={"focus": 500.0}))
     view.set_camera(focused)
@@ -138,7 +139,9 @@ def test_focus_slider_only_for_a_camera_with_a_focus(app):
     view._focus_timer.stop()
     view._apply_focus()
     assert focused.sets == [{"focus": 640}]
-    assert view.focus_value.text() == "640"
+    assert view.focus_number.value() == 640
+    view.focus_box.setChecked(False)
+    assert view.focus_row.isHidden()
     view.close()
 
 
