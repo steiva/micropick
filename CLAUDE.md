@@ -145,4 +145,4 @@ once: which attached camera is the upper and which the lower
 other's device swaps them; a profile without a camera for a role gets one
 from `Session.add_camera`, the bench's spec on the chosen device), the
 machine learning models, the calibration summary. The Profile page is
-Robot and Installation, and under them the checklist before a run.
+Robot and Load profile, and under them the checklist before a run.

@@ -1,7 +1,7 @@
 """Connecting the robot and choosing a profile.
 
 Two cards, centred: Robot first, because it is the first thing to do and the
-one that needs reading, then Installation. Under them, across both, what is
+one that needs reading, then Load profile. Under them, across both, what is
 still to do before a picking run (`gui.readiness`), so loading a profile
 shows at once how far the bench is from ready. What a profile holds beyond its
 name - which camera is which, the models, the calibration - is set in
@@ -68,6 +68,17 @@ log = logging.getLogger(__name__)
 # Each card's width, which it grows past only for a button that would
 # not fit; the two sit side by side, centred.
 CARD_WIDTH = 560
+
+# The Load profile card's explanation.
+PROFILE_ABOUT = (
+    "A profile is what micropick knows about this robot and its cameras: "
+    "which camera is which and how it is focused, the camera and pipette "
+    "calibrations, the positions you taught (where to look at the dish, "
+    "where to shake it), the modules on the deck and the picking settings. "
+    "Load it first: every other page works from it.\n"
+    "One profile per setup on the bench is usually all you need. Make a "
+    "new one, copied from it, to try other settings without touching the "
+    "one that works.")
 
 # What "start from" offers besides the existing profiles.
 EMPTY = "empty (defaults)"
@@ -220,7 +231,7 @@ class ProfilePage(QWidget):
         self.session = session
         self._worker: Worker | None = None
 
-        # Robot and Installation side by side, the checklist across both
+        # Robot and Load profile side by side, the checklist across both
         # under them; the three as one centred column.
         cards = QHBoxLayout()
         cards.setSpacing(SPACING * 2)
@@ -229,12 +240,18 @@ class ProfilePage(QWidget):
             box.setMaximumWidth(CARD_WIDTH * 3 // 2)
             cards.addWidget(box, 0, Qt.AlignmentFlag.AlignTop)
         column = QVBoxLayout()
+        column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING * 2)
         column.addLayout(cards)
         column.addWidget(self._checks_card())
+        # A wrapped paragraph asks for the whole width it can get; the
+        # column's cap is what keeps the cards at a readable size.
+        holder = QWidget(self)
+        holder.setLayout(column)
+        holder.setMaximumWidth(2 * CARD_WIDTH + 6 * SPACING)
         centred = QHBoxLayout()
         centred.addStretch(1)
-        centred.addLayout(column)
+        centred.addWidget(holder, 100)
         centred.addStretch(1)
 
         layout = QVBoxLayout(self)
@@ -285,7 +302,12 @@ class ProfilePage(QWidget):
 
     def _profile_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Installation", 2))
+        box.layout().addWidget(heading("Load profile", 2))
+        # What a profile is, for someone who has never made one: the word
+        # alone says nothing about why it has to be loaded first.
+        about = QLabel(PROFILE_ABOUT, self)
+        about.setWordWrap(True)
+        box.layout().addWidget(about)
 
         self.chooser = _ProfileChooser(self)
         self.load_button = primary_button("Load", self)

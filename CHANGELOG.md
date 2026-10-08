@@ -10,7 +10,7 @@ the third for fixes.
 
 ## Unreleased
 
-- Profile page: Robot and Installation, side by side and centred. The
+- Profile page: Robot and Load profile, side by side and centred. The
   chooser shows each profile's folder after its name; a green check says
   which profile is loaded. "New robot session" (no "+ home") asks with a
   plain warning that the robot will home its axes. The robot session
