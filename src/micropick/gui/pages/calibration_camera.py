@@ -11,7 +11,11 @@ measured through the pixel map this one produces; the Operation checklist
 on the Profile page says so.
 
 The picture, and one panel in the order of the work: Camera, Marker, the jog
-panel, Sweep parameters, Sweep, Result. It was a wizard of four steps, as the
+panel, Sweep, Result. The sweep's parameters - marker side, dictionary, grid,
+degree - are the bench's and set in Settings (`AppSettings.sweep_*`); the
+Sweep card says which it will use, with the way there, and "Use DICT_…" on
+the Marker card writes the dictionary the marker was found in to Settings.
+It was a wizard of four steps, as the
 pipette page was, and became one page for the same reason: the order was
 right, but each step hid what the next one needed. The first act is still a
 physical one at the bench - centre the marker and set the working height -
@@ -84,19 +88,19 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QPalette
-from PySide6.QtWidgets import (QComboBox, QDialog, QHBoxLayout, QLabel,
-                               QMessageBox, QPlainTextEdit, QProgressBar,
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox,
+                               QPlainTextEdit, QProgressBar, QPushButton,
                                QVBoxLayout, QWidget)
 
+from ...config.app_settings import AppSettings
 from ...viz import markers
 from ..auto_camera import CameraOpener
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
 from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (Section, card, combo_box, double_spin_box,
-                             heading, primary_button, scroll_column,
-                             secondary_button, spin_box)
+from ..theme.factory import (Section, card, combo_box, heading,
+                             primary_button, scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.done_banner import DoneBanner
@@ -118,11 +122,25 @@ PANEL_WIDTH = 420
 # here breaks.
 __all__ += ["DICTIONARIES"]
 
-# The sweep's usual settings, in one place: the marker printed for this rig
-# and the grid and degree the first real sweep was judged at (DESIGN section
-# 3). The boxes start at these, and Reset to defaults puts them back.
-SWEEP_DEFAULTS = {"marker_side_mm": 6.8, "dictionary": "DICT_6X6_250",
-                  "grid_n": 7, "degree": 3}
+# The sweep's usual settings: the marker printed for this rig and the grid
+# and degree the first real sweep was judged at (DESIGN section 3). They are
+# set in Settings (`AppSettings.sweep_*`); these are its defaults.
+_DEFAULTS = AppSettings()
+SWEEP_DEFAULTS = {"marker_side_mm": _DEFAULTS.sweep_marker_side_mm,
+                  "dictionary": _DEFAULTS.sweep_dictionary,
+                  "grid_n": _DEFAULTS.sweep_grid_n,
+                  "degree": _DEFAULTS.sweep_degree}
+
+
+def sweep_parameters(settings) -> dict:
+    """The sweep's parameters as Settings has them, keyed as SWEEP_DEFAULTS.
+    A dictionary name this build does not know is the default's."""
+    dictionary = settings.sweep_dictionary
+    if dictionary not in DICTIONARIES:
+        dictionary = SWEEP_DEFAULTS["dictionary"]
+    return {"marker_side_mm": settings.sweep_marker_side_mm,
+            "dictionary": dictionary, "grid_n": settings.sweep_grid_n,
+            "degree": settings.sweep_degree}
 
 # How a fit is judged: (what, unit, good, acceptable, higher is better).
 # Past `acceptable` is Redo. From the first real sweep, which held out at
@@ -216,6 +234,7 @@ class CameraCalibration(QWidget):
         self.session = session
         self._worker: Worker | None = None
         self._result = None                  # (pmap, report, sweep)
+        self._sweep_used = dict(SWEEP_DEFAULTS)  # what the last sweep ran with
         self._watch = MarkerWatch()
         self.opener = CameraOpener(session, self)
         self._watch_worker: Worker | None = None
@@ -236,8 +255,8 @@ class CameraCalibration(QWidget):
         self.jog.show_position_on(self.view)
 
         panel = CardColumns([self._camera_card(), self._marker_card(),
-                             self.jog, self._parameters_card(),
-                             self._sweep_card(), self._report_card()], self)
+                             self.jog, self._sweep_card(),
+                             self._report_card()], self)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)
@@ -254,6 +273,9 @@ class CameraCalibration(QWidget):
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(lambda _s: self._refresh())
+        # The sweep's parameters are Settings'; the marker is watched for in
+        # the dictionary chosen there.
+        session.settings_changed.connect(lambda _s: self._refresh())
         # The window's Stop: the sweep stops at its next pose.
         session.stop_requested.connect(self._cancel)
         self._refresh_cameras()
@@ -296,78 +318,24 @@ class CameraCalibration(QWidget):
         box.layout().addWidget(self.use_dictionary_button)
         return box
 
-    def _parameters_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Sweep parameters", 2))
-
-        self.marker_side = double_spin_box(self)
-        self.marker_side.setRange(1.0, 60.0)
-        self.marker_side.setDecimals(2)
-        self.marker_side.setSingleStep(0.1)
-        self.marker_side.setSuffix(" mm")
-
-        self.grid_n = spin_box(self)
-        self.grid_n.setRange(4, 15)
-
-        self.degree = spin_box(self)
-        # Below 3 is refused by fit_pixel_map rather than silently useless:
-        # radial distortion is cubic in image coordinates, so a quadratic
-        # reduces exactly to the affine fit it is meant to improve on.
-        self.degree.setRange(3, 5)
-
-        self.dictionary = QComboBox(self)
-        self.dictionary.addItems(DICTIONARIES)
-        # The live watch reports against whatever is chosen here.
-        self.dictionary.currentTextChanged.connect(lambda _t: self._refresh())
-
-        for label, widget, hint in (
-                ("Marker side", self.marker_side,
-                 "the printed size. Never used by the fit — it is the "
-                 "independent check on the recovered size."),
-                ("Grid", self.grid_n,
-                 "poses per axis; the sweep measures its own extent from the "
-                 "marker, so this is only how densely it samples it."),
-                ("Degree", self.degree,
-                 "3 is the minimum that can represent radial distortion at "
-                 "all. 4 does not help and is worse at the extremes."),
-                ("Dictionary", self.dictionary,
-                 "the wrong one detects nothing, which looks like bad "
-                 "lighting.")):
-            row = QHBoxLayout()
-            name = QLabel(label)
-            name.setMinimumWidth(110)
-            row.addWidget(name)
-            row.addWidget(widget)
-            row.addStretch(1)
-            box.layout().addLayout(row)
-            note = QLabel(hint)
-            note.setWordWrap(True)
-            box.layout().addWidget(note)
-
-        self.defaults_button = secondary_button("Reset to defaults", self)
-        self.defaults_button.setToolTip(
-            f"Marker side {SWEEP_DEFAULTS['marker_side_mm']:g} mm, "
-            f"{SWEEP_DEFAULTS['dictionary']}, grid {SWEEP_DEFAULTS['grid_n']}, "
-            f"degree {SWEEP_DEFAULTS['degree']}.")
-        self.defaults_button.clicked.connect(self._reset_parameters)
-        box.layout().addWidget(self.defaults_button, 0,
-                               Qt.AlignmentFlag.AlignLeft)
-        # Quietly: the dictionary's change refreshes cards not built yet.
-        self.dictionary.blockSignals(True)
-        self._reset_parameters()
-        self.dictionary.blockSignals(False)
-        return box
-
-    def _reset_parameters(self) -> None:
-        """The boxes back to SWEEP_DEFAULTS."""
-        self.marker_side.setValue(SWEEP_DEFAULTS["marker_side_mm"])
-        self.dictionary.setCurrentText(SWEEP_DEFAULTS["dictionary"])
-        self.grid_n.setValue(SWEEP_DEFAULTS["grid_n"])
-        self.degree.setValue(SWEEP_DEFAULTS["degree"])
-
     def _sweep_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Sweep", 2))
+        # The parameters are set in Settings; said here, with the way there,
+        # so a sweep is never started on numbers nobody looked at.
+        row = QHBoxLayout()
+        self.parameters = QLabel()
+        self.parameters.setWordWrap(True)
+        row.addWidget(self.parameters, 1)
+        self.parameters_button = QPushButton("Settings ›", self)
+        self.parameters_button.setFlat(True)
+        self.parameters_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.parameters_button.setToolTip("Marker side, dictionary, grid and "
+                                          "degree are set in Settings.")
+        self.parameters_button.clicked.connect(
+            lambda: self.session.page_requested.emit("settings"))
+        row.addWidget(self.parameters_button, 0, Qt.AlignmentFlag.AlignTop)
+        box.layout().addLayout(row)
         # What stops the sweep, in words: the gate the wizard's steps used
         # to be, under the button it holds back.
         self.checks = QLabel()
@@ -484,7 +452,7 @@ class CameraCalibration(QWidget):
         frame = self.view.held_frame
         if frame is None:
             return
-        watch, wanted = self._watch, self.dictionary.currentText()
+        watch, wanted = self._watch, self._parameters()["dictionary"]
         worker = Worker(watch.look, frame, wanted,
                         what="looking for the marker")
         self._watch_worker = worker
@@ -526,15 +494,26 @@ class CameraCalibration(QWidget):
             self.use_dictionary_button.setText(f"Use {sighting.dictionary}")
 
     def _use_found_dictionary(self) -> None:
-        """Set the parameters' dictionary to the one the marker was found
-        in."""
+        """Set the sweep's dictionary in Settings to the one the marker was
+        found in, and save it: the marker on the bench is printed in it."""
         if self._sighting is None or not self._sighting.found:
             return
-        index = self.dictionary.findText(self._sighting.dictionary)
-        if index >= 0:
-            self.dictionary.setCurrentIndex(index)
-            log.info("dictionary set to %s, where the marker was found",
-                     self._sighting.dictionary)
+        name = self._sighting.dictionary
+        if name not in DICTIONARIES:
+            return
+        settings = self.session.settings
+        self.session.set_settings(
+            settings.model_copy(update={"sweep_dictionary": name}))
+        log.info("dictionary set to %s, where the marker was found", name)
+
+    def _parameters(self) -> dict:
+        return sweep_parameters(self.session.settings)
+
+    def _show_parameters(self) -> None:
+        p = self._parameters()
+        self.parameters.setText(
+            f"Marker {p['marker_side_mm']:g} mm, {p['dictionary']}, grid "
+            f"{p['grid_n']}, degree {p['degree']}.")
 
     # -- running -------------------------------------------------------------
 
@@ -561,9 +540,11 @@ class CameraCalibration(QWidget):
         if self._readiness() or self._running():
             return
 
+        # Taken once: a change in Settings while it runs is for the next.
+        params = self._sweep_used = self._parameters()
         detector = cv2.aruco.ArucoDetector(
             cv2.aruco.getPredefinedDictionary(
-                DICTIONARIES[self.dictionary.currentText()]),
+                DICTIONARIES[params["dictionary"]]),
             cv2.aruco.DetectorParameters())
 
         self.run_log.clear()
@@ -578,17 +559,18 @@ class CameraCalibration(QWidget):
         self.stats_button.hide()
         self.statistics.hide()
         self.view.set_overlay_items([])
-        self._append(f"sweeping with grid {self.grid_n.value()}, "
-                     f"degree {self.degree.value()}, marker "
-                     f"{self.marker_side.value():g} mm")
+        self._append(f"sweeping with grid {params['grid_n']}, "
+                     f"degree {params['degree']}, marker "
+                     f"{params['marker_side_mm']:g} mm, "
+                     f"{params['dictionary']}")
 
         # calibrate_camera declares on_progress, cancel and log, so the worker
         # passes all three without an adapter. on_frame is named outright,
         # because it is this page's and not the convention's.
         worker = Worker(calibrate_camera, self.session.robot, camera, detector,
-                        marker_side_mm=self.marker_side.value(),
-                        grid_n=self.grid_n.value(),
-                        degree=self.degree.value(),
+                        marker_side_mm=params["marker_side_mm"],
+                        grid_n=params["grid_n"],
+                        degree=params["degree"],
                         on_frame=self._on_pose,
                         what="calibrating the camera")
         self._worker = worker
@@ -646,7 +628,7 @@ class CameraCalibration(QWidget):
         pmap, report, sweep = result
         self._append("fit complete")
         log.info("camera calibration fitted:\n%s", report)
-        self._verdict = judge(report, self.marker_side.value())
+        self._verdict = judge(report, self._sweep_used["marker_side_mm"])
         log.info("camera calibration verdict: %s", self._verdict.line)
         self.report_text.setPlainText(f"{self._verdict.line}\n\n{report}")
         self._draw_coverage(report, sweep)
@@ -797,9 +779,8 @@ class CameraCalibration(QWidget):
         # Hidden while the sweep runs: its keys are given up, and nothing but
         # the sweep moves the gantry.
         self.jog.setVisible(not running)
-        for widget in (self.camera_choice, self.marker_side, self.grid_n,
-                       self.degree, self.dictionary, self.defaults_button):
-            widget.setEnabled(not running)
+        self.camera_choice.setEnabled(not running)
+        self._show_parameters()
         if not running:
             self._show_sighting()
 

@@ -52,21 +52,15 @@ def test_the_gate_says_the_upper_camera_is_missing(app, session):
     page.deleteLater()
 
 
-def test_the_parameters_start_at_the_defaults_and_reset_to_them(app, session):
-    from micropick.gui.pages.calibration_camera import SWEEP_DEFAULTS
+def test_the_sweep_parameters_are_the_ones_in_settings(app, session):
+    from micropick.gui.pages.calibration_camera import (SWEEP_DEFAULTS,
+                                                         sweep_parameters)
+    assert sweep_parameters(session.settings) == SWEEP_DEFAULTS
     page = CameraCalibration(session)
-
-    def shown():
-        return {"marker_side_mm": page.marker_side.value(),
-                "dictionary": page.dictionary.currentText(),
-                "grid_n": page.grid_n.value(), "degree": page.degree.value()}
-
-    assert shown() == SWEEP_DEFAULTS
-    page.marker_side.setValue(10.0)
-    page.grid_n.setValue(9)
-    page.dictionary.setCurrentText("DICT_4X4_50")
-    page.defaults_button.click()
-    assert shown() == SWEEP_DEFAULTS
+    assert "6.8 mm" in page.parameters.text()
+    session.set_settings(session.settings.model_copy(
+        update={"sweep_grid_n": 9}))
+    assert "grid 9" in page.parameters.text()
     page.deleteLater()
 
 

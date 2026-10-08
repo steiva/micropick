@@ -10,6 +10,13 @@ the third for fixes.
 
 ## Unreleased
 
+- Status bar: the tip is a button. It opens a small panel over it to drop
+  the tip in place or in the trash, or pick up a new one from a rack's
+  well (the next well of the rack is offered after each pick-up). Text in
+  the status bar no longer lights up under the mouse; only buttons do.
+- Camera calibration: the sweep parameters (marker side, dictionary, grid,
+  degree) moved to Settings, where they are saved; the Sweep card says
+  which ones it uses, with a link there.
 - Profile page: Robot and Load profile, side by side and centred. The
   chooser shows each profile's folder after its name; a green check says
   which profile is loaded.

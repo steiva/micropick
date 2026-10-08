@@ -86,6 +86,10 @@ tab.
 Home robot position in the status bar is reachable from every page: it is
 refused while any jog panel or any worker is busy, and goes through the
 shown page's `JogPanel.run_job` when that page has one.
+The status bar's tip button (`widgets.tip_button`) opens a panel growing
+up out of it - drop in place, drop in trash, pick up from a rack's well -
+and its acts run by the same rule (`MainWindow._tip_command`). Only what
+can be clicked in the status bar lights up under the mouse.
 
 ### Liquid handling is a program of blocks
 
@@ -148,6 +152,9 @@ The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
 The lower camera's mode and crop for pickup clips are settings too
 (default 2000x1500, crop 0.5); the Picking page reopens the camera in that
 mode, and the pipette calibration reopens it in the profile's own.
+The camera calibration sweep's parameters (marker side, dictionary, grid,
+degree) are settings too (`AppSettings.sweep_*`); the Camera calibration
+page shows them and links to Settings.
 
 The Settings page's second column is the loaded profile's, saved into it at
 once: which attached camera is the upper and which the lower

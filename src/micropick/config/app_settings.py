@@ -55,6 +55,16 @@ class AppSettings(BaseModel):
     # profile's own mode, whatever this says.
     clip_resolution: tuple[int, int] = (2000, 1500)
     clip_crop: float = Field(default=0.5, gt=0.0, le=1.0)
+    # The camera calibration sweep: the marker printed for this bench and
+    # the ArUco dictionary it is printed in, and the grid and degree the
+    # first real sweep was judged at (DESIGN section 3). The bench's, like
+    # the marker on it, not a profile's.
+    sweep_marker_side_mm: float = Field(default=6.8, ge=1.0, le=60.0)
+    sweep_dictionary: str = "DICT_6X6_250"
+    sweep_grid_n: int = Field(default=7, ge=4, le=15)
+    # Below 3 is refused by fit_pixel_map rather than silently useless:
+    # radial distortion is cubic in image coordinates.
+    sweep_degree: int = Field(default=3, ge=3, le=5)
 
 
 def settings_path() -> Path:

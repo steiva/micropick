@@ -45,6 +45,7 @@ from ... import paths
 from ...config.app_settings import AppSettings, settings_path
 from ...hardware import devices as camera_devices
 from ..detector import STANDIN, DetectorService
+from ..marker_watch import DICTIONARIES
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, double_spin_box, heading,
@@ -139,6 +140,7 @@ class SettingsPage(QWidget):
         column.addWidget(self._robot_card())
         column.addWidget(self._folders_card())
         column.addWidget(self._clips_card())
+        column.addWidget(self._sweep_card())
         row = QHBoxLayout()
         self.save_button = primary_button("Save", self)
         self.save_button.clicked.connect(self._save)
@@ -257,6 +259,84 @@ class SettingsPage(QWidget):
         grid.setColumnStretch(1, 1)
         box.layout().addLayout(grid)
         return box
+
+    def _sweep_card(self) -> QWidget:
+        """The camera calibration sweep's parameters: the bench's marker,
+        and how densely the sweep samples. Used by the Camera calibration
+        page, which says which ones it will sweep with."""
+        box = card(self)
+        box.layout().addWidget(heading("Camera calibration sweep", 2))
+        box.layout().addWidget(_label(
+            "The marker the camera calibration looks for, and how the sweep "
+            "samples it. Change them only for another marker or after a "
+            "sweep that came out poor."))
+        self.marker_side = double_spin_box(self)
+        self.marker_side.setRange(1.0, 60.0)
+        self.marker_side.setDecimals(2)
+        self.marker_side.setSingleStep(0.1)
+        self.marker_side.setSuffix(" mm")
+        self.dictionary = combo_box(self)
+        self.dictionary.addItems(DICTIONARIES)
+        self.grid_n = spin_box(self)
+        self.grid_n.setRange(4, 15)
+        self.degree = spin_box(self)
+        # Below 3 is refused by fit_pixel_map rather than silently useless:
+        # radial distortion is cubic in image coordinates, so a quadratic
+        # reduces exactly to the affine fit it is meant to improve on.
+        self.degree.setRange(3, 5)
+        grid = QGridLayout()
+        for row, (label, widget, hint) in enumerate((
+                ("Marker side", self.marker_side,
+                 "The printed size. Never used by the fit - it is the "
+                 "independent check on the recovered size."),
+                ("Dictionary", self.dictionary,
+                 "The wrong one detects nothing, which looks like bad "
+                 "lighting. The Camera calibration page offers the one the "
+                 "marker is found in."),
+                ("Grid", self.grid_n,
+                 "Poses per axis; the sweep measures its own extent from the "
+                 "marker, so this is only how densely it samples it."),
+                ("Degree", self.degree,
+                 "3 is the minimum that can represent radial distortion at "
+                 "all. 4 does not help and is worse at the extremes."))):
+            grid.addWidget(QLabel(label), 2 * row, 0)
+            grid.addWidget(widget, 2 * row, 1, Qt.AlignmentFlag.AlignLeft)
+            grid.addWidget(muted_label(hint), 2 * row + 1, 1)
+        grid.setColumnStretch(1, 1)
+        box.layout().addLayout(grid)
+        for widget in (self.marker_side, self.grid_n, self.degree):
+            widget.valueChanged.connect(lambda _v: self._edited())
+        self.dictionary.currentIndexChanged.connect(lambda _i: self._edited())
+        row = QHBoxLayout()
+        self.sweep_defaults_button = secondary_button("Reset to defaults",
+                                                      self)
+        defaults = AppSettings()
+        self.sweep_defaults_button.setToolTip(
+            f"Marker side {defaults.sweep_marker_side_mm:g} mm, "
+            f"{defaults.sweep_dictionary}, grid {defaults.sweep_grid_n}, "
+            f"degree {defaults.sweep_degree}. Save keeps them.")
+        self.sweep_defaults_button.clicked.connect(self._sweep_defaults)
+        row.addWidget(self.sweep_defaults_button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+        return box
+
+    def _show_sweep(self, settings: AppSettings) -> None:
+        widgets = (self.marker_side, self.dictionary, self.grid_n,
+                   self.degree)
+        for widget in widgets:
+            widget.blockSignals(True)
+        self.marker_side.setValue(settings.sweep_marker_side_mm)
+        index = self.dictionary.findText(settings.sweep_dictionary)
+        self.dictionary.setCurrentIndex(max(0, index))
+        self.grid_n.setValue(settings.sweep_grid_n)
+        self.degree.setValue(settings.sweep_degree)
+        for widget in widgets:
+            widget.blockSignals(False)
+
+    def _sweep_defaults(self) -> None:
+        self._show_sweep(AppSettings())
+        self._edited()
 
     def _clips_card(self) -> QWidget:
         box = card(self)
@@ -405,6 +485,7 @@ class SettingsPage(QWidget):
         self.clip_crop.blockSignals(True)
         self.clip_crop.setValue(settings.clip_crop)
         self.clip_crop.blockSignals(False)
+        self._show_sweep(settings)
         self.save_state.setText(
             self.session.settings_note
             or (f"Saved in {settings_path()}." if settings_path().is_file()
@@ -424,7 +505,12 @@ class SettingsPage(QWidget):
                    for key, line in self.folders.items()}
         return AppSettings(robot_host=host, robot_port=port, **folders,
                            clip_resolution=self.clip_resolution.currentData(),
-                           clip_crop=round(self.clip_crop.value(), 2))
+                           clip_crop=round(self.clip_crop.value(), 2),
+                           sweep_marker_side_mm=round(
+                               self.marker_side.value(), 2),
+                           sweep_dictionary=self.dictionary.currentText(),
+                           sweep_grid_n=int(self.grid_n.value()),
+                           sweep_degree=int(self.degree.value()))
 
     def _edited(self) -> None:
         self.save_state.setText("Changed: Save keeps it.")
