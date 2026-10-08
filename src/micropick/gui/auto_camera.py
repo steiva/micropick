@@ -15,8 +15,9 @@ the open is what was asked for.
 Three things keep it from becoming a nuisance:
 
 - **once per label.** A camera that failed to open is not tried again by
-  this; the Profile page's button is how a fixed cable is retried, and it
-  is one click. Without that, a page with an unplugged camera would try to
+  this; the camera's button in the status bar is how a fixed cable is
+  retried, and it is one click. Without that, a page with an unplugged
+  camera would try to
   open it every time it is looked at, each attempt several seconds of
   blocking device open.
 - **never twice at a time.** `Session.open_camera` hands back an already

@@ -17,8 +17,8 @@ import re
 import subprocess
 from dataclasses import dataclass
 
-__all__ = ["Device", "list_devices", "find_device", "DeviceError",
-           "DeviceNotFound", "AmbiguousDevice", "backend_name"]
+__all__ = ["Device", "Mode", "list_devices", "find_device", "device_modes",
+           "DeviceError", "DeviceNotFound", "AmbiguousDevice", "backend_name"]
 
 
 class DeviceError(RuntimeError):
@@ -125,3 +125,42 @@ def find_device(name: str, *, devices: list[Device] | None = None,
             f"{len(hits)} cameras match {name!r}, refusing to guess:\n  {listing}"
         )
     return hits[0]
+
+
+@dataclass(frozen=True)
+class Mode:
+    """One format a device offers: size, pixel format, its top frame rate."""
+
+    width: int
+    height: int
+    fourcc: str
+    fps: float
+
+    def __str__(self) -> str:
+        return f"{self.width}x{self.height} {self.fourcc} {self.fps:.0f} fps"
+
+
+def device_modes(index: int) -> list[Mode]:
+    """What the device at `index` offers, largest first. Windows only (the
+    DirectShow formats, through pygrabber); elsewhere, or when asking
+    fails, an empty list - the modes are information, never a reason not
+    to open a camera."""
+    if platform.system() != "Windows":
+        return []
+    try:
+        from pygrabber.dshow_graph import FilterGraph
+        graph = FilterGraph()
+        graph.add_video_input_device(index)
+        formats = graph.get_input_device().get_formats()
+    except Exception:                                # noqa: BLE001
+        return []
+    modes = set()
+    for f in formats:
+        # pygrabber's min/max are the frame intervals' ends, so in frames a
+        # second the larger of the two is the top rate.
+        fps = max(float(f.get("min_framerate") or 0),
+                  float(f.get("max_framerate") or 0))
+        modes.add(Mode(int(f["width"]), int(f["height"]),
+                       str(f.get("media_type_str", "")), round(fps, 1)))
+    return sorted(modes, key=lambda m: (m.width * m.height, m.fps),
+                  reverse=True)

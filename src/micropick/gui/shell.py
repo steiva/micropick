@@ -99,7 +99,7 @@ STOP_AGAIN_S = 10
 # What to do after the robot was stopped at once, in order.
 HALTED_STEPS = (
     "1. Make sure nothing is in the robot's way, then go to the Profile "
-    "page and press New robot session + home. The robot lifts the tip and "
+    "page and press New robot session. The robot lifts the tip and "
     "goes to its home position.\n\n"
     "2. Load the labware again on the Robot & Deck page: the new session "
     "starts with an empty deck.\n\n"
@@ -182,8 +182,9 @@ class StatusBar(QStatusBar):
         self._robot = QLabel()
 
         # One button per camera of the profile, a window with its feed on
-        # click. From here rather than from a page, because a camera is
-        # opened on the Profile page and looked at everywhere else.
+        # click and hidden on the next. From here rather than from a page,
+        # because a camera is looked at - and its focus tuned - from
+        # anywhere.
         self._cameras = QWidget()
         self._camera_row = QHBoxLayout(self._cameras)
         self._camera_row.setContentsMargins(SPACING, 0, SPACING, 0)
@@ -217,8 +218,9 @@ class StatusBar(QStatusBar):
         self.settings = QToolButton()
         self.settings.setAutoRaise(True)
         self.settings.setIcon(qta.icon("mdi6.cog-outline"))
-        self.settings.setToolTip("Settings: the robot's address, and where "
-                                 "outputs are saved")
+        self.settings.setToolTip("Settings: the robot's address, where "
+                                 "outputs are saved, which camera is which, "
+                                 "the models and the calibration")
         self.settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Stop, on every page: red and labelled, so it is found without
@@ -505,7 +507,8 @@ class MainWindow(QMainWindow):
 
     def _show_cameras(self, label: str) -> None:
         self.status.show_cameras(self.session.open_cameras)
-        # A camera that was closed on the Profile page has no feed to show.
+        # A camera that was closed - for one, when Settings gave its role
+        # to another device - has no feed to show.
         camera = self.session.camera(label)
         window = self._feeds.get(label)
         if window is not None:

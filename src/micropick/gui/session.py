@@ -1258,6 +1258,39 @@ class Session(QObject):
             self.profile_changed.emit(self.profile)
         return written
 
+    def assign_camera_devices(self, devices: dict[str, str]) -> None:
+        """{label: device name}: which attached camera each of the
+        profile's cameras is, written into the profile at once. A camera
+        that is open is closed first - it is another device now - and the
+        page that wants it opens it again. Blocking only on disk."""
+        if self.profile is None:
+            raise SessionError("load a profile before choosing its cameras")
+        changed = {}
+        for label, name in devices.items():
+            spec = self.profile.cameras.get(label)
+            if spec is None:
+                raise SessionError(f"profile {self.profile.name!r} has no "
+                                   f"camera {label!r}")
+            if spec.device_name != name:
+                changed[label] = (spec.device_name, name)
+        if not changed:
+            return
+        for label in changed:
+            if label in self._open:
+                self.close_camera(label)
+        for label, (_was, name) in changed.items():
+            self.profile.cameras[label].device_name = name
+            if self.cameras is not None:
+                # In place: the manager holds the other camera open, and a
+                # new one would not know to close it.
+                self.cameras.cameras[label] = \
+                    self.profile.cameras[label].model_dump()
+        self.profile.save_cameras()
+        for label, (was, name) in changed.items():
+            log.info("camera %r of profile %r is now %r (was %r)", label,
+                     self.profile.name, name, was)
+        self.profile_changed.emit(self.profile)
+
     # -- teardown ------------------------------------------------------------
 
     def shutdown(self) -> None:

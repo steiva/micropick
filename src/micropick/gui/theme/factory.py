@@ -23,8 +23,8 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
 from . import SPACING
 
 __all__ = ["primary_button", "secondary_button", "card", "heading",
-           "combo_box", "spin_box", "double_spin_box", "scroll_column",
-           "Section"]
+           "muted_label", "combo_box", "spin_box", "double_spin_box",
+           "scroll_column", "Section"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -84,6 +84,20 @@ def heading(text: str, level: int = 1, parent: QWidget | None = None) -> QLabel:
         raise ValueError(f"heading level must be 1, 2 or 3, got {level!r}")
     label = QLabel(text, parent)
     label.setObjectName(f"heading{level}")
+    return label
+
+
+def muted_label(text: str = "", parent: QWidget | None = None) -> QLabel:
+    """Secondary text - a path, a detail under a choice - in a quieter ink.
+
+    Disabled, because that is the dimmer text colour qdarktheme already has
+    in both themes; a colour of our own would be the wrong one in one of
+    them. A disabled label still shows its text and its tooltip.
+    """
+    label = QLabel(text, parent)
+    label.setObjectName("muted")
+    label.setWordWrap(True)
+    label.setEnabled(False)
     return label
 
 

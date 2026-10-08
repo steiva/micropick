@@ -60,6 +60,10 @@ picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
 plus the page's `add_help`); H toggles it. A key added to a page belongs in
 that list too.
 
+A camera's focus is tuned only in its own window (the status bar camera
+button, which toggles it): `CameraView.enable_focus_tools` - slider, typed
+number, default 960, save to profile - is off on the pages.
+
 ### Manual control drives the robot from the picture
 
 Robot commands from a page with a jog panel go through
@@ -93,7 +97,7 @@ not a page of its own.
 ### Words on screen
 
 UI strings only; code names stay. The OT-2's HTTP run is a **robot session**
-("New robot session + home", "Continue with current robot session", status
+("New robot session", "Continue with current robot session", status
 bar "session <name> (continued)"). A session is shown by the name it was
 given when created here (`config.robot_sessions`, default date, time and
 profile), else by when the robot started it - never by its id. "run" on
@@ -131,3 +135,9 @@ The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
 The lower camera's mode and crop for pickup clips are settings too
 (default 2000x1500, crop 0.5); the Picking page reopens the camera in that
 mode, and the pipette calibration reopens it in the profile's own.
+
+The Settings page's second column is the loaded profile's, saved into it at
+once: which attached camera is the upper and which the lower
+(`Session.assign_camera_devices`, the specs' `device_name`; choosing the
+other's device swaps them), the machine learning models, the calibration
+summary. The Profile page is only Robot and Installation.

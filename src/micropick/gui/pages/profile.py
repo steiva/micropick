@@ -1,16 +1,21 @@
-"""Choosing a profile, connecting the robot, opening cameras.
+"""Connecting the robot and choosing a profile.
+
+Two cards, centred: Robot first, because it is the first thing to do and the
+one that needs reading, then Installation. What a profile holds beyond its
+name - which camera is which, the models, the calibration - is set in
+Settings (the gear), not here: this page is the start of a day's work, and
+those are set once.
 
 Everything here goes through the session. The page knows which buttons exist
 and what state they should be in; it does not know whether the robot behind
 them is an HTTP client or a mock, and it never opens a device itself.
 
-The slow calls — probing the robot, bringing a run up, opening a camera — run
-in a `Worker`. An HTTP round trip and a camera warm-up are both seconds, and in
-the GUI thread each of them is a frozen window.
+The slow calls - probing the robot, bringing a run up - run in a `Worker`.
+An HTTP round trip is seconds, and in the GUI thread it is a frozen window.
 
 Bringing the robot up is a decision, not a button. The robot may already hold a
 run from before this application started, and if it was never powered off that
-run is the one to carry on with — its pipette, its labware, its offsets. Or it
+run is the one to carry on with - its pipette, its labware, its offsets. Or it
 may hold nothing, or a finished run. The session can find out which; it cannot
 know whether yesterday's run is stale or today's work in progress, so what it
 found is shown here and the operator chooses. A new run always ends in a home,
@@ -20,29 +25,33 @@ Profiles are made and removed here too. A new one starts as a copy of an
 existing one by default, because the cameras, the calibration and the taught
 positions belong to the bench and a profile started empty would have to
 measure all of them again. Deleting always asks, and never takes the profile
-that is loaded: its cameras are open and its positions are being written.
+that is loaded: its cameras are open and its positions are being written. The
+chooser shows each profile's folder after its name, quieter; a green check
+under it says which one is loaded.
 """
 
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+import qtawesome as qta
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QColor, QPainter, QPalette
 from PySide6.QtWidgets import (QComboBox, QDialog, QDialogButtonBox,
-                               QFormLayout, QGridLayout, QHBoxLayout,
-                               QInputDialog, QLabel,
-                               QLineEdit, QMessageBox, QVBoxLayout, QWidget)
+                               QFormLayout, QHBoxLayout, QInputDialog, QLabel,
+                               QLineEdit, QMessageBox, QStyle,
+                               QStyledItemDelegate, QStyleOptionComboBox,
+                               QStyleOptionViewItem, QStylePainter,
+                               QVBoxLayout, QWidget)
 
-from ... import paths
 from ...config import robot_sessions
 from ...config.store import (LegacyProfileError, ProfileError, copy_profile,
                              create_profile, delete_profile, list_profiles,
                              profile_dir)
-from ..detector import STANDIN, DetectorService
 from ..session import MOCK_PROFILE_NAME, Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             secondary_button)
+from ..theme.factory import card, heading, primary_button, secondary_button
+from ..widgets.done_banner import DONE_GREEN
 from ..workers import Worker
 
 __all__ = ["ProfilePage"]
@@ -51,87 +60,95 @@ TITLE = "Profile"
 
 log = logging.getLogger(__name__)
 
-# Two columns of cards: one card to a row spent a 1400 px window on a combo
-# box and two buttons.
-COLUMNS = 2
+# Each card's width, which it grows past only for a button that would
+# not fit; the two sit side by side, centred.
+CARD_WIDTH = 560
 
 # What "start from" offers besides the existing profiles.
 EMPTY = "empty (defaults)"
 
-
-def _calibration_state(profile) -> str:
-    pixel_map = profile.pixel_map
-    if pixel_map is None:
-        return "not calibrated — run the camera sweep"
-    parts = [f"pixel map: degree {pixel_map.degree}"]
-    if pixel_map.n_poses is not None:
-        parts.append(f"{pixel_map.n_poses} poses")
-    if pixel_map.holdout_mean_um is not None:
-        parts.append(f"held-out {pixel_map.holdout_mean_um:.1f} µm mean")
-    if profile.calibration.pipette_offset is None:
-        parts.append("no pipette offset")
-    return ", ".join(parts)
+# The folder after a profile's name: how much of the text's ink it gets, and
+# the gap before it.
+PATH_ALPHA = 0.5
+PATH_GAP = 12
+PATH_ROLE = Qt.ItemDataRole.UserRole + 1
+ICON_PX = 18
 
 
-class _CameraRow(QWidget):
-    """One camera of the profile: what it is, and one button to open or close."""
+def _draw_name_and_path(painter: QPainter, rect: QRect, name: str,
+                        path: str | None, ink: QColor) -> None:
+    """The name in `ink`, then the path in a fainter `ink`, elided in the
+    middle so both its ends - the drive and the profile's folder - stay."""
+    painter.save()
+    metrics = painter.fontMetrics()
+    flags = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+    painter.setPen(ink)
+    name = metrics.elidedText(name, Qt.TextElideMode.ElideRight, rect.width())
+    painter.drawText(rect, flags, name)
+    left = rect.left() + metrics.horizontalAdvance(name) + PATH_GAP
+    room = rect.right() - left
+    if path and room > 3 * metrics.averageCharWidth():
+        faint = QColor(ink)
+        faint.setAlphaF(ink.alphaF() * PATH_ALPHA)
+        painter.setPen(faint)
+        painter.drawText(QRect(left, rect.top(), room, rect.height()), flags,
+                         metrics.elidedText(path, Qt.TextElideMode.ElideMiddle,
+                                            room))
+    painter.restore()
 
-    def __init__(self, page: "ProfilePage", label: str, spec, parent=None):
-        super().__init__(parent)
-        self.label = label
-        self.page = page
 
-        width, height = spec.default_resolution
-        text = f"{label} — {width}×{height}"
-        if spec.crop != 1.0:
-            text += f", view crop {spec.crop:g}"
+class _PathDelegate(QStyledItemDelegate):
+    """The chooser's list: each profile's name, then its folder, fainter."""
 
-        self.name = QLabel(text)
-        self.button = secondary_button("Open", self)
-        self.button.clicked.connect(self._toggle)
-        # Controls tuned on a feed - the lower camera's focus slider - live
-        # on the device until this writes them into cameras.json. A separate
-        # act on purpose: trying a focus is not deciding on it.
-        self.save_button = secondary_button("Save controls", self)
-        self.save_button.setToolTip(
-            "Write this camera's current control values (focus, exposure…) "
-            "into the profile, so the next open starts from them.")
-        self.save_button.clicked.connect(self._save_controls)
-
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self.name)
-        row.addStretch(1)
-        row.addWidget(self.save_button)
-        row.addWidget(self.button)
-
-    def _toggle(self) -> None:
-        if self.page.session.camera(self.label) is None:
-            self.page.open_camera(self.label)
-        else:
-            self.page.close_camera(self.label)
-
-    def _save_controls(self) -> None:
-        try:
-            written = self.page.session.save_camera_controls(self.label)
-        except Exception as exc:                     # noqa: BLE001
-            self.page._show_error(str(exc))
+    def paint(self, painter, option, index) -> None:
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        name, opt.text = opt.text, ""
+        widget = opt.widget
+        style = widget.style() if widget is not None else None
+        if style is None:
+            super().paint(painter, option, index)
             return
-        self.page._show_error(
-            f"{self.label}: saved " + ", ".join(f"{k}={v:g}" for k, v in written.items())
-            if written else
-            f"{self.label}: nothing to save - the profile names no numeric "
-            f"control for this camera that the device took.")
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter,
+                          widget)
+        rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText,
+                                    opt, widget)
+        selected = bool(opt.state & QStyle.StateFlag.State_Selected)
+        ink = opt.palette.color(QPalette.ColorRole.HighlightedText if selected
+                                else QPalette.ColorRole.Text)
+        _draw_name_and_path(painter, rect.adjusted(4, 0, -4, 0), name,
+                            index.data(PATH_ROLE), ink)
 
-    def refresh(self, busy: bool) -> None:
-        camera = self.page.session.camera(self.label)
-        is_open = camera is not None
-        self.button.setText("Close" if is_open else "Open")
-        # Closing is instant and safe while something else is opening; opening
-        # is not, so only that half waits.
-        self.button.setEnabled(is_open or not busy)
-        applied = getattr(getattr(camera, "controls", None), "applied", {}) or {}
-        self.save_button.setVisible(is_open and bool(applied))
+
+class _ProfileChooser(QComboBox):
+    """A combo box of profile names that shows each one's folder after it.
+
+    The folder is item data (`PATH_ROLE`), drawn by hand: a combo box has
+    one text colour, and the point is two."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setItemDelegate(_PathDelegate(self))
+
+    def wheelEvent(self, event) -> None:
+        # The page does not scroll, but a wheel over the chooser changing
+        # which profile Load would load is a surprise all the same.
+        event.ignore()
+
+    def paintEvent(self, _event) -> None:
+        painter = QStylePainter(self)
+        opt = QStyleOptionComboBox()
+        self.initStyleOption(opt)
+        name, opt.currentText = opt.currentText, ""
+        painter.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, opt)
+        rect = self.style().subControlRect(
+            QStyle.ComplexControl.CC_ComboBox, opt,
+            QStyle.SubControl.SC_ComboBoxEditField, self)
+        ink = self.palette().color(
+            QPalette.ColorGroup.Normal if self.isEnabled()
+            else QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text)
+        _draw_name_and_path(painter, rect.adjusted(2, 0, 0, 0), name,
+                            self.currentData(PATH_ROLE), ink)
 
 
 class NewProfileDialog(QDialog):
@@ -197,22 +214,21 @@ class ProfilePage(QWidget):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        self._camera_rows: list[_CameraRow] = []
+
+        cards = QHBoxLayout()
+        cards.setSpacing(SPACING * 2)
+        cards.addStretch(1)
+        for box in (self._robot_card(), self._profile_card()):
+            box.setMinimumWidth(CARD_WIDTH)
+            box.setMaximumWidth(CARD_WIDTH * 3 // 2)
+            cards.addWidget(box, 0, Qt.AlignmentFlag.AlignTop)
+        cards.addStretch(1)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
+        layout.setContentsMargins(SPACING * 2, SPACING * 4, SPACING * 2,
+                                  SPACING * 2)
         layout.setSpacing(SPACING)
-
-        grid = QGridLayout()
-        grid.setSpacing(SPACING)
-        cards = (self._profile_card(), self._robot_card(),
-                 self._cameras_card(), self._models_card())
-        for i, box in enumerate(cards):
-            grid.addWidget(box, i // COLUMNS, i % COLUMNS,
-                           Qt.AlignmentFlag.AlignTop)
-        for column in range(COLUMNS):
-            grid.setColumnStretch(column, 1)
-        layout.addLayout(grid)
+        layout.addLayout(cards)
 
         # Full width, selectable, and never truncated: LegacyProfileError's own
         # text says what to do about it, so it is shown as it comes rather than
@@ -223,17 +239,15 @@ class ProfilePage(QWidget):
         # rather than retyped from the screen.
         self.error.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.error.setMaximumWidth(2 * CARD_WIDTH + SPACING * 2)
         self.error.hide()
-        layout.addWidget(self.error)
+        layout.addWidget(self.error, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch(1)
 
         session.profile_changed.connect(self._on_profile_changed)
         session.robot_state_changed.connect(lambda _s: self.refresh())
-        session.camera_opened.connect(lambda _l: self.refresh())
-        session.camera_closed.connect(lambda _l: self.refresh())
 
         self.reload_profile_list()
-        self._reload_models()
         self.refresh()
 
     # -- construction --------------------------------------------------------
@@ -242,12 +256,25 @@ class ProfilePage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Installation", 2))
 
-        self.chooser = QComboBox(self)
+        self.chooser = _ProfileChooser(self)
         self.load_button = primary_button("Load", self)
         self.load_button.clicked.connect(self.load_selected)
         row = QHBoxLayout()
         row.addWidget(self.chooser, 1)
         row.addWidget(self.load_button)
+        box.layout().addLayout(row)
+
+        # Which profile is loaded: a green check and its name, so a glance
+        # tells whether Load still has to be pressed.
+        self.loaded_icon = QLabel(self)
+        self.loaded_icon.setPixmap(qta.icon("mdi6.check-circle",
+                                            color=DONE_GREEN)
+                                   .pixmap(ICON_PX, ICON_PX))
+        self.loaded = QLabel(self)
+        self.loaded.setWordWrap(True)
+        row = QHBoxLayout()
+        row.addWidget(self.loaded_icon, 0, Qt.AlignmentFlag.AlignTop)
+        row.addWidget(self.loaded, 1)
         box.layout().addLayout(row)
 
         self.new_button = secondary_button("New profile…", self)
@@ -260,13 +287,6 @@ class ProfilePage(QWidget):
         row.addWidget(self.delete_button)
         row.addStretch(1)
         box.layout().addLayout(row)
-
-        self.profile_path = QLabel()
-        self.profile_path.setWordWrap(True)
-        self.calibration = QLabel()
-        self.calibration.setWordWrap(True)
-        box.layout().addWidget(self.profile_path)
-        box.layout().addWidget(self.calibration)
         return box
 
     def _robot_card(self) -> QWidget:
@@ -308,8 +328,9 @@ class ProfilePage(QWidget):
 
         # Both secondary; setDefault below picks which one carries the accent.
         # New first, on the left: it is the way on that always exists.
-        self.new_run_button = secondary_button("New robot session + home",
-                                               self)
+        self.new_run_button = secondary_button("New robot session", self)
+        self.new_run_button.setToolTip("Start a new robot session. The robot "
+                                       "homes its axes first; it asks before.")
         self.new_run_button.clicked.connect(self._new_run)
         self.adopt_button = secondary_button(
             "Continue with current robot session", self)
@@ -321,61 +342,38 @@ class ProfilePage(QWidget):
         box.layout().addLayout(choice)
         return box
 
-    def _cameras_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Cameras", 2))
-        self.no_cameras = QLabel("No profile loaded.")
-        self.no_cameras.setWordWrap(True)
-        box.layout().addWidget(self.no_cameras)
-        self._cameras_box = box
-        return box
-
-    def _models_card(self) -> QWidget:
-        """Which weights this installation uses, chosen once.
-
-        Here rather than on the pages that run them: an installation has one
-        cuboid detector and one tip detector, the choice is a property of
-        the bench and not of a run, and a page that offered it would be
-        asking the same question every time it was opened. The pages load
-        whatever is named here when they need it.
-        """
-        box = card(self)
-        box.layout().addWidget(heading("Machine Learning Models", 2))
-
-        self.cuboid_model = combo_box(self)
-        self.cuboid_model.currentTextChanged.connect(self._cuboid_model_chosen)
-        self.tip_model = combo_box(self)
-        self.tip_model.currentTextChanged.connect(self._tip_model_chosen)
-        rows = [(QLabel("Model to use for cuboids"), self.cuboid_model),
-                (QLabel("Model to use for tip detection"), self.tip_model)]
-        # One width for both labels, so the two choosers line up.
-        width = max(name.sizeHint().width() for name, _ in rows)
-        for name, widget in rows:
-            row = QHBoxLayout()
-            name.setFixedWidth(width)
-            row.addWidget(name)
-            row.addWidget(widget, 1)
-            box.layout().addLayout(row)
-
-        self.models_note = QLabel()
-        self.models_note.setWordWrap(True)
-        box.layout().addWidget(self.models_note)
-        return box
-
     # -- actions -------------------------------------------------------------
 
+    def _profile_path(self, name: str) -> str:
+        """Where the profile `name` is on disk, for the chooser."""
+        profile = self.session.profile
+        if profile is not None and profile.name == name:
+            return str(profile.path)
+        if name == MOCK_PROFILE_NAME and self.session.mock:
+            return ""
+        try:
+            return str(profile_dir(name))
+        except ProfileError:
+            return ""
+
     def reload_profile_list(self) -> None:
+        self.chooser.blockSignals(True)
         self.chooser.clear()
         names = list_profiles()
         if self.session.mock:
             # First, because in mock mode it is the one that works.
             names = [MOCK_PROFILE_NAME] + [n for n in names
                                            if n != MOCK_PROFILE_NAME]
-        self.chooser.addItems(names)
+        for name in names:
+            self.chooser.addItem(name)
+            self.chooser.setItemData(self.chooser.count() - 1,
+                                     self._profile_path(name), PATH_ROLE)
         if self.session.profile is not None:
             index = self.chooser.findText(self.session.profile.name)
             if index >= 0:
                 self.chooser.setCurrentIndex(index)
+        self.chooser.blockSignals(False)
+        self.chooser.update()
 
     def load_selected(self) -> None:
         """Load whatever the chooser is showing. Also the start-up path."""
@@ -464,9 +462,8 @@ class ProfilePage(QWidget):
         """Ends in a home, so it asks: the gantry travels to its limits on
         every axis, and a hand in the deck is the failure this dialog is for."""
         state = self.session.run_state
-        detail = ("The robot will start a new session and then home: the "
-                  "gantry moves to its limits on all three axes. Keep hands "
-                  "and labware clear.")
+        detail = ("The robot will home its axes. Stand clear and keep your "
+                  "hands out of the robot.")
         if state is not None and state.reusable:
             detail += (f"\n\nThe current robot session {state.label} will "
                        f"be left behind, with its labware and offsets.")
@@ -474,28 +471,17 @@ class ProfilePage(QWidget):
         # session is shown as from now on (`config.robot_sessions`).
         profile = self.session.profile
         dialog = QInputDialog(self)
-        dialog.setWindowTitle("New robot session and home")
+        dialog.setWindowTitle("New robot session")
         dialog.setLabelText(detail + "\n\nName of the new session:")
         dialog.setTextValue(robot_sessions.default_name(
             profile.name if profile is not None else None))
-        dialog.setOkButtonText("New session + home")
+        dialog.setOkButtonText("Start")
         if dialog.exec() != QInputDialog.DialogCode.Accepted:
             return
         name = dialog.textValue().strip() or None
         self._clear_error()
         self._run(Worker(self.session.new_run, name),
                   "new robot session, then home")
-
-    def open_camera(self, label: str) -> None:
-        self._clear_error()
-        self._run(Worker(self.session.open_camera, label),
-                  f"opening camera {label!r}")
-
-    def close_camera(self, label: str) -> None:
-        try:
-            self.session.close_camera(label)
-        except Exception as exc:                     # noqa: BLE001
-            self._show_error(str(exc))
 
     def _run(self, worker: Worker, what: str) -> None:
         if self._worker is not None and self._worker.running:
@@ -526,107 +512,22 @@ class ProfilePage(QWidget):
 
     # -- display -------------------------------------------------------------
 
-    def _reload_models(self) -> None:
-        """What is in ml_models/, plus the stand-in for the cuboid detector.
-
-        The tip detector has no stand-in here: `gui.tip_detector` makes one
-        for --mock, and offering it on the bench would be offering to
-        calibrate a pipette against invented crosshairs.
-        """
-        found = DetectorService.available_weights()
-        profile = self.session.profile
-        cuboid = profile.picking.model_file if profile else ""
-        tip = profile.calibration.tip_target.model_file if profile else ""
-
-        for widget, current, extra in ((self.cuboid_model, cuboid, [STANDIN]),
-                                       (self.tip_model, tip, [])):
-            names = [*found, *extra]
-            # A name in the profile that is not in ml_models/ is shown
-            # anyway, and marked: a profile that points at weights this
-            # machine does not have is a fact worth seeing, not a silently
-            # reset setting.
-            if current and current not in names:
-                names.insert(0, current)
-            widget.blockSignals(True)
-            widget.clear()
-            widget.addItems(names)
-            index = widget.findText(current)
-            widget.setCurrentIndex(index if index >= 0 else -1)
-            widget.blockSignals(False)
-
-        missing = [name for name in (cuboid, tip)
-                   if name and name != STANDIN and name not in found]
-        self.models_note.setText(
-            "The pages that need a model load whichever is named here."
-            if not missing else
-            f"Not in {paths.ml_models_dir()}: {', '.join(missing)}. "
-            f"Weights are not tracked in the repository; copy the file in, "
-            f"or choose another.")
-
-    def _cuboid_model_chosen(self, name: str) -> None:
-        profile = self.session.profile
-        if profile is None or not name or profile.picking.model_file == name:
-            return
-        profile.picking.model_file = name
-        profile.save_picking()
-        log.info("cuboid detector for %r: %s", profile.name, name)
-        self.session.profile_changed.emit(profile)
-
-    def _tip_model_chosen(self, name: str) -> None:
-        profile = self.session.profile
-        if profile is None or not name:
-            return
-        target = profile.calibration.tip_target
-        if target.model_file == name:
-            return
-        target.model_file = name
-        # backup=False: choosing a model is not a measurement, and archiving
-        # the calibration on every combo change would bury the sweeps that
-        # are worth keeping.
-        profile.save_calibration(backup=False)
-        log.info("tip detector for %r: %s", profile.name, name)
-        self.session.profile_changed.emit(profile)
-
     def _on_profile_changed(self, profile) -> None:
         self.reload_profile_list()
-        self._rebuild_camera_rows()
-        self._reload_models()
         self.refresh()
-
-    def _rebuild_camera_rows(self) -> None:
-        layout = self._cameras_box.layout()
-        for row in self._camera_rows:
-            layout.removeWidget(row)
-            row.deleteLater()
-        self._camera_rows = []
-
-        profile = self.session.profile
-        if profile is None or not profile.cameras:
-            self.no_cameras.setText(
-                "No profile loaded." if profile is None else
-                f"Profile {profile.name!r} lists no cameras.")
-            self.no_cameras.show()
-            return
-
-        self.no_cameras.hide()
-        for label in sorted(profile.cameras):
-            row = _CameraRow(self, label, profile.cameras[label], self)
-            layout.addWidget(row)
-            self._camera_rows.append(row)
 
     def refresh(self) -> None:
         busy = self._worker is not None and self._worker.running
         session = self.session
         profile = session.profile
 
-        if profile is None:
-            self.profile_path.setText("No profile loaded.")
-            self.calibration.setText("")
-        else:
-            temporary = ("  (temporary: created by --mock, safe to delete)"
+        self.loaded_icon.setVisible(profile is not None)
+        self.loaded.setVisible(profile is not None)
+        if profile is not None:
+            temporary = ("<br>Temporary: created by --mock, safe to delete."
                          if session.uses_mock_profile() else "")
-            self.profile_path.setText(f"{profile.path}{temporary}")
-            self.calibration.setText(_calibration_state(profile))
+            self.loaded.setText(f"Profile <b>{profile.name}</b> is loaded."
+                                f"{temporary}")
 
         self.load_button.setEnabled(not busy and self.chooser.count() > 0)
         self.chooser.setEnabled(not busy)
@@ -661,9 +562,6 @@ class ProfilePage(QWidget):
             # way forward takes the accent instead.
             self.adopt_button.setDefault(state.reusable)
             self.new_run_button.setDefault(not state.reusable)
-
-        for row in self._camera_rows:
-            row.refresh(busy)
 
     def _show_error(self, text: str) -> None:
         self.error.setText(text)

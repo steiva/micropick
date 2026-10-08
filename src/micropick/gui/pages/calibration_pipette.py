@@ -444,8 +444,9 @@ class PipetteCalibration(QWidget):
         if over is None:
             problems.append("the upper camera is not open.")
         if under is None:
-            problems.append("the lower camera is not open (open it on the "
-                            "Profile page; the routine checks its mode).")
+            problems.append("the lower camera is not open (open it with its "
+                            "button in the status bar; the routine checks "
+                            "its mode).")
         else:
             mode = self._calibration_mode(self.under_choice.currentText())
             if mode is not None and tuple(under.resolution) != mode:

@@ -711,11 +711,11 @@ class PickingPage(QWidget):
             return
         if self.detector.model is None:
             self.result.setText(
-                "no detector. Choose the cuboid weights on the Profile page; "
+                "no detector. Choose the cuboid weights in Settings; "
                 "this page loads them when it opens."
                 if self._wanted_model() else
-                "no cuboid model named in the profile. Choose one on the "
-                "Profile page.")
+                "no cuboid model named in the profile. Choose one in "
+                "Settings (the gear).")
             return
         camera = self._camera()
         if camera is None:
@@ -903,11 +903,11 @@ class PickingPage(QWidget):
             out.append(Check(done) if name in profile.positions else
                        Check(f"no {name!r} position: {what}.", TODO))
         out.append(Check("Detector loaded") if self.detector.model is not None
-                   else Check("no detector: choose the weights on the "
-                              "Profile page.", TODO, "profile", "Profile"))
+                   else Check("no detector: choose the weights in "
+                              "Settings.", TODO, "settings", "Settings"))
         out.append(Check("Camera open") if self._camera() is not None else
-                   Check("the camera is not open.", TODO, "profile",
-                         "Profile"))
+                   Check("the camera is not open: click its button in "
+                         "the status bar.", TODO))
         if self.clips_box.isChecked():
             if self._lower_camera() is not None:
                 out.append(Check("Lower camera open for the clips"))
@@ -1287,7 +1287,8 @@ class PickingPage(QWidget):
         else:
             self.dish_state.setText(
                 f"camera {label!r} did not open: {reason}\n"
-                f"Open it from the Profile page once the reason is fixed.")
+                f"Open it with its button in the status bar once the "
+                f"reason is fixed.")
         self._refresh()
 
     def _on_profile_changed(self, _profile) -> None:

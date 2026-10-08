@@ -531,7 +531,7 @@ class ManualPage(QWidget):
         wanted = wanted_model(profile, session.mock)
         if not wanted:
             self.state.setText("no cuboid model named in the profile: choose "
-                               "one on the Profile page.")
+                               "one in Settings (the gear).")
             return
         service, cfg = session.detector, profile.picking
         pmap = PixelMap.from_config(profile.pixel_map)

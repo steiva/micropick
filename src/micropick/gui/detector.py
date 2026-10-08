@@ -59,7 +59,7 @@ def wanted_model(profile, mock: bool) -> str:
 
     In --mock there are no weights and the stand-in is the only thing that
     can run, so it is what an unnamed model means there; on the bench an
-    unnamed model is a thing to be chosen on the Profile page rather than
+    unnamed model is a thing to be chosen in Settings rather than
     guessed at.
     """
     named = profile.picking.model_file if profile is not None else ""

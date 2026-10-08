@@ -548,8 +548,8 @@ class CameraCalibration(QWidget):
             out.append("no robot: connect it on the Profile page.")
         if self._camera() is None:
             upper = self.session.upper_camera_label
-            out.append(f"the upper camera ({upper}) is not open: open it on "
-                       f"the Profile page." if upper else
+            out.append(f"the upper camera ({upper}) is not open: open it with "
+                       f"its button in the status bar." if upper else
                        "no upper camera in the profile.")
         return out
 

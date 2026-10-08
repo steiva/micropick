@@ -10,6 +10,19 @@ the third for fixes.
 
 ## Unreleased
 
+- Profile page: only Robot and Installation, side by side and centred. The
+  chooser shows each profile's folder after its name; a green check says
+  which profile is loaded. "New robot session" (no "+ home") asks with a
+  plain warning that the robot will home its axes.
+- Settings: a second column for the loaded profile - which attached camera
+  is the upper (overview) and which the lower (underview) one, with the
+  attached cameras and their modes listed; the machine learning models; the
+  calibration summary. All saved in the profile at once.
+- Camera window (the camera buttons in the status bar, which now show and
+  hide it): focus slider, a focus typed as a number, "default (960)" and
+  "save to profile"; a "focus" box hides them. The pages no longer carry
+  the focus slider.
+
 - A Windows installer (`micropick-<version>-win64-setup.exe`): installs for
   the current user without an administrator, adds a Start menu and desktop
   shortcut and an uninstaller; a newer installer updates in place. Profiles,
