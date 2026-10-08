@@ -41,8 +41,8 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
 from .. import _version as version
 from .. import paths
 from . import log_bridge
-from .pages import (calibration, labware, liquid, log, manual, picking,
-                    profile, routine, settings)
+from .pages import (calibration_camera, calibration_pipette, labware, liquid,
+                    log, manual, picking, profile, routine, settings)
 from .session import MOCK_PROFILE_NAME, Session, Tip
 from .theme import SPACING
 from .widgets.feed_window import FeedWindow
@@ -59,7 +59,9 @@ __all__ = ["MainWindow", "StatusBar", "PAGES"]
 
 _log = logging.getLogger(__name__)
 
-# Which end of the tab row a page sits at.
+# Which end of the tab row a page sits at. The sequence, on the left, is the
+# order a day's work goes in; the pages aside, on the right, are tools used
+# when they are needed, and their titles are in ASIDE_INK to say so.
 SEQUENCE, ASIDE = "sequence", "aside"
 
 # (attribute name, title on the tab, page class, group). The attribute is how
@@ -67,12 +69,18 @@ SEQUENCE, ASIDE = "sequence", "aside"
 PAGES = (
     ("profile", profile.TITLE, profile.ProfilePage, SEQUENCE),
     ("labware", labware.TITLE, labware.LabwarePage, SEQUENCE),
-    ("calibration", calibration.TITLE, calibration.CalibrationPage, SEQUENCE),
+    # The tip is calibrated after each pipette change, so it is a step;
+    # the camera only on a new system or after it was moved, so it is
+    # aside - and the Operation checklist says when it was never done.
+    ("tip_calibration", calibration_pipette.TITLE,
+     calibration_pipette.PipetteCalibration, SEQUENCE),
     # Plate plan before Picking: the plan is what a run picks into, and an
     # operator who meets the pages in order meets them in the order the
     # work happens.
     ("routine", routine.TITLE, routine.RoutinePage, SEQUENCE),
     ("picking", picking.TITLE, picking.PickingPage, SEQUENCE),
+    ("camera_calibration", calibration_camera.TITLE,
+     calibration_camera.CameraCalibration, ASIDE),
     # Beside Manual control: moving liquid is a tool used when it is needed,
     # before picking or days after it, not a stage of the session.
     ("liquid", liquid.TITLE, liquid.LiquidHandlingPage, ASIDE),
@@ -80,7 +88,12 @@ PAGES = (
     ("log", log.TITLE, log.LogPage, ASIDE),
 )
 
-# The one colour this shell owns. A tip on the pipette is the first reason
+# The titles of the pages aside: a teal that reads on either theme's strip,
+# apart from the sequence's plain text without shouting over it.
+ASIDE_INK = "#26a69a"
+ASIDE_TIP = "Used when needed, not a step of every run."
+
+# The colour a tip is shown in. A tip on the pipette is the first reason
 # the robot crashes into something, and the indicator that says so has to be
 # seen from across the room, on every page, in either theme - which is what
 # the palette cannot promise and a fixed amber can.
@@ -99,7 +112,7 @@ STOP_AGAIN_S = 10
 # What to do after the robot was stopped at once, in order.
 HALTED_STEPS = (
     "1. Make sure nothing is in the robot's way, then go to the Profile "
-    "page and press New robot session. The robot lifts the tip and "
+    "page and press Start new robot session. The robot lifts the tip and "
     "goes to its home position.\n\n"
     "2. Load the labware again on the Robot & Deck page: the new session "
     "starts with an empty deck.\n\n"
@@ -135,6 +148,11 @@ class NavTab(QWidget):
 
     def text(self) -> str:
         return self.label.text()
+
+    def set_aside(self) -> None:
+        """A page aside: its title in ASIDE_INK, and why on hover."""
+        self.label.setStyleSheet(f"color: {ASIDE_INK};")
+        self.setToolTip(ASIDE_TIP)
 
     def isChecked(self) -> bool:
         return bool(self.property("selected"))
@@ -402,6 +420,7 @@ class MainWindow(QMainWindow):
             tab.clicked.connect(lambda name=name: self.show_page(name))
             self.tabs[name] = tab
             if group == ASIDE:
+                tab.set_aside()
                 aside.append(tab)
             else:
                 tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)

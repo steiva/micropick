@@ -12,14 +12,20 @@ the third for fixes.
 
 - Profile page: Robot and Load profile, side by side and centred. The
   chooser shows each profile's folder after its name; a green check says
-  which profile is loaded. "New robot session" (no "+ home") asks with a
-  plain warning that the robot will home its axes. The robot session
-  buttons are always there, greyed when they cannot be used; Disconnect is
-  "Disconnect robot session".
-- Profile page: the checklist before a picking run is here now, under the
-  two cards, so loading a profile shows what is still to do. The Picking
-  page keeps its own checks (detector, camera, clips) and one line for the
-  rest; Start is blocked as before.
+  which profile is loaded.
+- Robot: Connect carries on with the robot's session, or starts a new one
+  (after asking: the robot homes) when there is none to carry on with.
+  Then two buttons only: "Disconnect robot session" and "Start new robot
+  session".
+- Profile page: the Operation checklist - the steps before a picking run,
+  numbered, in the order of the work. The steps never change their words,
+  only their marks; a step that waits for an earlier one is greyed, and
+  hovering shows details. The Picking page keeps its own steps (detector,
+  camera, clips) under "Complete the Operation checklist"; Start is blocked
+  as before.
+- Calibration is two tabs: Tip calibration among the steps, Camera
+  calibration on the right with the tools used when needed (Liquid
+  handling, Manual control, Log), whose titles are now teal.
 - Settings: a profile started empty can be given its cameras - choosing a
   camera for a role that has none adds it with the bench's settings.
 - Settings: a second column for the loaded profile - which attached camera

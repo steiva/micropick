@@ -3,10 +3,12 @@
 The sweep is the upper camera's: the chooser offers no other, since the
 lower camera looks up at the tip and a map of it is used by nothing.
 
-One of the two tabs of the Calibration page (`pages/calibration.py`); the
-other measures the pipette offset. They share nothing but the page, and the
-order on it - camera first - is the order they have to happen in, since the
-offset is measured through the pixel map this one produces.
+A tab of its own, on the right with the tools used when needed: on a new
+system, or after the camera was moved, refocused or set to another
+resolution, and not before every run. It still comes before Tip calibration
+(`pages/calibration_pipette.py`) the first time, since the tip offset is
+measured through the pixel map this one produces; the Operation checklist
+on the Profile page says so.
 
 The picture, and one panel in the order of the work: Camera, Marker, the jog
 panel, Sweep parameters, Sweep, Result. It was a wizard of four steps, as the
@@ -104,7 +106,7 @@ from ..workers import Worker
 
 __all__ = ["CameraCalibration"]
 
-TITLE = "Camera"
+TITLE = "Camera calibration"
 
 log = logging.getLogger(__name__)
 
@@ -237,7 +239,8 @@ class CameraCalibration(QWidget):
                              self.jog, self._parameters_card(),
                              self._sweep_card(), self._report_card()], self)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, SPACING, 0, 0)
+        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                  SPACING * 2)
         layout.setSpacing(SPACING)
         layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
                          1)

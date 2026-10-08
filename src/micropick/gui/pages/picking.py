@@ -150,7 +150,7 @@ from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.checklist import TODO, Check, Checklist
+from ..widgets.checklist import BLOCKED, OK, TODO, Check, Checklist
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.size_histogram import SizeHistogram
@@ -788,38 +788,53 @@ class PickingPage(QWidget):
         return readiness_checks(self.session) + self._page_checks()
 
     def _page_checks(self) -> list[Check]:
-        """What only this page knows: its detector, its camera, the clips'."""
-        if self.session.profile is None:
-            return []
-        out = []
-        out.append(Check("Detector loaded") if self.detector.model is not None
-                   else Check("no detector: choose the weights in "
-                              "Settings.", TODO, "settings", "Settings"))
-        out.append(Check("Camera open") if self._camera() is not None else
-                   Check("the camera is not open: click its button in "
-                         "the status bar.", TODO))
-        if self.clips_box.isChecked():
-            if self._lower_camera() is not None:
-                out.append(Check("Lower camera open for the clips"))
-            else:
-                w, h = self._clip_mode()
-                out.append(Check(
-                    self._clips_failure + "; untick Save pickup clips, or "
-                    "choose another mode in Settings." if self._clips_failure
-                    else f"the lower camera is not open in {w}x{h} yet, the "
-                         f"clips' mode: it is being opened.", TODO))
+        """What only this page knows: its detector, its camera, the clips'.
+        Fixed lines, as the Operation checklist's (`widgets.checklist`)."""
+        session = self.session
+        steps = {c.text: c for c in readiness_checks(session)}
+        model_done = steps["Choose the cuboid model"].state == OK
+        cameras_done = steps["Choose the upper and lower cameras"].state == OK
+
+        def line(text, done, needs_done, first, detail, optional=False):
+            if done:
+                return Check(text, OK, detail=detail, optional=optional)
+            if not needs_done:
+                return Check(text, BLOCKED,
+                             detail=f'First: "{first}".', optional=optional)
+            return Check(text, TODO, detail=detail, optional=optional)
+
+        out = [line("Load the cuboid detector", self.detector.model is not None,
+                    model_done, "Choose the cuboid model",
+                    "Loaded when this page opens, from the model chosen in "
+                    "Settings."),
+               line("Open the upper camera", self._camera() is not None,
+                    cameras_done, "Choose the upper and lower cameras",
+                    "Opened when this page opens; its button in the status "
+                    "bar opens it too.")]
+        clips = "Open the lower camera for pickup clips"
+        if not self.clips_box.isChecked():
+            out.append(Check(clips, BLOCKED, optional=True,
+                             detail="Save pickup clips is off."))
+        else:
+            w, h = self._clip_mode()
+            out.append(line(
+                clips, self._lower_camera() is not None, cameras_done,
+                "Choose the upper and lower cameras",
+                self._clips_failure + ": untick Save pickup clips, or choose "
+                "another mode in Settings." if self._clips_failure else
+                f"Opened in {w}x{h}, the clips' mode (Settings)."))
         return out
 
     def _shown_checks(self) -> list[Check]:
-        """The checklist on this page: its own checks, after one line for
-        the session's list, which lives on the Profile page."""
+        """The checklist on this page: its own steps, after one line for
+        the Operation checklist, which is on the Profile page."""
         shared = readiness_checks(self.session)
         todo = sum(check.blocking for check in shared)
-        summary = (Check(f"{todo} thing{'s' if todo != 1 else ''} to do "
-                         f"before a run, listed on the Profile page.", TODO,
-                         "profile", "Profile") if todo else
-                   Check("Robot, plate, calibration and positions ready "
-                         "(Profile page)"))
+        summary = Check("Complete the Operation checklist",
+                        TODO if todo else OK, "profile", "Profile",
+                        detail=(f"{todo} step{'s' if todo != 1 else ''} to "
+                                f"do, on the Profile page." if todo else
+                                "Every step is done."))
         return [summary] + self._page_checks()
 
     def _well_centre(self):
@@ -1320,8 +1335,8 @@ class PickingPage(QWidget):
             todo = sum(check.blocking for check in self._shown_checks())
             self.run_state.setText(
                 (self._run_message + "\n\n" if self._run_message else "")
-                + f"Before Start: {todo} thing{'s' if todo != 1 else ''} to "
-                  f"do, marked red below.")
+                + f"Before Start: {todo} step{'s' if todo != 1 else ''} to "
+                  f"do, below.")
         else:
             self.run_state.setText(
                 (self._run_message + "\n\n" if self._run_message else "")

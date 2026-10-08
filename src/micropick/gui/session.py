@@ -1105,8 +1105,8 @@ class Session(QObject):
         itself (POST .../actions stop): the move in progress is cut short,
         and the session takes no commands afterwards. So the robot is let go
         of here as far as the pages are concerned - they grey out - while
-        the connection stays, and the Profile page offers New robot session
-        + home, which lifts the tip and homes. The labware has to be loaded
+        the connection stays, and the Profile page offers Start new robot
+        session, which lifts the tip and homes. The labware has to be loaded
         again into the new session."""
         if self._api is None:
             raise SessionError("not connected")

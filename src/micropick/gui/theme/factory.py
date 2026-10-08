@@ -92,7 +92,8 @@ def muted_label(text: str = "", parent: QWidget | None = None) -> QLabel:
 
     Disabled, because that is the dimmer text colour qdarktheme already has
     in both themes; a colour of our own would be the wrong one in one of
-    them. A disabled label still shows its text and its tooltip.
+    them. A tooltip belongs on an enabled widget beside it: a disabled
+    widget's is not to be relied on.
     """
     label = QLabel(text, parent)
     label.setObjectName("muted")

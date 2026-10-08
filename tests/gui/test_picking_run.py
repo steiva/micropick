@@ -18,9 +18,7 @@ from PySide6.QtWidgets import QApplication                       # noqa: E402
 from micropick.config.labware import LabwareDefinition           # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.detector import STANDIN                       # noqa: E402
-from micropick.gui.pages.picking import (DISH_POSITION,          # noqa: E402
-                                         SHAKE_POSITION,
-                                         PickingPage)
+from micropick.gui.pages.picking import PickingPage              # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 
 
@@ -45,8 +43,9 @@ def problems(page):
 
 def test_it_names_what_is_missing_rather_than_refusing_quietly(page):
     text = problems(page)
-    for wanted in ("no robot", "no plate plan", DISH_POSITION, SHAKE_POSITION,
-                   "no detector"):
+    for wanted in ("Connect the robot", "Make a plate plan",
+                   "Set the picking position", "Set the shake position",
+                   "Load the cuboid detector"):
         assert wanted in text, f"{wanted!r} not named in: {text}"
     assert not page.start_button.isEnabled()
 
@@ -62,9 +61,9 @@ def test_a_routine_is_required(page):
         class destination:
             slot = 5
     page.session.set_routine(_Routine())
-    assert "no plate plan" not in problems(page)
+    assert "Make a plate plan" not in problems(page)
     page.session.set_routine(None)
-    assert "no plate plan" in problems(page)
+    assert "Make a plate plan" in problems(page)
 
 
 def test_the_plate_the_routine_delivers_into_has_to_be_on_the_deck(page):
@@ -83,13 +82,13 @@ def test_the_plate_the_routine_delivers_into_has_to_be_on_the_deck(page):
     session.set_routine(_Routine())
     session.probe_robot()
     session.new_run()
-    assert "slot 5" in problems(page)
+    assert "Load the plate on the deck" in problems(page)
     session.load_labware(
         LabwareDefinition(load_name="corning_96_wellplate_360ul_flat",
                           namespace="opentrons", version=1,
                           display_name="plate", ordering=[["A1"]], data={},
                           source="shared"), 5)
-    assert "slot 5" not in problems(page)
+    assert "Load the plate on the deck" not in problems(page)
     session.shutdown()
 
 
@@ -101,7 +100,7 @@ def test_an_unconfirmed_routine_is_refused(page):
         class destination:
             slot = 5
     page.session.set_routine(_Routine())
-    assert "not been confirmed" in problems(page)
+    assert "Make a plate plan" in problems(page)
 
 
 def test_the_model_comes_from_the_profile(page):

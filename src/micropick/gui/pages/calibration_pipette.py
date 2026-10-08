@@ -89,7 +89,7 @@ from ..workers import Worker
 
 __all__ = ["PipetteCalibration", "POSITION_NAME", "TouchUpAborted"]
 
-TITLE = "Pipette"
+TITLE = "Tip calibration"
 
 log = logging.getLogger(__name__)
 
@@ -146,7 +146,8 @@ class PipetteCalibration(QWidget):
                              self._offset_card(), self._calibration_card(),
                              self._touch_card(), self._details_card()], self)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, SPACING, 0, 0)
+        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                  SPACING * 2)
         layout.setSpacing(SPACING)
         layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
                          1)

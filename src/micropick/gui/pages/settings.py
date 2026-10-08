@@ -600,7 +600,8 @@ class SettingsPage(QWidget):
             if names.count(device.name) > 1:
                 text += (" - two cameras carry this name, and neither can be "
                          "told apart from the other")
-            self.attached.addWidget(_label(text))
+            name = _label(text)
+            self.attached.addWidget(name)
             if modes:
                 biggest = modes[0]
                 fastest = max(m.fps for m in modes)
@@ -608,7 +609,10 @@ class SettingsPage(QWidget):
                     f"{len({(m.width, m.height) for m in modes})} sizes, up to "
                     f"{biggest.width}×{biggest.height}, up to {fastest:.0f} "
                     f"frames a second (hover for the list)")
-                detail.setToolTip("\n".join(str(m) for m in modes))
+                # On both lines: the muted one is disabled, and a disabled
+                # widget's tooltip is not to be relied on.
+                for widget in (name, detail):
+                    widget.setToolTip("\n".join(str(m) for m in modes))
                 self.attached.addWidget(detail)
 
     def _device_chosen(self, role: str) -> None:

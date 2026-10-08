@@ -53,7 +53,11 @@ boxes over the picture, never into the frame and never as a separate panel.
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture gets the width its frame shape needs (4:3 for the upper camera),
 the panel the rest, within 1-2x its designed width. Pages carry no title;
-the tab along the top is the title.
+the tab along the top is the title. Tabs on the left are the steps of a
+day's work in order (Profile, Robot & Deck, Tip calibration, Plate plan,
+Picking); tabs on the right are tools used when needed (Camera
+calibration, Liquid handling, Manual control, Log), titled in teal
+(`shell.ASIDE_INK`).
 
 The keys a page binds and what the mouse does are listed in a box at the
 picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
@@ -97,8 +101,9 @@ not a page of its own.
 ### Words on screen
 
 UI strings only; code names stay. The OT-2's HTTP run is a **robot session**
-("New robot session", "Continue with current robot session", status
-bar "session <name> (continued)"). A session is shown by the name it was
+("Connect" carries on with the robot's session or starts one, "Start new
+robot session", "Disconnect robot session", status bar "session <name>
+(continued)"). A session is shown by the name it was
 given when created here (`config.robot_sessions`, default date, time and
 profile), else by when the robot started it - never by its id. "run" on
 screen means a picking or liquid run. The pipette
@@ -116,12 +121,16 @@ picking position**.
   press within 10 s while work runs: `Session.halt_robot` stops the robot
   session (the server's only immediate stop) and a dialog says what next.
 - A page that runs robot work listens to `stop_requested`.
-- What has to be true before a picking run is one checklist
-  (`gui.readiness`, shown with `widgets.checklist`): each condition done /
-  to do / note, with a button to the page where it is done
-  (`Session.page_requested`). The Profile page shows it in full; the
-  Picking page shows its own checks (detector, camera, clips) under one
-  line for the rest. Any "to do" of either blocks Start.
+- What has to be done before a picking run is the **Operation checklist**
+  (`gui.readiness.STEPS`, shown with `widgets.checklist`): fixed steps in
+  the order of the work, each an instruction with a capital ("Load a
+  profile", never "no profile loaded") whose words never change - only
+  its mark (done / to do / note / blocked, dimmed while a step it needs is
+  not done). What is particular to now goes in the tooltip. A button goes
+  to the page where it is done (`Session.page_requested`). The Profile page
+  shows it in full; the Picking page shows its own steps (detector,
+  camera, clips) under "Complete the Operation checklist". Anything to do
+  or blocked, in either, blocks Start; optional steps never do.
 - Picking settings have bounds (`picking_fields.BOUNDS`), Save lists the
   changes old -> new, and the previous picking.json is archived.
 - Errors on screen are sentences (`workers.describe_error`); the log is

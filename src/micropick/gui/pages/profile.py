@@ -1,9 +1,10 @@
 """Connecting the robot and choosing a profile.
 
 Two cards, centred: Robot first, because it is the first thing to do and the
-one that needs reading, then Load profile. Under them, across both, what is
-still to do before a picking run (`gui.readiness`), so loading a profile
-shows at once how far the bench is from ready. What a profile holds beyond its
+one that needs reading, then Load profile. Under them, across both, the
+Operation checklist (`gui.readiness`): the fixed steps before a picking run,
+so loading a profile shows at once how far the bench is from ready. What a
+profile holds beyond its
 name - which camera is which, the models, the calibration - is set in
 Settings (the gear), not here: this page is the start of a day's work, and
 those are set once.
@@ -15,13 +16,15 @@ them is an HTTP client or a mock, and it never opens a device itself.
 The slow calls - probing the robot, bringing a run up - run in a `Worker`.
 An HTTP round trip is seconds, and in the GUI thread it is a frozen window.
 
-Bringing the robot up is a decision, not a button. The robot may already hold a
-run from before this application started, and if it was never powered off that
-run is the one to carry on with - its pipette, its labware, its offsets. Or it
-may hold nothing, or a finished run. The session can find out which; it cannot
-know whether yesterday's run is stale or today's work in progress, so what it
-found is shown here and the operator chooses. A new run always ends in a home,
-because nothing moves until it has, and that is not a thing to leave to memory.
+Bringing the robot up is one button. The robot may already hold a run from
+before this application started, and if it was never powered off that run is
+the one to carry on with - its pipette, its labware, its offsets - so Connect
+carries on with it. Or it holds nothing, or a run that cannot take commands,
+and then the only way on is a new one, which Connect starts after asking. A
+working session is left for a new one only on purpose, with Start new robot
+session: two buttons and no choice to read at Connect. A new run always ends
+in a home, because nothing moves until it has, and that is not a thing to
+leave to memory; the home always asks first.
 
 Profiles are made and removed here too. A new one starts as a copy of an
 existing one by default, because the cameras, the calibration and the taught
@@ -55,7 +58,7 @@ from ..readiness import readiness_checks
 from ..session import MOCK_PROFILE_NAME, Session
 from ..theme import SPACING
 from ..theme.factory import card, heading, primary_button, secondary_button
-from ..widgets.checklist import Checklist
+from ..widgets.checklist import OK, Checklist
 from ..widgets.done_banner import DONE_GREEN
 from ..workers import Worker
 
@@ -71,14 +74,8 @@ CARD_WIDTH = 560
 
 # The Load profile card's explanation.
 PROFILE_ABOUT = (
-    "A profile is what micropick knows about this robot and its cameras: "
-    "which camera is which and how it is focused, the camera and pipette "
-    "calibrations, the positions you taught (where to look at the dish, "
-    "where to shake it), the modules on the deck and the picking settings. "
-    "Load it first: every other page works from it.\n"
-    "One profile per setup on the bench is usually all you need. Make a "
-    "new one, copied from it, to try other settings without touching the "
-    "one that works.")
+    "A profile holds everything micropick has measured and set up for this "
+    "robot: cameras, calibrations, positions and picking settings.")
 
 # What "start from" offers besides the existing profiles.
 EMPTY = "empty (defaults)"
@@ -230,6 +227,7 @@ class ProfilePage(QWidget):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
+        self._then = None                        # see _run
 
         # Robot and Load profile side by side, the checklist across both
         # under them; the three as one centred column.
@@ -287,15 +285,20 @@ class ProfilePage(QWidget):
     # -- construction --------------------------------------------------------
 
     def _checks_card(self) -> QWidget:
-        """Everything before a picking run (`gui.readiness`), each with the
+        """The Operation checklist (`gui.readiness`), each step with the
         page where it is done: loading a profile is when the day's work
         starts, so this is where what is still missing is said."""
         box = card(self)
-        box.layout().addWidget(heading("Before a picking run", 2))
-        self.checks_state = QLabel(self)
-        self.checks_state.setWordWrap(True)
-        box.layout().addWidget(self.checks_state)
-        self.checklist = Checklist(self)
+        title = QHBoxLayout()
+        title.addWidget(heading("Operation checklist", 2))
+        title.addStretch(1)
+        self.checks_done = QLabel(self)
+        title.addWidget(self.checks_done)
+        box.layout().addLayout(title)
+        box.layout().addWidget(QLabel(
+            "From top to bottom, before a picking run. A grey step waits for "
+            "one above it; hover over a step for details.", self))
+        self.checklist = Checklist(self, numbered=True)
         self.checklist.go.connect(self.session.page_requested)
         box.layout().addWidget(self.checklist)
         return box
@@ -343,57 +346,39 @@ class ProfilePage(QWidget):
         return box
 
     def _robot_card(self) -> QWidget:
+        """Two buttons: Connect (Disconnect robot session once connected),
+        and Start new robot session. Connect carries on with the session the
+        robot already has, or starts a new one when there is none it could
+        carry on with; starting a new one over a working one is the second
+        button, never a choice Connect asks for."""
         box = card(self)
         box.layout().addWidget(heading("Robot", 2))
         self.robot_state = QLabel()
+        self.robot_state.setWordWrap(True)
         box.layout().addWidget(self.robot_state)
 
         # The first thing to do, said before the button that needs it: a
         # Connect pressed while the robot is still starting up fails with a
         # network error that says nothing about why.
         self.robot_hint = QLabel(
-            "1. Turn the robot on and wait for it to start up - about a "
-            "minute, until the light on its front button stops blinking and "
-            "stays on.\n"
-            "2. Press Connect. It only asks the robot what it is doing; "
-            "nothing moves yet.")
+            "Turn the robot on and wait about a minute, until the light on "
+            "its front button stops blinking. Then press Connect.")
         self.robot_hint.setWordWrap(True)
         box.layout().addWidget(self.robot_hint)
 
         self.connect_button = primary_button("Connect", self)
-        self.connect_button.clicked.connect(self._connect)
-        self.disconnect_button = secondary_button("Disconnect robot session",
-                                                  self)
-        self.disconnect_button.clicked.connect(self.session.disconnect_robot)
+        self.connect_button.clicked.connect(self._connect_or_disconnect)
+        self.new_run_button = secondary_button("Start new robot session",
+                                               self)
+        self.new_run_button.setToolTip(
+            "Leave the robot's current session and start a new one, with an "
+            "empty deck. The robot homes its axes first; it asks before.")
+        self.new_run_button.clicked.connect(self._new_run)
         row = QHBoxLayout()
         row.addWidget(self.connect_button)
-        row.addWidget(self.disconnect_button)
+        row.addWidget(self.new_run_button)
         row.addStretch(1)
         box.layout().addLayout(row)
-
-        # What the probe found, and the two ways on from it. A block on the
-        # page rather than a dialog: the text has to be read, and a dialog's
-        # default button is the thing that gets pressed without reading.
-        self.run_found = QLabel()
-        self.run_found.setWordWrap(True)
-        self.run_found.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.run_found)
-
-        # Both secondary; setDefault below picks which one carries the accent.
-        # New first, on the left: it is the way on that always exists.
-        self.new_run_button = secondary_button("New robot session", self)
-        self.new_run_button.setToolTip("Start a new robot session. The robot "
-                                       "homes its axes first; it asks before.")
-        self.new_run_button.clicked.connect(self._new_run)
-        self.adopt_button = secondary_button(
-            "Continue with current robot session", self)
-        self.adopt_button.clicked.connect(self._adopt)
-        choice = QHBoxLayout()
-        choice.addWidget(self.new_run_button)
-        choice.addWidget(self.adopt_button)
-        choice.addStretch(1)
-        box.layout().addLayout(choice)
         return box
 
     # -- actions -------------------------------------------------------------
@@ -502,15 +487,31 @@ class ProfilePage(QWidget):
         self.reload_profile_list()
         self.refresh()
 
-    def _connect(self) -> None:
-        """Probe only. What happens next is the operator's, below."""
-        self._clear_error()
-        self._run(Worker(self.session.probe_robot), "probing the robot")
+    def _connect_or_disconnect(self) -> None:
+        if self.session.has_connection:
+            self._clear_error()
+            self.session.disconnect_robot()
+            return
+        self._connect()
 
-    def _adopt(self) -> None:
+    def _connect(self) -> None:
+        """Ask the robot what it holds, then go on by itself (`_probed`)."""
         self._clear_error()
-        self._run(Worker(self.session.adopt_run),
-                  "continuing the robot session")
+        self._run(Worker(self.session.probe_robot), "probing the robot",
+                  then=self._probed)
+
+    def _probed(self) -> None:
+        """A session the robot can carry on with is carried on with - its
+        labware, its offsets, the tip on it. Any other state has only one
+        way on, a new session, which homes and so asks first."""
+        state = self.session.run_state
+        if state is None:
+            return
+        if state.reusable:
+            self._run(Worker(self.session.adopt_run),
+                      f"continuing robot session {state.label}")
+        else:
+            self._new_run()
 
     def _new_run(self) -> None:
         """Ends in a home, so it asks: the gantry travels to its limits on
@@ -537,10 +538,13 @@ class ProfilePage(QWidget):
         self._run(Worker(self.session.new_run, name),
                   "new robot session, then home")
 
-    def _run(self, worker: Worker, what: str) -> None:
+    def _run(self, worker: Worker, what: str, then=None) -> None:
+        """`then` is called once it finished well, after the page let go
+        of it, so it may start the next one."""
         if self._worker is not None and self._worker.running:
             return
         self._worker = worker
+        self._then = then
         worker.what = worker.what or what
         # Bound methods, not lambdas. Qt takes a connection's thread from the
         # receiver object, and a lambda has none: it would be connected
@@ -557,10 +561,14 @@ class ProfilePage(QWidget):
 
     def _worker_done(self, _result=None) -> None:
         self._worker = None
+        then, self._then = self._then, None
         self.refresh()
+        if then is not None:
+            then()
 
     def _worker_failed(self, reason: str) -> None:
         self._worker = None
+        self._then = None
         self._show_error(reason)
         self.refresh()
 
@@ -593,30 +601,26 @@ class ProfilePage(QWidget):
             if profile is not None and chosen == profile.name else
             f"Delete {chosen!r}, after asking." if chosen else "")
 
-        connected = session.robot is not None
-        probed = session.run_state is not None and not connected
-        self.robot_state.setText(f"State: {session.robot_state}")
-        self.robot_hint.setVisible(session.run_state is None)
-        self.connect_button.setEnabled(session.run_state is None and not busy)
-        self.disconnect_button.setEnabled(
-            session.run_state is not None and not busy)
-
-        # The two ways on are always there, greyed until Connect has found
-        # what the robot holds and again once one of them was taken: the
-        # operator sees from the start what comes after Connect.
-        state = session.run_state
-        self.run_found.setVisible(probed)
-        if probed:
-            self.run_found.setText(
-                "Found: " + state.describe() + ("" if state.reusable else
-                 "\nOnly a new robot session is possible."))
-        self.adopt_button.setEnabled(probed and state.reusable and not busy)
-        self.new_run_button.setEnabled(probed and not busy)
-        # Carrying on is the expected case when the robot was left on, so
-        # it is the accented button; when it is not possible, the only way
-        # forward takes the accent instead. Neither while both are grey.
-        self.adopt_button.setDefault(probed and state.reusable)
-        self.new_run_button.setDefault(probed and not state.reusable)
+        connected = session.has_connection
+        if session.robot is None and connected and not busy:
+            # The home was declined, or a session could not be carried on.
+            state = session.run_state
+            self.robot_state.setText(
+                "Connected, without a robot session"
+                + (f" ({state.describe()})" if state is not None
+                   and state.exists else "")
+                + ". Press Start new robot session.")
+        else:
+            self.robot_state.setText(f"State: {session.robot_state}")
+        self.robot_hint.setVisible(not connected)
+        self.connect_button.setText("Disconnect robot session" if connected
+                                    else "Connect")
+        self.connect_button.setEnabled(not busy)
+        # The accent goes where the next act is: Connect, or a new session
+        # when the robot answers but has none.
+        self.connect_button.setDefault(not connected)
+        self.new_run_button.setEnabled(connected and not busy)
+        self.new_run_button.setDefault(connected and session.robot is None)
 
         self._show_checks()
 
@@ -628,16 +632,10 @@ class ProfilePage(QWidget):
 
     def _show_checks(self) -> None:
         # What is done on this page is pointed at, not linked to.
-        checks = [replace(check, page=None,
-                          text=check.text.replace("on the Profile page",
-                                                  "above"))
-                  if check.page == "profile" else check
-                  for check in readiness_checks(self.session)]
-        todo = sum(check.blocking for check in checks)
-        self.checks_state.setText(
-            f"{todo} thing{'s' if todo != 1 else ''} to do, marked red; the "
-            f"button beside each goes to the page where it is done."
-            if todo else "Ready for a picking run.")
+        checks = [replace(check, page=None) if check.page == "profile"
+                  else check for check in readiness_checks(self.session)]
+        done = sum(check.state == OK or check.optional for check in checks)
+        self.checks_done.setText(f"{done} of {len(checks)} done")
         self.checklist.show_checks(checks)
 
     def _show_error(self, text: str) -> None:
