@@ -60,11 +60,9 @@ WizardStyle=modern
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
-Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [CustomMessages]
 en.DirTooDeep=The folder%n%n%1%n%nis too deep: some of micropick's files would end up with paths longer than Windows allows. Choose a folder at most %2 characters long, such as%n%n%3
-ru.DirTooDeep=Папка%n%n%1%n%nслишком глубоко: пути к некоторым файлам micropick получатся длиннее, чем допускает Windows. Выберите папку не длиннее %2 символов, например%n%n%3
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

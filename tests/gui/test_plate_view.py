@@ -124,7 +124,7 @@ def test_a_box_takes_what_is_inside_it(app, view):
     end = QPointF(end.x() + 8, end.y() + 8)
     drag(app, view, start, end)
     assert view.selection == {f"{row}{n}" for row in "ABC" for n in (1, 2, 3)}
-    # Shift takes away, which is the "или наоборот" of a marquee.
+    # Shift takes away, the opposite of a plain marquee.
     inner_end = centre(view, "B2")
     drag(app, view, start, QPointF(inner_end.x() + 8, inner_end.y() + 8), SHIFT)
     assert view.selection == {"A3", "B3", "C1", "C2", "C3"}
