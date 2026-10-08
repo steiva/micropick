@@ -10,10 +10,18 @@ the third for fixes.
 
 ## Unreleased
 
-- Profile page: only Robot and Installation, side by side and centred. The
+- Profile page: Robot and Installation, side by side and centred. The
   chooser shows each profile's folder after its name; a green check says
   which profile is loaded. "New robot session" (no "+ home") asks with a
-  plain warning that the robot will home its axes.
+  plain warning that the robot will home its axes. The robot session
+  buttons are always there, greyed when they cannot be used; Disconnect is
+  "Disconnect robot session".
+- Profile page: the checklist before a picking run is here now, under the
+  two cards, so loading a profile shows what is still to do. The Picking
+  page keeps its own checks (detector, camera, clips) and one line for the
+  rest; Start is blocked as before.
+- Settings: a profile started empty can be given its cameras - choosing a
+  camera for a role that has none adds it with the bench's settings.
 - Settings: a second column for the loaded profile - which attached camera
   is the upper (overview) and which the lower (underview) one, with the
   attached cameras and their modes listed; the machine learning models; the

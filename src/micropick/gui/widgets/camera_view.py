@@ -119,6 +119,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox,
 
 from ... import paths
 from ...core.vision.cuboids import center_crop_box
+from ...hardware.camera import DEFAULT_FOCUS
 from . import overlay_painter
 from .frame import to_qimage
 from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE, OUTSIDE_ALPHA,
@@ -177,9 +178,6 @@ ZOOM_STEP = 1.25                 # per wheel notch
 # Arducam takes 0-1023). A value outside is still shown, clamped.
 FOCUS_RANGE = (0, 1023)
 FOCUS_SETTLE_MS = 60             # coalesce slider moves into one set()
-# The lower camera's lens at the dish, as found on the bench: what
-# "default" puts back after a focus has been tried and lost.
-DEFAULT_FOCUS = 960
 
 # How long "saved: …" stays on the picture.
 FLASH_MS = 4000

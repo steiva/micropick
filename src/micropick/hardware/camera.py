@@ -43,9 +43,13 @@ import numpy as np
 from . import devices
 
 __all__ = ["BackgroundCamera", "Recorder", "CameraManager", "CameraError",
-           "ControlReport", "apply_controls"]
+           "ControlReport", "apply_controls", "DEFAULT_FOCUS"]
 
 log = logging.getLogger(__name__)
+
+# The lower camera's motorised lens at the dish, as found on the bench: what
+# a new profile starts at and what "default" in the camera window puts back.
+DEFAULT_FOCUS = 960
 
 Transform = Callable[[np.ndarray], np.ndarray]
 Annotate = Callable[[np.ndarray], np.ndarray]

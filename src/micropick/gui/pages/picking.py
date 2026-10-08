@@ -142,13 +142,15 @@ from ...workflows import manual as moves
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
+from ..readiness import (DISH_POSITION, SHAKE_POSITION, readiness_checks,
+                         well_centre)
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, primary_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.checklist import NOTE, OK, TODO, Check, Checklist
+from ..widgets.checklist import TODO, Check, Checklist
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.size_histogram import SizeHistogram
@@ -163,15 +165,6 @@ TITLE = "Picking"
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 440
-
-# The profile position the dish is looked at from, beside tip_calib. The
-# name is the workflow's: PickingSession reads profile.where("observe").
-DISH_POSITION = "observe"
-
-# The other pose the workflow drives to by name, when the dish has to be
-# stirred to separate crowded cuboids. Checked before a run starts rather
-# than met ten minutes into one.
-SHAKE_POSITION = "shake"
 
 # How high over the stored dish bottom Tip over the dish centre stops: room
 # for a dish bottom that was set a little high, and few key presses down.
@@ -195,26 +188,6 @@ KEYS = (("Space", "resume", "resume"),
 HIST_AFTER = ("Only the shape windows and the spacing rule can reject one "
               "after that, so this is the most a run could pick from this "
               "frame.")
-
-# A calibration older than this is said, not refused: an old one may be
-# perfectly good, and only the operator knows whether anything was moved.
-STALE_DAYS = 30
-
-
-def _dated(text: str, when, page: str | None = None, place: str = ""):
-    """A done check with its date, or a note when it is old."""
-    if when is None:
-        return Check(text)
-    from datetime import datetime, timezone
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    age = (datetime.now(timezone.utc) - when).days
-    local = when.astimezone().strftime("%Y-%m-%d")
-    if age > STALE_DAYS:
-        return Check(f"{text} on {local}, {age} days ago: redo it if anything "
-                     f"was moved or replaced since.", NOTE, page, place)
-    return Check(f"{text} on {local}")
-
 
 CONFIRM_START = (
     "Make sure the dish and the well plate are in place and their lids are "
@@ -808,100 +781,17 @@ class PickingPage(QWidget):
         return [check.text for check in self._checks() if check.blocking]
 
     def _checks(self) -> list[Check]:
-        """What has to be true before a run, in the order it is done, each
-        with where it is done (`widgets.checklist`). The "to do" ones stop
-        Start; the notes are said and left to the operator."""
-        session, out = self.session, []
-        profile = session.profile
-        out.append(Check("Robot connected") if session.robot is not None else
-                   Check("no robot: connect it on the Profile page.", TODO,
-                         "profile", "Profile"))
-        if profile is None:
-            out.append(Check("no profile loaded.", TODO, "profile",
-                             "Profile"))
-            return out
-        tip = session.tip.attached
-        out.append(Check("A tip is on the pipette") if tip is True else Check(
-            ("the robot reports no tip on the pipette" if tip is False else
-             "the robot's tip state is unknown")
-            + ": pick one up on the Robot & Deck page.", TODO, "labware",
-            "Robot & Deck"))
+        """What has to be true before a run: the session's list
+        (`gui.readiness`, shown in full on the Profile page) and what only
+        this page can see. The "to do" ones of both stop Start; the notes
+        are said and left to the operator."""
+        return readiness_checks(self.session) + self._page_checks()
 
-        routine = session.routine
-        if routine is None:
-            out.append(Check(
-                "no plate plan: make one on the Plate plan page. A run with "
-                "nowhere to put a cuboid picks one up and then asks what to "
-                "do with it.", TODO, "routine", "Plate plan"))
-        elif routine.needs_confirmation:
-            out.append(Check(
-                "the plate plan was restored with progress on it and has not "
-                "been confirmed; confirm it on the Plate plan page.", TODO,
-                "routine", "Plate plan"))
-        else:
-            out.append(Check(f"Plate plan {getattr(routine, 'name', '')!r}"))
-        if routine is not None and session.robot is not None:
-            slot = str(routine.destination.slot)
-            state = session.run_state
-            if state is None or slot not in state.labware:
-                out.append(Check(
-                    f"the robot session holds nothing in slot {slot}, which "
-                    f"is where this plate plan delivers. Load the plate on "
-                    f"the Robot & Deck page.", TODO, "labware",
-                    "Robot & Deck"))
-            else:
-                problem = next((p for p in session.deck_problems()
-                                if p.slot == slot), None)
-                out.append(Check(
-                    f"slot {slot}: the plate was loaded without the module's "
-                    f"offset, and a well move would hit the module. Load it "
-                    f"again on the Robot & Deck page.", TODO, "labware",
-                    "Robot & Deck") if problem is not None else
-                    Check(f"The plate is on the deck, in slot {slot}"))
-                centre = self._well_centre()
-                if centre is not None:
-                    x, y, _z = centre.offset
-                    out.append(Check(
-                        f"Well centre measured on {centre.well or 'a well'} "
-                        f"(Liquid handling): deposits go {x:+.2f}, {y:+.2f} mm "
-                        f"from the robot's well centre, plus the well offset"))
-
-        calibration = profile.calibration
-        if profile.pixel_map is None:
-            out.append(Check("no pixel map: run the camera calibration.",
-                             TODO, "calibration", "Calibration"))
-        else:
-            out.append(_dated("Camera calibrated",
-                              profile.pixel_map.fitted_at, "calibration",
-                              "Calibration"))
-        if calibration.pipette_offset is None:
-            out.append(Check("no pipette offset: run the pipette "
-                             "calibration.", TODO, "calibration",
-                             "Calibration"))
-        else:
-            out.append(_dated("Pipette offset measured",
-                              calibration.pipette_offset.measured_at,
-                              "calibration", "Calibration"))
-        bottom = calibration.dish_bottom_set_at
-        out.append(_dated(
-            f"Dish bottom set ({profile.picking.dish_bottom:.2f} mm)", bottom)
-            if bottom is not None else Check(
-                f"The dish bottom ({profile.picking.dish_bottom:.2f} mm) was "
-                f"never measured here: set it under Dish bottom (Z) if "
-                f"cuboids are not picked up.", NOTE))
-
-        # Both poses the workflow drives to by name. `shake` is only
-        # reached when the dish needs stirring, so without this check a run
-        # can start, work for ten minutes and then fail at the one moment
-        # the operator is not watching.
-        for name, what, done in (
-                (DISH_POSITION, "park over the dish and Set position",
-                 "Picking position set"),
-                (SHAKE_POSITION, "jog the tip into the dish where it should "
-                                 "stir and Set shake position",
-                 "Shake position set")):
-            out.append(Check(done) if name in profile.positions else
-                       Check(f"no {name!r} position: {what}.", TODO))
+    def _page_checks(self) -> list[Check]:
+        """What only this page knows: its detector, its camera, the clips'."""
+        if self.session.profile is None:
+            return []
+        out = []
         out.append(Check("Detector loaded") if self.detector.model is not None
                    else Check("no detector: choose the weights in "
                               "Settings.", TODO, "settings", "Settings"))
@@ -920,19 +810,21 @@ class PickingPage(QWidget):
                          f"clips' mode: it is being opened.", TODO))
         return out
 
+    def _shown_checks(self) -> list[Check]:
+        """The checklist on this page: its own checks, after one line for
+        the session's list, which lives on the Profile page."""
+        shared = readiness_checks(self.session)
+        todo = sum(check.blocking for check in shared)
+        summary = (Check(f"{todo} thing{'s' if todo != 1 else ''} to do "
+                         f"before a run, listed on the Profile page.", TODO,
+                         "profile", "Profile") if todo else
+                   Check("Robot, plate, calibration and positions ready "
+                         "(Profile page)"))
+        return [summary] + self._page_checks()
+
     def _well_centre(self):
-        """The measured well centre of the plate the plan delivers to, if
-        the Liquid handling page measured one: the run adds its x and y to
-        every deposit (`workflows.picking`, "The measured well centre")."""
-        session = self.session
-        routine, state = session.routine, session.run_state
-        if session.profile is None or routine is None or state is None:
-            return None
-        entry = state.labware.get(str(routine.destination.slot))
-        if entry is None:
-            return None
-        return session.profile.deck.well_centre(routine.destination.slot,
-                                                entry.load_name)
+        """See `readiness.well_centre`."""
+        return well_centre(self.session)
 
     def _confirm_start(self) -> bool:
         box = QMessageBox(self)
@@ -1418,13 +1310,14 @@ class PickingPage(QWidget):
         self.stop_button.setEnabled(running)
         self.checklist.setVisible(not running)
         if not running:
-            self.checklist.show_checks(checks)
+            self.checklist.show_checks(self._shown_checks())
         if running:
             self.run_state.setText(
                 f"{self._state_text} — {self._last_event}\n"
                 + "  ".join(f"{key}: {what}" for key, what, _ in KEYS))
         elif problems:
-            todo = len(problems)
+            # The lines shown: the session's list is one of them here.
+            todo = sum(check.blocking for check in self._shown_checks())
             self.run_state.setText(
                 (self._run_message + "\n\n" if self._run_message else "")
                 + f"Before Start: {todo} thing{'s' if todo != 1 else ''} to "

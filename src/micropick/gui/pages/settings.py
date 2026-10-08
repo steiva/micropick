@@ -520,11 +520,20 @@ class SettingsPage(QWidget):
             combo, info = self.role_combo[role], self.role_info[role]
             label = roles[role]
             combo.clear()
-            if profile is None or label is None:
+            if profile is None:
                 combo.setEnabled(False)
-                info.setText("No profile loaded." if profile is None else
-                             f"The profile {profile.name!r} has no such "
-                             f"camera.")
+                info.setText("No profile loaded.")
+                continue
+            if label is None:
+                # A profile started empty: the camera is made when one is
+                # chosen (`Session.add_camera`).
+                combo.addItem("Choose a camera…", None)
+                for device in self._devices:
+                    combo.addItem(device.name, device.name)
+                combo.setCurrentIndex(0)
+                combo.setEnabled(bool(self._devices))
+                info.setText("Not set in this profile yet: choose which "
+                             "attached camera it is.")
                 continue
             spec = profile.cameras[label]
             current = self._attached_as(label)
@@ -605,13 +614,17 @@ class SettingsPage(QWidget):
     def _device_chosen(self, role: str) -> None:
         profile = self.session.profile
         label = self._role_label(role)
-        if profile is None or label is None:
-            return
         name = self.role_combo[role].currentData()
+        if profile is None or name is None:
+            return
         if any_running():
             self.cameras_state.setText("Not now: something is running. "
                                        "Choose again when it has finished.")
             self._show_cameras()
+            return
+        title = dict(ROLES)[role]
+        if label is None:
+            self._add_camera(role, name)
             return
         was = self._attached_as(label) or profile.cameras[label].device_name
         assignment = {label: name}
@@ -628,11 +641,33 @@ class SettingsPage(QWidget):
             self.cameras_state.setText(f"Not changed: {exc}")
             self._show_cameras()
             return
-        title = dict(ROLES)[role]
         self.cameras_state.setText(
             f"{title}: {name}."
             + (f" The two were swapped: {dict(ROLES)[other_role].lower()} "
                f"is now {was}." if swapped else ""))
+
+    def _add_camera(self, role: str, name: str) -> None:
+        """The profile's first camera for `role`, on the device `name`."""
+        title = dict(ROLES)[role]
+        other_role = "lower" if role == "upper" else "upper"
+        other = self._role_label(other_role)
+        if other is not None and self._attached_as(other) == name:
+            self.cameras_state.setText(
+                f"{name} is already the {dict(ROLES)[other_role].lower()}. "
+                f"Choose another camera there first.")
+            self._show_cameras()
+            return
+        sizes = [(m.width, m.height) for m in self._modes.get(name, [])]
+        try:
+            label = self.session.add_camera(role, name, sizes)
+        except Exception as exc:                     # noqa: BLE001
+            self.cameras_state.setText(f"Not changed: {exc}")
+            self._show_cameras()
+            return
+        spec = self.session.profile.cameras[label]
+        self.cameras_state.setText(
+            f"{title}: {name}, added to the profile; it opens at "
+            "{}×{}.".format(*spec.default_resolution))
 
     def _reload_models(self) -> None:
         """What is in ml_models/, plus the stand-in for the cuboid detector.
@@ -755,8 +790,8 @@ class SettingsPage(QWidget):
         self.test_button.setEnabled(not testing)
         if connected and not testing:
             self.robot_state.setText(
-                f"Connected to {self.session.robot_address}. Disconnect on "
-                f"the Profile page to change the address.")
+                f"Connected to {self.session.robot_address}. Press Disconnect "
+                f"robot session on the Profile page to change the address.")
         elif not self.robot_state.text():
             self.robot_state.setText(f"Connect goes to "
                                      f"{self.session.robot_address}.")

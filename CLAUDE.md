@@ -116,9 +116,12 @@ picking position**.
   press within 10 s while work runs: `Session.halt_robot` stops the robot
   session (the server's only immediate stop) and a dialog says what next.
 - A page that runs robot work listens to `stop_requested`.
-- Before a picking run the page shows a checklist (`widgets.checklist`):
-  each condition done / to do / note, with a button to the page where it
-  is done (`Session.page_requested`). Only "to do" blocks Start.
+- What has to be true before a picking run is one checklist
+  (`gui.readiness`, shown with `widgets.checklist`): each condition done /
+  to do / note, with a button to the page where it is done
+  (`Session.page_requested`). The Profile page shows it in full; the
+  Picking page shows its own checks (detector, camera, clips) under one
+  line for the rest. Any "to do" of either blocks Start.
 - Picking settings have bounds (`picking_fields.BOUNDS`), Save lists the
   changes old -> new, and the previous picking.json is archived.
 - Errors on screen are sentences (`workers.describe_error`); the log is
@@ -139,5 +142,7 @@ mode, and the pipette calibration reopens it in the profile's own.
 The Settings page's second column is the loaded profile's, saved into it at
 once: which attached camera is the upper and which the lower
 (`Session.assign_camera_devices`, the specs' `device_name`; choosing the
-other's device swaps them), the machine learning models, the calibration
-summary. The Profile page is only Robot and Installation.
+other's device swaps them; a profile without a camera for a role gets one
+from `Session.add_camera`, the bench's spec on the chosen device), the
+machine learning models, the calibration summary. The Profile page is
+Robot and Installation, and under them the checklist before a run.

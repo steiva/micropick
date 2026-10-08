@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -48,7 +49,8 @@ from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              ProfileMeta)
 from ..hardware import labware                      # noqa: E402
 from ..hardware import robot_clock                  # noqa: E402
-from ..hardware.camera import CameraManager         # noqa: E402
+from ..hardware.camera import (DEFAULT_FOCUS,         # noqa: E402
+                               CameraManager)
 from ..hardware.labware import LoadedLabware        # noqa: E402
 from ..hardware.mock import (MarkerScene, MockRobot,  # noqa: E402
                              open_scene_camera)
@@ -244,6 +246,45 @@ def _mock_cameras() -> dict[str, CameraSpec]:
                             controls={"autofocus": 0, "focus": 500},
                             notes="synthetic ArUco scene"),
     }
+
+
+# A new profile's cameras, as the bench's are set up (profiles/lab_main):
+# role -> (label, preferred mode, crop, controls, capture backend, notes).
+# The upper camera opens at 2592x1944, the mode the pixel maps are fitted
+# at; the lower one at 4000x3000 with the Arducam's motorised focus through
+# DirectShow, the backend that reads its focus back (`CameraSpec.backend`).
+NEW_CAMERAS = {
+    "upper": ("overview_cam", (2592, 1944), 1.0,
+              {"auto_exposure": "manual"}, None, "on the gantry"),
+    "lower": ("underview_cam", (4000, 3000), 0.5,
+              {"autofocus": 0.0, "focus": float(DEFAULT_FOCUS),
+               "auto_exposure": "manual"},
+              "dshow" if sys.platform == "win32" else None,
+              "tip calibration module"),
+}
+
+
+def new_camera_spec(role: str, device_name: str,
+                    sizes: list[tuple[int, int]]) -> tuple[str, CameraSpec]:
+    """(label, spec) for a profile's `role` camera on `device_name`.
+
+    The mode is the bench's when the device offers it, else the largest
+    4:3 one no wider, else the largest no wider, else the largest: a mode
+    the device does not offer would open at some other size. With no
+    `sizes` (the modes could not be read) the list is left empty, which
+    lets any mode through, and the bench's mode is kept."""
+    label, wanted, crop, controls, backend, notes = NEW_CAMERAS[role]
+    sizes = sorted({(int(w), int(h)) for w, h in sizes},
+                   key=lambda s: s[0] * s[1])
+    default = wanted
+    if sizes and wanted not in sizes:
+        narrower = [s for s in sizes if s[0] <= wanted[0]] or sizes
+        four_three = [s for s in narrower if s[0] * 3 == s[1] * 4]
+        default = (four_three or narrower)[-1]
+    return label, CameraSpec(
+        device_name=device_name, resolutions=[list(s) for s in sizes],
+        default_resolution=list(default), fps=30, fourcc="MJPG",
+        controls=dict(controls), crop=crop, backend=backend, notes=notes)
 
 
 class Session(QObject):
@@ -1290,6 +1331,35 @@ class Session(QObject):
             log.info("camera %r of profile %r is now %r (was %r)", label,
                      self.profile.name, name, was)
         self.profile_changed.emit(self.profile)
+
+    def add_camera(self, role: str, device_name: str,
+                   sizes: list[tuple[int, int]]) -> str:
+        """Give the profile its upper or lower camera, which it does not
+        have yet - a profile started empty has none. The spec is the bench's
+        (`new_camera_spec`) on the device chosen; `sizes` are what the
+        device offers, so the modes listed are ones it can open in. Returns
+        the new camera's label."""
+        if self.profile is None:
+            raise SessionError("load a profile before choosing its cameras")
+        label, spec = new_camera_spec(role, device_name, sizes)
+        n = 2
+        base = label
+        while label in self.profile.cameras:
+            label, n = f"{base}_{n}", n + 1
+        self.profile.cameras[label] = spec
+        if self.cameras is not None:
+            self.cameras.cameras[label] = spec.model_dump()
+        self.profile.save_cameras()
+        if role == "upper":
+            # The pixel map belongs to this camera: said, not guessed from
+            # the label (`upper_camera_label`).
+            self.profile.meta.camera_label = label
+            self.profile.save_meta()
+        log.info("profile %r: %s camera %r is %r, opening at %dx%d",
+                 self.profile.name, role, label, device_name,
+                 *spec.default_resolution)
+        self.profile_changed.emit(self.profile)
+        return label
 
     # -- teardown ------------------------------------------------------------
 

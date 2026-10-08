@@ -1,7 +1,9 @@
 """Connecting the robot and choosing a profile.
 
 Two cards, centred: Robot first, because it is the first thing to do and the
-one that needs reading, then Installation. What a profile holds beyond its
+one that needs reading, then Installation. Under them, across both, what is
+still to do before a picking run (`gui.readiness`), so loading a profile
+shows at once how far the bench is from ready. What a profile holds beyond its
 name - which camera is which, the models, the calibration - is set in
 Settings (the gear), not here: this page is the start of a day's work, and
 those are set once.
@@ -33,6 +35,7 @@ under it says which one is loaded.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 import qtawesome as qta
 from PySide6.QtCore import QRect, Qt
@@ -48,9 +51,11 @@ from ...config import robot_sessions
 from ...config.store import (LegacyProfileError, ProfileError, copy_profile,
                              create_profile, delete_profile, list_profiles,
                              profile_dir)
+from ..readiness import readiness_checks
 from ..session import MOCK_PROFILE_NAME, Session
 from ..theme import SPACING
 from ..theme.factory import card, heading, primary_button, secondary_button
+from ..widgets.checklist import Checklist
 from ..widgets.done_banner import DONE_GREEN
 from ..workers import Worker
 
@@ -215,20 +220,28 @@ class ProfilePage(QWidget):
         self.session = session
         self._worker: Worker | None = None
 
+        # Robot and Installation side by side, the checklist across both
+        # under them; the three as one centred column.
         cards = QHBoxLayout()
         cards.setSpacing(SPACING * 2)
-        cards.addStretch(1)
         for box in (self._robot_card(), self._profile_card()):
             box.setMinimumWidth(CARD_WIDTH)
             box.setMaximumWidth(CARD_WIDTH * 3 // 2)
             cards.addWidget(box, 0, Qt.AlignmentFlag.AlignTop)
-        cards.addStretch(1)
+        column = QVBoxLayout()
+        column.setSpacing(SPACING * 2)
+        column.addLayout(cards)
+        column.addWidget(self._checks_card())
+        centred = QHBoxLayout()
+        centred.addStretch(1)
+        centred.addLayout(column)
+        centred.addStretch(1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 4, SPACING * 2,
                                   SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addLayout(cards)
+        layout.addLayout(centred)
 
         # Full width, selectable, and never truncated: LegacyProfileError's own
         # text says what to do about it, so it is shown as it comes rather than
@@ -246,11 +259,29 @@ class ProfilePage(QWidget):
 
         session.profile_changed.connect(self._on_profile_changed)
         session.robot_state_changed.connect(lambda _s: self.refresh())
+        # What the checklist reads, beyond the profile and the robot.
+        for signal in (session.routine_changed, session.tip_changed,
+                       session.labware_changed, session.settings_changed):
+            signal.connect(lambda _x: self._show_checks())
 
         self.reload_profile_list()
         self.refresh()
 
     # -- construction --------------------------------------------------------
+
+    def _checks_card(self) -> QWidget:
+        """Everything before a picking run (`gui.readiness`), each with the
+        page where it is done: loading a profile is when the day's work
+        starts, so this is where what is still missing is said."""
+        box = card(self)
+        box.layout().addWidget(heading("Before a picking run", 2))
+        self.checks_state = QLabel(self)
+        self.checks_state.setWordWrap(True)
+        box.layout().addWidget(self.checks_state)
+        self.checklist = Checklist(self)
+        self.checklist.go.connect(self.session.page_requested)
+        box.layout().addWidget(self.checklist)
+        return box
 
     def _profile_card(self) -> QWidget:
         box = card(self)
@@ -309,7 +340,8 @@ class ProfilePage(QWidget):
 
         self.connect_button = primary_button("Connect", self)
         self.connect_button.clicked.connect(self._connect)
-        self.disconnect_button = secondary_button("Disconnect", self)
+        self.disconnect_button = secondary_button("Disconnect robot session",
+                                                  self)
         self.disconnect_button.clicked.connect(self.session.disconnect_robot)
         row = QHBoxLayout()
         row.addWidget(self.connect_button)
@@ -547,21 +579,44 @@ class ProfilePage(QWidget):
         self.disconnect_button.setEnabled(
             session.run_state is not None and not busy)
 
+        # The two ways on are always there, greyed until Connect has found
+        # what the robot holds and again once one of them was taken: the
+        # operator sees from the start what comes after Connect.
         state = session.run_state
         self.run_found.setVisible(probed)
-        self.adopt_button.setVisible(probed)
-        self.new_run_button.setVisible(probed)
         if probed:
             self.run_found.setText(
                 "Found: " + state.describe() + ("" if state.reusable else
                  "\nOnly a new robot session is possible."))
-            self.adopt_button.setEnabled(state.reusable and not busy)
-            self.new_run_button.setEnabled(not busy)
-            # Carrying on is the expected case when the robot was left on, so
-            # it is the accented button; when it is not possible, the only
-            # way forward takes the accent instead.
-            self.adopt_button.setDefault(state.reusable)
-            self.new_run_button.setDefault(not state.reusable)
+        self.adopt_button.setEnabled(probed and state.reusable and not busy)
+        self.new_run_button.setEnabled(probed and not busy)
+        # Carrying on is the expected case when the robot was left on, so
+        # it is the accented button; when it is not possible, the only way
+        # forward takes the accent instead. Neither while both are grey.
+        self.adopt_button.setDefault(probed and state.reusable)
+        self.new_run_button.setDefault(probed and not state.reusable)
+
+        self._show_checks()
+
+    def showEvent(self, event) -> None:
+        """Again on arrival: a position or a calibration set on another
+        page changes the list without a signal of its own."""
+        super().showEvent(event)
+        self._show_checks()
+
+    def _show_checks(self) -> None:
+        # What is done on this page is pointed at, not linked to.
+        checks = [replace(check, page=None,
+                          text=check.text.replace("on the Profile page",
+                                                  "above"))
+                  if check.page == "profile" else check
+                  for check in readiness_checks(self.session)]
+        todo = sum(check.blocking for check in checks)
+        self.checks_state.setText(
+            f"{todo} thing{'s' if todo != 1 else ''} to do, marked red; the "
+            f"button beside each goes to the page where it is done."
+            if todo else "Ready for a picking run.")
+        self.checklist.show_checks(checks)
 
     def _show_error(self, text: str) -> None:
         self.error.setText(text)
