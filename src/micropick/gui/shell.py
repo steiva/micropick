@@ -32,7 +32,7 @@ import time
 from typing import TYPE_CHECKING
 
 import qtawesome as qta
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QStackedWidget, QStatusBar,
@@ -44,7 +44,7 @@ from . import log_bridge
 from .pages import (calibration_camera, calibration_pipette, labware, liquid,
                     log, manual, picking, profile, routine, settings)
 from .session import MOCK_PROFILE_NAME, Session, Tip
-from .theme import SPACING
+from .theme import SPACING, accent
 from .widgets.feed_window import FeedWindow
 from .widgets.activity import ActivityIndicator
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
@@ -61,7 +61,8 @@ _log = logging.getLogger(__name__)
 
 # Which end of the tab row a page sits at. The sequence, on the left, is the
 # order a day's work goes in; the pages aside, on the right, are tools used
-# when they are needed, and their titles are in ASIDE_INK to say so.
+# when they are needed, and their titles are in the accent colour to say
+# so (`theme.accent`, the one the buttons are in).
 SEQUENCE, ASIDE = "sequence", "aside"
 
 # (attribute name, title on the tab, page class, group). The attribute is how
@@ -88,10 +89,10 @@ PAGES = (
     ("log", log.TITLE, log.LogPage, ASIDE),
 )
 
-# The titles of the pages aside: a teal that reads on either theme's strip,
-# apart from the sequence's plain text without shouting over it.
-ASIDE_INK = "#26a69a"
 ASIDE_TIP = "Used when needed, not a step of every run."
+
+# The gear at the end of the tab row, larger than the status bar's icons.
+GEAR_PX = 26
 
 # The colour a tip is shown in. A tip on the pipette is the first reason
 # the robot crashes into something, and the indicator that says so has to be
@@ -150,9 +151,21 @@ class NavTab(QWidget):
         return self.label.text()
 
     def set_aside(self) -> None:
-        """A page aside: its title in ASIDE_INK, and why on hover."""
-        self.label.setStyleSheet(f"color: {ASIDE_INK};")
+        """A page aside: its title in the accent colour, and why on hover."""
+        self._aside = True
         self.setToolTip(ASIDE_TIP)
+        self._ink()
+
+    def _ink(self) -> None:
+        if getattr(self, "_aside", False):
+            self.label.setStyleSheet(f"color: {accent()};")
+
+    def changeEvent(self, event) -> None:
+        # The operating system switched light and dark: qdarktheme applied
+        # the other stylesheet, and the accent with it.
+        if event.type() == QEvent.Type.StyleChange:
+            self._ink()
+        super().changeEvent(event)
 
     def isChecked(self) -> bool:
         return bool(self.property("selected"))
@@ -232,15 +245,6 @@ class StatusBar(QStatusBar):
         row.addWidget(self._tip_icon)
         row.addWidget(self._tip)
 
-        # The gear: this computer's settings, a page with no tab.
-        self.settings = QToolButton()
-        self.settings.setAutoRaise(True)
-        self.settings.setIcon(qta.icon("mdi6.cog-outline"))
-        self.settings.setToolTip("Settings: the robot's address, where "
-                                 "outputs are saved, which camera is which, "
-                                 "the models and the calibration")
-        self.settings.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
         # Stop, on every page: red and labelled, so it is found without
         # looking for it. What it does is the window's (`MainWindow._stop`).
         self.stop = QToolButton()
@@ -276,9 +280,11 @@ class StatusBar(QStatusBar):
         self.activity = ActivityIndicator()
         self.addWidget(self.activity, 1)
 
+        # Stop last, at the right-hand end: the corner the eye and the
+        # mouse find without looking.
         for widget in (self._profile, self._robot, self._cameras,
-                       self._deck_box, tip, self.stop, self.home, self.lights,
-                       self.settings):
+                       self._deck_box, tip, self.home, self.lights,
+                       self.stop):
             self.addPermanentWidget(widget)
         self.show_profile(None)
         self.show_robot("not connected")
@@ -427,6 +433,20 @@ class MainWindow(QMainWindow):
         tab_row.addStretch(1)
         for tab in aside:
             tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)
+        # The gear: this computer's settings, a page with no tab, at the
+        # end of the tabs where a window's settings usually are.
+        self.gear = QToolButton()
+        self.gear.setObjectName("gear")
+        self.gear.setAutoRaise(True)
+        self.gear.setIcon(qta.icon("mdi6.cog-outline"))
+        self.gear.setIconSize(QSize(GEAR_PX, GEAR_PX))
+        self.gear.setToolTip("Settings: the robot's address, where outputs "
+                             "are saved, which camera is which, the models "
+                             "and the calibration")
+        self.gear.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.gear.setCursor(Qt.CursorShape.PointingHandCursor)
+        tab_row.addSpacing(SPACING)
+        tab_row.addWidget(self.gear, 0, Qt.AlignmentFlag.AlignVCenter)
         # Settings: in the stack, opened by the gear, with no tab.
         self.settings_page = settings.SettingsPage(self.session)
         self.pages["settings"] = self.settings_page
@@ -477,8 +497,7 @@ class MainWindow(QMainWindow):
         self._feeds: dict[str, FeedWindow] = {}
         self._feed_workers: dict[str, Worker] = {}
         self._show_robot()
-        self.status.settings.clicked.connect(
-            lambda: self.show_page("settings"))
+        self.gear.clicked.connect(lambda: self.show_page("settings"))
 
         # Installed before anything is loaded, so a failure during start-up
         # lands in the log rather than nowhere. Queued across threads by Qt,

@@ -25,7 +25,16 @@ the third for fixes.
   as before.
 - Calibration is two tabs: Tip calibration among the steps, Camera
   calibration on the right with the tools used when needed (Liquid
-  handling, Manual control, Log), whose titles are now teal.
+  handling, Manual control, Log), whose titles are in the accent colour.
+- The Settings gear is at the end of the tab row, larger; Stop is at the
+  right-hand end of the status bar.
+- Operation checklist: Connect the robot first, then Load a profile; the
+  tip goes on before the calibrations, and the plate plan comes straight
+  after them. Every step links to its page, done or not.
+- Robot & Deck: the Slot card is first, with one "Load into slot N" for
+  labware and deck modules alike, and what the slot holds listed a line
+  each with its own Remove. "Labware definitions" and "Deck modules" are
+  one card, modules under a rule and folded once the profile has them.
 - Settings: a profile started empty can be given its cameras - choosing a
   camera for a role that has none adds it with the bench's settings.
 - Settings: a second column for the loaded profile - which attached camera

@@ -1,8 +1,8 @@
 """Settings of this computer's application: the robot's address, and where
 what the application produces is put.
 
-Opened from the gear in the status bar, not from a tab: the tabs are the
-work, and this is set once and seldom looked at again. The values are
+Opened from the gear at the end of the tab row, not from a tab: the tabs
+are the work, and this is set once and seldom looked at again. The values are
 `config.app_settings`, one file beside `profiles/`, not a profile's - the
 same robot and calibration are reached at 169.254.x.x over a cable and at
 another address over Wi-Fi.

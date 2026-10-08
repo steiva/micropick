@@ -1,8 +1,9 @@
 """The Operation checklist: what has to be done before a picking run.
 
-A fixed list of steps, in the order the work goes - load a profile, connect,
-choose the cameras and the model, calibrate, put a tip on, teach the
-positions, make the plate plan, load the plate - from the session alone. The
+A fixed list of steps, in the order the work goes - connect, load a profile,
+choose the cameras and the model, put a tip on, calibrate the camera and the
+tip, make the plate plan, teach the positions, load the plate - from the
+session alone. The
 Profile page shows it as soon as it opens; the Picking page adds what only
 it can see (its detector, its camera, the clips' camera) under one line for
 this list, and blocks Start on anything not done in either.
@@ -42,27 +43,27 @@ STALE_DAYS = 30
 # key: (what to do, page, words on its button, the steps it needs first).
 # The order is the order of the work.
 STEPS = {
-    "profile": ("Load a profile", "profile", "Profile", ()),
     "robot": ("Connect the robot", "profile", "Profile", ()),
+    "profile": ("Load a profile", "profile", "Profile", ()),
     "cameras": ("Choose the upper and lower cameras", "settings", "Settings",
                 ("profile",)),
     "model": ("Choose the cuboid model", "settings", "Settings",
               ("profile",)),
+    "tip": ("Put a tip on the pipette", "labware", "Robot & Deck",
+            ("robot",)),
     "camera_calibration": ("Calibrate the camera", "camera_calibration",
                            "Camera calibration",
                            ("profile", "robot", "cameras")),
-    "tip": ("Put a tip on the pipette", "labware", "Robot & Deck",
-            ("robot",)),
     "tip_calibration": ("Calibrate the tip", "tip_calibration",
                         "Tip calibration",
                         ("camera_calibration", "tip")),
+    "plan": ("Make a plate plan", "routine", "Plate plan", ("profile",)),
     "dish_position": ("Set the picking position over the dish", "picking",
                       "Picking", ("profile", "robot")),
     "shake_position": ("Set the shake position in the dish", "picking",
                        "Picking", ("profile", "robot")),
     "dish_bottom": ("Set the dish bottom", "picking", "Picking",
                     ("profile", "robot")),
-    "plan": ("Make a plate plan", "routine", "Plate plan", ("profile",)),
     "plate": ("Load the plate on the deck", "labware", "Robot & Deck",
               ("robot", "plan")),
 }

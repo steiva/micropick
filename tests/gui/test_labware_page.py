@@ -46,19 +46,19 @@ def _wait(app, page):
 
 def test_a_type_fills_the_height_and_places_on_the_clicked_slot(app, session):
     page = LabwarePage(session)
-    assert page.module_type.count() >= 2
-    page.module_type.setCurrentText("Picking platform")
+    assert page.module_types.count() >= 2
+    page._select_type("Picking platform")
     assert page.module_height.value() == pytest.approx(64.2)
-    assert not page.add_module_button.isEnabled()          # no slot yet
+    assert not page.load_button.isEnabled()                # no slot yet
     page._slot_clicked("5")
     page.module_height.setValue(63.9)                      # still editable
-    page._add_module()
+    page._load()
     module = session.profile.deck.module_for(5)
     assert module.name == "Picking platform"
     assert module.height_mm == pytest.approx(63.9)
     # Placing again replaces; removing takes it out.
-    page.module_type.setCurrentText("Calibration module")
-    page._add_module()
+    page._select_type("Calibration module")
+    page._load()
     assert session.profile.deck.module_for(5).name == "Calibration module"
     assert len(session.profile.deck.modules) == 1
     page._remove_module()
@@ -71,10 +71,11 @@ def test_placing_on_one_slot_of_an_old_multi_slot_module_splits_it(app, session)
     session.set_deck_modules([DeckModule(slots=[5, 8, 9], offset=[0, 0, 64.2],
                                          name="platform")])
     page = LabwarePage(session)
-    page._slot_clicked("8")
+    page._select_type("Calibration module")
+    page._slot_clicked("8")                # shows the module that is there
     assert page.module_height.value() == pytest.approx(64.2)
-    page.module_type.setCurrentText("Calibration module")
-    page._add_module()
+    page._select_type("Calibration module")
+    page._load()
     deck = session.profile.deck
     assert deck.module_for(5).slots == [5, 9]
     assert deck.module_for(8).name == "Calibration module"

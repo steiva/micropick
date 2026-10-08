@@ -35,6 +35,13 @@ QFrame#card {
  * and the outline on every secondary one. qdarktheme already makes labels
  * transparent (QLabel:!window), which was the only thing that rule fixed. */
 
+/* A plain container inside a card - a part of it that folds away - named so
+ * it shows the card through it rather than the window's background. By name
+ * only, for the reason above. */
+QWidget#plain {
+    background: transparent;
+}
+
 /* The page tabs, browser style. The strip is a Panel frame and takes
  * qdarktheme's raised surface; a tab that is not chosen is transparent over
  * it, and the chosen one keeps qdarktheme's QWidget background - the

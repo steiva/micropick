@@ -28,6 +28,7 @@ step with the theme, because nothing here knows what colour it is. See
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import qdarktheme
@@ -36,7 +37,7 @@ from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 __all__ = ["SPACING", "RADIUS", "FONT_FAMILIES", "FONT_SIZE_PT",
-           "configure_hidpi", "apply_theme", "stylesheet"]
+           "configure_hidpi", "apply_theme", "stylesheet", "accent"]
 
 # The base step. Every margin and gap in the application is a multiple of it,
 # so a layout is described by a small integer rather than by a pixel count
@@ -93,3 +94,24 @@ def apply_theme(app: QApplication, *, theme: str = "auto") -> None:
     qdarktheme.setup_theme(theme, corner_shape="rounded",
                            additional_qss=stylesheet())
     app.setFont(_ui_font())
+
+
+# qdarktheme's dark primary, for when no stylesheet has been applied yet.
+_ACCENT_FALLBACK = "#8ab4f7"
+_BUTTON_INK = re.compile(
+    r"(?:^|})\s*QPushButton\s*\{[^}]*?(?<![-\w])color:\s*"
+    r"(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})")
+
+
+def accent() -> str:
+    """The accent colour qdarktheme is showing now - the outlined buttons'
+    text and the default button's fill - as a stylesheet colour.
+
+    Read from the stylesheet in force, not named here: it is the light or
+    the dark theme's primary according to what the operating system chose,
+    and both change when it does. A widget that uses it reads it again on a
+    style change."""
+    app = QApplication.instance()
+    sheet = app.styleSheet() if app is not None else ""
+    match = _BUTTON_INK.search(sheet)
+    return match.group(1) if match else _ACCENT_FALLBACK

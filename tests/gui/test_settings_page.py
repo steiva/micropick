@@ -77,7 +77,7 @@ def test_the_gear_opens_the_settings_page(app, tmp_path, monkeypatch):
     monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
     from micropick.gui.shell import MainWindow
     window = MainWindow(Options(mock=True))
-    window.status.settings.click()
+    window.gear.click()
     assert window.stack.currentWidget() is window.settings_page
     assert not any(tab.isChecked() for tab in window.tabs.values())
     window.session.shutdown()

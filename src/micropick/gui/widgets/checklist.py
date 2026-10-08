@@ -2,8 +2,8 @@
 
 A run that cannot start used to say why in a paragraph of bullets: correct,
 and a list to read rather than a list to work down. Here each step is a
-line with a mark - done, to do, a note worth reading, or blocked - and the
-ones to do carry a button to the page where they are done.
+line with a mark - done, to do, a note worth reading, or blocked - and a
+button to the page where it is done, whatever its mark.
 
 The lines do not change. Each says what to do, in the same words whether it
 is done or not; only its mark moves. A list whose sentences rewrite
@@ -12,7 +12,7 @@ looked at. What is particular to the moment - a date, why a step is not
 done - is the line's tooltip (`Check.detail`).
 
 A step that needs an earlier one first is *blocked*: its text is dimmed and
-it has no button, so the eye goes to the first step that can be done.
+the eye goes past it to the first step that can be done.
 Blocked and to do stop a run; a note (an old calibration, a dish bottom
 never measured here) is said and left to the operator, and an optional step
 never stops one.
@@ -118,7 +118,9 @@ class Checklist(QWidget):
             for widget in (mark, text):
                 widget.setToolTip(check.detail)
             self._grid.addWidget(text, row, 1)
-            if check.state in (TODO, NOTE) and check.page:
+            # Every step that is done on another page links to it, done or
+            # not: a done step is often the one to look at again.
+            if check.page:
                 # "&&": a single & is a button's mnemonic, and "Robot &
                 # Deck" would read "Robot _Deck".
                 button = QPushButton(f"{check.place.replace('&', '&&')} ›",

@@ -56,8 +56,9 @@ the panel the rest, within 1-2x its designed width. Pages carry no title;
 the tab along the top is the title. Tabs on the left are the steps of a
 day's work in order (Profile, Robot & Deck, Tip calibration, Plate plan,
 Picking); tabs on the right are tools used when needed (Camera
-calibration, Liquid handling, Manual control, Log), titled in teal
-(`shell.ASIDE_INK`).
+calibration, Liquid handling, Manual control, Log), titled in the accent
+colour (`theme.accent`, read from qdarktheme). The gear (Settings) ends
+the tab row; Stop is the right-hand end of the status bar.
 
 The keys a page binds and what the mouse does are listed in a box at the
 picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
@@ -140,7 +141,7 @@ picking position**.
 
 The robot's address and the output folders (Outputs, Logs, Images) are
 `config.app_settings`: `settings.json` beside `profiles/`, edited on the
-Settings page behind the gear in the status bar (a page with no tab).
+Settings page behind the gear at the end of the tab row (a page with no tab).
 `paths` applies the folders as overrides, so writers keep asking `paths`.
 The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
 `--robot-host` overrides it for one start. Nothing hard-codes an address.
