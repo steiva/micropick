@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
 
 from .. import _version as version
 from .. import paths
+from ..config.labware import resolve_definition, row_first
 from . import log_bridge
 from .pages import (calibration_camera, calibration_pipette, labware, liquid,
                     log, manual, picking, profile, routine, settings)
@@ -48,6 +49,7 @@ from .theme import SPACING, accent
 from .widgets.feed_window import FeedWindow
 from .widgets.activity import ActivityIndicator
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
+from .widgets.tip_button import Rack, TipButton, TipSource
 from .report import save_report_asking
 from .workers import Worker, any_running
 
@@ -217,6 +219,7 @@ class StatusBar(QStatusBar):
         # because a camera is looked at - and its focus tuned - from
         # anywhere.
         self._cameras = QWidget()
+        self._cameras.setObjectName("statusInfo")
         self._camera_row = QHBoxLayout(self._cameras)
         self._camera_row.setContentsMargins(SPACING, 0, SPACING, 0)
         self._camera_row.setSpacing(SPACING // 2)
@@ -229,6 +232,7 @@ class StatusBar(QStatusBar):
         self._deck_icon = QLabel()
         self._deck = QLabel()
         self._deck_box = QWidget()
+        self._deck_box.setObjectName("statusInfo")
         deck_row = QHBoxLayout(self._deck_box)
         deck_row.setContentsMargins(SPACING, 0, SPACING, 0)
         deck_row.setSpacing(SPACING // 2)
@@ -236,14 +240,10 @@ class StatusBar(QStatusBar):
         deck_row.addWidget(self._deck)
         self._deck_box.hide()
 
-        self._tip_icon = QLabel()
-        self._tip = QLabel()
-        tip = QWidget()
-        row = QHBoxLayout(tip)
-        row.setContentsMargins(SPACING, 0, SPACING, 0)
-        row.setSpacing(SPACING // 2)
-        row.addWidget(self._tip_icon)
-        row.addWidget(self._tip)
+        # The tip: what the robot reports, and a panel with the basic acts
+        # on a click. Not connected here; the window runs what it asks for.
+        self.tip = TipButton()
+        tip = self.tip
 
         # Stop, on every page: red and labelled, so it is found without
         # looking for it. What it does is the window's (`MainWindow._stop`).
@@ -278,6 +278,7 @@ class StatusBar(QStatusBar):
 
         # What is running, on the left; see `widgets.activity`.
         self.activity = ActivityIndicator()
+        self.activity.setObjectName("statusInfo")
         self.addWidget(self.activity, 1)
 
         # Stop last, at the right-hand end: the corner the eye and the
@@ -353,28 +354,7 @@ class StatusBar(QStatusBar):
 
     def show_tip(self, tip: Tip | None) -> None:
         """None: no run, so there is nothing to say. Otherwise the record."""
-        if tip is None:
-            self._tip_icon.clear()
-            self._tip.setText("")
-            self._tip_icon.setToolTip("")
-            return
-        if tip.attached:
-            icon = qta.icon("mdi6.eyedropper", color=TIP_ON)
-            self._tip.setText(f"<b style='color:{TIP_ON}'>{tip.describe()}</b>")
-            hint = "The robot reports a tip on the pipette. Every move is " \
-                   "that much lower than it looks."
-        elif tip.attached is None:
-            icon = qta.icon("mdi6.help-circle-outline", color=TIP_ON)
-            self._tip.setText(f"<b style='color:{TIP_ON}'>tip: unknown</b>")
-            hint = "The robot's tip state could not be read. Connect again " \
-                   "on the Profile page before moving anything."
-        else:
-            icon = qta.icon("mdi6.eyedropper-off")
-            self._tip.setText("no tip")
-            hint = "The robot reports no tip on the pipette."
-        self._tip_icon.setPixmap(icon.pixmap(ICON_PX, ICON_PX))
-        self._tip_icon.setToolTip(hint)
-        self._tip.setToolTip(hint)
+        self.tip.show_tip(tip)
 
     def show_lights(self, on: bool | None) -> None:
         """None: not connected, or not readable; the button is then off."""
@@ -494,6 +474,22 @@ class MainWindow(QMainWindow):
         self._stop_reset.timeout.connect(self._disarm_stop)
         self._halt_worker: Worker | None = None
         self.status.camera_clicked.connect(self._show_feed)
+        # The tip panel: what it shows is read when it opens, and what it
+        # asks for runs as Home does (`_tip_command`).
+        self._tip_worker: Worker | None = None
+        self._rack_definitions: dict = {}
+        self.status.tip.source = self._tip_source
+        session = self.session
+        self.status.tip.drop_in_place.connect(
+            lambda: self._tip_command(session.drop_tip_in_place,
+                                      "dropping the tip in place"))
+        self.status.tip.drop_in_trash.connect(
+            lambda: self._tip_command(session.drop_tip_in_trash,
+                                      "dropping the tip in the trash"))
+        self.status.tip.pick_up.connect(
+            lambda slot, well: self._tip_command(
+                lambda: session.pick_up_tip(slot, well),
+                f"picking up a tip from slot {slot} {well}"))
         self._feeds: dict[str, FeedWindow] = {}
         self._feed_workers: dict[str, Worker] = {}
         self._show_robot()
@@ -767,6 +763,63 @@ class MainWindow(QMainWindow):
         self._show_home()
         _log.error("home: %s", reason)
         self.status.showMessage(f"Home failed: {reason}", 8000)
+
+    # -- the tip, from the status bar ------------------------------------------
+
+    def _tip_source(self) -> TipSource:
+        """What the tip panel offers: the record, the racks in the robot
+        session with their wells in the order they are taken, and whether
+        the robot is busy."""
+        session = self.session
+        if session.robot is None:
+            return TipSource(None)
+        racks = []
+        state = session.run_state
+        held = state.labware if state is not None else {}
+        for slot, entry in sorted(held.items(), key=lambda kv: kv[0]):
+            definition = self._rack_definitions.get(entry.load_name)
+            if definition is None:
+                try:
+                    definition = resolve_definition(entry.load_name)
+                except Exception:                    # noqa: BLE001
+                    continue
+                self._rack_definitions[entry.load_name] = definition
+            if definition.is_tiprack:
+                racks.append(Rack(str(slot), definition.display_name,
+                                  sorted(definition.wells, key=row_first)))
+        return TipSource(session.tip, racks, self._robot_busy())
+
+    def _tip_command(self, fn, what: str) -> None:
+        """A tip act from the status bar, run as Home is: refused while the
+        robot is busy, through the shown page's jog panel when it has one,
+        on its own worker otherwise. The tip record is re-read by the
+        session after each act, which updates the button."""
+        if self.session.robot is None:
+            return
+        if self._robot_busy():
+            self.status.showMessage("Not now: the robot is busy.", 6000)
+            return
+        panels = [panel for panel in
+                  self.stack.currentWidget().findChildren(JogPanel)
+                  if panel.isVisible()]
+        if panels and panels[0].run_job(lambda _log: fn(), what=what):
+            return
+        worker = Worker(fn, what=what)
+        self._tip_worker = worker
+        worker.finished.connect(self._tip_done)
+        worker.failed.connect(self._tip_failed)
+        _log.info("%s, from the status bar", what)
+        worker.start()
+
+    def _tip_done(self, _result=None) -> None:
+        self._tip_worker = None
+        for panel in self.findChildren(JogPanel):
+            panel.refresh_position()
+
+    def _tip_failed(self, reason: str) -> None:
+        self._tip_worker = None
+        _log.error("tip: %s", reason)
+        self.status.showMessage(f"Tip: {reason}", 8000)
 
     def show_page(self, name: str) -> None:
         """Bring a page to the front by name, keeping the tabs in step."""

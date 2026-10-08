@@ -35,6 +35,15 @@ QFrame#card {
  * and the outline on every secondary one. qdarktheme already makes labels
  * transparent (QLabel:!window), which was the only thing that rule fixed. */
 
+/* qdarktheme lights every widget of the status bar under the mouse, as if
+ * it were a button. Text and the boxes that only hold things are not: they
+ * stay as they are, and only what can be clicked lights up. */
+QStatusBar QLabel:hover,
+QStatusBar QProgressBar:hover,
+QStatusBar QWidget#statusInfo:hover {
+    background: transparent;
+}
+
 /* A plain container inside a card - a part of it that folds away - named so
  * it shows the card through it rather than the window's background. By name
  * only, for the reason above. */

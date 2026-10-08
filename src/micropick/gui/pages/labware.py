@@ -85,7 +85,6 @@ Neither moves the gantry; picking up a tip and dropping it in the trash do.
 from __future__ import annotations
 
 import logging
-import re
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QComboBox, QCompleter, QDialog,
@@ -95,7 +94,8 @@ from PySide6.QtWidgets import (QComboBox, QCompleter, QDialog,
                                QVBoxLayout, QWidget)
 
 from ...config.labware import (LabwareDefinition, LabwareError,
-                               local_definitions, shared_definitions)
+                               local_definitions, row_first,
+                               shared_definitions)
 from ...config.schema import (DEFAULT_MODULE_HEIGHT_MM, DeckModule,
                               ModuleType)
 from ..session import Session
@@ -852,7 +852,7 @@ class LabwarePage(QWidget):
     def _fill_wells(self, definition) -> None:
         """The rack's wells, row by row; kept if unchanged so the chooser
         does not jump back to A1 on every refresh."""
-        wells = (sorted(definition.wells, key=_row_first)
+        wells = (sorted(definition.wells, key=row_first)
                  if definition is not None else [])
         current = [self.tip_well.itemText(i) for i in range(self.tip_well.count())]
         if wells == current:
@@ -1033,12 +1033,3 @@ class LabwarePage(QWidget):
         definition = self._definition_of(entry)
         return definition.display_name if definition is not None else entry.load_name
 
-
-def _row_first(well: str):
-    """A1, A2 ... A12, B1: by row letters, then by column number. A name
-    that is not letters and a number goes last, as it is."""
-    match = re.fullmatch(r"([A-Za-z]+)(\d+)", well)
-    if match is None:
-        return (1, "", 0, well)
-    row, column = match.groups()
-    return (0, row.upper().rjust(4), int(column), well)

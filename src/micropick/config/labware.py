@@ -16,6 +16,7 @@ Both are on disk; nothing here talks to the robot. The robot-facing side
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from .. import paths
 
 __all__ = ["LabwareDefinition", "LabwareError", "read_definition",
            "local_definitions", "shared_definition", "shared_definitions",
-           "resolve_definition"]
+           "resolve_definition", "row_first"]
 
 
 class LabwareError(RuntimeError):
@@ -217,3 +218,14 @@ def resolve_definition(load_name: str, version: int | None = None,
         f"no labware definition for {load_name!r}. Custom definitions in "
         f"labware/: {known}. Stock Opentrons load names are also accepted "
         f"(from opentrons-shared-data).")
+
+
+def row_first(well: str):
+    """Sort key for wells: A1, A2 ... A12, B1 - by row letters, then by
+    column number, the order a rack is taken from. A name that is not
+    letters and a number goes last, as it is."""
+    match = re.fullmatch(r"([A-Za-z]+)(\d+)", well)
+    if match is None:
+        return (1, "", 0, well)
+    row, column = match.groups()
+    return (0, row.upper().rjust(4), int(column), well)
