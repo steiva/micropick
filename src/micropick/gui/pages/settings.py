@@ -38,8 +38,9 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QFileDialog, QGridLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout,
+                               QHBoxLayout, QLabel, QLineEdit, QVBoxLayout,
+                               QWidget)
 
 from ... import paths
 from ...config.app_settings import AppSettings, settings_path
@@ -141,6 +142,7 @@ class SettingsPage(QWidget):
         column.addWidget(self._folders_card())
         column.addWidget(self._clips_card())
         column.addWidget(self._sweep_card())
+        column.addWidget(self._tip_card())
         row = QHBoxLayout()
         self.save_button = primary_button("Save", self)
         self.save_button.clicked.connect(self._save)
@@ -321,6 +323,57 @@ class SettingsPage(QWidget):
         box.layout().addLayout(row)
         return box
 
+    def _tip_card(self) -> QWidget:
+        """How the tip calibration measures. Used by the Tip calibration
+        page, which says which of these it will use."""
+        box = card(self)
+        box.layout().addWidget(heading("Tip calibration", 2))
+        self.tip_type = QLineEdit(self)
+        self.tip_type.setPlaceholderText("from the rack the tip came from")
+        self.tip_type.textEdited.connect(lambda _t: self._edited())
+        self.tip_frames = spin_box(self)
+        self.tip_frames.setRange(1, 30)
+        self.tip_frames.valueChanged.connect(lambda _v: self._edited())
+        grid = QGridLayout()
+        for row, (label, widget, hint) in enumerate((
+                ("Tip type", self.tip_type,
+                 "Recorded with the offset. Empty: the rack the tip came "
+                 "from, as the robot's record names it."),
+                ("Frames", self.tip_frames,
+                 "Per reading; detections are averaged and their spread is "
+                 "reported."))):
+            grid.addWidget(QLabel(label), 2 * row, 0)
+            if widget is self.tip_type:            # the whole width
+                grid.addWidget(widget, 2 * row, 1)
+            else:
+                grid.addWidget(widget, 2 * row, 1, Qt.AlignmentFlag.AlignLeft)
+            grid.addWidget(muted_label(hint), 2 * row + 1, 1)
+        grid.setColumnStretch(1, 1)
+        box.layout().addLayout(grid)
+        self.tip_verify = QCheckBox("Verify after the correction", self)
+        self.tip_verify.setToolTip("Drive to the corrected offset and measure "
+                                   "again, to show what is left.")
+        self.tip_touch_up = QCheckBox(
+            "Manual adjustment: nudge the tip onto the crosshair at the end, "
+            "then Done", self)
+        self.tip_touch_up.setToolTip("Off: the automatic result is saved "
+                                     "as it is.")
+        for box_ in (self.tip_verify, self.tip_touch_up):
+            box_.toggled.connect(lambda _on: self._edited())
+            box.layout().addWidget(box_)
+        return box
+
+    def _show_tip(self, settings: AppSettings) -> None:
+        widgets = (self.tip_frames, self.tip_verify, self.tip_touch_up)
+        for widget in widgets:
+            widget.blockSignals(True)
+        self.tip_type.setText(settings.tip_cal_tip_type)
+        self.tip_frames.setValue(settings.tip_cal_frames)
+        self.tip_verify.setChecked(settings.tip_cal_verify)
+        self.tip_touch_up.setChecked(settings.tip_cal_touch_up)
+        for widget in widgets:
+            widget.blockSignals(False)
+
     def _show_sweep(self, settings: AppSettings) -> None:
         widgets = (self.marker_side, self.dictionary, self.grid_n,
                    self.degree)
@@ -486,6 +539,7 @@ class SettingsPage(QWidget):
         self.clip_crop.setValue(settings.clip_crop)
         self.clip_crop.blockSignals(False)
         self._show_sweep(settings)
+        self._show_tip(settings)
         self.save_state.setText(
             self.session.settings_note
             or (f"Saved in {settings_path()}." if settings_path().is_file()
@@ -510,7 +564,11 @@ class SettingsPage(QWidget):
                                self.marker_side.value(), 2),
                            sweep_dictionary=self.dictionary.currentText(),
                            sweep_grid_n=int(self.grid_n.value()),
-                           sweep_degree=int(self.degree.value()))
+                           sweep_degree=int(self.degree.value()),
+                           tip_cal_tip_type=self.tip_type.text().strip(),
+                           tip_cal_frames=int(self.tip_frames.value()),
+                           tip_cal_verify=self.tip_verify.isChecked(),
+                           tip_cal_touch_up=self.tip_touch_up.isChecked())
 
     def _edited(self) -> None:
         self.save_state.setText("Changed: Save keeps it.")

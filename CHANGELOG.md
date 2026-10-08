@@ -10,6 +10,15 @@ the third for fixes.
 
 ## Unreleased
 
+- Tip calibration is a list of numbered steps, each with a mark: place
+  the calibration disc on the module, set the disc position (Set position,
+  Go to saved position, the jog panel right under it), put a tip on,
+  calibrate, and - while the robot waits - nudge the tip onto the
+  crosshair. The camera choosers are gone (the cameras are chosen in
+  Settings); tip type, frames, verification and the manual adjustment
+  moved to a "Tip calibration" card in Settings.
+- The keys box on the camera pictures has a "Keyboard shortcuts" title,
+  and the keys are in blue.
 - Status bar: the tip is a button. It opens a small panel over it to drop
   the tip in place or in the trash, or pick up a new one from a rack's
   well (the next well of the rack is offered after each pick-up). Text in

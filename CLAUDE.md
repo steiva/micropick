@@ -115,7 +115,7 @@ screen means a picking or liquid run. The pipette
 is set up under the hood and never mentioned ("pipette loaded" reads as "a
 tip is on"). A `Routine` is a **plate plan** (the Plate plan tab). Stored
 poses are set with **Set position** / **Set shake position**; the pipette
-calibration's way back is **Go to last saved**, the Picking page's **Go to
+calibration's way back is **Go to saved position**, the Picking page's **Go to
 picking position**.
 
 ### For biologists: stop, guard, say what to do
@@ -155,6 +155,15 @@ mode, and the pipette calibration reopens it in the profile's own.
 The camera calibration sweep's parameters (marker side, dictionary, grid,
 degree) are settings too (`AppSettings.sweep_*`); the Camera calibration
 page shows them and links to Settings.
+So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
+verify, manual adjustment). The Tip calibration page is numbered steps,
+each a card with a mark: place the disc (ticked by the operator), set the
+disc position, put a tip on, calibrate, nudge the tip (only while it
+waits); its cameras are the profile's upper and lower ones.
+
+The keys box on a picture has a bold "Keyboard shortcuts" title and the
+keys in blue (`camera_view.HELP_KEY`); a help line is "keys   what it
+does", split at its first three spaces.
 
 The Settings page's second column is the loaded profile's, saved into it at
 once: which attached camera is the upper and which the lower

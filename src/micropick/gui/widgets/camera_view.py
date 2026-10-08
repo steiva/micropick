@@ -142,6 +142,14 @@ CAPTION_BG = QColor(0, 0, 0, 140)
 CAPTION_FG = QColor(235, 235, 235)
 CAPTION_PAD = 6
 CAPTION_GAP = 6
+# The keys box: its title, where a line splits into the keys and what they
+# do, and the keys' colour - qdarktheme's dark accent, fixed because the box
+# under it is always dark, whatever the theme.
+HELP_TITLE = "Keyboard shortcuts"
+HELP_SPLIT = "   "
+HELP_KEY = QColor(138, 180, 247)
+HELP_TITLE_GAP = 4
+HELP_LEADING = 2                 # between the lines of the keys box
 # The jog step in a box's text, and its colour by size.
 STEP = re.compile(r"step (\d+(?:\.\d+)?) mm")
 STEP_ORANGE = QColor(255, 170, 40)
@@ -1173,17 +1181,58 @@ class CameraView(QWidget):
 
     def _draw_help(self, painter: QPainter) -> None:
         """The keys box, in the bottom-right corner, clear of the focus
-        slider on the left and the crosshair toggle at the top."""
+        slider on the left and the crosshair toggle at the top: a bold
+        title, then a line per key - the key in HELP_KEY, what it does in
+        the caption's ink, the two in columns. A line is "keys   what it
+        does", split at its first three spaces; one without them is drawn
+        whole."""
         if not self._help:
             return
-        painter.setFont(QFont(self.font().family(), 10))
-        painter.setPen(QPen(CAPTION_FG))
+        font = QFont(self.font().family(), 10)
+        bold = QFont(font)
+        bold.setBold(True)
+        painter.setFont(bold)
+        title_metrics = painter.fontMetrics()
+        painter.setFont(font)
         metrics = painter.fontMetrics()
-        width = (max(metrics.horizontalAdvance(line) for line in self._help)
-                 + 2 * CAPTION_PAD)
-        height = metrics.height() * len(self._help) + 2 * CAPTION_PAD
-        self._draw_box(painter, self.height() - 8 - height, self._help,
-                       left=self.width() - 8 - width)
+        rows = []
+        for line in self._help:
+            keys, sep, what = line.partition(HELP_SPLIT)
+            rows.append((keys.strip(), what.strip()) if sep else ("", line))
+        key_width = max(metrics.horizontalAdvance(k) for k, _ in rows)
+        gap = metrics.horizontalAdvance(HELP_SPLIT)
+        line_width = max(
+            (key_width + gap if k else 0) + metrics.horizontalAdvance(w)
+            for k, w in rows)
+        pad = CAPTION_PAD
+        width = max(title_metrics.horizontalAdvance(HELP_TITLE),
+                    line_width) + 2 * pad
+        height = (title_metrics.height() + HELP_TITLE_GAP
+                  + (metrics.height() + HELP_LEADING) * len(rows) + 2 * pad)
+        box = QRect(self.width() - 8 - width, self.height() - 8 - height,
+                    width, height)
+        painter.fillRect(box, CAPTION_BG)
+        x, y = box.x() + pad, box.y() + pad
+        painter.setFont(bold)
+        painter.setPen(QPen(CAPTION_FG))
+        painter.drawText(QRect(x, y, width, title_metrics.height()),
+                         Qt.AlignmentFlag.AlignLeft
+                         | Qt.AlignmentFlag.AlignVCenter, HELP_TITLE)
+        y += title_metrics.height() + HELP_TITLE_GAP
+        painter.setFont(font)
+        flags = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        for keys, what in rows:
+            if keys:
+                painter.setPen(QPen(HELP_KEY))
+                painter.drawText(QRect(x, y, key_width + 1, metrics.height()),
+                                 flags, keys)
+                left = x + key_width + gap
+            else:
+                left = x
+            painter.setPen(QPen(CAPTION_FG))
+            painter.drawText(QRect(left, y, width, metrics.height()), flags,
+                             what)
+            y += metrics.height() + HELP_LEADING
 
     def _draw_box(self, painter: QPainter, top: int, lines: list[str],
                   left: int = 8) -> int:

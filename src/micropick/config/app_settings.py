@@ -65,6 +65,14 @@ class AppSettings(BaseModel):
     # Below 3 is refused by fit_pixel_map rather than silently useless:
     # radial distortion is cubic in image coordinates.
     sweep_degree: int = Field(default=3, ge=3, le=5)
+    # The tip calibration: the tip type recorded with the offset when the
+    # robot's record does not name the rack ("" is "from the rack"), frames
+    # per reading, the check after the correction, and the manual
+    # adjustment at the end.
+    tip_cal_tip_type: str = ""
+    tip_cal_frames: int = Field(default=7, ge=1, le=30)
+    tip_cal_verify: bool = True
+    tip_cal_touch_up: bool = True
 
 
 def settings_path() -> Path:
