@@ -286,11 +286,19 @@ class StatusBar(QStatusBar):
         self.activity.setObjectName("statusInfo")
         self.addWidget(self.activity, 1)
 
+        # The question mark: the next-step hint back, after its cross.
+        # Not connected here, as Home is not.
+        self.help = QToolButton()
+        self.help.setAutoRaise(True)
+        self.help.setIcon(qta.icon("mdi6.help-circle-outline"))
+        self.help.setToolTip("Show the hint with the next step again.")
+        self.help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
         # Stop last, at the right-hand end: the corner the eye and the
         # mouse find without looking.
         for widget in (self._profile, self._robot, self._cameras,
                        self._deck_box, tip, self.home, self.lights,
-                       self.stop):
+                       self.help, self.stop):
             self.addPermanentWidget(widget)
         self.show_profile(None)
         self.show_robot("not connected")
@@ -452,6 +460,9 @@ class MainWindow(QMainWindow):
         # on a timer: a position saved on a page has no signal of its own.
         self.hint = NextStepHint(central)
         self.hint.go.connect(self.show_page)
+        # A page the hint was asked for on with the question mark, where it
+        # is not shown by itself (Profile, Settings); until the page changes.
+        self._hint_asked_on: str | None = None
         self._hint_timer = QTimer(self)
         self._hint_timer.setInterval(HINT_EVERY_MS)
         self._hint_timer.timeout.connect(self._show_hint)
@@ -494,6 +505,7 @@ class MainWindow(QMainWindow):
         self._tip_worker: Worker | None = None
         self._rack_definitions: dict = {}
         self.status.tip.source = self._tip_source
+        self.status.help.clicked.connect(self._reopen_hint)
         session = self.session
         self.status.tip.drop_in_place.connect(
             lambda: self._tip_command(session.drop_tip_in_place,
@@ -546,8 +558,15 @@ class MainWindow(QMainWindow):
         which shows the whole list, nor on Settings, a page of its own."""
         page = getattr(self, "_page", None)
         self.hint.show_checks(readiness_checks(self.session), page,
-                              allowed=page not in ("profile", "settings"))
+                              allowed=page not in ("profile", "settings")
+                              or page == self._hint_asked_on)
         self._place_hint()
+
+    def _reopen_hint(self) -> None:
+        """The question mark: the hint again, on whatever page this is."""
+        self.hint.reopen()
+        self._hint_asked_on = getattr(self, "_page", None)
+        self._show_hint()
 
     def _place_hint(self) -> None:
         central = self.centralWidget()
@@ -865,5 +884,6 @@ class MainWindow(QMainWindow):
             tab.setChecked(other == name)
         self.stack.setCurrentWidget(self.pages[name])
         self._page = name
+        self._hint_asked_on = None
         if hasattr(self, "hint"):
             self._show_hint()

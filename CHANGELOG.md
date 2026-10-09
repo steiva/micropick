@@ -10,6 +10,8 @@ the third for fixes.
 
 ## Unreleased
 
+- A question mark in the status bar brings the next-step hint back after
+  its cross closed it, on any page.
 - Camera calibration is numbered steps too: place the calibration marker
   on the picking plane (ticks itself when the camera sees it), centre it
   under the crosshair (ticks itself; says how far off it is), sweep, save

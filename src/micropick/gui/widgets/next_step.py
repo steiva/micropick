@@ -123,3 +123,8 @@ class NextStepHint(QFrame):
     def _close(self) -> None:
         self._closed_for = self._shown_for
         self.hide()
+
+    def reopen(self) -> None:
+        """Forget that it was closed: the status bar's question mark."""
+        self._closed_for = None
+        self._shown_for = None
