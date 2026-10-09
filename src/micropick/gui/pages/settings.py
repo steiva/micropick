@@ -143,18 +143,6 @@ class SettingsPage(QWidget):
         column.addWidget(self._clips_card())
         column.addWidget(self._sweep_card())
         column.addWidget(self._tip_card())
-        row = QHBoxLayout()
-        self.save_button = primary_button("Save", self)
-        self.save_button.clicked.connect(self._save)
-        self.revert_button = secondary_button("Revert", self)
-        self.revert_button.setToolTip("Back to what is saved.")
-        self.revert_button.clicked.connect(self._show)
-        row.addWidget(self.save_button)
-        row.addWidget(self.revert_button)
-        row.addStretch(1)
-        column.addLayout(row)
-        self.save_state = _label()
-        column.addWidget(self.save_state)
         column.addStretch(1)
 
         profile_column = QVBoxLayout()
@@ -170,16 +158,40 @@ class SettingsPage(QWidget):
         # Readable columns, not the window's width: these are a few fields.
         # The computer's on the left, the profile's on the right, the pair
         # centred.
-        outer = QHBoxLayout(self)
-        outer.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
-                                 SPACING * 2)
-        outer.setSpacing(SPACING * 2)
-        outer.addStretch(1)
+        columns = QHBoxLayout()
+        columns.setSpacing(SPACING * 2)
+        columns.addStretch(1)
         for layout in (column, profile_column):
             holder = QWidget(self)
             holder.setLayout(layout)
-            outer.addWidget(scroll_column(holder, COLUMN_WIDTH))
-        outer.addStretch(1)
+            columns.addWidget(scroll_column(holder, COLUMN_WIDTH))
+        columns.addStretch(1)
+
+        # Save and Revert at the bottom right, outside the columns: always
+        # in view however far the left column is scrolled, which is where a
+        # change was made. What was saved, or why not, beside them.
+        bar = QHBoxLayout()
+        self.save_state = _label()
+        self.save_state.setAlignment(Qt.AlignmentFlag.AlignRight
+                                     | Qt.AlignmentFlag.AlignVCenter)
+        bar.addWidget(self.save_state, 1)
+        self.revert_button = secondary_button("Revert", self)
+        self.revert_button.setToolTip("Back to what is saved.")
+        self.revert_button.clicked.connect(self._show)
+        self.save_button = primary_button("Save", self)
+        self.save_button.setToolTip("Save this computer's settings (the left "
+                                    "column). The profile's are saved as "
+                                    "they are chosen.")
+        self.save_button.clicked.connect(self._save)
+        bar.addWidget(self.revert_button)
+        bar.addWidget(self.save_button)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                 SPACING * 2)
+        outer.setSpacing(SPACING)
+        outer.addLayout(columns, 1)
+        outer.addLayout(bar)
 
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.settings_changed.connect(lambda _s: self._show())
@@ -903,6 +915,7 @@ class SettingsPage(QWidget):
 
         self.robot_state.setText("asking the robot…")
         worker = Worker(job, what="asking the robot")
+        worker.robot = False                 # a question, nothing moves
         self._worker = worker
         worker.finished.connect(self._tested)
         worker.failed.connect(self._test_failed)

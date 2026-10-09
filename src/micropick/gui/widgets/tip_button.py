@@ -62,8 +62,14 @@ class _Panel(QFrame):
     """The popup: a card that closes when clicked outside."""
 
     def __init__(self, button: "TipButton"):
-        super().__init__(button, Qt.WindowType.Popup)
+        # No parent: a child of the button would be inside the status bar,
+        # and qdarktheme lights everything there under the mouse.
+        super().__init__(None, Qt.WindowType.Popup)
         self.button = button
+        button.destroyed.connect(self.deleteLater)
+        # The click that closes the popup is not passed on: on the button it
+        # would open the popup again, where a second click should close it.
+        self.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay)
         self.setObjectName("card")
         self.setFrameShape(QFrame.Shape.Panel)
         self.setFixedWidth(PANEL_WIDTH)
@@ -141,8 +147,9 @@ class _Panel(QFrame):
         else:
             self.state.setText("The robot reports no tip on the pipette.")
         if busy:
-            self.state.setText(self.state.text() + " The robot is busy: wait "
-                               "until it has finished.")
+            # Said, not a reason to grey the buttons: what the robot is doing
+            # may be over by the click, and the click is refused if not.
+            self.state.setText(self.state.text() + " The robot is busy now.")
 
         chosen = self.slot.currentData()
         self.slot.blockSignals(True)
@@ -161,7 +168,7 @@ class _Panel(QFrame):
             "page.")
         self.racks_note.setVisible(bool(self.racks_note.text()))
 
-        known = tip is not None and tip.attached is not None and not busy
+        known = tip is not None and tip.attached is not None
         self.drop_place.setEnabled(known and bool(tip.attached))
         self.drop_trash.setEnabled(known and bool(tip.attached))
         self.pick.setEnabled(known and not tip.attached and bool(racks)
@@ -274,7 +281,11 @@ class TipButton(QToolButton):
 
     def _open(self) -> None:
         """The panel over the button, its bottom edge on the button's top,
-        right edges together when it would leave the screen."""
+        right edges together when it would leave the screen. A click while
+        it is open closes it: the button toggles it."""
+        if self._panel.isVisible():
+            self._panel.hide()
+            return
         self._panel.fill(self.source(), self._next_well)
         # A wrapped line is given the height its text needs at the panel's
         # width: a popup is sized once, from hints that assume one line.

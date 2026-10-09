@@ -77,11 +77,14 @@ AUTO = object()
 _RUNNING: set["Worker"] = set()
 
 
-def any_running() -> bool:
+def any_running(*, robot_only: bool = False) -> bool:
     """Whether any worker's thread is still running, on any page. For an act
     that must not overlap whatever else is talking to the robot - the status
-    bar's Home - and cannot know which page started it."""
-    return any(worker.running for worker in list(_RUNNING))
+    bar's Home - and cannot know which page started it. `robot_only` leaves
+    out the workers marked `robot = False`: a camera opening, a look for the
+    marker, a picture being saved."""
+    return any(worker.running and (worker.robot or not robot_only)
+               for worker in list(_RUNNING))
 
 
 NO_ROBOT_ANSWER = ("The robot did not answer. Check that it is switched on "
@@ -149,6 +152,8 @@ class Worker(QObject):
         way from here, and inspection cannot tell the two cases apart.
         """
         super().__init__(parent)
+        # False for a job that never talks to the robot; see any_running.
+        self.robot = True
         self._fn = fn
         self._args = args
         self._kwargs = dict(kwargs)

@@ -77,6 +77,7 @@ class CameraOpener(QObject):
         mode_arg = {"resolution": tuple(resolution)} if resolution else {}
         worker = Worker(self.session.open_camera, label, **mode_arg,
                         what=f"opening camera {label!r}{mode}")
+        worker.robot = False                 # a camera, not the robot
         worker.label = label
         self._in_flight[label] = worker
         # Bound methods, not lambdas: Qt takes a connection's thread from the

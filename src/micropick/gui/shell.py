@@ -49,7 +49,9 @@ from .theme import SPACING, accent
 from .widgets.feed_window import FeedWindow
 from .widgets.activity import ActivityIndicator
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
+from .widgets.next_step import NextStepHint
 from .widgets.tip_button import Rack, TipButton, TipSource
+from .readiness import readiness_checks
 from .report import save_report_asking
 from .workers import Worker, any_running
 
@@ -92,6 +94,9 @@ PAGES = (
 )
 
 ASIDE_TIP = "Used when needed, not a step of every run."
+
+# How often the next-step hint reads the checklist again.
+HINT_EVERY_MS = 1500
 
 # The gear at the end of the tab row, larger than the status bar's icons.
 GEAR_PX = 26
@@ -442,6 +447,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
+        # The next step of the Operation checklist, over the top-right of
+        # the page (`widgets.next_step`). Read again on what changes it and
+        # on a timer: a position saved on a page has no signal of its own.
+        self.hint = NextStepHint(central)
+        self.hint.go.connect(self.show_page)
+        self._hint_timer = QTimer(self)
+        self._hint_timer.setInterval(HINT_EVERY_MS)
+        self._hint_timer.timeout.connect(self._show_hint)
+        self._hint_timer.start()
+
         self.status = StatusBar()
         self.setStatusBar(self.status)
 
@@ -526,6 +541,26 @@ class MainWindow(QMainWindow):
         self.profile_page.chooser.setCurrentIndex(index)
         self.profile_page.load_selected()
 
+    def _show_hint(self) -> None:
+        """The hint for the page on screen, in its corner. Not on Profile,
+        which shows the whole list, nor on Settings, a page of its own."""
+        page = getattr(self, "_page", None)
+        self.hint.show_checks(readiness_checks(self.session), page,
+                              allowed=page not in ("profile", "settings"))
+        self._place_hint()
+
+    def _place_hint(self) -> None:
+        central = self.centralWidget()
+        if central is None:
+            return
+        self.hint.move(central.width() - self.hint.width() - SPACING * 2,
+                       self.strip.height() + SPACING)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "hint"):
+            self._place_hint()
+
     def closeEvent(self, event) -> None:
         """Nothing is left running: cameras hold grab threads, and the robot
         holds an axis that should be parked before the window disappears."""
@@ -567,6 +602,7 @@ class MainWindow(QMainWindow):
             return
         worker = Worker(self.session.open_camera, label,
                         what=f"opening camera {label!r}")
+        worker.robot = False                 # a camera, not the robot
         worker.label = label
         self._feed_workers[label] = worker
         # Bound methods, not lambdas: Qt queues them onto this thread, and
@@ -646,10 +682,12 @@ class MainWindow(QMainWindow):
     def _robot_busy(self) -> bool:
         """Anything that may be talking to the robot: a jog panel's job on
         any page, or any worker - a picking run, a sweep, a labware load.
-        Coarse on purpose: a camera opening also counts, and waiting for it
-        costs seconds, where homing through a run costs the run."""
+        Coarse on purpose, but not about what never talks to it: a camera
+        opening, a look for the marker or a picture being saved are marked
+        `robot = False`, and counting them kept the tip panel refusing
+        while the Camera calibration page merely watched its marker."""
         return (any(panel.busy for panel in self.findChildren(JogPanel))
-                or any_running())
+                or any_running(robot_only=True))
 
     # -- stop ----------------------------------------------------------------
 
@@ -826,3 +864,6 @@ class MainWindow(QMainWindow):
         for other, tab in self.tabs.items():
             tab.setChecked(other == name)
         self.stack.setCurrentWidget(self.pages[name])
+        self._page = name
+        if hasattr(self, "hint"):
+            self._show_hint()

@@ -766,8 +766,10 @@ class PickingPage(QWidget):
             return
         if self._detection is None:
             self.result.setText("loading the detector…")
-        self._run(Worker(self.detector.load, wanted,
-                         what="loading the detector"), self._loaded)
+        worker = Worker(self.detector.load, wanted,
+                        what="loading the detector")
+        worker.robot = False                 # weights, not the robot
+        self._run(worker, self._loaded)
 
     def _loaded(self, _description) -> None:
         if self._detection is None:
