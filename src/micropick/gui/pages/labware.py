@@ -100,9 +100,9 @@ from ...config.schema import (DEFAULT_MODULE_HEIGHT_MM, DeckModule,
                               ModuleType)
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, double_spin_box, heading,
-                             muted_label, primary_button, scroll_column,
-                             secondary_button)
+from ..theme.factory import (card, combo_box, double_spin_box, fold_arrow,
+                             heading, muted_label, primary_button,
+                             scroll_column, secondary_button)
 from ..widgets.deck_view import TRASH_SLOT, DeckView
 from ..workers import Worker
 
@@ -385,8 +385,7 @@ class LabwarePage(QWidget):
         return box
 
     def _modules_toggled(self, shown: bool) -> None:
-        self.modules_toggle.setArrowType(Qt.ArrowType.DownArrow if shown
-                                         else Qt.ArrowType.RightArrow)
+        fold_arrow(self.modules_toggle, shown)
         self.modules_body.setVisible(shown)
 
     def _fold_modules(self) -> None:

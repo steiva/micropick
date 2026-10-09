@@ -15,7 +15,8 @@ Nothing here knows about the session, the robot or a camera. These are widgets.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
+from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
                                QPushButton, QScrollArea, QSpinBox, QToolButton,
                                QVBoxLayout, QWidget)
@@ -24,7 +25,7 @@ from . import SPACING
 
 __all__ = ["primary_button", "secondary_button", "card", "heading",
            "muted_label", "combo_box", "spin_box", "double_spin_box",
-           "scroll_column", "Section"]
+           "scroll_column", "Section", "fold_arrow"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -100,6 +101,39 @@ def muted_label(text: str = "", parent: QWidget | None = None) -> QLabel:
     label.setWordWrap(True)
     label.setEnabled(False)
     return label
+
+
+def fold_arrow(button: QToolButton, shown: bool) -> None:
+    """The arrow of a title that folds a body away: down when it is open,
+    right when it is folded, as tall as a capital letter of the title.
+
+    Painted rather than Qt's arrow type, which is drawn the size of an
+    icon and stood out beside the title larger than its letters. In the
+    title's own text colour, so it follows the theme; `Section` paints it
+    again when the palette changes.
+    """
+    button.ensurePolished()
+    side = max(6, button.fontMetrics().capHeight())
+    ratio = button.devicePixelRatioF() or 1.0
+    pixmap = QPixmap(round(side * ratio), round(side * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(button.palette().color(QPalette.ColorRole.ButtonText))
+    narrow = side * 0.3
+    if shown:
+        points = [(0, narrow / 2), (side, narrow / 2),
+                  (side / 2, side - narrow / 2)]
+    else:
+        points = [(narrow / 2, 0), (side - narrow / 2, side / 2),
+                  (narrow / 2, side)]
+    painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in points]))
+    painter.end()
+    button.setArrowType(Qt.ArrowType.NoArrow)
+    button.setIconSize(QSize(side, side))
+    button.setIcon(QIcon(pixmap))
 
 
 class _WheelSafeComboBox(QComboBox):
@@ -197,6 +231,20 @@ class _ScrollColumn(QScrollArea):
         self._inner.setMaximumWidth(inner)
         self.setFixedWidth(int(width))
         self._fit_timer.start()
+
+    def fit_now(self) -> None:
+        """Measure and lay out at once, not a turn of the event loop later.
+
+        For a section folded or unfolded (`Section`): a change of what is
+        shown, not of any text, so measured now it is right. Deferred, the
+        column was painted once with the cards squeezed into the old height
+        and then again at the new one - the other cards flickered. The
+        deferred pass still follows, and finds nothing to change.
+        """
+        self._fit_height()
+        inner = self._inner
+        inner.resize(self._inner_width,
+                     max(inner.minimumHeight(), self.viewport().height()))
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self._inner and event.type() in (
@@ -357,9 +405,24 @@ class Section(QFrame):
         self._toggled(self.toggle.isChecked())
 
     def _toggled(self, shown: bool) -> None:
-        self.toggle.setArrowType(Qt.ArrowType.DownArrow if shown
-                                 else Qt.ArrowType.RightArrow)
+        fold_arrow(self.toggle, shown)
+        # The column it is in laid out again before anything is painted:
+        # see `_ScrollColumn.fit_now`.
+        column = self.parentWidget()
+        while column is not None and not isinstance(column, _ScrollColumn):
+            column = column.parentWidget()
+        if column is not None:
+            column.setUpdatesEnabled(False)
         self.body.setVisible(shown)
+        if column is not None:
+            column.fit_now()
+            column.setUpdatesEnabled(True)
+
+    def changeEvent(self, event) -> None:
+        if event.type() in (QEvent.Type.PaletteChange,
+                            QEvent.Type.StyleChange):
+            fold_arrow(self.toggle, self.toggle.isChecked())
+        super().changeEvent(event)
 
     @property
     def collapsed(self) -> bool:
