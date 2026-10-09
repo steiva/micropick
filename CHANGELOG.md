@@ -8,7 +8,12 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
-## Unreleased
+## 0.2.0 - 2026-10-08
+
+A reworked interface: an Operation checklist that says what to do next,
+both calibrations as numbered steps, the cameras and the models chosen in
+Settings, and the tip handled from the status bar. Profiles from 0.1.0 load
+as they are.
 
 - A question mark in the status bar brings the next-step hint back after
   its cross closed it, on any page.
