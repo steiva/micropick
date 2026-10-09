@@ -32,7 +32,7 @@ import time
 from typing import TYPE_CHECKING
 
 import qtawesome as qta
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QStackedWidget, QStatusBar,
@@ -455,8 +455,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
-        # The next step of the Operation checklist, over the top-right of
-        # the page (`widgets.next_step`). Read again on what changes it and
+        # The next step of the Operation checklist, at the top centre of
+        # the page until it is dragged elsewhere (`widgets.next_step`). Read again on what changes it and
         # on a timer: a position saved on a page has no signal of its own.
         self.hint = NextStepHint(central)
         self.hint.go.connect(self.show_page)
@@ -554,7 +554,7 @@ class MainWindow(QMainWindow):
         self.profile_page.load_selected()
 
     def _show_hint(self) -> None:
-        """The hint for the page on screen, in its corner. Not on Profile,
+        """The hint for the page on screen, in its place. Not on Profile,
         which shows the whole list, nor on Settings, a page of its own."""
         page = getattr(self, "_page", None)
         self.hint.show_checks(readiness_checks(self.session), page,
@@ -572,8 +572,10 @@ class MainWindow(QMainWindow):
         central = self.centralWidget()
         if central is None:
             return
-        self.hint.move(central.width() - self.hint.width() - SPACING * 2,
-                       self.strip.height() + SPACING)
+        # Top centre, under the tab row; or where it was dragged to.
+        self.hint.top_limit = self.strip.height()
+        self.hint.place(QPoint((central.width() - self.hint.width()) // 2,
+                               self.strip.height() + SPACING))
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
