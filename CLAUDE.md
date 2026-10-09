@@ -95,9 +95,16 @@ workers that may talk to the robot: a worker that never does - a camera
 opening, a look for the marker, a picture saved - is marked
 `worker.robot = False` (`any_running(robot_only=True)`).
 
-The next step of the Operation checklist floats over the top right of every
-page but Profile and Settings (`widgets.next_step`), with a link to its
-page; closed with its cross, it stays closed until the next step changes.
+The next step of the Operation checklist floats at the top centre, under
+the tab row, of every page but Profile and Settings (`widgets.next_step`),
+with a link to its page; it is dragged anywhere in the window with the
+mouse and stays there until the program closes. Closed with its cross, it
+stays closed until the next step changes.
+
+A section that folds (`theme.factory.Section`, the labware page's Deck
+modules) has an arrow as tall as a capital letter (`fold_arrow`), and
+folding lays its scroll column out at once (`_ScrollColumn.fit_now`), so
+the cards around it do not flicker.
 
 ### Liquid handling is a program of blocks
 
@@ -141,9 +148,12 @@ picking position**.
   its mark (done / to do / note / blocked, dimmed while a step it needs is
   not done). What is particular to now goes in the tooltip. A button goes
   to the page where it is done (`Session.page_requested`). The Profile page
-  shows it in full; the Picking page shows its own steps (detector,
-  camera, clips) under "Complete the Operation checklist". Anything to do
-  or blocked, in either, blocks Start; optional steps never do.
+  shows it in full; the Picking page shows what is left of it on other
+  pages as its step 1, and its own steps (detector, camera, clips) under
+  Start. Anything to do or blocked, in either, blocks Start; optional
+  steps never do. "Calibrate the tip" is done only while the tip it
+  measured is on, in the robot session it was measured in
+  (`readiness.tip_calibration_status`).
 - Picking settings have bounds (`picking_fields.BOUNDS`), Save lists the
   changes old -> new, and the previous picking.json is archived.
 - Errors on screen are sentences (`workers.describe_error`); the log is
@@ -170,7 +180,11 @@ disc position, put a tip on, calibrate, nudge the tip (only while it
 waits); its cameras are the profile's upper and lower ones.
 Camera calibration is the same (`widgets.step_card.StepCard`): place the
 marker (done when it is seen), centre it (done within two of its sides of
-the centre), sweep, save the result; the upper camera, no chooser. Settings
+the centre), sweep, save the result; the upper camera, no chooser.
+Picking is the same, leading to the run: complete the Operation checklist,
+set the picking position (the jog panel under it), the shake position, the
+dish bottom (optional), analyse the dish (the sizes follow), start picking.
+Steps 2-4 are marked from the checklist's own lines. Settings
 keeps Save and Revert at its bottom right, outside the scrolling columns.
 
 The keys box on a picture has a bold "Keyboard shortcuts" title and the

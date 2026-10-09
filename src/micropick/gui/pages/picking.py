@@ -1,5 +1,21 @@
 """Picking: look at the dish before committing the robot to it.
 
+The page is numbered steps in the order they are done, each a card with a
+mark (`widgets.step_card`), as on the calibration pages, ending at the run:
+
+1. Complete the Operation checklist: what is left of it on other pages,
+   each with a way there.
+2. Set the picking position over the dish - the camera, Go to picking
+   position, Set position. The jog panel sits right under this step.
+3. Set the shake position in the dish, and Shake the dish.
+4. Set the dish bottom - optional, as in the checklist.
+5. Analyse the dish, with the picking settings; the sizes follow.
+6. Start picking: the plate plan, the clips, Start, Pause, Stop, Resume,
+   and what still stops Start.
+
+Steps 2 to 4 are marked from the Operation checklist's own lines, so the
+page and the checklist cannot disagree.
+
 The run itself comes later. What is here is everything that has to be true
 before a run is worth starting, and it is the same code the run will use,
 not a demonstration to be thrown away: the camera over the dish, the pose
@@ -142,19 +158,20 @@ from ...workflows import manual as moves
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
-from ..readiness import (DISH_POSITION, SHAKE_POSITION, readiness_checks,
-                         well_centre)
+from ..readiness import (DISH_POSITION, SHAKE_POSITION, STEPS,
+                         readiness_checks, well_centre)
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
+from ..theme.factory import (card, combo_box, heading, muted_label,
+                             primary_button, scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.checklist import BLOCKED, OK, TODO, Check, Checklist
+from ..widgets.checklist import BLOCKED, NOTE, OK, TODO, Check, Checklist
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.size_histogram import SizeHistogram
 from ..widgets.jog_panel import JogPanel
+from ..widgets.step_card import StepCard, wrapped
 from ..widgets.settings_form import PickingSettingsDialog
 from ..workers import Worker
 
@@ -227,6 +244,8 @@ class PickingPage(QWidget):
         self._run_message = ""
         # A shake asked of the run that it has not said it did yet.
         self._shake_asked = False
+        # The last run filled the plate plan: step 6 is done until the next.
+        self._filled = False
         # Where the current or last run put its clips, if it recorded any.
         self._clip_dir = None
         # Why the lower camera did not open for the clips, until retried.
@@ -234,12 +253,12 @@ class PickingPage(QWidget):
 
         self.view = CameraView(self)
 
-        cards = [self._dish_card(), self._bottom_card(), self._shake_card(),
-                 self._analysis_card(), self._histogram_card(),
-                 self._run_card(), self._jog_section()]
-        # The run first: its checklist is what an operator works down, and
-        # Start is what they came for. The cards it points to follow.
-        cards.insert(0, cards.pop(5))
+        # The steps in the order they are done, the run last: the page
+        # leads to Start rather than opening on it.
+        cards = [self._checklist_step(), self._dish_card(),
+                 self._jog_section(), self._shake_card(),
+                 self._bottom_card(), self._analysis_card(),
+                 self._histogram_card(), self._run_card()]
         panel = CardColumns(cards, self)
 
         body = QHBoxLayout()
@@ -271,9 +290,23 @@ class PickingPage(QWidget):
 
     # -- construction --------------------------------------------------------
 
+    def _checklist_step(self) -> QWidget:
+        self.step_checklist = StepCard(self, 1,
+                                       "Complete the Operation checklist")
+        self.others_state = wrapped()
+        self.step_checklist.add(self.others_state)
+        # What is left on the other pages, each with its button there.
+        self.others = Checklist(self)
+        self.others.go.connect(self.session.page_requested)
+        self.step_checklist.add(self.others)
+        return self.step_checklist.box
+
     def _dish_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("The dish", 2))
+        self.step_dish = StepCard(self, 2, STEPS["dish_position"][0])
+        box = self.step_dish.box
+        box.layout().addWidget(wrapped(
+            "Jog until the dish fills the picture, then Set position. The "
+            "run starts from here, and looks at the dish from here."))
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Camera"))
@@ -291,23 +324,18 @@ class PickingPage(QWidget):
         buttons.addWidget(self.teach_button)
         box.layout().addLayout(buttons)
 
-        self.dish_state = QLabel()
-        self.dish_state.setWordWrap(True)
-        self.dish_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.dish_state = muted_label()
         box.layout().addWidget(self.dish_state)
         return box
 
     def _bottom_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Dish bottom (Z)", 2))
-        how = QLabel(
-            "The height every pickup is measured from. With the dish in "
-            "place: Tip over the dish centre, jog the tip down (PgDn; small "
-            "steps at the end) until it just touches the bottom, then Set "
-            "dish bottom here.")
-        how.setWordWrap(True)
-        box.layout().addWidget(how)
+        self.step_bottom = StepCard(self, 4, STEPS["dish_bottom"][0])
+        box = self.step_bottom.box
+        box.layout().addWidget(wrapped(
+            "Optional. The height every pickup is measured from. With the "
+            "dish in place: Tip over the dish centre, jog the tip down "
+            "(PgDn; small steps at the end) until it just touches the "
+            "bottom, then Set dish bottom here."))
 
         # One above the other: side by side in half the panel, the two
         # names did not fit their buttons.
@@ -319,20 +347,17 @@ class PickingPage(QWidget):
         box.layout().addWidget(self.over_centre_button)
         box.layout().addWidget(self.set_bottom_button)
 
-        self.bottom_state = QLabel()
-        self.bottom_state.setWordWrap(True)
-        self.bottom_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.bottom_state = muted_label()
         box.layout().addWidget(self.bottom_state)
         return box
 
     def _shake_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Shaking the dish", 2))
-
-        self.shake_button = primary_button("Shake the dish", self)
-        self.shake_button.clicked.connect(self._shake)
-        box.layout().addWidget(self.shake_button)
+        self.step_shake = StepCard(self, 3, STEPS["shake_position"][0])
+        box = self.step_shake.box
+        box.layout().addWidget(wrapped(
+            "When too few cuboids lie apart, the run stirs the dish here. "
+            "Jog the tip into the medium, clear of the cuboids, then Set "
+            "shake position."))
 
         buttons = QHBoxLayout()
         self.goto_shake_button = secondary_button("Go to shake", self)
@@ -344,16 +369,22 @@ class PickingPage(QWidget):
         buttons.addWidget(self.teach_shake_button)
         box.layout().addLayout(buttons)
 
-        self.shake_state = QLabel()
-        self.shake_state.setWordWrap(True)
-        self.shake_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.shake_state = muted_label()
         box.layout().addWidget(self.shake_state)
+
+        # Stirring by hand, here or while a run is paused.
+        self.shake_button = secondary_button("Shake the dish", self)
+        self.shake_button.clicked.connect(self._shake)
+        box.layout().addWidget(self.shake_button)
         return box
 
     def _analysis_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Analysis", 2))
+        self.step_analysis = StepCard(self, 5, "Analyse the dish")
+        box = self.step_analysis.box
+        box.layout().addWidget(wrapped(
+            "Optional, and worth it: the contours over the picture and the "
+            "sizes below show what a run would pick. If the dish moves, the "
+            "contours stop matching: analyse again."))
 
         self.analyse_button = primary_button("Analyse the dish", self)
         self.analyse_button.clicked.connect(self._analyse)
@@ -382,8 +413,8 @@ class PickingPage(QWidget):
         return box
 
     def _run_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("The run", 2))
+        self.step_run = StepCard(self, 6, "Start picking")
+        box = self.step_run.box
 
         # Which routine Start would run, from the Plate plan page, before the
         # button that commits the robot to it.
@@ -914,6 +945,7 @@ class PickingPage(QWidget):
             return picking.state.value
 
         self._run_message = ""
+        self._filled = False
         self.done.clear()
         self.run_state.setText("starting…")
         self._run_worker = Worker(job, what="picking run")
@@ -969,6 +1001,7 @@ class PickingPage(QWidget):
                 "the next run.")
         log.info("picking run %s", state)
         if state == RobotState.COMPLETED.value:
+            self._filled = True
             self.done.show_done("The run filled the plate plan.")
         self._back_to_live()
 
@@ -1227,6 +1260,47 @@ class PickingPage(QWidget):
 
     # -- display ------------------------------------------------------------------
 
+    def _refresh_steps(self, problems: list[str]) -> None:
+        """The steps' marks: 2 to 4 are the Operation checklist's own
+        lines, 1 is what is left of it on other pages."""
+        shared = readiness_checks(self.session)
+        by_text = {check.text: check for check in shared}
+        for card, key in ((self.step_dish, "dish_position"),
+                          (self.step_shake, "shake_position"),
+                          (self.step_bottom, "dish_bottom")):
+            check = by_text[STEPS[key][0]]
+            card.set_state(check.state, check.detail)
+
+        elsewhere = [check for check in shared if check.page != "picking"]
+        left = [check for check in elsewhere if check.blocking]
+        self.step_checklist.set_state(TODO if left else OK)
+        self.others_state.setText(
+            "Every step on the other pages is done." if not left else
+            f"{len(left)} step{'s' if len(left) != 1 else ''} to do on other "
+            f"pages; each button goes there.")
+        self.others.setVisible(bool(left))
+        if left:
+            self.others.show_checks(left)
+
+        if self._detection is not None:
+            self.step_analysis.set_state(OK, "Analysed: the contours are on "
+                                             "the picture.")
+        elif self.detector.model is None:
+            self.step_analysis.set_state(BLOCKED, "The cuboid detector is "
+                                                  "not loaded yet.")
+        elif self._camera() is None:
+            self.step_analysis.set_state(BLOCKED, "The upper camera is not "
+                                                  "open yet.")
+        else:
+            self.step_analysis.set_state(NOTE, "Not analysed yet.")
+
+        if self._filled and not self._running():
+            self.step_run.set_state(OK, "The last run filled the plate plan.")
+        elif problems and not self._running():
+            self.step_run.set_state(BLOCKED, f"First: {problems[0]}.")
+        else:
+            self.step_run.set_state(TODO)
+
     def _refresh(self) -> None:
         busy = self._busy()
         connected = self.session.robot is not None
@@ -1238,14 +1312,11 @@ class PickingPage(QWidget):
         if profile is None:
             self.dish_state.setText("No profile loaded.")
         elif stored is None:
-            self.dish_state.setText(
-                f"No {DISH_POSITION!r} position yet. Jog until the dish fills "
-                f"the frame, then Set position; afterwards Go to picking "
-                f"position is one button.")
+            self.dish_state.setText("No picking position saved yet.")
         else:
             self.dish_state.setText(
-                f"{DISH_POSITION}: ({stored[0]:.1f}, {stored[1]:.1f}, "
-                f"{stored[2]:.1f})")
+                f"Saved: ({stored[0]:.1f}, {stored[1]:.1f}, "
+                f"{stored[2]:.1f}).")
 
         running = self._running()
         if profile is None:
@@ -1284,15 +1355,11 @@ class PickingPage(QWidget):
         if profile is None:
             self.shake_state.setText("No profile loaded.")
         elif shake is None:
-            self.shake_state.setText(
-                f"No {SHAKE_POSITION!r} position yet. When too few cuboids "
-                f"are isolated the run stirs the dish there: jog the tip "
-                f"into the medium, clear of the cuboids, then Set shake "
-                f"position.")
+            self.shake_state.setText("No shake position saved yet.")
         else:
             self.shake_state.setText(
-                f"{SHAKE_POSITION}: ({shake[0]:.1f}, {shake[1]:.1f}, "
-                f"{shake[2]:.1f})")
+                f"Saved: ({shake[0]:.1f}, {shake[1]:.1f}, "
+                f"{shake[2]:.1f}).")
 
         self.settings_button.setEnabled(profile is not None and not busy
                                         and not running)
@@ -1321,6 +1388,7 @@ class PickingPage(QWidget):
 
         checks = self._checks()
         problems = [check.text for check in checks if check.blocking]
+        self._refresh_steps(problems)
         self.start_button.setEnabled(not busy and not running and not problems)
         self.resume_button.setEnabled(self._waiting())
         self.pause_button.setEnabled(running)

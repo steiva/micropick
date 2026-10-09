@@ -94,6 +94,10 @@ class Checklist(QWidget):
         probe.setFlat(True)
         row_height = probe.sizeHint().height()
         probe.deleteLater()
+        # A grid keeps its rows: a shorter list than the last one would
+        # leave the old rows' minimum heights as empty space under it.
+        for row in range(len(checks), self._grid.rowCount()):
+            self._grid.setRowMinimumHeight(row, 0)
         for row, check in enumerate(checks):
             self._grid.setRowMinimumHeight(row, row_height)
             mark = QLabel(self)
