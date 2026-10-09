@@ -41,12 +41,15 @@ class TipState:
     `attached` is None when the record could not be read; a caller that
     treats None as "no tip" is making the mistake this module exists to
     prevent. `labware_id` and `well` are where a tip was taken from, when it
-    was one this run picked up.
+    was one this run picked up. `pickup` is the id of the pickUpTip command
+    that put it on: one tip in one robot session, so a tip calibration can
+    say which tip it measured.
     """
 
     attached: bool | None
     labware_id: str | None = None
     well: str | None = None
+    pickup: str | None = None
 
     @classmethod
     def unknown(cls) -> "TipState":
@@ -84,7 +87,8 @@ def tip_state(api, run_id: str, *, page: int = 100, timeout: float = 10.0,
             kind = command.get("commandType")
             if kind == "pickUpTip":
                 p = command.get("params", {})
-                return TipState(True, p.get("labwareId"), p.get("wellName"))
+                return TipState(True, p.get("labwareId"), p.get("wellName"),
+                                command.get("id"))
             if kind in TIP_COMMANDS:
                 return TipState(False)
         start = int(body.get("meta", {}).get("cursor", 0))

@@ -194,6 +194,14 @@ class PipetteOffset(BaseModel):
     The routine now refuses any other mode, so this says which one that was.
     Optional so that a profile written before this change still loads; a manual
     offset measured with a ruler has no camera mode at all.
+
+    robot_session and tip_pickup say which tip was measured: the robot
+    session's id and the id of the pickUpTip command that put the tip on.
+    The offset belongs to that tip. Another tip sits differently on the
+    pipette, and a restarted robot is a new session, so the Operation
+    checklist counts the calibration done only while that same tip is on
+    (`gui.readiness`). The numbers stay: the next calibration starts from
+    them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -208,6 +216,8 @@ class PipetteOffset(BaseModel):
     spread_mm: float | None = None
     under_resolution: Annotated[list[int],
                                 Field(min_length=2, max_length=2)] | None = None
+    robot_session: str | None = None
+    tip_pickup: str | None = None
 
 
 class TipTarget(BaseModel):

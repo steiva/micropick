@@ -82,6 +82,7 @@ from ...hardware.protocols import xyz
 from ...workflows import manual as moves
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
+from ..readiness import tip_calibration_status
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (Section, double_spin_box, muted_label,
@@ -483,6 +484,11 @@ class PipetteCalibration(QWidget):
         tip_type = self._tip_type()
         touch_up = self._touch_up if settings.tip_cal_touch_up else None
         mock = session.mock
+        # Which tip is measured: the offset holds for it alone
+        # (`readiness.tip_calibration_status`).
+        robot_session = (session.run_state.run_id
+                         if session.run_state is not None else None)
+        tip_pickup = session.tip.pickup
 
         self.run_log.clear()
         self.done.clear()
@@ -508,7 +514,8 @@ class PipetteCalibration(QWidget):
                     robot, over, under, detector, pmap, target=target,
                     current_offset=current, frames=frames, verify=verify,
                     tip_type=tip_type, profile=profile,
-                    manual_touch_up=touch_up, log=log)
+                    manual_touch_up=touch_up, robot_session=robot_session,
+                    tip_pickup=tip_pickup, log=log)
             finally:
                 # It switches the lights on when it finds them off.
                 session.refresh_lights()
@@ -744,8 +751,12 @@ class PipetteCalibration(QWidget):
                     "Before Start:\n" + "\n".join("• " + p for p in problems))
             self.checks.setText(f"{self._outcome}\n\n{text}" if self._outcome
                                 else text)
-            self.run.set_state(OK if self._result is not None else
+            # Done while the tip it measured is on, as in the checklist: a
+            # new tip, or a restarted robot, is to calibrate again.
+            measured, why, _stale = tip_calibration_status(session)
+            self.run.set_state(OK if measured else
                                TODO if not problems else BLOCKED,
+                               why if not measured and not problems else
                                "" if not problems else problems[0])
         self.start_button.setEnabled(not running and not problems)
 

@@ -10,8 +10,10 @@ this list, and blocks Start on anything not done in either.
 
 The steps never change their words (`widgets.checklist`): each says what to
 do, and only its mark follows the session. A step is *done* when what it
-leaves behind is there, whatever came before it - a pipette offset measured
-last week is done though no robot is connected today. A step not done whose
+leaves behind is there, whatever came before it - a pixel map fitted last
+week is done though no robot is connected today. The tip calibration is the
+exception: it holds for the one tip it measured, in the robot session it was
+measured in (`tip_calibration_status`). A step not done whose
 earlier steps are not done either is *blocked*: dimmed, with what to do
 first in its tooltip. What is particular to the moment (a date, a slot, a
 model file that is missing) is the tooltip too.
@@ -25,7 +27,8 @@ from .detector import STANDIN, DetectorService
 from .widgets.checklist import BLOCKED, NOTE, OK, TODO, Check
 
 __all__ = ["DISH_POSITION", "SHAKE_POSITION", "STALE_DAYS", "STEPS",
-           "readiness_checks", "step", "well_centre"]
+           "readiness_checks", "step", "tip_calibration_status",
+           "well_centre"]
 
 # The profile position the dish is looked at from, beside tip_calib. The
 # name is the workflow's: PickingSession reads profile.where("observe").
@@ -89,6 +92,36 @@ def _dated(when, what: str) -> tuple[bool, str, bool]:
         return True, (f"{what} on {day}, {age} days ago: redo it if anything "
                       f"was moved or replaced since."), True
     return True, f"{what} on {day}.", False
+
+
+def tip_calibration_status(session) -> tuple[bool, str, bool]:
+    """(done, detail, stale) of the tip calibration.
+
+    Done only while the tip it measured is on the pipette: the offset records
+    the robot session and the pick-up that put that tip on
+    (`PipetteOffset.tip_pickup`). No tip, another tip, or a robot restarted
+    since - a new robot session - and it is to do again. The profile keeps
+    the numbers; the next calibration starts from them.
+    """
+    profile = session.profile
+    offset = (profile.calibration.pipette_offset if profile is not None
+              else None)
+    if offset is None:
+        return False, "There is no tip offset in this profile.", False
+    tip, state = session.tip, session.run_state
+    if session.robot is None or tip.attached is not True:
+        return False, ("No tip is on the pipette" if tip.attached is False
+                       else "The robot's tip state is unknown") + (
+            ": a calibration holds only for the tip it measured, so a new "
+            "tip needs a new one."), False
+    run_id = state.run_id if state is not None else None
+    if offset.robot_session is None or offset.robot_session != run_id:
+        return False, ("Measured in another robot session: after the robot "
+                       "is restarted, calibrate again."), False
+    if offset.tip_pickup is None or offset.tip_pickup != tip.pickup:
+        return False, ("Measured on another tip: this one needs its own "
+                       "calibration."), False
+    return _dated(offset.measured_at, "Measured on this tip")
 
 
 def well_centre(session):
@@ -156,10 +189,7 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
                   (False, "The robot reports no tip on the pipette."
                    if tip is False else
                    "The robot's tip state is unknown.", False))
-    offset = profile.calibration.pipette_offset
-    out["tip_calibration"] = (
-        _dated(offset.measured_at, "Measured") if offset is not None
-        else (False, "There is no tip offset in this profile.", False))
+    out["tip_calibration"] = tip_calibration_status(session)
 
     for key, name in (("dish_position", DISH_POSITION),
                       ("shake_position", SHAKE_POSITION)):

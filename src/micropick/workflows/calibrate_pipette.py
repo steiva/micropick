@@ -346,7 +346,8 @@ def calibrate_pipette_offset(
         verify: bool = True, max_correction_mm: float = 40.0,
         tip_type: str | None = None, profile=None,
         under_resolution: tuple[int, int] | None = None,
-        manual_touch_up=None, log=print) -> OffsetResult:
+        manual_touch_up=None, robot_session: str | None = None,
+        tip_pickup: str | None = None, log=print) -> OffsetResult:
     """Drive the tip onto the crosshair and record the offset that did it.
 
     current_offset is the starting estimate. It must be close enough to put the
@@ -365,6 +366,9 @@ def calibrate_pipette_offset(
     manual_touch_up, if given, is called as f(robot, under_cam, view) after the
     automatic correction and should return once the operator is satisfied. Any
     movement it makes is included, since the offset is read from the final pose.
+
+    robot_session and tip_pickup are recorded with the offset: which robot
+    session, and which pick-up in it, put on the tip that was measured.
     """
     # First, before the upper camera is even read and long before the gantry
     # moves. Everything the lower camera measures is in its pixels, so its mode
@@ -496,6 +500,7 @@ def calibrate_pipette_offset(
         # the mode the measurement was taken at, checked above and recorded here
         # so a stored offset can be told apart from one taken at another scale
         under_resolution=list(actual),
+        robot_session=robot_session, tip_pickup=tip_pickup,
     )
 
     # --- free by-product: the upper-to-lower homography --------------------

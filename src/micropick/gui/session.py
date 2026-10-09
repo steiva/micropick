@@ -166,12 +166,16 @@ class Tip:
     between "no tip" and "do not know" is the whole point: nothing that moves
     the gantry should treat the second as the first. `slot` and `well` are
     where the tip came from when the log said and that rack is still in a
-    slot; a tip from labware since moved off the deck has neither.
+    slot; a tip from labware since moved off the deck has neither. `pickup`
+    is the robot's id of the pickUpTip command that put it on, which a tip
+    calibration records (`PipetteOffset.tip_pickup`): it names this tip in
+    this robot session, and no other.
     """
 
     attached: bool | None
     slot: str | None = None
     well: str | None = None
+    pickup: str | None = None
 
     @classmethod
     def unknown(cls) -> "Tip":
@@ -955,7 +959,12 @@ class Session(QObject):
         self._require_robot()
         if self.mock:
             held = getattr(self._api, "tip", None)
-            state = (tips.TipState(True, held[0], held[1]) if held
+            # The mock keeps no command log: the count of pick-ups stands in
+            # for the command's id.
+            count = sum(1 for call in getattr(self._api, "calls", ())
+                        if call[0] == "pick_up_tip")
+            state = (tips.TipState(True, held[0], held[1],
+                                   f"mock-pickup-{count}") if held
                      else tips.TipState(False))
         else:
             try:
@@ -968,7 +977,7 @@ class Session(QObject):
             for entry in (self.run_state.labware if self.run_state else {}).values():
                 if entry.labware_id == state.labware_id:
                     slot, well = entry.slot, state.well
-        tip = Tip(state.attached, slot, well)
+        tip = Tip(state.attached, slot, well, state.pickup)
         if tip != self.tip:
             log.info("robot reports: %s", tip.describe())
         self.tip = tip
