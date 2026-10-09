@@ -90,6 +90,14 @@ The status bar's tip button (`widgets.tip_button`) opens a panel growing
 up out of it - drop in place, drop in trash, pick up from a rack's well -
 and its acts run by the same rule (`MainWindow._tip_command`). Only what
 can be clicked in the status bar lights up under the mouse.
+"The robot is busy" (`MainWindow._robot_busy`) counts jog panels and the
+workers that may talk to the robot: a worker that never does - a camera
+opening, a look for the marker, a picture saved - is marked
+`worker.robot = False` (`any_running(robot_only=True)`).
+
+The next step of the Operation checklist floats over the top right of every
+page but Profile and Settings (`widgets.next_step`), with a link to its
+page; closed with its cross, it stays closed until the next step changes.
 
 ### Liquid handling is a program of blocks
 
@@ -160,6 +168,10 @@ verify, manual adjustment). The Tip calibration page is numbered steps,
 each a card with a mark: place the disc (ticked by the operator), set the
 disc position, put a tip on, calibrate, nudge the tip (only while it
 waits); its cameras are the profile's upper and lower ones.
+Camera calibration is the same (`widgets.step_card.StepCard`): place the
+marker (done when it is seen), centre it (done within two of its sides of
+the centre), sweep, save the result; the upper camera, no chooser. Settings
+keeps Save and Revert at its bottom right, outside the scrolling columns.
 
 The keys box on a picture has a bold "Keyboard shortcuts" title and the
 keys in blue (`camera_view.HELP_KEY`); a help line is "keys   what it

@@ -10,6 +10,18 @@ the third for fixes.
 
 ## Unreleased
 
+- Camera calibration is numbered steps too: place the calibration marker
+  on the picking plane (ticks itself when the camera sees it), centre it
+  under the crosshair (ticks itself; says how far off it is), sweep, save
+  the result. The camera chooser and the long marker description are gone
+  (the description is the line's tooltip).
+- A hint over the top right of the pages: the next step of the Operation
+  checklist, with a link to where it is done. The cross hides it until the
+  next step.
+- Settings: Save and Revert are always in view, at the bottom right.
+- Tip button: its panel no longer lights up under the mouse, a second click
+  on the button closes it, and Pick up is no longer greyed while the page
+  merely watches a camera.
 - Tip calibration is a list of numbered steps, each with a mark: place
   the calibration disc on the module, set the disc position (Set position,
   Go to saved position, the jog panel right under it), put a tip on,

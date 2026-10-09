@@ -71,7 +71,6 @@ import logging
 import threading
 import time
 
-import qtawesome as qta
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
@@ -85,16 +84,16 @@ from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (Section, card, double_spin_box, heading,
-                             muted_label, primary_button, scroll_column,
-                             secondary_button)
+from ..theme.factory import (Section, double_spin_box, muted_label,
+                             primary_button, scroll_column, secondary_button)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.checklist import BLOCKED, COLOURS, ICONS, OK, TODO
+from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
+from ..widgets.step_card import StepCard, wrapped
 from ..workers import Worker
 
 __all__ = ["PipetteCalibration", "POSITION_NAME", "TouchUpAborted"]
@@ -117,52 +116,8 @@ TOUCH_UP_STEP_MM = 0.05
 # view; the calibration measures the real one.
 DEFAULT_OFFSET_MM = (16.0, 60.0)
 
-# A step's mark, the size of a heading's line.
-MARK_PX = 18
-
-
 class TouchUpAborted(RuntimeError):
     """The operator pressed Abort during the manual touch-up."""
-
-
-class _Step:
-    """One numbered step: a card whose heading carries its number and a
-    mark, and whose body the page fills."""
-
-    def __init__(self, page: QWidget, number: int, title: str):
-        self.box = card(page)
-        row = QHBoxLayout()
-        self.mark = QLabel(page)
-        row.addWidget(self.mark, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.heading = heading(f"{number}. {title}", 2)
-        self.heading.setWordWrap(True)
-        row.addWidget(self.heading, 1)
-        self.box.layout().addLayout(row)
-        self.state = None
-        self.set_state(TODO)
-
-    def add(self, widget: QWidget) -> None:
-        self.box.layout().addWidget(widget)
-
-    def add_layout(self, layout) -> None:
-        self.box.layout().addLayout(layout)
-
-    def set_state(self, state: str, why: str = "") -> None:
-        """OK, TODO or BLOCKED; `why` is the mark's tooltip."""
-        self.mark.setToolTip(why)
-        if state == self.state:
-            return
-        self.state = state
-        self.mark.setPixmap(qta.icon(ICONS[state], color=COLOURS[state])
-                            .pixmap(MARK_PX, MARK_PX))
-        # A step that waits for one above it reads as waiting.
-        self.heading.setEnabled(state != BLOCKED)
-
-
-def _wrapped(text: str = "") -> QLabel:
-    label = QLabel(text)
-    label.setWordWrap(True)
-    return label
 
 
 class PipetteCalibration(QWidget):
@@ -217,9 +172,9 @@ class PipetteCalibration(QWidget):
     # -- construction --------------------------------------------------------
 
     def _disc_step(self) -> QWidget:
-        self.disc = _Step(self, 1, "Place the calibration disc on the "
+        self.disc = StepCard(self, 1, "Place the calibration disc on the "
                                    "calibration module")
-        self.disc.add(_wrapped(
+        self.disc.add(wrapped(
             "The disc with the crosshairs goes on the calibration module, "
             "flat and centred. It can stay there between calibrations."))
         self.disc_placed = QCheckBox("The disc is on the module", self)
@@ -230,8 +185,8 @@ class PipetteCalibration(QWidget):
         return self.disc.box
 
     def _position_step(self) -> QWidget:
-        self.position = _Step(self, 2, "Set the disc position")
-        self.position_text = _wrapped()
+        self.position = StepCard(self, 2, "Set the disc position")
+        self.position_text = wrapped()
         self.position.add(self.position_text)
         self.position_state = muted_label()
         self.position.add(self.position_state)
@@ -244,13 +199,13 @@ class PipetteCalibration(QWidget):
         buttons.addWidget(self.goto_button)
         buttons.addStretch(1)
         self.position.add_layout(buttons)
-        self.position_note = _wrapped()
+        self.position_note = wrapped()
         self.position.add(self.position_note)
         return self.position.box
 
     def _tip_step(self) -> QWidget:
-        self.tip = _Step(self, 3, "Put a tip on the pipette")
-        self.tip_text = _wrapped()
+        self.tip = StepCard(self, 3, "Put a tip on the pipette")
+        self.tip_text = wrapped()
         self.tip.add(self.tip_text)
         row = QHBoxLayout()
         # "&&": a single & is a mnemonic, and would read "Robot _Deck".
@@ -266,8 +221,8 @@ class PipetteCalibration(QWidget):
         return self.tip.box
 
     def _run_step(self) -> QWidget:
-        self.run = _Step(self, 4, "Calibrate")
-        self.run.add(_wrapped(
+        self.run = StepCard(self, 4, "Calibrate")
+        self.run.add(wrapped(
             "The robot drives to the disc position, finds the tip with the "
             "lower camera and measures where it is from the camera's centre. "
             "It ends with step 5, unless the manual adjustment is off in "
@@ -329,9 +284,9 @@ class PipetteCalibration(QWidget):
 
     def _touch_step(self) -> QWidget:
         """Shown only while the routine is waiting for the operator."""
-        self.touch = _Step(self, 5, "Nudge the tip onto the crosshair")
+        self.touch = StepCard(self, 5, "Nudge the tip onto the crosshair")
         self.touch_box = self.touch.box
-        self.touch.add(_wrapped(
+        self.touch.add(wrapped(
             f"The lower camera is live in the picture. Nudge the tip onto the "
             f"central crosshair — the step is {TOUCH_UP_STEP_MM:g} mm — and "
             f"press Done. Whatever you move is part of the offset. Abort "

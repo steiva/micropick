@@ -33,14 +33,12 @@ def session(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
-def test_only_the_upper_camera_is_offered(app, session):
+def test_only_the_upper_camera_is_shown(app, session):
     page = CameraCalibration(session)
-    session.open_camera(session.upper_camera_label)
     session.open_camera(session.lower_camera_label)
+    session.open_camera(session.upper_camera_label)
     app.processEvents()
-    offered = [page.camera_choice.itemText(i)
-               for i in range(page.camera_choice.count())]
-    assert offered == [session.upper_camera_label]
+    assert page.view.camera is session.camera(session.upper_camera_label)
     page.deleteLater()
 
 
