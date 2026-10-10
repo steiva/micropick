@@ -22,6 +22,10 @@ Pickup clips: the lower camera's mode and crop while a picking run records
 (`gui.pages.picking`, "Pickup clips"). The modes offered are the ones the
 loaded profile lists for that camera.
 
+Keys: the keys that move the robot and Manual control's aspirate and
+dispense (`gui.keys`), one per action, for a keyboard without PgUp and
+PgDn. Save refuses a key used twice, or Esc, which is Stop.
+
 Beside them, in a column of its own, what belongs to the loaded profile and
 is set as seldom: which attached camera is the upper (overview) and which
 the lower (underview) one, which machine learning models it uses, and what
@@ -38,13 +42,15 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout,
-                               QHBoxLayout, QLabel, QLineEdit, QVBoxLayout,
-                               QWidget)
+                               QHBoxLayout, QKeySequenceEdit, QLabel,
+                               QLineEdit, QVBoxLayout, QWidget)
 
 from ... import paths
 from ...config.app_settings import AppSettings, settings_path
 from ...hardware import devices as camera_devices
+from .. import keys
 from ..detector import STANDIN, DetectorService
 from ..marker_watch import DICTIONARIES
 from ..session import Session
@@ -143,6 +149,7 @@ class SettingsPage(QWidget):
         column.addWidget(self._clips_card())
         column.addWidget(self._sweep_card())
         column.addWidget(self._tip_card())
+        column.addWidget(self._keys_card())
         column.addStretch(1)
 
         profile_column = QVBoxLayout()
@@ -375,6 +382,57 @@ class SettingsPage(QWidget):
             box.layout().addWidget(box_)
         return box
 
+    def _keys_card(self) -> QWidget:
+        """The keys that drive the robot; see `gui.keys`."""
+        box = card(self)
+        box.layout().addWidget(heading("Keys", 2))
+        box.layout().addWidget(_label(
+            "Keys for moving the robot and for Manual control. Click a field "
+            "and press the new key."))
+        grid = QGridLayout()
+        self.key_edits: dict[str, QKeySequenceEdit] = {}
+        for row, action in enumerate(keys.ACTIONS):
+            grid.addWidget(QLabel(action.label), row, 0)
+            edit = QKeySequenceEdit(self)
+            edit.setMaximumSequenceLength(1)
+            edit.keySequenceChanged.connect(lambda _k: self._edited())
+            grid.addWidget(edit, row, 1)
+            self.key_edits[action.id] = edit
+        grid.setColumnStretch(1, 1)
+        box.layout().addLayout(grid)
+        row = QHBoxLayout()
+        self.keys_defaults_button = secondary_button("Reset to defaults", self)
+        self.keys_defaults_button.clicked.connect(self._keys_defaults)
+        row.addWidget(self.keys_defaults_button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+        return box
+
+    def _show_keys(self, bindings: dict) -> None:
+        for action_id, edit in self.key_edits.items():
+            edit.blockSignals(True)
+            edit.setKeySequence(keys.sequences(bindings, action_id)[0])
+            edit.blockSignals(False)
+
+    def _keys_defaults(self) -> None:
+        self._show_keys({})
+        self._edited()
+
+    def _typed_keys(self) -> dict[str, str]:
+        """The keys that differ from the defaults; raises ValueError when
+        one is missing, Esc, or used twice."""
+        out = {}
+        for action_id, edit in self.key_edits.items():
+            typed = edit.keySequence()
+            default = keys.sequences({}, action_id)[0]
+            if typed != default:
+                out[action_id] = typed.toString(
+                    QKeySequence.SequenceFormat.PortableText)
+        problems = keys.problems(out)
+        if problems:
+            raise ValueError(" ".join(problems))
+        return out
+
     def _show_tip(self, settings: AppSettings) -> None:
         widgets = (self.tip_frames, self.tip_verify, self.tip_touch_up)
         for widget in widgets:
@@ -552,6 +610,7 @@ class SettingsPage(QWidget):
         self.clip_crop.blockSignals(False)
         self._show_sweep(settings)
         self._show_tip(settings)
+        self._show_keys(settings.keys)
         self.save_state.setText(
             self.session.settings_note
             or (f"Saved in {settings_path()}." if settings_path().is_file()
@@ -580,7 +639,8 @@ class SettingsPage(QWidget):
                            tip_cal_tip_type=self.tip_type.text().strip(),
                            tip_cal_frames=int(self.tip_frames.value()),
                            tip_cal_verify=self.tip_verify.isChecked(),
-                           tip_cal_touch_up=self.tip_touch_up.isChecked())
+                           tip_cal_touch_up=self.tip_touch_up.isChecked(),
+                           keys=self._typed_keys())
 
     def _edited(self) -> None:
         self.save_state.setText("Changed: Save keeps it.")

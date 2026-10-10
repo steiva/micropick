@@ -84,6 +84,7 @@ from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...viz import markers, overlays
 from ...workflows import manual as moves
+from .. import keys
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
 from ..session import Session
@@ -126,10 +127,10 @@ Z_RANGE = (0.5, 150.0)
 VOLUME_RANGE = (0.1, 1000.0)
 FLOW_RANGE = (0.1, 1000.0)
 
-# (key, what it does, handler name). One list, so the picture's key box
-# cannot offer a key that is not bound.
-KEYS = (("A", "aspirate", "_aspirate"),
-        ("D", "dispense", "_dispense"))
+# (action in `gui.keys`, what it does, handler name). One list, so the
+# picture's key box cannot offer a key that is not bound.
+KEYS = (("aspirate", "aspirate", "_aspirate"),
+        ("dispense", "dispense", "_dispense"))
 
 # How far the tip may be sent from the chosen well level, either way.
 WELL_OFFSET_RANGE = (-50.0, 50.0)
@@ -193,8 +194,7 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
         self.jog.moved.connect(self._forget_targets)
-        self.jog.add_help([f"{key.lower()}   {what}" for key, what, _ in KEYS]
-                          + list(MOUSE_HELP))
+        self.jog.set_page_help(self._page_help())
 
         panel = CardColumns([self._camera_card(), self._click_card(),
                              self._deck_card(),
@@ -218,7 +218,9 @@ class ManualPage(QWidget):
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.tip_changed.connect(lambda _t: self._lose_top())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
+        self._shortcuts = []
         self._install_shortcuts()
+        session.settings_changed.connect(lambda _s: self._rebind())
         self._reload_plates()
         self._on_profile_changed()
         self._refresh_cameras()
@@ -405,13 +407,29 @@ class ManualPage(QWidget):
         """A and D, window-wide while this page is showing - the jog panel's
         arrangement, and for its reason: enabled only on screen, so no
         hidden page claims the key."""
-        self._shortcuts = []
-        for key, _what, handler in KEYS:
-            shortcut = QShortcut(QKeySequence(key), self)
-            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-            shortcut.activated.connect(getattr(self, handler))
+        bindings = self.session.settings.keys
+        for action, _what, handler in KEYS:
+            for sequence in keys.sequences(bindings, action):
+                shortcut = QShortcut(sequence, self)
+                shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+                shortcut.activated.connect(getattr(self, handler))
+                shortcut.setEnabled(self.isVisible())
+                self._shortcuts.append(shortcut)
+
+    def _page_help(self) -> list[str]:
+        bindings = self.session.settings.keys
+        return ([f"{keys.key_text(bindings, action)}   {what}"
+                 for action, what, _ in KEYS] + list(MOUSE_HELP))
+
+    def _rebind(self) -> None:
+        """A and D again, after Settings changed them."""
+        for shortcut in self._shortcuts:
             shortcut.setEnabled(False)
-            self._shortcuts.append(shortcut)
+            shortcut.setParent(None)
+            shortcut.deleteLater()
+        self._shortcuts = []
+        self._install_shortcuts()
+        self.jog.set_page_help(self._page_help())
 
     # -- liquid ------------------------------------------------------------------
 

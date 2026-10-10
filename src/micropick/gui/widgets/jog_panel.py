@@ -47,18 +47,18 @@ else. They are disabled while the panel is hidden, because two pages each
 holding one would otherwise both claim the arrow keys and leave Qt to guess
 between them.
 
-The layout is jog's, not a new one
-----------------------------------
-Keys come from `jog.LAYOUT` and the help from `jog.help_lines`, both of them
-generated rather than restated. `LAYOUT` exists because the help and the
-dispatch had drifted once and the on-screen text described WASD for axes the
-operator drove with the arrows; inventing a third arrangement here would be
-that same drift with an extra window in it. So Z is on PgUp and PgDn as it is
-everywhere else, and there is no WASD.
+The layout is jog's, the keys are Settings'
+-------------------------------------------
+What the keys do comes from `jog.LAYOUT`; which key does it comes from
+`gui.keys`, the defaults being jog's own (the arrows, PgUp and PgDn for Z)
+and any of them rebound in Settings for a keyboard without them. The
+shortcuts and the key list on the picture are both built from the same
+two, so the list cannot name a key that is not bound; a saved change binds
+the new keys at once (`_rebind`).
 
-`KEY_TO_QT` is checked against `LAYOUT` at import. A key in the layout with no
-Qt equivalent would otherwise produce a line of help, and a labelled button,
-for a key that does nothing — the same fault seen from the other side.
+Every entry of `LAYOUT` is checked at import to have an action in
+`gui.keys`: one without would produce a line of help for a key that does
+nothing.
 
 One key of the layout has no counterpart here, and it is listed rather than
 dropped: `enter` finishes the cv2 window's loop, and this page has no loop to
@@ -125,8 +125,8 @@ from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
                                QMessageBox, QVBoxLayout, QWidget)
 
 from ...workflows import manual as moves
-from ...workflows.jog import (DEFAULT_STEPS, LAYOUT, JogController,
-                              help_lines)
+from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
+from .. import keys
 from ..position_marks import CAMERA_POSITIONS, PositionMarks
 from ..session import Session
 from ..theme import SPACING
@@ -188,22 +188,13 @@ POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
 # The sections a page may ask to start folded, by name.
 SECTIONS = ("move", "positions")
 
-# Every name in jog.LAYOUT, spelled in Qt. The aliases match jog._CODES: "+"
-# and "=" are one key on most keyboards, and Enter arrives as either.
-KEY_TO_QT: dict[str, tuple] = {
-    "left": (Qt.Key.Key_Left,),
-    "right": (Qt.Key.Key_Right,),
-    "up": (Qt.Key.Key_Up,),
-    "down": (Qt.Key.Key_Down,),
-    "PgUp": (Qt.Key.Key_PageUp,),
-    "PgDn": (Qt.Key.Key_PageDown,),
-    "+": (Qt.Key.Key_Plus, Qt.Key.Key_Equal),
-    "-": (Qt.Key.Key_Minus, Qt.Key.Key_Underscore),
-    "space": (Qt.Key.Key_Space,),
-    "u": (Qt.Key.Key_U,),
-    "h": (Qt.Key.Key_H,),
-    "enter": (Qt.Key.Key_Return, Qt.Key.Key_Enter),
-}
+def action_id(key) -> str:
+    """The `gui.keys` action of a `jog.LAYOUT` entry: "x+" for a move, the
+    command's name otherwise."""
+    if key.move is not None:
+        axis, direction = key.move
+        return f"{axis}{'+' if direction > 0 else '-'}"
+    return key.command
 
 # Layout entries this backend deliberately does not bind, and why. Listed
 # rather than omitted: an entry that is simply absent is indistinguishable from
@@ -218,10 +209,12 @@ HANDLED = {"step_up", "step_down", "save", "undo", "help"}
 
 def _check_layout() -> None:
     """Fail at import rather than at a key press that does nothing."""
-    missing = [key.name for key in LAYOUT if key.name not in KEY_TO_QT]
+    known = {a.id for a in keys.ACTIONS}
+    missing = [key.name for key in LAYOUT if key.command not in UNBOUND
+               and action_id(key) not in known]
     if missing:
         raise RuntimeError(
-            f"jog.LAYOUT has keys with no Qt equivalent in KEY_TO_QT: "
+            f"jog.LAYOUT has keys with no action in gui.keys: "
             f"{', '.join(missing)}. Add them there, or the help will list a "
             f"key that does nothing.")
     unknown = [key.command for key in LAYOUT
@@ -235,13 +228,6 @@ def _check_layout() -> None:
 
 
 _check_layout()
-
-
-def _reflow(line: str) -> str:
-    """One line of jog's help for a proportional font: the padding it is laid
-    out with only lines the columns up in a fixed one."""
-    keys, _, text = line.strip().partition(" ")
-    return f"{keys}   {text.strip()}"
 
 
 def _bound_layout() -> tuple:
@@ -330,6 +316,7 @@ class JogPanel(QWidget):
         self._worker: Worker | None = None
         self._then = None                  # run_job's, for the job in flight
         self._shortcuts: list[QShortcut] = []
+        self._all_shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
         self._collapsed = tuple(collapsed)
         self._status = NO_ROBOT
@@ -363,9 +350,11 @@ class JogPanel(QWidget):
             self.home_button = self.retract_button = None
         column.addStretch(1)
 
-        self._install_shortcuts(shortcut_host or self)
+        self._host = shortcut_host or self
+        self._install_shortcuts(self._host)
 
         session.robot_state_changed.connect(self._on_robot_changed)
+        session.settings_changed.connect(lambda _s: self._rebind())
         session.profile_changed.connect(self._on_profile_changed)
 
         self._on_robot_changed(session.robot_state)
@@ -532,11 +521,12 @@ class JogPanel(QWidget):
         keeps the characters it edits with. A plain button or a list does not
         ask, so the arrow keys belong to the gantry even with focus there.
         """
+        bindings = self.session.settings.keys
         for key in LAYOUT:
             if key.command in UNBOUND:
                 continue
-            for code in KEY_TO_QT[key.name]:
-                shortcut = QShortcut(QKeySequence(code), host)
+            for sequence in keys.sequences(bindings, action_id(key)):
+                shortcut = QShortcut(sequence, host)
                 shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
                 if key.move is not None:
                     axis, direction = key.move
@@ -545,6 +535,7 @@ class JogPanel(QWidget):
                 else:
                     shortcut.activated.connect(
                         lambda c=key.command: self._command(c))
+                self._all_shortcuts.append(shortcut)
                 if key.command == "help":
                     # Left out of the disable set: reading the key list is
                     # exactly what is wanted when nothing else works yet.
@@ -552,6 +543,18 @@ class JogPanel(QWidget):
                 self._shortcuts.append(shortcut)
                 if key.move is not None and key.move[0] == "z":
                     self._z_shortcuts.append(shortcut)
+
+    def _rebind(self) -> None:
+        """The keys again, after Settings changed them."""
+        for shortcut in self._all_shortcuts:
+            shortcut.setEnabled(False)
+            shortcut.setParent(None)
+            shortcut.deleteLater()
+        self._all_shortcuts, self._shortcuts, self._z_shortcuts = [], [], []
+        self._install_shortcuts(self._host)
+        self._set_enabled(self._worker is None)
+        self._help = self._key_help()
+        self._emit_help()
 
     # -- acting --------------------------------------------------------------
 
@@ -894,7 +897,12 @@ class JogPanel(QWidget):
 
     def add_help(self, lines) -> None:
         """A page's own keys and mouse actions, after the jog keys."""
-        self._extra_help += [str(line) for line in lines]
+        self.set_page_help(self._extra_help + [str(line) for line in lines])
+
+    def set_page_help(self, lines) -> None:
+        """The page's own lines, replacing what it added before: for keys
+        rebound in Settings."""
+        self._extra_help = [str(line) for line in lines]
         self._help = self._key_help()
         self._emit_help()
 
@@ -908,7 +916,17 @@ class JogPanel(QWidget):
             layout = tuple(replace(key, help="move as on the picture")
                            if key.move is not None and key.move[0] in "xy"
                            else key for key in layout)
-        return ([_reflow(line) for line in help_lines(layout)]
+        # One line per kind of key, the keys named as bound now:
+        # "Left/Right/Up/Down   move x and y".
+        bindings = self.session.settings.keys
+        groups: list[tuple[str, list[str]]] = []
+        for key in layout:
+            name = keys.key_text(bindings, action_id(key))
+            if groups and groups[-1][0] == key.help:
+                groups[-1][1].append(name)
+            else:
+                groups.append((key.help, [name]))
+        return ([f"{'/'.join(names)}   {what}" for what, names in groups]
                 + list(self._extra_help))
 
     def set_xy_only(self, on: bool) -> None:

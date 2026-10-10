@@ -73,6 +73,9 @@ class AppSettings(BaseModel):
     tip_cal_frames: int = Field(default=7, ge=1, le=30)
     tip_cal_verify: bool = True
     tip_cal_touch_up: bool = True
+    # The keys that drive the robot, where they differ from the defaults:
+    # action id -> key in Qt's portable text (`gui.keys`).
+    keys: dict[str, str] = Field(default_factory=dict)
 
 
 def settings_path() -> Path:
