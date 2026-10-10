@@ -81,7 +81,10 @@ And a fourth, "sizes", while a page has handed over a size histogram
 diameters against the size window, small and translucent in the
 bottom-left corner. Chrome like the caption - drawn in widget pixels,
 never into the frame, and not a widget, so a click on it still reaches the
-picture. On by default when it appears.
+picture. On by default when it appears. A page that has more to say
+about the cuboids enables a chart button in the histogram's corner
+(`enable_stats_button`): it toggles that page's statistics window
+(`stats_toggled`), and is there only while the histogram is.
 
 Under the boxes, the robot's axes as they lie in the picture (`set_axes`):
 an arrow for +X and one for +Y, from the pixel map, so the operator knows
@@ -219,6 +222,9 @@ class CameraView(QWidget):
     # "save to profile" on the focus row; carries the camera's label. The
     # view owns no profile: whoever enabled the tools writes it.
     focus_save_requested = Signal(str)
+    # The chart button on the size histogram was pressed: open (True) or
+    # close the page's statistics window.
+    stats_toggled = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -267,6 +273,7 @@ class CameraView(QWidget):
         self._marks_choice: dict[str, bool] = {}
         self._marks_available = False
         self._focus_tools = False                 # see enable_focus_tools
+        self._stats_enabled = False               # see enable_stats_button
         self._build_controls()
 
         self._timer = QTimer(self)
@@ -304,7 +311,8 @@ class CameraView(QWidget):
         self.sizes_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sizes_box.setToolTip("Show the cuboids' sizes against the size "
                                   "window over the picture.")
-        self.sizes_box.toggled.connect(lambda _on: self.update())
+        self.sizes_box.toggled.connect(lambda _on: (self._place_controls(),
+                                                    self.update()))
         self.sizes_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.sizes_box.hide()
 
@@ -322,6 +330,21 @@ class CameraView(QWidget):
             "padding: 3px; }")
         self.snapshot_button.clicked.connect(self.save_snapshot)
         self.snapshot_button.hide()
+
+        # In the size histogram's corner: the page's statistics window.
+        self.stats_button = QToolButton(self)
+        self.stats_button.setIcon(qta.icon("mdi6.chart-box-outline",
+                                           color="white"))
+        self.stats_button.setToolTip("Cuboid statistics")
+        self.stats_button.setCheckable(True)
+        self.stats_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.stats_button.setAutoRaise(True)
+        self.stats_button.setStyleSheet(
+            "QToolButton { background: rgba(0,0,0,140); border-radius: 4px; "
+            "padding: 2px; } QToolButton:checked { background: "
+            "rgba(240,160,48,170); }")
+        self.stats_button.toggled.connect(self.stats_toggled)
+        self.stats_button.hide()
 
         # Hides the focus row; there only while the row could be shown.
         self.focus_box = QCheckBox("focus", self)
@@ -575,6 +598,30 @@ class CameraView(QWidget):
         self._place_controls()
         self.update()
 
+    def enable_stats_button(self, on: bool = True) -> None:
+        """The chart button in the size histogram's corner; see the module
+        docstring."""
+        self._stats_enabled = bool(on)
+        self._place_controls()
+
+    def set_stats_open(self, shown: bool) -> None:
+        """The button's state, for a window closed by its own title bar."""
+        self.stats_button.blockSignals(True)
+        self.stats_button.setChecked(bool(shown))
+        self.stats_button.blockSignals(False)
+
+    def _hist_rect(self) -> QRect | None:
+        """Where the size histogram is drawn, or None when it is not."""
+        if self._histogram is None or not self.sizes_box.isChecked() \
+                or self._camera is None:
+            return None
+        width, height = HIST_BOX
+        if self.width() < 2 * width or self.height() < 2 * height:
+            return None                           # no room on a small view
+        bottom = (self.focus_row.geometry().top() - 8
+                  if self.focus_row.isVisible() else self.height() - 8)
+        return QRect(8, bottom - height, width, height)
+
     def _marks_toggled(self, on: bool) -> None:
         if self._camera is not None:
             self._marks_choice[self._label()] = bool(on)
@@ -626,6 +673,15 @@ class CameraView(QWidget):
                     max(200, self.width() - 2 * margin))
         self.focus_row.setGeometry(margin, self.height() - height - margin,
                                    width, height)
+        # The chart button in the histogram's top-right corner.
+        hist = self._hist_rect() if self._stats_enabled else None
+        if hist is None:
+            self.stats_button.hide()
+        else:
+            self.stats_button.setGeometry(hist.right() - side - 3,
+                                          hist.top() + 3, side, side)
+            self.stats_button.show()
+            self.stats_button.raise_()
 
     # -- zoom ----------------------------------------------------------------
 
@@ -1060,12 +1116,10 @@ class CameraView(QWidget):
         the help on the right and of the focus slider when there is one.
         The same bins as the page's plot, so the two count alike."""
         bins = self._histogram
-        width, height = HIST_BOX
-        if self.width() < 2 * width or self.height() < 2 * height:
-            return                                # no room on a small view
-        bottom = (self.focus_row.geometry().top() - 8
-                  if self.focus_row.isVisible() else self.height() - 8)
-        box = QRect(8, bottom - height, width, height)
+        box = self._hist_rect()
+        if box is None:
+            return
+        width, height = box.width(), box.height()
         painter.fillRect(box, CAPTION_BG)
         painter.setFont(QFont(self.font().family(), 9))
         metrics = painter.fontMetrics()

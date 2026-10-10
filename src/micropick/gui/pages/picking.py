@@ -4,17 +4,22 @@ The page is numbered steps in the order they are done, each a card with a
 mark (`widgets.step_card`), as on the calibration pages, ending at the run:
 
 1. Complete the Operation checklist: what is left of it on other pages,
-   each with a way there.
+   each with a way there, and what this page sets up by itself while it
+   is not ready yet - the detector, the upper camera, the lower camera
+   for the clips.
 2. Set the picking position over the dish - the camera, Go to picking
-   position, Set position. The jog panel sits right under this step.
+   position, Set position.
 3. Set the shake position in the dish, and Shake the dish.
 4. Set the dish bottom - optional, as in the checklist.
-5. Analyse the dish, with the picking settings; the sizes follow.
-6. Start picking: the plate plan, the clips, Start, Pause, Stop, Resume,
-   and what still stops Start.
+5. Analyse the dish, with the picking settings.
+6. Start picking: the plate plan, the clips, Start, Pause, Stop, Resume.
 
-Steps 2 to 4 are marked from the Operation checklist's own lines, so the
-page and the checklist cannot disagree.
+The jog panel comes last. Steps 2 to 4 are marked from the Operation
+checklist's own lines, so the page and the checklist cannot disagree.
+
+The cuboids' figures are in a window of their own
+(`widgets.cuboid_stats`), opened and closed by the chart button on the
+size histogram over the picture.
 
 The run itself comes later. What is here is everything that has to be true
 before a run is worth starting, and it is the same code the run will use,
@@ -169,7 +174,8 @@ from ..widgets.card_columns import CardColumns
 from ..widgets.checklist import BLOCKED, NOTE, OK, TODO, Check, Checklist
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
-from ..widgets.size_histogram import SizeHistogram
+from ..widgets.cuboid_stats import CuboidStats
+from ..widgets.size_histogram import size_bins
 from ..widgets.jog_panel import JogPanel
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.settings_form import PickingSettingsDialog
@@ -199,12 +205,6 @@ VIEW_MS = 100
 KEYS = (("Space", "resume", "resume"),
         ("P", "pause", "pause"),
         ("Esc", "stop", "stop"))
-
-# What the sentence under the histogram adds on this page: the window is
-# not the last word on what a run picks, but nothing after it adds any.
-HIST_AFTER = ("Only the shape windows and the spacing rule can reject one "
-              "after that, so this is the most a run could pick from this "
-              "frame.")
 
 CONFIRM_START = (
     "Make sure the dish and the well plate are in place and their lids are "
@@ -256,10 +256,21 @@ class PickingPage(QWidget):
         # The steps in the order they are done, the run last: the page
         # leads to Start rather than opening on it.
         cards = [self._checklist_step(), self._dish_card(),
-                 self._jog_section(), self._shake_card(),
-                 self._bottom_card(), self._analysis_card(),
-                 self._histogram_card(), self._run_card()]
+                 self._shake_card(), self._bottom_card(),
+                 self._analysis_card(), self._run_card(),
+                 self._jog_section()]
         panel = CardColumns(cards, self)
+
+        # The cuboids in figures, in a window of its own: the chart button
+        # on the picture's size histogram opens and closes it.
+        self.stats = CuboidStats(self)
+        # The names the page and its tests have always used for the size
+        # plot and its sentence.
+        self.hist, self.window_state = (self.stats.sizes.plot,
+                                        self.stats.sizes.state)
+        self.view.enable_stats_button()
+        self.view.stats_toggled.connect(self.stats.setVisible)
+        self.stats.closed.connect(lambda: self.view.set_stats_open(False))
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -283,6 +294,7 @@ class PickingPage(QWidget):
         session.stop_requested.connect(self._stop_run)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
+        session.camera_closed.connect(self._reopen_clip_camera)
         self.opener.failed.connect(self._open_failed)
         self.event_seen.connect(self._on_event)
         self._install_shortcuts()
@@ -401,17 +413,6 @@ class PickingPage(QWidget):
         box.layout().addWidget(self.result)
         return box
 
-    def _histogram_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Sizes", 2))
-        self.histogram = SizeHistogram(
-            "The shaded band is cuboid_size_threshold: what a run would "
-            "accept. Analyse the dish to see what is in it.", self)
-        # The names the page and its tests have always used for the two.
-        self.hist, self.window_state = self.histogram.plot, self.histogram.state
-        box.layout().addWidget(self.histogram)
-        return box
-
     def _run_card(self) -> QWidget:
         self.step_run = StepCard(self, 6, "Start picking")
         box = self.step_run.box
@@ -462,10 +463,6 @@ class PickingPage(QWidget):
         self.run_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.run_state)
-        # Before a run: each condition with its mark and a way to it.
-        self.checklist = Checklist(self)
-        self.checklist.go.connect(self.session.page_requested)
-        box.layout().addWidget(self.checklist)
         return box
 
     def _jog_section(self) -> QWidget:
@@ -776,12 +773,16 @@ class PickingPage(QWidget):
 
     def _draw_histogram(self) -> None:
         profile = self.session.profile
-        bins = self.histogram.show_detection(
-            self._detection,
-            profile.picking.cuboid_size_threshold if profile else None,
-            after=HIST_AFTER)
-        # The same bins over the picture, small: what the plot counts.
-        self.view.set_histogram(bins)
+        cfg = profile.picking if profile is not None else None
+        self.stats.show_detection(self._detection, cfg)
+        # The same bins over the picture, small: what the window counts.
+        bins = size_bins(self._detection,
+                         cfg.cuboid_size_threshold if cfg else None)
+        self.view.set_histogram(None if isinstance(bins, str) else bins)
+        if isinstance(bins, str):
+            # Nothing to show the figures of: the window goes with the button.
+            self.stats.hide()
+            self.view.set_stats_open(False)
 
     # -- the detector ----------------------------------------------------------
 
@@ -857,18 +858,6 @@ class PickingPage(QWidget):
                 "another mode in Settings." if self._clips_failure else
                 f"Opened in {w}x{h}, the clips' mode (Settings)."))
         return out
-
-    def _shown_checks(self) -> list[Check]:
-        """The checklist on this page: its own steps, after one line for
-        the Operation checklist, which is on the Profile page."""
-        shared = readiness_checks(self.session)
-        todo = sum(check.blocking for check in shared)
-        summary = Check("Complete the Operation checklist",
-                        TODO if todo else OK, "profile", "Profile",
-                        detail=(f"{todo} step{'s' if todo != 1 else ''} to "
-                                f"do, on the Profile page." if todo else
-                                "Every step is done."))
-        return [summary] + self._page_checks()
 
     def _well_centre(self):
         """See `readiness.well_centre`."""
@@ -1209,6 +1198,13 @@ class PickingPage(QWidget):
             self.opener.ensure(self.session.lower_camera_label,
                                self._clip_mode())
 
+    def _reopen_clip_camera(self, label: str) -> None:
+        """The lower camera closed - by Settings, a calibration, its own
+        button - while clips are asked for: opened again in their mode."""
+        if label == self.session.lower_camera_label and self.isVisible():
+            self.opener.forget(label)
+            self._ensure_clip_camera()
+
     def _clips_toggled(self, on: bool) -> None:
         self._clips_failure = ""
         self.opener.forget(self.session.lower_camera_label)
@@ -1250,19 +1246,24 @@ class PickingPage(QWidget):
         self._ensure_clip_camera()
         self._ensure_detector()
         self._show_camera()
+        if self.view.stats_button.isChecked():
+            self.stats.show()
 
     def hideEvent(self, event) -> None:
         """A run keeps running; only the picture stops being fetched. The
-        session is the robot's business and a page being looked at is not."""
+        session is the robot's business and a page being looked at is not.
+        The statistics window goes with the page and comes back with it."""
         if not self._running():
             self._view_timer.stop()
+        self.stats.hide()
         super().hideEvent(event)
 
     # -- display ------------------------------------------------------------------
 
-    def _refresh_steps(self, problems: list[str]) -> None:
+    def _refresh_steps(self, problems: list[str]) -> list[int]:
         """The steps' marks: 2 to 4 are the Operation checklist's own
-        lines, 1 is what is left of it on other pages."""
+        lines; 1 is what is left of it on other pages, and this page's own
+        set-up while it is not ready. Returns the steps that stop Start."""
         shared = readiness_checks(self.session)
         by_text = {check.text: check for check in shared}
         for card, key in ((self.step_dish, "dish_position"),
@@ -1271,16 +1272,20 @@ class PickingPage(QWidget):
             check = by_text[STEPS[key][0]]
             card.set_state(check.state, check.detail)
 
-        elsewhere = [check for check in shared if check.page != "picking"]
-        left = [check for check in elsewhere if check.blocking]
+        left = [check for check in shared
+                if check.page != "picking" and check.blocking]
+        left += [check for check in self._page_checks() if check.blocking]
         self.step_checklist.set_state(TODO if left else OK)
         self.others_state.setText(
-            "Every step on the other pages is done." if not left else
-            f"{len(left)} step{'s' if len(left) != 1 else ''} to do on other "
-            f"pages; each button goes there.")
+            "All done." if not left else
+            f"{len(left)} to do.")
         self.others.setVisible(bool(left))
         if left:
             self.others.show_checks(left)
+        stopping = [1] if left else []
+        stopping += [n for n, card in ((2, self.step_dish),
+                                       (3, self.step_shake))
+                     if card.state in (TODO, BLOCKED)]
 
         if self._detection is not None:
             self.step_analysis.set_state(OK, "Analysed: the contours are on "
@@ -1300,6 +1305,7 @@ class PickingPage(QWidget):
             self.step_run.set_state(BLOCKED, f"First: {problems[0]}.")
         else:
             self.step_run.set_state(TODO)
+        return stopping
 
     def _refresh(self) -> None:
         busy = self._busy()
@@ -1388,25 +1394,21 @@ class PickingPage(QWidget):
 
         checks = self._checks()
         problems = [check.text for check in checks if check.blocking]
-        self._refresh_steps(problems)
+        stopping = self._refresh_steps(problems)
         self.start_button.setEnabled(not busy and not running and not problems)
         self.resume_button.setEnabled(self._waiting())
         self.pause_button.setEnabled(running)
         self.stop_button.setEnabled(running)
-        self.checklist.setVisible(not running)
-        if not running:
-            self.checklist.show_checks(self._shown_checks())
         if running:
             self.run_state.setText(
                 f"{self._state_text} — {self._last_event}\n"
                 + "  ".join(f"{key}: {what}" for key, what, _ in KEYS))
         elif problems:
-            # The lines shown: the session's list is one of them here.
-            todo = sum(check.blocking for check in self._shown_checks())
+            steps = ", ".join(str(n) for n in stopping) or "1"
             self.run_state.setText(
                 (self._run_message + "\n\n" if self._run_message else "")
-                + f"Before Start: {todo} step{'s' if todo != 1 else ''} to "
-                  f"do, below.")
+                + f"Before Start: step{'s' if len(stopping) > 1 else ''} "
+                  f"{steps}.")
         else:
             self.run_state.setText(
                 (self._run_message + "\n\n" if self._run_message else "")
