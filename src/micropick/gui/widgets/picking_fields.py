@@ -49,28 +49,23 @@ MISS_POLICY = {"keep_successful": "Deliver what was caught",
 FLOATER_MODE = {"off": "Off", "observe": "Measure only",
                 "enforce": "Measure and avoid"}
 
-Z_CALIBRATION = ("Set it on the Picking page, under Dish bottom: jog the tip "
-                 "down until it touches the dish, then Set dish bottom here.")
+Z_CALIBRATION = ("Set on the Picking page (Set the dish bottom).")
 
 # In MAIN's order, which is the order the dialog shows them in.
 FIELDS: dict[str, Field] = {
     # -- main -----------------------------------------------------------------
     "vol": Field(
         "Volume per cuboid",
-        "How much the tip draws for each cuboid it picks up, and so how much "
-        "goes into the well with each cuboid delivered.",
+        "Volume aspirated per cuboid, and dispensed with it.",
         MAIN, "µl"),
     "flow_rate": Field(
         "Flow rate",
-        "How fast the pipette draws and dispenses, for the pickup, the return "
-        "to the dish and the deposit. Too fast pulls neighbouring cuboids "
-        "along; too slow may not lift a heavy one.",
+        "Aspirate and dispense rate for pickup, return and deposit.",
         MAIN, "µl/s"),
     "dish_bottom": Field(
         "Dish bottom (Z)",
-        "The robot's Z with the tip touching the bottom of the dish. Every "
-        "pickup height is measured up from it, and no move in the dish goes "
-        "below it. " + Z_CALIBRATION,
+        "Z with the tip touching the dish bottom. Pickup heights are "
+        "measured from it. " + Z_CALIBRATION,
         MAIN, "mm",
         trouble="Cuboids are not picked up although the tip goes to them: "
                 "the tip probably stops above them - calibrate Z again. The "
@@ -78,40 +73,31 @@ FIELDS: dict[str, Field] = {
                 "low."),
     "pickup_offset": Field(
         "Pickup height above the bottom",
-        "How far above the dish bottom the tip opening stops to draw a "
-        "cuboid in.",
+        "Tip height above the dish bottom during pickup.",
         MAIN, "mm",
         trouble="Cuboids stay in the dish: lower it (or calibrate Z first). "
                 "The tip touches the dish or draws debris: raise it."),
     "cuboid_size_threshold": Field(
         "Cuboid size window (µm)",
-        "The diameters a cuboid may have to be picked. The histogram on the "
-        "Picking page shows the dish's cuboids against this window.",
+        "Diameter range of cuboids that are picked.",
         MAIN),
     "failure_threshold": Field(
         "Miss radius",
-        "After a pickup the dish is looked at again: a cuboid still within "
-        "this distance of where a chosen one was counts as a miss. Too large "
-        "and a neighbour drifting in reads as a miss; too small and a cuboid "
-        "the tip only nudged reads as picked.",
+        "A cuboid found within this distance of a picked one after the "
+        "pickup counts as a miss.",
         MAIN, "mm"),
     "minimum_distance": Field(
         "Minimum spacing",
-        "A cuboid with a neighbour closer than this is not picked, so the "
-        "tip takes one cuboid and not two. The dish is shaken when too few "
-        "are this far apart.",
+        "Cuboids with a neighbour closer than this are not picked.",
         MAIN, "mm"),
     "one_by_one": Field(
         "One cuboid per trip",
-        "On: pick one cuboid, check it, deliver it, then the next. Off: pick "
-        "up to 'Most cuboids per trip' before going to the plate.",
+        "On: one cuboid per trip. Off: up to 'Most cuboids per trip'.",
         MAIN),
     "well_offset_x": Field(
         "Well offset X",
-        "Where in the well the cuboid is put, from the well's centre, along "
-        "X. Zero for a 96-well plate; small wells may need it. Where the "
-        "plate's well centre was measured on the Liquid handling page, it is "
-        "from that centre.",
+        "Deposit offset from the well centre (measured centre if set), "
+        "along X.",
         MAIN, "mm"),
     "well_offset_y": Field(
         "Well offset Y",
@@ -119,8 +105,7 @@ FIELDS: dict[str, Field] = {
         MAIN, "mm"),
     "deposit_offset_z": Field(
         "Deposit height above the well bottom",
-        "How far above the bottom of the well the tip opening is when it "
-        "dispenses the cuboid.",
+        "Tip height above the well bottom during deposit.",
         MAIN, "mm",
         trouble="The cuboid stays in the tip after the deposit: it is too "
                 "small - raise it. A drop stays hanging on the tip: the tip "
@@ -129,100 +114,85 @@ FIELDS: dict[str, Field] = {
     # -- run ------------------------------------------------------------------
     "miss_policy": Field(
         "When some of a trip are missed",
-        "Deliver what was caught: the cuboids that were picked go to the "
-        "well first, with their volume, and the volume the missed ones drew "
-        "goes back to the dish after. Return everything: any miss sends the "
-        "whole trip back to the dish.",
+        "Deliver what was caught: picked cuboids go to the well, the rest "
+        "of the volume back to the dish. Return everything: any miss returns "
+        "the whole trip.",
         RUN),
     "max_batch": Field(
         "Most cuboids per trip",
-        "How many cuboids are drawn into the tip before it goes to the "
-        "plate. Not used with One cuboid per trip.",
+        "Cuboids aspirated before going to the plate.",
         RUN),
     "wait_time_after_deposit": Field(
         "Wait after the deposit",
-        "How long the tip stays in the well after dispensing, for the "
-        "cuboid to leave it.",
+        "Time in the well after dispensing.",
         RUN, "s"),
     "lift_mm": Field(
         "Lift after drawing",
-        "How far the tip rises after each aspirate and over each cuboid "
-        "before going down to it.",
+        "Tip rise after each aspirate and before each descent.",
         RUN, "mm"),
     "max_shake_retries": Field(
         "Shakes before asking",
-        "How many times the dish is shaken in a row, when nothing isolated "
-        "is found, before the run stops and waits for you.",
+        "Consecutive shakes without isolated cuboids before the run "
+        "pauses.",
         RUN),
     "max_empty_pickups": Field(
         "Empty pickups before asking",
-        "How many pickups in a row may come back with nothing before the "
-        "run stops and waits for you.",
+        "Consecutive empty pickups before the run pauses.",
         RUN),
     "stuck_retry": Field(
         "Retry a missed cuboid (experimental)",
-        "A cuboid still in its place after a pickup is tried once more "
-        "straight away, lower and faster (the two settings below). Missed "
-        "again, it is marked stuck on the picture and not tried until the "
-        "dish is shaken.",
+        "Retry a missed cuboid once, lower and faster. Missed again: "
+        "marked stuck until the next shake.",
         RUN),
     "retry_pickup_offset": Field(
         "Retry: pickup height above the bottom",
-        "How far above the dish bottom the tip stops for the second try at a "
-        "missed cuboid.",
+        "Tip height above the dish bottom on retry.",
         RUN, "mm"),
     "retry_flow_rate": Field(
         "Retry: flow rate",
-        "How fast the pipette draws on the second try at a missed cuboid.",
+        "Aspirate rate on retry.",
         RUN, "µl/s"),
 
     # -- the dish in the picture -------------------------------------------------
     "circle_center": Field(
         "Dish centre (px)",
-        "The centre of the working circle in the upper camera's picture, "
-        "at the picking position.",
+        "Working circle centre in the upper camera picture.",
         PICTURE),
     "circle_radius": Field(
         "Dish radius",
-        "The working circle's radius in the picture. Cuboids outside it are "
-        "not picked.",
+        "Working circle radius. Cuboids outside are not picked.",
         PICTURE, "px"),
 
     # -- detection -------------------------------------------------------------
     "model_file": Field(
         "Model weights",
-        "The cuboid detector's weights, a file in ml_models/. Chosen on the "
-        "Profile page.",
+        "Detector weights in ml_models/ (chosen in Settings).",
         DETECTION),
     "yolo_imgsz": Field(
         "Image size",
-        "The size the picture is scaled to for the detector. Must match "
-        "the size the model was trained at.",
+        "Detector input size; must match training.",
         DETECTION, "px"),
     "yolo_conf": Field(
         "Confidence",
-        "The lowest detector confidence kept. Low on purpose: the shape "
-        "filters reject afterwards.",
+        "Minimum detector confidence.",
         DETECTION),
     "yolo_iou": Field(
         "Overlap (IoU)",
-        "How much two boxes may overlap and both be kept. High so that "
-        "touching cuboids stay two.",
+        "Maximum overlap of two kept boxes.",
         DETECTION),
     "yolo_max_det": Field(
         "Most detections",
-        "The most boxes the detector returns for one picture.",
+        "Maximum boxes per picture.",
         DETECTION),
 
     # -- shape -------------------------------------------------------------------
     "otsu_pad": Field(
         "Contour margin",
-        "Background around each box when the outline is found; the "
-        "threshold needs some.",
+        "Margin around each box for outline detection.",
         SHAPE, "px"),
     "otsu_open_k": Field(
         "Opening size",
-        "Breaks thin bridges from a cuboid to the rim or a neighbour.",
+        "Morphological opening kernel; removes thin bridges.",
         SHAPE, "px"),
     "aspect_ratio_window": Field(
         "Aspect ratio window",
@@ -230,123 +200,111 @@ FIELDS: dict[str, Field] = {
         SHAPE),
     "circularity_window": Field(
         "Circularity window",
-        "How round the outline is; 1 is a circle.",
+        "Outline roundness; 1 is a circle.",
         SHAPE),
     "min_solidity": Field(
         "Least solidity",
-        "Outline area over its convex hull. Catches concave and merged "
-        "blobs.",
+        "Outline area over convex hull area.",
         SHAPE),
     "max_radial_cv": Field(
         "Most radial spread",
-        "How evenly the outline sits around its centre. Accepts circles and "
-        "squares, rejects lopsided shapes.",
+        "Spread of outline distance from the centre.",
         SHAPE),
 
     # -- bubbles ---------------------------------------------------------------
     "bubble_filter_enabled": Field(
         "Reject bubbles",
-        "Bubbles pass the shape filters; this rejects them by their dark core "
-        "and bright glint. Measured either way, rejected only when on.",
+        "Reject bubbles by dark core and glint.",
         BUBBLES),
     "bubble_core_r": Field(
         "Core radius",
-        "The centre region, as a fraction of the radius.",
+        "Centre region, fraction of the radius.",
         BUBBLES),
     "bubble_ring_window": Field(
         "Rim window",
-        "The ring the core is compared against, as fractions of the radius.",
+        "Reference ring, fractions of the radius.",
         BUBBLES),
     "bubble_max_core_ratio": Field(
         "Most core brightness",
-        "Core over rim brightness. Below it the centre is dark like a "
-        "bubble's; cuboids measured 1.00 and above.",
+        "Core over rim brightness; below it the core counts as dark.",
         BUBBLES),
     "bubble_min_spec_ratio": Field(
         "Least glint",
-        "Brightest spot over the rim. Above it there is a bubble's glint; "
-        "cuboids measured 1.41 and below.",
+        "Brightest spot over rim; above it counts as glint.",
         BUBBLES),
     "bubble_min_area_px": Field(
         "Least core area",
-        "Smaller cores are too few pixels to judge and are left alone.",
+        "Smaller cores are not judged.",
         BUBBLES, "px"),
     "bubble_require_both": Field(
         "Both signs needed",
-        "On: rejected only with a dark core and a glint. Off: either one "
-        "rejects, which spends the thin margin twice.",
+        "On: reject only with both a dark core and a glint. Off: either.",
         BUBBLES),
 
     # -- floaters ----------------------------------------------------------------
     "floater_mode": Field(
         "Floating cuboids",
-        "Watches the dish for cuboids that drift. Measure only records it; "
-        "Measure and avoid also keeps the drifting ones out of the pickup. "
-        "Needs a floater baseline in the profile.",
+        "Detect drifting cuboids. Measure: record only. Measure and avoid: "
+        "also skip them. Needs a floater baseline.",
         FLOATERS),
     "floater_window_s": Field(
         "Watch for",
-        "How long one measurement watches the dish.",
+        "Duration of one measurement.",
         FLOATERS, "s"),
     "floater_fps": Field(
         "Frames a second",
-        "Frames taken during the watch.",
+        "Frame rate during a measurement.",
         FLOATERS),
     "floater_pad_frac": Field(
         "Window size",
-        "Each cuboid's window, as a multiple of its size. A measured "
-        "optimum; a baseline is only valid at the value it was taken at.",
+        "Per-cuboid window, multiple of its size. Must match the "
+        "baseline.",
         FLOATERS),
     "floater_sigma_frac": Field(
         "Window taper",
-        "The Gaussian taper of the window, as a fraction of its side. A "
-        "measured optimum, tied to the baseline.",
+        "Gaussian taper, fraction of the window side. Must match the "
+        "baseline.",
         FLOATERS),
     "floater_k": Field(
         "Threshold factor",
-        "A cuboid that moves more than this times the stillest cuboids' "
-        "noise is floating.",
+        "Motion threshold, multiple of the baseline noise.",
         FLOATERS),
     "floater_floor_um": Field(
         "Least threshold",
-        "The threshold is never below this.",
+        "Minimum motion threshold.",
         FLOATERS, "µm"),
     "floater_interval_s": Field(
         "Measure every",
-        "How often the dish is watched again.",
+        "Interval between measurements.",
         FLOATERS, "s"),
     "floater_horizon_s": Field(
         "Drift horizon",
-        "How far ahead a floater's drift is allowed for, which sizes the "
-        "zone kept clear around it.",
+        "Drift time allowed for; sets the exclusion zone.",
         FLOATERS, "s"),
 
     # -- timing ------------------------------------------------------------------
     "capture_settle_s": Field(
         "Settle before a picture",
-        "Pause at the picking position before the picture a pickup is "
-        "decided from.",
+        "Pause at the picking position before imaging.",
         TIMING, "s"),
     "verify_settle_s": Field(
         "Settle before the check",
-        "Pause at the picking position before the picture that checks the "
-        "pickup.",
+        "Pause at the picking position before the check image.",
         TIMING, "s"),
     "clip_max_frames": Field(
         "Longest clip",
-        "The most frames one pickup clip keeps.",
+        "Maximum frames per pickup clip.",
         TIMING, "frames"),
     "homography_drift_warn_mm": Field(
         "Clip box warning distance",
-        "The boxes on the clip are drawn with a map fitted at one pose; "
-        "further than this from it, the log warns they may be off.",
+        "Log a warning when the gantry is further than this from the pose "
+        "the clip map was fitted at.",
         TIMING, "mm"),
 
     # -- coordinates -------------------------------------------------------------
     "deposit_z_optional": Field(
         "Deposit Z",
-        "The robot's Z the tip dispenses at when the plate plan's "
-        "destination is a list of coordinates rather than a plate.",
+        "Dispense Z when the destination is a list of coordinates.",
         COORDINATES, "mm"),
 }
 

@@ -68,30 +68,24 @@ class LocationEditor(QWidget):
         for kind, text in KINDS.items():
             self.kind.addItem(text, kind)
         self.kind.setToolTip(
-            "each well of the group: the step is done in every well of the "
-            "group, one after another.\n"
-            "one fixed well: one well of any labware on the deck, the same "
-            "for every well of the group - a reservoir, a waste.\n"
-            "a saved point: a position saved in the jog panel.\n"
-            "same place as the step before: no move; wherever the step "
-            "before left the tip.")
+            "each well of the group: in every well, in turn.\n"
+            "one fixed well: the same well for the whole group (reservoir, "
+            "waste).\n"
+            "a saved point: a position from the jog panel.\n"
+            "same place as the step before: no move.")
         self.labware = combo_box(self)
         self.well = combo_box(self)
         self.well.setEditable(True)
         self.well.setInsertPolicy(self.well.InsertPolicy.NoInsert)
         self.point = combo_box(self)
-        self.point.setToolTip("A position saved in the jog panel's Positions. "
-                              "The tip goes there, plus the offset.")
+        self.point.setToolTip("Saved position, plus the offset.")
         self.level = combo_box(self)
         for level, text in LEVEL_NAMES.items():
             self.level.addItem(text, level)
         self.level.setToolTip(
-            "What the Z offset is measured from.\n"
-            "top, center, bottom: the robot's own, from the labware "
-            "definition.\n"
-            "bottom (measured): the plate's measured rim less the well depth "
-            "set on the Wells card - as good as an absolute Z, for that "
-            "plate.")
+            "Reference for the Z offset.\n"
+            "top, center, bottom: from the labware definition.\n"
+            "bottom (measured): measured rim minus well depth.")
         # The axis inside the box and the unit on the row's label: three
         # boxes with a letter beside each and "mm" in each do not fit a
         # column of the panel.
@@ -100,8 +94,8 @@ class LocationEditor(QWidget):
         for axis, box in zip("XYZ", self.offsets):
             box.setPrefix(f"{axis} ")
             box.setMinimumWidth(0)
-            box.setToolTip(f"{axis} from the level (or the point), in mm. "
-                           + ("+ is up." if axis == "Z" else ""))
+            box.setToolTip(f"{axis} offset, mm"
+                           + (" (+ up)." if axis == "Z" else "."))
         # Across the whole form, under a label of its own: beside a label
         # three boxes are too narrow to show their numbers.
         self.offset_label = QLabel("Offset from there, mm", self)
@@ -257,15 +251,11 @@ class StepEditor(QWidget):
 
         self.volume = _number(self, VOLUME_RANGE, " µl")
         self.all_in_tip = QCheckBox("everything in the tip", self)
-        self.all_in_tip.setToolTip("Dispense whatever the tip holds at that "
-                                   "moment.")
+        self.all_in_tip.setToolTip("Dispense the whole tip content.")
         self.refill = QCheckBox("Auto refill", self)
         self.refill.setToolTip(
-            "Skipped while the tip holds enough for the dispenses after it; "
-            "otherwise the tip is topped up to this volume. Off: the volume "
-            "is aspirated every time. Only from a source - one fixed well or "
-            "a saved point; from each well of the group the volume is always "
-            "taken.")
+            "Top up to this volume only when the tip runs short. Sources "
+            "only (fixed well or saved point).")
         # The box and its switch one above the other: side by side they
         # are squeezed in a column of the panel.
         volume_row = QWidget(self)
@@ -276,36 +266,32 @@ class StepEditor(QWidget):
         rows.addWidget(self.all_in_tip)
         self.auto_empty = QCheckBox("Auto empty", self)
         self.auto_empty.setToolTip(
-            "Empty the tip here - everything in it, then a blow out - only "
-            "when it could not take the next aspirate, and after the group's "
-            "last well. For a waste: the tip is emptied every few wells "
-            "instead of after each.")
+            "Empty and blow out here only when the next aspirate would not "
+            "fit, and after the last well.")
         rows.addWidget(self.auto_empty)
         rows.addWidget(self.refill)
         self.volume_row = volume_row
         self.flow = _number(self, FLOW_RANGE, " µl/s")
-        self.flow.setToolTip("How fast the plunger moves. Slow near cuboids.")
+        self.flow.setToolTip("Plunger flow rate.")
         self.cycles = spin_box(self)
         self.cycles.setRange(*CYCLES_RANGE)
-        self.cycles.setToolTip("How many times to draw and push back the "
-                               "volume.")
+        self.cycles.setToolTip("Mix cycles.")
         self.seconds = _number(self, SECONDS_RANGE, " s")
         # The slow lift after an aspirate: under a label of its own, three
         # boxes across the form, as the offsets are.
         self.lift_steps = spin_box(self)
         self.lift_steps.setRange(0, 50)
         self.lift_steps.setSuffix(" ×")
-        self.lift_steps.setToolTip("How many small rises after drawing. 0: "
-                                   "no slow lift.")
+        self.lift_steps.setToolTip("Number of rises after aspirating. 0: "
+                                   "off.")
         self.lift_mm = _number(self, (0.01, 5.0), " mm", 2, 0.05)
-        self.lift_mm.setToolTip("How far each small rise goes.")
+        self.lift_mm.setToolTip("Height of each rise.")
         self.lift_pause = _number(self, (0.0, 10.0), " s", 1, 0.1)
-        self.lift_pause.setToolTip("How long to wait after each rise.")
+        self.lift_pause.setToolTip("Wait after each rise.")
         self.lift_label = QLabel("Slow lift after: rises × height, wait",
                                  self)
         self.lift_label.setToolTip(
-            "After drawing, the tip rises in small steps with a wait between, "
-            "so the liquid does not pull a cuboid along. For washing.")
+            "Raise the tip in small steps after aspirating.")
         lift_row = QWidget(self)
         row = QHBoxLayout(lift_row)
         row.setContentsMargins(0, 0, 0, 0)
@@ -315,7 +301,7 @@ class StepEditor(QWidget):
             row.addWidget(box, 1)
         self.lift_row = lift_row
         self.message = QLineEdit(self)
-        self.message.setToolTip("Shown when the run pauses here.")
+        self.message.setToolTip("Shown when the run pauses.")
         self.where = LocationEditor(self)
 
         self.form = QFormLayout()

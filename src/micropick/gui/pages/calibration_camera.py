@@ -305,8 +305,8 @@ class CameraCalibration(QWidget):
     def _marker_step(self) -> QWidget:
         self.place = StepCard(self, 1, "Place the calibration marker")
         self.place.add(wrapped(
-            "Place the calibration marker on the picking plane, where the "
-            "camera can see it."))
+            "Place the calibration marker on the picking plane, in view of "
+            "the camera."))
         # One line: found or not. The full description - the dictionary,
         # which way up, the other ids - is its tooltip.
         self.marker_state = muted_label("waiting for a frame…")
@@ -323,9 +323,8 @@ class CameraCalibration(QWidget):
     def _centre_step(self) -> QWidget:
         self.centre = StepCard(self, 2, "Centre it under the crosshair")
         self.centre.add(wrapped(
-            "Jog until the marker sits under the camera crosshair, at the "
-            "height where the picture is sharp. The sweep is planned from "
-            "this pose and this focus, and the map holds only for them."))
+            "Jog the marker under the camera crosshair, at the height where "
+            "the picture is in focus."))
         self.centre_state = muted_label()
         self.centre.add(self.centre_state)
         return self.centre.box
@@ -334,9 +333,8 @@ class CameraCalibration(QWidget):
         self.sweep = StepCard(self, 3, "Sweep")
         box = self.sweep.box
         box.layout().addWidget(wrapped(
-            "The robot moves the marker over the whole picture and fits the "
-            "map from pixels to the deck. A few minutes; Cancel or Stop ends "
-            "it with nothing saved."))
+            "Moves the marker across the field of view and fits the pixel "
+            "to deck map. Takes a few minutes; Cancel discards it."))
         # The parameters are set in Settings; said here, with the way there,
         # so a sweep is never started on numbers nobody looked at.
         row = QHBoxLayout()
@@ -346,8 +344,7 @@ class CameraCalibration(QWidget):
         self.parameters_button = QPushButton("Settings ›", self)
         self.parameters_button.setFlat(True)
         self.parameters_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.parameters_button.setToolTip("Marker side, dictionary, grid and "
-                                          "degree are set in Settings.")
+        self.parameters_button.setToolTip("Sweep parameters.")
         self.parameters_button.clicked.connect(
             lambda: self.session.page_requested.emit("settings"))
         row.addWidget(self.parameters_button, 0, Qt.AlignmentFlag.AlignTop)
@@ -399,8 +396,7 @@ class CameraCalibration(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         box.layout().addWidget(self.verdict)
         self.stats_button = secondary_button("Statistics", self)
-        self.stats_button.setToolTip("The full report and the coverage and "
-                                     "residual plots.")
+        self.stats_button.setToolTip("Report, coverage and residual plots.")
         self.stats_button.clicked.connect(self._show_statistics)
         self.stats_button.hide()
         box.layout().addWidget(self.stats_button, 0, Qt.AlignmentFlag.AlignLeft)
@@ -503,7 +499,7 @@ class CameraCalibration(QWidget):
         if sighting is None:
             self.marker_state.setToolTip("")
             self.marker_state.setText(
-                "The upper camera is not open yet."
+                "Upper camera not open."
                 if self._camera() is None else "Looking for the marker…")
             self.use_dictionary_button.hide()
             return
@@ -516,7 +512,7 @@ class CameraCalibration(QWidget):
                 f"{sighting.wanted}.")
         else:
             self.marker_state.setText(
-                "Not seen yet. Check it is face up and in the picture.")
+                "Marker not detected.")
         wrong = sighting.found and not sighting.as_asked
         self.use_dictionary_button.setVisible(wrong)
         if wrong:
@@ -601,8 +597,7 @@ class CameraCalibration(QWidget):
         self._result = None
         self._verdict = None
         self.done.clear()
-        self.verdict.setText("Sweeping: the result comes when the fit is "
-                             "done.")
+        self.verdict.setText("Sweeping…")
         self.stats_button.hide()
         self.statistics.hide()
         self.view.set_overlay_items([])
@@ -657,7 +652,7 @@ class CameraCalibration(QWidget):
         # loop is blocked inside the sweep. The workflow sees the event between
         # poses, so the gantry finishes the move it is making first.
         self._worker.request_cancel()
-        self._append("cancelling — the sweep stops at the next pose")
+        self._append("cancelling at the next pose")
         self.cancel_button.setEnabled(False)
 
     def _on_progress(self, done: int, total: int) -> None:
@@ -685,8 +680,7 @@ class CameraCalibration(QWidget):
         self._outcome = f"Finished: {self._verdict.level}. See Result."
         # A fit to redo is the end of the sweep, not a thing done.
         if self._verdict.level != REDO:
-            self.done.show_done(f"Sweep finished - {self._verdict.level}. "
-                                f"Save to profile keeps the map.")
+            self.done.show_done(f"Sweep finished: {self._verdict.level}.")
         self._describe_write(pmap)
         self._refresh()
         # The sweep moved the gantry with the panel hidden.
@@ -714,8 +708,8 @@ class CameraCalibration(QWidget):
         detail = reason
         self._append(f"{kind}: {detail}")
         self._append("nothing was written to the profile")
-        self._append("the gantry is no longer where this sweep started — "
-                     "centre the marker again before the next sweep")
+        self._append("the gantry has moved: centre the marker again before "
+                     "the next sweep")
         self._outcome = (f"Sweep {kind}: {detail}\nNothing was written. The "
                          f"gantry is no longer where the sweep started: centre "
                          f"the marker again before the next one.")
@@ -779,15 +773,14 @@ class CameraCalibration(QWidget):
         profile = self.session.profile
         config = pmap.to_config()
         if profile is None:
-            self.write_note.setText("No profile is loaded, so there is nowhere "
-                                    "to save this.")
+            self.write_note.setText("No profile loaded.")
             return
         self.write_note.setText(
             f"Will write to {profile.path / 'calibration.json'}:\n"
             f"  degree {config.degree}, {config.n_poses} poses, "
             f"image_size {config.image_size[0]}×{config.image_size[1]}, "
             f"sweep_z {config.sweep_z:.2f}\n"
-            f"The previous calibration is archived under history/ first.")
+            f"The previous calibration is archived in history/.")
 
     def _save(self) -> None:
         if self._result is None or self.session.profile is None:
@@ -795,8 +788,7 @@ class CameraCalibration(QWidget):
         if self._verdict is not None and self._verdict.level == REDO:
             answer = QMessageBox.question(
                 self, "Save to profile",
-                f"{self._verdict.line}\n\nSave this map anyway? Everything "
-                f"that turns a pixel into a deck position will use it.",
+                f"{self._verdict.line}\n\nSave this map anyway?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if answer != QMessageBox.StandardButton.Yes:
@@ -817,7 +809,7 @@ class CameraCalibration(QWidget):
             f"{config.image_size[0]}×{config.image_size[1]}.")
         self.save_button.setEnabled(False)
         self._saved = True
-        self.done.show_done("The pixel map is saved to the profile.")
+        self.done.show_done("Pixel map saved to the profile.")
         self.session.profile_changed.emit(profile)
 
     # -- display -------------------------------------------------------------

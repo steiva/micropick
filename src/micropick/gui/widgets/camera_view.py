@@ -300,8 +300,7 @@ class CameraView(QWidget):
         self.marks_box = QCheckBox("points", self)
         self.marks_box.setChecked(False)
         self.marks_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.marks_box.setToolTip("Show the positions saved in the profile "
-                                  "where they are on the deck.")
+        self.marks_box.setToolTip("Show saved positions.")
         self.marks_box.toggled.connect(self._marks_toggled)
         self.marks_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.marks_box.hide()
@@ -309,8 +308,7 @@ class CameraView(QWidget):
         self.sizes_box = QCheckBox("sizes", self)
         self.sizes_box.setChecked(True)
         self.sizes_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sizes_box.setToolTip("Show the cuboids' sizes against the size "
-                                  "window over the picture.")
+        self.sizes_box.setToolTip("Show the size histogram.")
         self.sizes_box.toggled.connect(lambda _on: (self._place_controls(),
                                                     self.update()))
         self.sizes_box.setStyleSheet(self.crosshair_box.styleSheet())
@@ -321,8 +319,7 @@ class CameraView(QWidget):
         self.snapshot_button = QToolButton(self)
         self.snapshot_button.setIcon(qta.icon("mdi6.camera", color="white"))
         self.snapshot_button.setToolTip(
-            "Save the picture as the camera took it - no overlays - to the "
-            "Images folder (set on the Settings page).")
+            "Save the raw frame to the Images folder.")
         self.snapshot_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.snapshot_button.setAutoRaise(True)
         self.snapshot_button.setStyleSheet(
@@ -350,7 +347,7 @@ class CameraView(QWidget):
         self.focus_box = QCheckBox("focus", self)
         self.focus_box.setChecked(True)
         self.focus_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.focus_box.setToolTip("Show the focus controls over the picture.")
+        self.focus_box.setToolTip("Show focus controls.")
         self.focus_box.toggled.connect(lambda _on: self._sync_controls())
         self.focus_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.focus_box.hide()
@@ -378,7 +375,7 @@ class CameraView(QWidget):
         self.focus_number.setButtonSymbols(
             QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.focus_number.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.focus_number.setToolTip("Type a focus and press Enter.")
+        self.focus_number.setToolTip("Focus value; Enter applies.")
         self.focus_number.setFixedWidth(56)
         self.focus_number.valueChanged.connect(self.focus_slider.setValue)
         # What the device made of it: "…" while a value is on its way, the
@@ -387,15 +384,13 @@ class CameraView(QWidget):
         self.focus_default = QToolButton(self.focus_row)
         self.focus_default.setText(f"default ({DEFAULT_FOCUS})")
         self.focus_default.setToolTip(
-            f"Set the focus back to {DEFAULT_FOCUS}. Not saved until "
-            f"\"save to profile\".")
+            f"Reset focus to {DEFAULT_FOCUS}.")
         self.focus_default.clicked.connect(
             lambda: self.focus_slider.setValue(DEFAULT_FOCUS))
         self.focus_save = QToolButton(self.focus_row)
         self.focus_save.setText("save to profile")
         self.focus_save.setToolTip(
-            "Write this focus into the profile, so the camera opens at it "
-            "from now on.")
+            "Save this focus to the profile.")
         self.focus_save.clicked.connect(
             lambda: self.focus_save_requested.emit(self._label()))
         for button in (self.focus_default, self.focus_save):

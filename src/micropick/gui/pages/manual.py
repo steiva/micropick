@@ -142,7 +142,7 @@ DECK_HEIGHT = 170
 LOWER_CAMERA_NOTE = "lower camera: clicks do not move the robot"
 
 # What the mouse does on the picture, for the same box.
-MOUSE_HELP = ("click   move the camera or the tip there (Click to move on)",
+MOUSE_HELP = ("click   move there (Click to move on)",
               "wheel   zoom",
               "middle-drag   pan",
               "double-click   fit the picture")
@@ -249,12 +249,11 @@ class ManualPage(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel("A click moves"))
         self.click_camera = QRadioButton("Camera", self)
-        self.click_camera.setToolTip("The clicked point comes under the "
-                                     "camera's crosshair.")
+        self.click_camera.setToolTip("Move the clicked point under the "
+                                     "crosshair.")
         self.click_tip = QRadioButton("Tip", self)
         self.click_tip.setToolTip(
-            "The tip goes over the clicked point, at the travel height. Only "
-            "inside the calibrated area.")
+            "Move the tip over the clicked point (calibrated area only).")
         self.click_camera.setChecked(True)
         self._click_mode = QButtonGroup(self)
         for button in (self.click_camera, self.click_tip):
@@ -265,11 +264,10 @@ class ManualPage(QWidget):
         row.addStretch(1)
         box.layout().addLayout(row)
 
-        note = QLabel("Camera: the clicked point comes under the crosshair. "
-                      "Tip: the tip goes over it and stays at the travel "
-                      "height. Either way, a click on a detected crosshair or "
-                      "cuboid sends the tip down to it. The tip is raised "
-                      "first. Off again every time this tab is opened.")
+        note = QLabel("Camera: the clicked point moves under the crosshair. "
+                      "Tip: the tip moves over it at travel height. A click "
+                      "on a detected crosshair or cuboid lowers the tip to "
+                      "it. Turns off when the tab is opened.")
         note.setWordWrap(True)
         box.layout().addWidget(note)
         return box
@@ -277,16 +275,13 @@ class ManualPage(QWidget):
     def _deck_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Deck", 2))
-        note = QLabel("To cross the deck: click a slot and the camera or the "
-                      "tip, as chosen under A click moves, goes over its "
-                      "centre at the travel height. Needs Click to move.")
+        note = QLabel("Click a slot to move the camera or tip over its "
+                      "centre (with Click to move on).")
         note.setWordWrap(True)
         box.layout().addWidget(note)
         self.deck = DeckView(self)
         self.deck.setFixedHeight(DECK_HEIGHT)
-        self.deck.setToolTip("Click a slot: the camera or the tip goes over "
-                             "its centre, at the travel height (with Click to "
-                             "move on).")
+        self.deck.setToolTip("Move over the clicked slot's centre.")
         self.deck.slot_clicked.connect(self._slot_clicked)
         box.layout().addWidget(self.deck)
         return box
@@ -307,8 +302,8 @@ class ManualPage(QWidget):
         self.cross_z = _z_box(self, CROSSHAIR_Z_MM)
         self.cuboid_z = _z_box(self, 0.5)
         self.cuboid_z.setToolTip(
-            "The profile's pickup height (dish_bottom + pickup_offset). "
-            "Changing it here changes pickup_offset, which the run uses too.")
+            "Pickup height (dish_bottom + pickup_offset). Changes "
+            "pickup_offset.")
         self.cuboid_z.editingFinished.connect(self._cuboid_z_edited)
         _row(box, "Crosshair Z", self.cross_z)
         _row(box, "Cuboid Z", self.cuboid_z)
@@ -345,10 +340,10 @@ class ManualPage(QWidget):
         # The keys are in the box on the picture; in the label they cut the
         # button's text off in a column half the panel wide.
         self.aspirate_button = secondary_button("Aspirate", self)
-        self.aspirate_button.setToolTip("Aspirate where the tip is. Key: A")
+        self.aspirate_button.setToolTip("Aspirate at the tip position.")
         self.aspirate_button.clicked.connect(self._aspirate)
         self.dispense_button = secondary_button("Dispense", self)
-        self.dispense_button.setToolTip("Dispense where the tip is. Key: D")
+        self.dispense_button.setToolTip("Dispense at the tip position.")
         self.dispense_button.clicked.connect(self._dispense)
         row.addWidget(self.aspirate_button)
         row.addWidget(self.dispense_button)
@@ -358,12 +353,10 @@ class ManualPage(QWidget):
         # and flow rate above.
         self.auto_aspirate = QCheckBox("Aspirate at a cuboid", self)
         self.auto_aspirate.setToolTip(
-            "Aspirate as soon as the tip reaches a cuboid clicked on the "
-            "picture, with the volume and flow rate above.")
+            "Aspirate when the tip reaches a clicked cuboid.")
         self.auto_dispense = QCheckBox("Dispense at a well", self)
         self.auto_dispense.setToolTip(
-            "Dispense as soon as the tip reaches the well chosen below, with "
-            "the volume and flow rate above.")
+            "Dispense when the tip reaches the chosen well.")
         box.layout().addWidget(self.auto_aspirate)
         box.layout().addWidget(self.auto_dispense)
         return box
@@ -382,8 +375,8 @@ class ManualPage(QWidget):
         self.well_level.addItems(moves.WELL_LEVELS)
         self.well_offset = _number_box(self, 0.0, WELL_OFFSET_RANGE, " mm")
         self.well_offset.setToolTip(
-            "Z from the chosen level: + is up. X and Y come from the "
-            "profile's well_offset_x and well_offset_y, as in the run.")
+            "Z from the chosen level (+ up). X and Y: the profile's well "
+            "offsets.")
         for label, widget in (("Plate", self.plate_choice),
                               ("Well", self.well_choice),
                               ("Level", self.well_level)):
@@ -471,8 +464,7 @@ class ManualPage(QWidget):
 
         # Nothing moves: what is detected on the picture still stands.
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell(f"not now: the robot is busy; {what} again when "
-                          f"it is done.")
+            self.jog.tell("Robot busy.")
 
     # -- what the picture can be used for -------------------------------------
 
@@ -548,8 +540,7 @@ class ManualPage(QWidget):
         profile, robot, camera = session.profile, session.robot, self._camera()
         wanted = wanted_model(profile, session.mock)
         if not wanted:
-            self.state.setText("no cuboid model named in the profile: choose "
-                               "one in Settings (the gear).")
+            self.state.setText("No cuboid model chosen (Settings).")
             return
         service, cfg = session.detector, profile.picking
         pmap = PixelMap.from_config(profile.pixel_map)
@@ -613,9 +604,7 @@ class ManualPage(QWidget):
             kind, index, world = target
             offset = profile.calibration.pipette_offset
             if offset is None:
-                self.jog.tell(f"REFUSED: no pipette offset, so the tip cannot "
-                              f"be sent to the {kind}. Run the pipette "
-                              f"calibration.")
+                self.jog.tell("Refused: no tip calibration.")
                 return
             xy = np.asarray(world) + np.array([offset.dx, offset.dy])
             z = float((self.cross_z if kind == "crosshair"
@@ -646,14 +635,11 @@ class ManualPage(QWidget):
             # camera a few hundred microns off is imprecise where a tip there
             # is in the wrong thing.
             if not pmap.covers(u, v):
-                self.jog.tell("REFUSED: outside the calibrated area, so the "
-                              "tip is not sent there. Use Camera mode to "
-                              "move the view first.")
+                self.jog.tell("Refused: outside the calibrated area.")
                 return
             offset = profile.calibration.pipette_offset
             if offset is None:
-                self.jog.tell("REFUSED: no pipette offset, so the tip cannot "
-                              "be sent. Run the pipette calibration.")
+                self.jog.tell("Refused: no tip calibration.")
                 return
             gantry = np.array(xyz(robot)[:2])
             xy = moves.tip_target(pmap, u, v, gantry, offset)
@@ -741,9 +727,7 @@ class ManualPage(QWidget):
             offset = (profile.calibration.pipette_offset
                       if profile is not None else None)
             if offset is None:
-                self.jog.tell("REFUSED: no pipette offset, so where the camera "
-                              "sees the slot is not known. Run the pipette "
-                              "calibration, or choose Tip.")
+                self.jog.tell("Refused: no tip calibration.")
                 return
             xy = xy - np.array([offset.dx, offset.dy])
             what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
@@ -964,8 +948,7 @@ class ManualPage(QWidget):
                                     and self.well_choice.count() > 0)
         self.well_state.setText(
             "" if has_plate else
-            "No plate in the robot session: load one on the Robot & Deck "
-            "page.")
+            "No plate loaded.")
         self.well_state.setVisible(not has_plate)
         if busy:
             return
@@ -982,8 +965,7 @@ class ManualPage(QWidget):
         if self._cuboids is not None:
             parts.append(self._cuboids.summary.replace("\n", "; "))
         if not parts:
-            self.state.setText("Detect, then click a crosshair or a cuboid "
-                               "to send the tip to it.")
+            self.state.setText("Detect, then click a crosshair or cuboid.")
             return
         text = "\n".join(parts)
         if self._cross_standin:

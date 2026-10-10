@@ -229,14 +229,13 @@ class LiquidHandlingPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Wells", 2))
         box.layout().addWidget(_label(
-            "Select wells on the plate - click, drag a box, or click a row or "
-            "column label; Ctrl adds, Shift removes - then make a group of "
-            "them."))
+            "Select wells (click, drag, or a row or column label; Ctrl adds, "
+            "Shift removes), then New group."))
         row = QHBoxLayout()
         row.addWidget(QLabel("Plate"))
         self.plate_choice = combo_box(self)
-        self.plate_choice.setToolTip("The labware the robot holds. Load more "
-                                     "on the Robot & Deck page.")
+        self.plate_choice.setToolTip("Labware loaded in the robot "
+                                     "session.")
         self.plate_choice.currentIndexChanged.connect(
             lambda _i: self._show_plate())
         row.addWidget(self.plate_choice, 1)
@@ -249,15 +248,15 @@ class LiquidHandlingPage(QWidget):
 
         row = QHBoxLayout()
         self.new_group_button = primary_button("New group", self)
-        self.new_group_button.setToolTip("A new group of the selected wells.")
+        self.new_group_button.setToolTip("Group the selected wells.")
         self.new_group_button.clicked.connect(self._new_group)
         self.add_wells_button = secondary_button("Add to group", self)
-        self.add_wells_button.setToolTip("Add the selected wells to the chosen "
-                                         "group, taking them out of any other.")
+        self.add_wells_button.setToolTip("Move the selected wells into the "
+                                         "chosen group.")
         self.add_wells_button.clicked.connect(self._add_wells)
         self.remove_wells_button = secondary_button("Remove", self)
-        self.remove_wells_button.setToolTip("Take the selected wells out of "
-                                            "every group.")
+        self.remove_wells_button.setToolTip("Remove the selected wells from "
+                                            "all groups.")
         self.remove_wells_button.clicked.connect(self._remove_wells)
         for button in (self.new_group_button, self.add_wells_button,
                        self.remove_wells_button):
@@ -280,35 +279,29 @@ class LiquidHandlingPage(QWidget):
         self.well_depth.setSingleStep(0.1)
         self.well_depth.setSuffix(" mm")
         self.well_depth.setToolTip(
-            "Rim to bottom of the wells of this plate. The measured bottom - "
-            "a step's level - is the measured rim less this. It starts as the "
-            "labware definition's, which describes the catalogue part; "
-            "measure and correct it.")
+            "Rim-to-bottom depth of this plate's wells. Default: the labware "
+            "definition.")
         self.well_depth.editingFinished.connect(self._well_depth_edited)
         row.addWidget(self.well_depth)
         row.addStretch(1)
         box.layout().addLayout(row)
         self.go_top_button = secondary_button("Go to well top", self)
         self.go_top_button.setToolTip(
-            "The tip to the selected well's top centre as the robot has it, "
-            "from the labware definition. Then jog it onto the real centre, "
-            "level with the rim.")
+            "Move the tip to the selected well's top centre from the labware "
+            "definition.")
         self.go_top_button.clicked.connect(self._go_to_well_top)
         self.set_centre_button = primary_button("Set well centre", self)
         self.set_centre_button.setToolTip(
-            "Store where the tip is now as the real centre and rim of this "
-            "plate's wells, in the profile. Every step on this plate is then "
-            "measured from it.")
+            "Save the current tip position as this plate's well centre and "
+            "rim.")
         self.set_centre_button.clicked.connect(self._set_well_centre)
         self.go_centre_button = secondary_button("Go to centre", self)
         self.go_centre_button.setToolTip(
-            "The tip to the measured centre and rim of the selected well, or "
-            "of the well it was measured on: to check it.")
+            "Move the tip to the measured centre of the selected well.")
         self.go_centre_button.clicked.connect(self._go_to_well_centre)
         self.forget_centre_button = secondary_button("Forget", self)
         self.forget_centre_button.setToolTip(
-            "Drop the measured centre: wells are then where the labware "
-            "definition puts them.")
+            "Use the labware definition's well positions.")
         self.forget_centre_button.clicked.connect(self._forget_well_centre)
         for pair in ((self.go_top_button, self.set_centre_button),
                      (self.go_centre_button, self.forget_centre_button)):
@@ -321,9 +314,8 @@ class LiquidHandlingPage(QWidget):
     def _groups_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Groups", 2))
-        box.layout().addWidget(_label("Run top to bottom; each well of a group "
-                                      "gets all of its steps before the next "
-                                      "well."))
+        box.layout().addWidget(_label("Groups run top to bottom; each well "
+                                      "gets all steps before the next."))
         self.groups = _list(self)
         self.groups.currentRowChanged.connect(lambda _r: self._group_chosen())
         box.layout().addWidget(self.groups)
@@ -350,9 +342,8 @@ class LiquidHandlingPage(QWidget):
         self.order_choice = combo_box(self)
         self.order_choice.addItem("Row by row", "by_row")
         self.order_choice.addItem("Column by column", "by_column")
-        self.order_choice.setToolTip("Row by row goes A1, A2, A3 ... then B1. "
-                                     "Column by column goes A1, B1, C1 ... "
-                                     "then A2.")
+        self.order_choice.setToolTip("Rows: A1, A2 … B1. Columns: A1, B1 … "
+                                     "A2.")
         self.order_choice.currentIndexChanged.connect(self._order_chosen)
         row.addWidget(self.group_up)
         row.addWidget(self.group_down)
@@ -360,9 +351,7 @@ class LiquidHandlingPage(QWidget):
         box.layout().addLayout(row)
         self.pause_first = QCheckBox("Pause after the first well", self)
         self.pause_first.setToolTip(
-            "Hold the run once this group's first well is done, to look at "
-            "it - whether the cuboid is still there - before the rest. "
-            "Continue goes on.")
+            "Pause after the group's first well.")
         self.pause_first.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.pause_first.toggled.connect(self._pause_first_toggled)
         box.layout().addWidget(self.pause_first)
@@ -396,7 +385,7 @@ class LiquidHandlingPage(QWidget):
         self.step_down.setToolTip("Do this step later.")
         self.step_down.clicked.connect(lambda: self._move_step(+1))
         self.copy_step_button = secondary_button("Copy", self)
-        self.copy_step_button.setToolTip("Put a copy of this step under it.")
+        self.copy_step_button.setToolTip("Duplicate this step.")
         self.copy_step_button.clicked.connect(self._copy_step)
         self.delete_step_button = secondary_button("Delete", self)
         self.delete_step_button.clicked.connect(self._delete_step)
@@ -413,9 +402,8 @@ class LiquidHandlingPage(QWidget):
 
         self.try_button = secondary_button("Try this step", self)
         self.try_button.setToolTip(
-            "Do this one step now, for the selected well if it is in the "
-            "group, else for the group's first well. The tip stays where the "
-            "step leaves it.")
+            "Run this step now on the selected well, or the group's first "
+            "well.")
         self.try_button.clicked.connect(self._try_step)
         box.layout().addWidget(self.try_button)
         self.steps_state = _label()
@@ -443,8 +431,8 @@ class LiquidHandlingPage(QWidget):
         self.tip_volume.setDecimals(0)
         self.tip_volume.setSingleStep(10.0)
         self.tip_volume.setSuffix(" µl")
-        self.tip_volume.setToolTip("The most the tip on the pipette takes. No "
-                                   "aspirate or mix is let put more in it.")
+        self.tip_volume.setToolTip("Tip capacity. Aspirates and mixes are "
+                                   "limited to it.")
         self.tip_volume.valueChanged.connect(self._tip_volume_edited)
         row.addWidget(self.tip_volume)
         row.addStretch(1)
@@ -457,24 +445,20 @@ class LiquidHandlingPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Run", 2))
         self.start_button = primary_button("Start", self)
-        self.start_button.setToolTip("Run the program from the first well. "
-                                     "Asks before the robot moves.")
+        self.start_button.setToolTip("Run the program from the first well.")
         self.start_button.clicked.connect(self._start)
         box.layout().addWidget(self.start_button)
         row = QHBoxLayout()
         self.pause_button = secondary_button("Pause", self)
-        self.pause_button.setToolTip("Hold the robot after the command it is "
-                                     "doing. Key: P")
+        self.pause_button.setToolTip("Pause after the current command. "
+                                     "Key: P")
         self.pause_button.clicked.connect(self._pause_run)
         self.continue_button = secondary_button("Continue", self)
-        self.continue_button.setToolTip("Go on after a pause, or after Stop "
-                                        "from the step after the last one "
-                                        "done. Key: P")
+        self.continue_button.setToolTip("Resume after Pause or Stop. Key: P")
         self.continue_button.clicked.connect(self._continue)
         self.stop_button = secondary_button("Stop", self)
-        self.stop_button.setToolTip("End the run after the command the robot "
-                                    "is doing; the tip is raised and keeps "
-                                    "what it holds. Key: Esc")
+        self.stop_button.setToolTip("Stop after the current command and "
+                                    "raise the tip. Key: Esc")
         self.stop_button.clicked.connect(self._stop_run)
         for button in (self.pause_button, self.continue_button,
                        self.stop_button):
@@ -482,8 +466,7 @@ class LiquidHandlingPage(QWidget):
         box.layout().addLayout(row)
         self.empty_button = secondary_button("Tip is empty", self)
         self.empty_button.setToolTip(
-            "Set what the tip holds to nothing, after it was emptied outside "
-            "this page - by hand, or on Manual control.")
+            "Mark the tip as empty.")
         self.empty_button.clicked.connect(self._mark_empty)
         box.layout().addWidget(self.empty_button)
         # A green check when the program has run to its end.
@@ -595,8 +578,8 @@ class LiquidHandlingPage(QWidget):
         if self.program.empty:
             return True
         answer = QMessageBox.question(
-            self, what, "Replace the program on the page? It is kept only if "
-            "it was saved with Save as.",
+            self, what, "Replace the current program? Unsaved changes are "
+            "lost.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         return answer == QMessageBox.StandardButton.Yes
@@ -984,7 +967,7 @@ class LiquidHandlingPage(QWidget):
 
         log.info("liquid handling: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy.")
+            self.jog.tell("Robot busy.")
 
     def _set_well_centre(self) -> None:
         nominal, pose = self._nominal, self.jog.pose
@@ -998,8 +981,8 @@ class LiquidHandlingPage(QWidget):
         if self._well_centre(slot, load_name) is not None:
             answer = QMessageBox.question(
                 self, "Set well centre",
-                f"Replace the measured centre of {load_name} in slot {slot}? "
-                f"Every step on this plate moves with it.",
+                f"Replace the measured centre of {load_name} in slot "
+                f"{slot}?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if answer != QMessageBox.StandardButton.Yes:
@@ -1045,7 +1028,7 @@ class LiquidHandlingPage(QWidget):
             return f"at the measured centre and rim of {well}."
 
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy.")
+            self.jog.tell("Robot busy.")
 
     def _forget_well_centre(self) -> None:
         shown = self._shown_plate()
@@ -1054,8 +1037,7 @@ class LiquidHandlingPage(QWidget):
         slot, load_name = shown
         answer = QMessageBox.question(
             self, "Forget well centre",
-            f"Forget the measured centre of {load_name} in slot {slot}? Its "
-            f"wells are then where the labware definition puts them.",
+            f"Forget the measured centre of {load_name} in slot {slot}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer == QMessageBox.StandardButton.Yes:
@@ -1099,7 +1081,7 @@ class LiquidHandlingPage(QWidget):
         log.info("liquid handling: trying step %d of %s for %s", index + 1,
                  group.name, well)
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy.")
+            self.jog.tell("Robot busy.")
 
     # -- checks -------------------------------------------------------------------
 
@@ -1218,7 +1200,7 @@ class LiquidHandlingPage(QWidget):
             return "run finished."
 
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy.")
+            self.jog.tell("Robot busy.")
             return
         self._running = True
         self.done.clear()
@@ -1372,13 +1354,13 @@ class LiquidHandlingPage(QWidget):
         self.remove_wells_button.setEnabled(shown is not None and bool(selection))
         if self.plate_choice.count() == 0:
             self.plate_state.setText(
-                "No labware on the deck: load it on the Robot & Deck page."
+                "No labware loaded."
                 if self.session.robot is not None else
-                "No robot: connect it on the Profile page to see its plates.")
+                "Robot not connected.")
         elif group is not None and not self._on_shown_plate(group):
             self.plate_state.setText(
-                f"{group.name} is on slot {group.slot} ({group.load_name}), "
-                f"which the robot does not hold now.")
+                f"{group.name}: slot {group.slot} ({group.load_name}) is not "
+                f"loaded.")
         else:
             self.plate_state.setText(f"{len(selection)} wells selected."
                                      if selection else "")
@@ -1405,11 +1387,9 @@ class LiquidHandlingPage(QWidget):
         try_problems = self._try_problems() if has_step else []
         self.try_button.setEnabled(idle and has_step and not try_problems)
         if not has_group:
-            self.steps_state.setText("Make a group first: select wells on the "
-                                     "plate and press New group.")
+            self.steps_state.setText("No group selected.")
         elif not group.steps:
-            self.steps_state.setText("No steps yet: Add step. Each step says "
-                                     "where it happens.")
+            self.steps_state.setText("No steps.")
         elif try_problems and idle:
             self.steps_state.setText("To try it: " + try_problems[0])
         else:
@@ -1419,8 +1399,7 @@ class LiquidHandlingPage(QWidget):
         # The program.
         name = self.program.name or "not saved under a name"
         self.program_state.setText(
-            f"{name}: {len(self.program.groups)} groups. Saved as you edit; "
-            f"Save as keeps a named copy.")
+            f"{name}: {len(self.program.groups)} groups. Autosaved.")
 
         # The run.
         problems = self._run_problems()

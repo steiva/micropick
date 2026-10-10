@@ -93,7 +93,7 @@ PAGES = (
     ("log", log.TITLE, log.LogPage, ASIDE),
 )
 
-ASIDE_TIP = "Used when needed, not a step of every run."
+ASIDE_TIP = "Tool, used as needed."
 
 # How often the next-step hint reads the checklist again.
 HINT_EVERY_MS = 1500
@@ -119,15 +119,12 @@ STOP_AGAIN_S = 10
 
 # What to do after the robot was stopped at once, in order.
 HALTED_STEPS = (
-    "1. Make sure nothing is in the robot's way, then go to the Profile "
-    "page and press Start new robot session. The robot lifts the tip and "
-    "goes to its home position.\n\n"
-    "2. Load the labware again on the Robot & Deck page: the new session "
-    "starts with an empty deck.\n\n"
-    "3. If the tip holds liquid or cuboids, put them back where they came "
-    "from (Liquid handling or Manual control) before anything else.\n\n"
-    "4. Plate plans keep their progress: a picking run carries on from the "
-    "well it was at.")
+    "1. Clear the robot's path, then Start new robot session (Profile). "
+    "The robot homes.\n\n"
+    "2. Load the labware again (Robot & Deck).\n\n"
+    "3. If the tip holds liquid or cuboids, return them first (Liquid "
+    "handling or Manual control).\n\n"
+    "4. Plate plans keep their progress.")
 
 
 class NavTab(QWidget):
@@ -259,10 +256,8 @@ class StatusBar(QStatusBar):
         self.stop.setStyleSheet(STOP_STYLE)
         self.stop.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.stop.setToolTip(
-            "Stop what the robot is doing (Esc). Press once: everything stops "
-            "after the current move. Press again while it is still moving: "
-            "the robot stops at once, and its session has to be started "
-            "again.")
+            "Stop (Esc). Once: after the current move. Twice: immediately; "
+            "the robot session must be restarted.")
 
         self.home = QToolButton()
         self.home.setAutoRaise(True)
@@ -291,7 +286,7 @@ class StatusBar(QStatusBar):
         self.help = QToolButton()
         self.help.setAutoRaise(True)
         self.help.setIcon(qta.icon("mdi6.help-circle-outline"))
-        self.help.setToolTip("Show the hint with the next step again.")
+        self.help.setToolTip("Show the next-step hint.")
         self.help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Stop last, at the right-hand end: the corner the eye and the
@@ -310,7 +305,7 @@ class StatusBar(QStatusBar):
     def show_home(self, connected: bool, busy: bool = False) -> None:
         self.home.setEnabled(connected and not busy)
         self.home.setToolTip(
-            "Send the gantry to its home position on all axes. Asks first."
+            "Home all axes."
             if connected else "Home robot position: not connected")
 
     def show_profile(self, name: str | None) -> None:
@@ -344,10 +339,9 @@ class StatusBar(QStatusBar):
             is_open = label in open_labels
             button.setIcon(qta.icon("mdi6.camera", color=TIP_ON) if is_open
                            else qta.icon("mdi6.camera-outline"))
-            button.setToolTip(f"{label}: open - click to show or hide its "
-                              f"window" if is_open
-                              else f"{label}: closed - click to open it in a "
-                                   f"window of its own")
+            button.setToolTip(f"{label}: open. Show or hide its window."
+                              if is_open
+                              else f"{label}: closed. Open in a window.")
 
     def show_deck_problems(self, problems: list) -> None:
         """Slots holding labware without their module's offset; [] hides."""
@@ -380,10 +374,10 @@ class StatusBar(QStatusBar):
             self.lights.setToolTip("Rail lights: not connected")
         elif on:
             self.lights.setIcon(qta.icon("mdi6.lightbulb-on", color=TIP_ON))
-            self.lights.setToolTip("Rail lights are on. Click to switch off.")
+            self.lights.setToolTip("Rail lights: on")
         else:
             self.lights.setIcon(qta.icon("mdi6.lightbulb-off-outline"))
-            self.lights.setToolTip("Rail lights are off. Click to switch on.")
+            self.lights.setToolTip("Rail lights: off")
 
 
 class MainWindow(QMainWindow):
@@ -433,9 +427,7 @@ class MainWindow(QMainWindow):
         self.gear.setAutoRaise(True)
         self.gear.setIcon(qta.icon("mdi6.cog-outline"))
         self.gear.setIconSize(QSize(GEAR_PX, GEAR_PX))
-        self.gear.setToolTip("Settings: the robot's address, where outputs "
-                             "are saved, which camera is which, the models "
-                             "and the calibration")
+        self.gear.setToolTip("Settings")
         self.gear.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.gear.setCursor(Qt.CursorShape.PointingHandCursor)
         tab_row.addSpacing(SPACING)
@@ -728,8 +720,8 @@ class MainWindow(QMainWindow):
         self.status.stop.setText(STOP_NOW_TEXT)
         self._stop_reset.start(STOP_AGAIN_S * 1000)
         self.status.showMessage(
-            "Stopping after the current move. Press Stop again to stop the "
-            "robot at once (its session then has to be started again).",
+            "Stopping after the current move. Press Stop again to stop "
+            "immediately.",
             STOP_AGAIN_S * 1000)
 
     def _disarm_stop(self) -> None:
@@ -753,7 +745,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Robot stopped")
-        box.setText("The robot was stopped where it is.")
+        box.setText("Robot stopped.")
         box.setInformativeText(HALTED_STEPS)
         report = box.addButton("Save report for help…",
                                QMessageBox.ButtonRole.ActionRole)
@@ -770,9 +762,8 @@ class MainWindow(QMainWindow):
         self._halt_worker = None
         _log.error("halt: %s", reason)
         QMessageBox.critical(
-            self, "Stop", f"The robot could not be stopped from here: {reason}"
-                          f"\n\nUse the robot's own power switch if it is "
-                          f"still moving.")
+            self, "Stop", f"Could not stop the robot: {reason}\n\nUse the "
+                          f"robot's power switch if it is still moving.")
 
     def _home_robot(self) -> None:
         """Home from the status bar. Through the shown page's jog panel when
@@ -783,8 +774,7 @@ class MainWindow(QMainWindow):
         if robot is None:
             return
         if self._robot_busy():
-            self.status.showMessage("Not now: the robot is busy. Home it when "
-                                    "it is done.", 6000)
+            self.status.showMessage("Robot busy.", 6000)
             return
         answer = QMessageBox.question(
             self, HOME_TITLE, HOME_DETAIL,
@@ -794,7 +784,7 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.StandardButton.Yes:
             return
         if self._robot_busy():                       # changed while asking
-            self.status.showMessage("Not now: the robot is busy.", 6000)
+            self.status.showMessage("Robot busy.", 6000)
             return
         panels = [panel for panel in
                   self.stack.currentWidget().findChildren(JogPanel)
@@ -856,7 +846,7 @@ class MainWindow(QMainWindow):
         if self.session.robot is None:
             return
         if self._robot_busy():
-            self.status.showMessage("Not now: the robot is busy.", 6000)
+            self.status.showMessage("Robot busy.", 6000)
             return
         panels = [panel for panel in
                   self.stack.currentWidget().findChildren(JogPanel)

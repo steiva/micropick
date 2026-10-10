@@ -89,8 +89,7 @@ def _dated(when, what: str) -> tuple[bool, str, bool]:
         return True, "", False
     day, age = _date(when)
     if age > STALE_DAYS:
-        return True, (f"{what} on {day}, {age} days ago: redo it if anything "
-                      f"was moved or replaced since."), True
+        return True, (f"{what} on {day} ({age} days ago)."), True
     return True, f"{what} on {day}.", False
 
 
@@ -110,17 +109,13 @@ def tip_calibration_status(session) -> tuple[bool, str, bool]:
         return False, "There is no tip offset in this profile.", False
     tip, state = session.tip, session.run_state
     if session.robot is None or tip.attached is not True:
-        return False, ("No tip is on the pipette" if tip.attached is False
-                       else "The robot's tip state is unknown") + (
-            ": a calibration holds only for the tip it measured, so a new "
-            "tip needs a new one."), False
+        return False, ("No tip on the pipette." if tip.attached is False
+                       else "Tip state unknown."), False
     run_id = state.run_id if state is not None else None
     if offset.robot_session is None or offset.robot_session != run_id:
-        return False, ("Measured in another robot session: after the robot "
-                       "is restarted, calibrate again."), False
+        return False, "Measured in an earlier robot session.", False
     if offset.tip_pickup is None or offset.tip_pickup != tip.pickup:
-        return False, ("Measured on another tip: this one needs its own "
-                       "calibration."), False
+        return False, "Measured on a different tip.", False
     return _dated(offset.measured_at, "Measured on this tip")
 
 
@@ -142,18 +137,16 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
     """key -> (done, detail, stale) for every step."""
     profile, robot = session.profile, session.robot
     out: dict[str, tuple[bool, str, bool]] = {}
-    out["profile"] = ((True, f"Profile {profile.name!r} is loaded.", False)
+    out["profile"] = ((True, f"Profile {profile.name!r}.", False)
                       if profile is not None else
-                      (False, "Choose one under Load profile and press "
-                              "Load.", False))
+                      (False, "", False))
     if robot is not None:
         out["robot"] = (True, f"Robot session: {session.robot_state}.", False)
     elif session.has_connection:
-        out["robot"] = (False, "The robot answers, but no robot session is "
-                               "chosen: start a new one.", False)
+        out["robot"] = (False, "Robot found; no robot session chosen.",
+                        False)
     else:
-        out["robot"] = (False, "Turn the robot on, wait for it to start, "
-                               "then press Connect.", False)
+        out["robot"] = (False, "Robot not connected.", False)
     if profile is None:
         for key in STEPS:
             out.setdefault(key, (False, "", False))
@@ -164,53 +157,48 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
                if label is None]
     out["cameras"] = ((True, f"Upper: {upper}; lower: {lower}.", False)
                       if not missing else
-                      (False, f"The profile does not say which camera is the "
-                              f"{' and the '.join(missing)} one.", False))
+                      (False, f"Not set: {' and '.join(missing)} camera.",
+                       False))
 
     model = profile.picking.model_file
     if not model and session.mock:
         out["model"] = (True, f"{STANDIN} (--mock).", False)
     elif not model:
-        out["model"] = (False, "No cuboid model is named in the profile.",
-                        False)
+        out["model"] = (False, "No cuboid model chosen.", False)
     elif model != STANDIN and model not in DetectorService.available_weights():
-        out["model"] = (False, f"{model} is not on this computer: copy it "
-                               f"in, or choose another.", False)
+        out["model"] = (False, f"{model} not found on this computer.",
+                        False)
     else:
         out["model"] = (True, f"{model}.", False)
 
     pixel_map = profile.pixel_map
     out["camera_calibration"] = (
         _dated(pixel_map.fitted_at, "Calibrated") if pixel_map is not None
-        else (False, "There is no pixel map in this profile.", False))
+        else (False, "No pixel map in this profile.", False))
     tip = session.tip.attached
-    out["tip"] = ((True, "The robot reports a tip on the pipette.", False)
+    out["tip"] = ((True, "Tip on.", False)
                   if tip is True else
-                  (False, "The robot reports no tip on the pipette."
-                   if tip is False else
-                   "The robot's tip state is unknown.", False))
+                  (False, "No tip." if tip is False else
+                   "Tip state unknown.", False))
     out["tip_calibration"] = tip_calibration_status(session)
 
     for key, name in (("dish_position", DISH_POSITION),
                       ("shake_position", SHAKE_POSITION)):
         out[key] = ((True, "Set.", False) if name in profile.positions else
-                    (False, f"No {name!r} position in the profile.", False))
+                    (False, "Not set.", False))
     bottom = profile.calibration.dish_bottom_set_at
     depth = f"{profile.picking.dish_bottom:.2f} mm"
     out["dish_bottom"] = (
         (True, f"{depth}, set on {_date(bottom)[0]}.", False)
         if bottom is not None else
-        (False, f"{depth}, never measured here: set it if cuboids are not "
-                f"picked up.", False))
+        (False, f"{depth} (default, not measured).", False))
 
     routine = session.routine
     if routine is None:
-        out["plan"] = (False, "A run with nowhere to put a cuboid picks one "
-                              "up and then asks what to do with it.", False)
+        out["plan"] = (False, "No plate plan.", False)
     elif routine.needs_confirmation:
-        out["plan"] = (False, "The plate plan was restored with progress on "
-                              "it: confirm it on the Plate plan page.",
-                       False)
+        out["plan"] = (False, "Restored plate plan: confirm it on the Plate "
+                              "plan page.", False)
     else:
         out["plan"] = (True, f"Plate plan {getattr(routine, 'name', '')!r}.",
                        False)
@@ -220,23 +208,20 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
         slot = str(routine.destination.slot)
         state = session.run_state
         if state is None or slot not in state.labware:
-            out["plate"] = (False, f"The robot session holds nothing in slot "
-                                   f"{slot}, where the plate plan delivers.",
+            out["plate"] = (False, f"Slot {slot} (plate plan destination) "
+                                   f"is empty.",
                             False)
         elif any(p.slot == slot for p in session.deck_problems()):
-            out["plate"] = (False, f"Slot {slot}: the plate was loaded "
-                                   f"without the module's offset, and a well "
-                                   f"move would hit the module. Load it "
-                                   f"again.", False)
+            out["plate"] = (False, f"Slot {slot}: plate loaded without the "
+                                   f"module offset. Load it again.", False)
         else:
             detail = f"In slot {slot}."
             centre = well_centre(session)
             if centre is not None:
                 x, y, _z = centre.offset
-                detail += (f" Well centre measured on "
-                           f"{centre.well or 'a well'} (Liquid handling): "
-                           f"deposits go {x:+.2f}, {y:+.2f} mm from the "
-                           f"robot's well centre, plus the well offset.")
+                detail += (f" Measured well centre "
+                           f"({centre.well or 'a well'}): {x:+.2f}, "
+                           f"{y:+.2f} mm.")
             out["plate"] = (True, detail, False)
     return out
 

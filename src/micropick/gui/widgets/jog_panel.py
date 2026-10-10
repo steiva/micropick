@@ -134,7 +134,7 @@ from ..theme.factory import (Section, card, combo_box, heading,
                              primary_button, secondary_button)
 
 # What the picture says while there is no robot to ask.
-NO_ROBOT = "no robot — connect it on the Profile page"
+NO_ROBOT = "robot not connected"
 from ..workers import Worker
 
 __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS", "HOME_TITLE",
@@ -171,9 +171,7 @@ PANEL_WIDTH = 400
 # Home, asked the same way from the panel's Machine card and from the status
 # bar's button.
 HOME_TITLE = "Home robot position?"
-HOME_DETAIL = ("The gantry travels to the home position on all axes. Saved "
-               "positions are kept, but the undo history no longer describes "
-               "where the robot is.")
+HOME_DETAIL = ("Home all axes. The undo history is cleared.")
 
 
 def home_robot(robot) -> str:
@@ -404,8 +402,7 @@ class JogPanel(QWidget):
         # the saving; here, next to the D-pad, and named for what it does.
         self.undo_button = secondary_button("Undo step", self)
         self.undo_button.setToolTip(
-            "Reverse the last jog step. Going to a position is not a step "
-            "and is not undone.")
+            "Undo the last jog step.")
         self.undo_button.clicked.connect(lambda: self._command("undo"))
         self._movers.append(self.undo_button)
         box.body.layout().addWidget(self.undo_button)
@@ -424,9 +421,8 @@ class JogPanel(QWidget):
             else:
                 axis, direction = view_move(self._view_axes, *key)
                 button.setText(_ARROW_TEXT[key])
-                button.setToolTip(f"Moves the tip this way on the picture "
-                                  f"(robot {'+' if direction > 0 else '-'}"
-                                  f"{axis.upper()}).")
+                button.setToolTip(f"Robot {'+' if direction > 0 else '-'}"
+                                  f"{axis.upper()}.")
 
     def _move_button(self, text: str, axis: str, direction: int):
         button = secondary_button(text, self)
@@ -478,7 +474,7 @@ class JogPanel(QWidget):
 
         self.remember_button = primary_button("Save this position…", self)
         self.remember_button.setToolTip(
-            "Store where the gantry is now, under a name, in the profile.")
+            "Save the current position to the profile.")
         self.remember_button.clicked.connect(self._remember)
         self._movers.append(self.remember_button)
         box.body.layout().addWidget(self.remember_button)
@@ -668,8 +664,7 @@ class JogPanel(QWidget):
             self, "Delete position",
             f"Delete {name!r} "
             f"({', '.join(f'{v:.2f}' for v in where)}) from profile "
-            f"{self.session.profile.name!r}? Anything that drives to it by "
-            f"name will stop working until it is taught again.",
+            f"{self.session.profile.name!r}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
@@ -683,8 +678,7 @@ class JogPanel(QWidget):
         if self.controller is None or self._busy():
             return
         if self.session.profile is None:
-            self._say("no profile is loaded, so there is nowhere to remember a "
-                      "position", firm=True)
+            self._say("no profile loaded", firm=True)
             return
         name, ok = QInputDialog.getText(
             self, "Save this position",
@@ -1023,8 +1017,7 @@ class JogPanel(QWidget):
                 self.saved.setCurrentItem(item)
         self.positions_note.setText(
             "" if rows else
-            ("No positions in this profile. Jog somewhere worth returning to "
-             "and save it."))
+            "No saved positions.")
 
     def _on_profile_changed(self, _profile) -> None:
         if self.controller is not None:

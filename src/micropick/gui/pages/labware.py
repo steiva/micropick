@@ -151,8 +151,7 @@ class _TypeDialog(QDialog):
         self.name.setPlaceholderText("e.g. Cooling block")
         self.height = _height_box(self)
         self.height.setValue(height)
-        self.height.setToolTip("How much the module usually raises the "
-                               "labware in its slot.")
+        self.height.setToolTip("Labware height added by the module.")
         form = QFormLayout(self)
         form.addRow("Name", self.name)
         form.addRow("Height", self.height)
@@ -254,8 +253,7 @@ class LabwarePage(QWidget):
         self.slot_labware.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         self.remove_button = secondary_button("Remove", self)
-        self.remove_button.setToolTip("Take this labware off the deck in the "
-                                      "robot session (off deck).")
+        self.remove_button.setToolTip("Remove from the robot session.")
         self.remove_button.clicked.connect(self._remove)
         row = QHBoxLayout()
         row.addWidget(self.slot_labware, 1)
@@ -264,8 +262,8 @@ class LabwarePage(QWidget):
         self.slot_module = QLabel()
         self.slot_module.setWordWrap(True)
         self.remove_module_button = secondary_button("Remove", self)
-        self.remove_module_button.setToolTip("Take the deck module out of "
-                                             "this slot in the profile.")
+        self.remove_module_button.setToolTip("Remove the module from this "
+                                             "slot.")
         self.remove_module_button.clicked.connect(self._remove_module)
         row = QHBoxLayout()
         row.addWidget(self.slot_module, 1)
@@ -355,21 +353,19 @@ class LabwarePage(QWidget):
         row.addWidget(QLabel("Height"))
         self.module_height = _height_box(self)
         self.module_height.valueChanged.connect(lambda _v: self._refresh())
-        self.module_height.setToolTip("How much this module raises the "
-                                      "labware in its slot.")
+        self.module_height.setToolTip("Labware height added by the "
+                                      "module.")
         row.addWidget(self.module_height)
         row.addStretch(1)
         body.addLayout(row)
 
         row = QHBoxLayout()
         self.new_type_button = secondary_button("New module…", self)
-        self.new_type_button.setToolTip("Add a kind of module to the list, "
-                                        "with its usual height.")
+        self.new_type_button.setToolTip("Add a module type.")
         self.new_type_button.clicked.connect(self._new_type)
         self.delete_type_button = secondary_button("Delete type", self)
         self.delete_type_button.setToolTip(
-            "Take this kind of module off the list. Modules already placed "
-            "stay where they are, with their heights.")
+            "Delete this module type. Placed modules are kept.")
         self.delete_type_button.clicked.connect(self._delete_type)
         row.addWidget(self.new_type_button)
         row.addWidget(self.delete_type_button)
@@ -742,7 +738,7 @@ class LabwarePage(QWidget):
             return
         if profile.deck.module_type(name) is not None:
             QMessageBox.warning(self, "New module",
-                                f"There is already a type called {name!r}.")
+                                f"Module type {name!r} already exists.")
             return
         types = list(profile.deck.module_types) + [
             ModuleType(name=name, height_mm=round(dialog.height.value(), 3))]
@@ -757,8 +753,7 @@ class LabwarePage(QWidget):
         name = current.text()
         answer = QMessageBox.question(
             self, "Delete module type",
-            f"Take {name!r} off the list of module types? Modules already "
-            f"placed stay where they are.",
+            f"Delete module type {name!r}? Placed modules are kept.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
@@ -893,16 +888,13 @@ class LabwarePage(QWidget):
             self.modules_state.setText("No profile loaded.")
         elif not modules:
             self.modules_state.setText(
-                "No modules in the profile. If anything on the deck raises "
-                "the labware in its slot - the picking platform, the "
-                "calibration module - choose it here, click its slot on the "
-                "deck and Load it, or the robot will plan its well moves to "
-                "the slot floor and hit it.")
+                "No modules. Add every module that raises labware (picking "
+                "platform, calibration module): choose it, click its slot, "
+                "Load.")
         else:
             self.modules_state.setText(
-                "Every labware loaded into a module's slot carries the "
-                "module's offset. Choose a type and Load it into a slot to "
-                "place one or change its height.")
+                "Labware in a module slot is loaded with the module's "
+                "offset.")
         if problems:
             self.hazard.setText(
                 "<b style='color:#f0a030'>"
@@ -929,18 +921,15 @@ class LabwarePage(QWidget):
                 # is not something the operator put on the deck.
                 count = len([slot for slot in held if slot != TRASH_SLOT])
                 self.slot_state.setText(
-                    f"Click a slot on the deck. The robot session holds "
-                    f"{count} labware{'s' if count != 1 else ''}.")
+                    f"Click a slot. {count} labware loaded.")
             else:
                 self.slot_state.setText(
-                    "Click a slot on the deck. Labware needs the robot: "
-                    "connect it on the Profile page.")
+                    "Click a slot. Robot not connected.")
         else:
             self.slot_heading.setText(f"Slot {self._slot}")
             self.slot_state.setText(
                 "" if connected else
-                "No robot session: labware cannot be loaded or seen. "
-                "Connect the robot on the Profile page.")
+                "Robot not connected.")
         self.slot_state.setVisible(bool(self.slot_state.text()))
 
         show = self._slot is not None
@@ -948,13 +937,13 @@ class LabwarePage(QWidget):
             self.slot_labware.setText(
                 f"Labware: {self._describe(entry)}\n{entry.namespace}/"
                 f"{entry.load_name}/{entry.version}" if entry is not None
-                else "Labware: none, as far as the robot session knows.")
+                else "Labware: none.")
         self.slot_labware.setVisible(connected and show)
         self.remove_button.setVisible(connected and show and entry is not None)
         self.remove_button.setEnabled(not busy)
         if show and module_slot is not None:
             self.slot_module.setText(
-                f"Deck module: {here.name or 'module'}, raises the labware "
+                f"Deck module: {here.name or 'module'}, "
                 f"+{here.height_mm:g} mm" if here is not None
                 else "Deck module: none.")
         self.slot_module.setVisible(show and module_slot is not None)
@@ -975,8 +964,7 @@ class LabwarePage(QWidget):
             ready = profile is not None and module_slot is not None
         else:
             self.chosen_state.setText(
-                "Choose labware or a deck module below, then a slot on the "
-                "deck.")
+                "Choose labware or a module, then a slot.")
             replacing, ready = False, False
         where = f" slot {self._slot}" if show else " slot"
         self.load_button.setText(("Replace in" if replacing else "Load into")
@@ -993,23 +981,19 @@ class LabwarePage(QWidget):
             self.tip_state.setText("")
         elif tip.attached is None:
             self.tip_state.setText(
-                "The robot's tip state could not be read. Nothing here will "
-                "move until it is: connect again on the Profile page. A tip "
-                "nobody knows about is how the robot crashes.")
+                "Tip state unknown: reconnect the robot.")
         elif tip.attached:
             self.tip_state.setText(
-                "The robot reports a tip on the pipette"
-                + (f", from slot {tip.slot} {tip.well}" if tip.returnable
-                   else ", from labware no longer in a slot")
+                "Tip on"
+                + (f" (slot {tip.slot} {tip.well})" if tip.returnable
+                   else "")
                 + ". Drop it before picking up another.")
         elif rack is not None:
             self.tip_state.setText(
-                f"The robot reports no tip. Slot {self._slot} is a tip rack: "
-                f"choose a well and pick up.")
+                f"No tip. Choose a well in slot {self._slot} and pick up.")
         else:
             self.tip_state.setText(
-                "The robot reports no tip. Select a slot holding a tip rack "
-                "to pick one up.")
+                "No tip. Select a tip rack to pick one up.")
         known = connected and not busy and tip.attached is not None
         self.pick_button.setEnabled(known and not tip.attached
                                     and rack is not None

@@ -203,7 +203,7 @@ class DeckView(QGraphicsView):
             if name == TRASH_SLOT:
                 slot.setPen(QPen(TRASH_EDGE, 1, Qt.PenStyle.DashLine))
                 slot.setBrush(Qt.BrushStyle.NoBrush)
-                slot.setToolTip("slot 12 is the fixed trash")
+                slot.setToolTip("Slot 12: fixed trash")
                 continue
             held = self._labware.get(name)
             selected = name == self._selected

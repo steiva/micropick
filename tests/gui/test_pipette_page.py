@@ -39,7 +39,7 @@ def page(app, tmp_path, monkeypatch):
 def test_no_offset_in_the_profile_starts_from_the_defaults(page):
     assert page.session.profile.calibration.pipette_offset is None
     assert (page.dx.value(), page.dy.value()) == DEFAULT_OFFSET_MM
-    assert "usual values" in page.offset_note.text()
+    assert "Start values" in page.offset_note.text()
     page.dx.setValue(3.0)
     page._refresh()
     assert page.dx.value() == 3.0                  # typed, so kept

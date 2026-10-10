@@ -62,7 +62,7 @@ class NextStepHint(QFrame):
         self.close_button = QToolButton(self)
         self.close_button.setAutoRaise(True)
         self.close_button.setIcon(qta.icon("mdi6.close"))
-        self.close_button.setToolTip("Hide this hint until the next step.")
+        self.close_button.setToolTip("Hide until the next step.")
         self.close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.close_button.setCursor(Qt.CursorShape.ArrowCursor)
         self.close_button.clicked.connect(self._close)
@@ -117,8 +117,7 @@ class NextStepHint(QFrame):
         if key != self._shown_for:
             self._shown_for = key
             if step is None:
-                self.text.setText(READY + ": every step of the Operation "
-                                          "checklist is done.")
+                self.text.setText(READY + ".")
                 self._page, place = "picking", "Picking"
             else:
                 self.text.setText(step.text)

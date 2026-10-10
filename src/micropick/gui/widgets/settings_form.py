@@ -184,8 +184,7 @@ class _Row:
             # module learns its type.
             text = QLineEdit(str(value))
             text.setReadOnly(True)
-            text.setToolTip("this setting is not editable here; edit "
-                            "picking.json in the profile")
+            text.setToolTip("Read-only here; edit picking.json.")
             self.widget, self._read = text, None
 
     @property
@@ -264,10 +263,9 @@ class PickingSettingsDialog(QDialog):
         area.setWidget(host)
 
         legend = QLabel(
-            f"Picking settings, saved into the profile's picking.json. "
-            f"<span style='color:{TROUBLE}'><b>Amber</b></span> marks the ones "
-            f"behind most failed pickups and deposits; hover over any setting "
-            f"for what it does.")
+            f"Picking settings (picking.json). "
+            f"<span style='color:{TROUBLE}'><b>Amber</b></span>: settings "
+            f"most often behind failed pickups and deposits.")
         legend.setWordWrap(True)
 
         self.message = QLabel()
@@ -293,9 +291,8 @@ class PickingSettingsDialog(QDialog):
             "Previous settings", QDialogButtonBox.ButtonRole.ResetRole)
         self.previous_button.setEnabled(previous is not None)
         self.previous_button.setToolTip(
-            f"Put the settings saved before the last save ({_when(previous)}) "
-            f"into the form. Nothing is saved until Save."
-            if previous is not None else "No earlier settings are kept yet.")
+            f"Load the previous settings ({_when(previous)}) into the form."
+            if previous is not None else "No previous settings.")
         self.previous_button.clicked.connect(self._restore_previous)
 
         layout = QVBoxLayout(self)
@@ -385,9 +382,8 @@ class PickingSettingsDialog(QDialog):
         _when_text, config = self._previous
         for name, row in self._rows.items():
             row.set_value(getattr(config, name))
-        self.message.setText(f"The settings from before the last save "
-                             f"({_when(self._previous)}) are in the form: "
-                             f"Save to use them.")
+        self.message.setText(f"Previous settings ({_when(self._previous)}) "
+                             f"loaded. Save to apply.")
         self.message.show()
 
     def changes(self) -> list[tuple[str, object, object]]:

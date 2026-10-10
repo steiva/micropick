@@ -54,8 +54,7 @@ class LogPage(QWidget):
         self.report_button = secondary_button("Save report for help…", self)
         self.report_button.clicked.connect(
             lambda: save_report_asking(self.session, self))
-        where = QLabel("The log is also saved to a file in the Logs folder "
-                       "(Settings).")
+        where = QLabel("Also saved in the Logs folder.")
 
         header = QHBoxLayout()
         header.addWidget(where)

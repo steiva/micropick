@@ -207,9 +207,8 @@ KEYS = (("Space", "resume", "resume"),
         ("Esc", "stop", "stop"))
 
 CONFIRM_START = (
-    "Make sure the dish and the well plate are in place and their lids are "
-    "off, and that the picking settings are right.\n\n"
-    "The robot starts moving as soon as you press Start.")
+    "Dish and plate in place, lids off, picking settings checked.\n\n"
+    "The robot starts moving on Start.")
 
 
 class PickingPage(QWidget):
@@ -317,8 +316,8 @@ class PickingPage(QWidget):
         self.step_dish = StepCard(self, 2, STEPS["dish_position"][0])
         box = self.step_dish.box
         box.layout().addWidget(wrapped(
-            "Jog until the dish fills the picture, then Set position. The "
-            "run starts from here, and looks at the dish from here."))
+            "Jog until the dish fills the picture, then Set position. Runs "
+            "start and image the dish from here."))
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Camera"))
@@ -344,10 +343,9 @@ class PickingPage(QWidget):
         self.step_bottom = StepCard(self, 4, STEPS["dish_bottom"][0])
         box = self.step_bottom.box
         box.layout().addWidget(wrapped(
-            "Optional. The height every pickup is measured from. With the "
-            "dish in place: Tip over the dish centre, jog the tip down "
-            "(PgDn; small steps at the end) until it just touches the "
-            "bottom, then Set dish bottom here."))
+            "Reference height for pickups. Move the tip over the dish "
+            "centre, lower it until it touches the bottom, then Set dish "
+            "bottom here."))
 
         # One above the other: side by side in half the panel, the two
         # names did not fit their buttons.
@@ -367,7 +365,7 @@ class PickingPage(QWidget):
         self.step_shake = StepCard(self, 3, STEPS["shake_position"][0])
         box = self.step_shake.box
         box.layout().addWidget(wrapped(
-            "When too few cuboids lie apart, the run stirs the dish here. "
+            "Where a run stirs the dish when too few cuboids are isolated. "
             "Jog the tip into the medium, clear of the cuboids, then Set "
             "shake position."))
 
@@ -394,9 +392,8 @@ class PickingPage(QWidget):
         self.step_analysis = StepCard(self, 5, "Analyse the dish")
         box = self.step_analysis.box
         box.layout().addWidget(wrapped(
-            "Optional, and worth it: the contours over the picture and the "
-            "sizes below show what a run would pick. If the dish moves, the "
-            "contours stop matching: analyse again."))
+            "Detect cuboids in the current picture and mark those a run "
+            "would pick."))
 
         self.analyse_button = primary_button("Analyse the dish", self)
         self.analyse_button.clicked.connect(self._analyse)
@@ -406,7 +403,7 @@ class PickingPage(QWidget):
         self.settings_button.clicked.connect(self._settings)
         box.layout().addWidget(self.settings_button)
 
-        self.result = QLabel("nothing analysed yet")
+        self.result = QLabel("Not analysed.")
         self.result.setWordWrap(True)
         self.result.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -494,8 +491,7 @@ class PickingPage(QWidget):
             return f"at {DISH_POSITION!r}"
 
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy; Go to picking position "
-                          "again when it is done.")
+            self.jog.tell("Robot busy.")
 
     def _teach_dish(self) -> None:
         if (self.session.robot is None or self.session.profile is None
@@ -510,8 +506,7 @@ class PickingPage(QWidget):
                     f"{where[1]:.1f}, {where[2]:.1f})")
 
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell("not now: the robot is busy; Set position again "
-                          "when it is done.")
+            self.jog.tell("Robot busy.")
 
     # -- the dish bottom (Z calibration) ----------------------------------------
 
@@ -558,8 +553,7 @@ class PickingPage(QWidget):
                     f"dish centre: jog it down until it touches")
 
         if not self.jog.run_job(job, what="tip over the dish centre"):
-            self.jog.tell("not now: the robot is busy; try again when it is "
-                          "done.")
+            self.jog.tell("Robot busy.")
 
     def _set_bottom(self) -> None:
         """Read Z where the tip is, then ask before it is saved."""
@@ -570,8 +564,7 @@ class PickingPage(QWidget):
         if not self.jog.run_job(lambda _log: float(xyz(robot)[2]),
                                 moves=False, what="reading Z",
                                 then=self._confirm_bottom):
-            self.jog.tell("not now: the robot is busy; Set dish bottom here "
-                          "again when it is done.")
+            self.jog.tell("Robot busy.")
 
     def _confirm_bottom(self, z: float) -> str:
         picking = self.session.profile.picking
@@ -580,10 +573,10 @@ class PickingPage(QWidget):
                 f"It is {old:.2f} mm now ({z - old:+.2f} mm). Pickups will be "
                 f"at {z + above:.2f} mm, {above:g} mm above it.")
         if abs(z - old) > BIG_CHANGE_MM:
-            text += ("\n\nThat is a big change: check that the tip rests on "
-                     "the bottom of the dish and not on its rim or a lid.")
+            text += ("\n\nLarge change: check that the tip rests on the "
+                     "dish bottom.")
         answer = QMessageBox.question(
-            self, "Dish bottom", text + "\n\nThe tip goes up afterwards.",
+            self, "Dish bottom", text + "\n\nThe tip is raised afterwards.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
@@ -621,8 +614,7 @@ class PickingPage(QWidget):
             return f"at {SHAKE_POSITION!r}"
 
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy; Go to shake again "
-                          "when it is done.")
+            self.jog.tell("Robot busy.")
 
     def _shake(self) -> None:
         """What the run does when too few cuboids are isolated, on demand:
@@ -647,8 +639,7 @@ class PickingPage(QWidget):
             return f"shaken; back at {DISH_POSITION!r}"
 
         if not self.jog.run_job(job):
-            self.jog.tell("not now: the robot is busy; Shake the dish again "
-                          "when it is done.")
+            self.jog.tell("Robot busy.")
 
     def _can_shake_in_run(self) -> bool:
         """A run paused or waiting, with no shake of it outstanding."""
@@ -691,8 +682,7 @@ class PickingPage(QWidget):
                     f"{where[1]:.1f}, {where[2]:.1f})")
 
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell("not now: the robot is busy; Set shake position "
-                          "again when it is done.")
+            self.jog.tell("Robot busy.")
 
     # -- looking at it --------------------------------------------------------
 
@@ -706,22 +696,17 @@ class PickingPage(QWidget):
             return
         profile = self.session.profile
         if profile is None:
-            self.result.setText("load a profile first: the shape windows and "
-                                "the dish geometry come from its picking "
-                                "configuration.")
+            self.result.setText("No profile loaded.")
             return
         if self.detector.model is None:
             self.result.setText(
-                "no detector. Choose the cuboid weights in Settings; "
-                "this page loads them when it opens."
+                "Cuboid detector not loaded."
                 if self._wanted_model() else
-                "no cuboid model named in the profile. Choose one in "
-                "Settings (the gear).")
+                "No cuboid model chosen (Settings).")
             return
         camera = self._camera()
         if camera is None:
-            self.result.setText("no camera. It opens itself when this page is "
-                                "shown; if it did not, the reason is above.")
+            self.result.setText("Upper camera not open.")
             return
 
         cfg, pixel_map = profile.picking, profile.pixel_map
@@ -805,7 +790,7 @@ class PickingPage(QWidget):
 
     def _loaded(self, _description) -> None:
         if self._detection is None:
-            self.result.setText("nothing analysed yet")
+            self.result.setText("Not analysed.")
         self._refresh()
 
     # -- the run ----------------------------------------------------------------
@@ -839,12 +824,11 @@ class PickingPage(QWidget):
 
         out = [line("Load the cuboid detector", self.detector.model is not None,
                     model_done, "Choose the cuboid model",
-                    "Loaded when this page opens, from the model chosen in "
+                    "Loaded automatically from the model chosen in "
                     "Settings."),
                line("Open the upper camera", self._camera() is not None,
                     cameras_done, "Choose the upper and lower cameras",
-                    "Opened when this page opens; its button in the status "
-                    "bar opens it too.")]
+                    "Opened automatically.")]
         clips = "Open the lower camera for pickup clips"
         if not self.clips_box.isChecked():
             out.append(Check(clips, BLOCKED, optional=True,
@@ -854,9 +838,8 @@ class PickingPage(QWidget):
             out.append(line(
                 clips, self._lower_camera() is not None, cameras_done,
                 "Choose the upper and lower cameras",
-                self._clips_failure + ": untick Save pickup clips, or choose "
-                "another mode in Settings." if self._clips_failure else
-                f"Opened in {w}x{h}, the clips' mode (Settings)."))
+                self._clips_failure if self._clips_failure else
+                f"Opened automatically at {w}x{h} (Settings)."))
         return out
 
     def _well_centre(self):
@@ -867,7 +850,7 @@ class PickingPage(QWidget):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Start picking")
-        box.setText("Start the picking routine?")
+        box.setText("Start picking?")
         box.setInformativeText(f"{self.session.routine.summary()}\n\n"
                                f"{CONFIRM_START}")
         start = box.addButton("Start", QMessageBox.ButtonRole.AcceptRole)
@@ -965,7 +948,7 @@ class PickingPage(QWidget):
     def _stop_run(self) -> None:
         if self._running():
             self._stop.set()
-            self.run_state.setText("stopping at the next move…")
+            self.run_state.setText("Stopping after the current move…")
 
     def _on_event(self, payload) -> None:
         _kind, view, state, message = payload
@@ -1098,8 +1081,7 @@ class PickingPage(QWidget):
     def _settings(self) -> None:
         profile = self.session.profile
         if profile is None:
-            self.result.setText("no profile loaded, so there is nothing to "
-                                "save settings into.")
+            self.result.setText("No profile loaded.")
             return
         dialog = PickingSettingsDialog(profile.picking,
                                        profile_name=profile.name,
@@ -1224,9 +1206,7 @@ class PickingPage(QWidget):
                                    f"{self._clip_mode()[1]}: {reason}")
         else:
             self.dish_state.setText(
-                f"camera {label!r} did not open: {reason}\n"
-                f"Open it with its button in the status bar once the "
-                f"reason is fixed.")
+                f"Camera {label!r} did not open: {reason}")
         self._refresh()
 
     def _on_profile_changed(self, _profile) -> None:
@@ -1288,14 +1268,12 @@ class PickingPage(QWidget):
                      if card.state in (TODO, BLOCKED)]
 
         if self._detection is not None:
-            self.step_analysis.set_state(OK, "Analysed: the contours are on "
-                                             "the picture.")
+            self.step_analysis.set_state(OK, "Analysed.")
         elif self.detector.model is None:
-            self.step_analysis.set_state(BLOCKED, "The cuboid detector is "
-                                                  "not loaded yet.")
+            self.step_analysis.set_state(BLOCKED, "Cuboid detector not "
+                                                  "loaded.")
         elif self._camera() is None:
-            self.step_analysis.set_state(BLOCKED, "The upper camera is not "
-                                                  "open yet.")
+            self.step_analysis.set_state(BLOCKED, "Upper camera not open.")
         else:
             self.step_analysis.set_state(NOTE, "Not analysed yet.")
 
@@ -1337,13 +1315,13 @@ class PickingPage(QWidget):
         self.over_centre_button.setEnabled(
             connected and centre is not None and not running)
         self.over_centre_button.setToolTip(
-            "Drive the tip over the middle of the working circle, "
-            f"{ABOVE_BOTTOM_MM:g} mm above the dish bottom set now."
-            if centre is not None else f"Not possible: {why}.")
+            f"Move the tip over the dish centre, {ABOVE_BOTTOM_MM:g} mm "
+            f"above the dish bottom."
+            if centre is not None else f"Unavailable: {why}.")
         self.set_bottom_button.setEnabled(
             connected and profile is not None and not running)
         self.set_bottom_button.setToolTip(
-            "Save the Z the tip is at now as the dish bottom, after asking.")
+            "Save the current tip Z as the dish bottom.")
         shake = self._stored_shake()
         self.goto_shake_button.setEnabled(connected and shake is not None
                                           and not running)
@@ -1352,10 +1330,10 @@ class PickingPage(QWidget):
             connected and shake is not None
             and (not running or self._can_shake_in_run()))
         self.shake_button.setToolTip(
-            "Stir the dish at the shake position. During a run: while it is "
-            "paused or waits for you, done by the run itself."
+            "Stir the dish at the shake position. During a run: while "
+            "paused or waiting."
             if shake is not None else
-            f"Not possible: no {SHAKE_POSITION!r} position yet.")
+            "Unavailable: no shake position saved.")
         self.teach_shake_button.setEnabled(connected and profile is not None
                                            and not running)
         if profile is None:
@@ -1376,7 +1354,7 @@ class PickingPage(QWidget):
 
         routine = self.session.routine
         self.routine_state.setText(
-            "Plate plan: none. Make one on the Plate plan page."
+            "Plate plan: none."
             if routine is None else f"Plate plan:\n{routine.summary()}")
 
         self.clips_box.setEnabled(not running)
@@ -1387,9 +1365,9 @@ class PickingPage(QWidget):
         else:
             w, h = self._clip_mode()
             self.clips_state.setText(
-                f"One clip per pickup, the lower camera at {w}x{h}, crop "
-                f"{self.session.settings.clip_crop:g} (Settings), into a "
-                f"folder for the run in {paths.clips_dir(create=False)}")
+                f"One clip per pickup, {w}x{h}, crop "
+                f"{self.session.settings.clip_crop:g}, saved to "
+                f"{paths.clips_dir(create=False)}")
         self.clips_state.setVisible(self.clips_box.isChecked())
 
         checks = self._checks()

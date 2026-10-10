@@ -176,8 +176,8 @@ class PipetteCalibration(QWidget):
         self.disc = StepCard(self, 1, "Place the calibration disc on the "
                                    "calibration module")
         self.disc.add(wrapped(
-            "The disc with the crosshairs goes on the calibration module, "
-            "flat and centred. It can stay there between calibrations."))
+            "Place the crosshair disc flat and centred on the calibration "
+            "module."))
         self.disc_placed = QCheckBox("The disc is on the module", self)
         # The keys over this page are the gantry's.
         self.disc_placed.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -224,10 +224,8 @@ class PipetteCalibration(QWidget):
     def _run_step(self) -> QWidget:
         self.run = StepCard(self, 4, "Calibrate")
         self.run.add(wrapped(
-            "The robot drives to the disc position, finds the tip with the "
-            "lower camera and measures where it is from the camera's centre. "
-            "It ends with step 5, unless the manual adjustment is off in "
-            "Settings."))
+            "Moves to the disc position and measures the tip offset from "
+            "the camera centre with the lower camera."))
 
         # The starting offset: where the routine first looks for the tip.
         self.offset_note = muted_label()
@@ -239,12 +237,11 @@ class PipetteCalibration(QWidget):
             spin.setDecimals(3)
             spin.setSingleStep(0.1)
             spin.setSuffix(" mm")
-            spin.setToolTip("Camera centre to tip, roughly: it only has to "
-                            "land the tip in the lower camera's view.")
+            spin.setToolTip("Approximate camera-to-tip offset.")
         self.reset_offset_button = secondary_button("Reset", self)
         self.reset_offset_button.setToolTip(
-            f"dx {DEFAULT_OFFSET_MM[0]:g} mm, dy {DEFAULT_OFFSET_MM[1]:g} mm: "
-            f"the usual offset on this rig.")
+            f"Reset to dx {DEFAULT_OFFSET_MM[0]:g} mm, dy "
+            f"{DEFAULT_OFFSET_MM[1]:g} mm.")
         self.reset_offset_button.clicked.connect(self._reset_offset)
         row = QHBoxLayout()
         row.addWidget(QLabel("dx"))
@@ -269,9 +266,7 @@ class PipetteCalibration(QWidget):
         self.settings_link.setFlat(True)
         self.settings_link.setCursor(Qt.CursorShape.PointingHandCursor)
         self.settings_link.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.settings_link.setToolTip("Frames per reading, the check after "
-                                      "the correction, the manual adjustment "
-                                      "and the tip type are set in Settings.")
+        self.settings_link.setToolTip("Calibration parameters.")
         self.settings_link.clicked.connect(
             lambda: self.session.page_requested.emit("settings"))
         row.addStretch(1)
@@ -288,10 +283,9 @@ class PipetteCalibration(QWidget):
         self.touch = StepCard(self, 5, "Nudge the tip onto the crosshair")
         self.touch_box = self.touch.box
         self.touch.add(wrapped(
-            f"The lower camera is live in the picture. Nudge the tip onto the "
-            f"central crosshair — the step is {TOUCH_UP_STEP_MM:g} mm — and "
-            f"press Done. Whatever you move is part of the offset. Abort "
-            f"ends the calibration with nothing saved."))
+            f"Nudge the tip onto the central crosshair "
+            f"({TOUCH_UP_STEP_MM:g} mm steps), then Done. Abort discards "
+            f"the calibration."))
         # Move open: nudging the tip onto the crosshair is the whole of this
         # block. Positions folded: nothing here is a place to return to.
         # XY only: a Z step here pushes the tip into the disc.
@@ -363,8 +357,8 @@ class PipetteCalibration(QWidget):
             answer = QMessageBox.question(
                 self, "Set the disc position",
                 f"Replace the saved disc position "
-                f"{tuple(round(v, 2) for v in stored)} with where the gantry "
-                f"is now? Every calibration after this one drives here first.",
+                f"{tuple(round(v, 2) for v in stored)} with the current "
+                f"position?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if answer != QMessageBox.StandardButton.Yes:
@@ -559,14 +553,12 @@ class PipetteCalibration(QWidget):
             self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
         self.touch_jog.set_step(TOUCH_UP_STEP_MM)
         self.touch_box.show()
-        self._append("waiting for you: nudge the tip onto the crosshair, "
-                     "then Done")
+        self._append("waiting: nudge the tip onto the crosshair, then Done")
         self._refresh()
 
     def _accept(self) -> None:
         if self.touch_jog.busy:
-            self._append("a jog step is still in flight; press Done when it "
-                         "has landed")
+            self._append("a jog step is still moving; press Done after it")
             return
         self.touch_box.hide()
         self._append("done adjusting")
@@ -669,13 +661,12 @@ class PipetteCalibration(QWidget):
         # 2. its position
         stored = self._stored_position()
         self.position_text.setText(
-            f"Jog the disc's central crosshair under the camera crosshair at "
-            f"the working height (module height {self._module_height():g} "
-            f"mm), then Set position.")
+            f"Jog the disc's central crosshair under the camera crosshair "
+            f"at module height ({self._module_height():g} mm), then Set "
+            f"position.")
         self.position_state.setText(
-            f"Saved: ({stored[0]:.2f}, {stored[1]:.2f}, {stored[2]:.2f}). "
-            f"Every calibration drives here first." if stored is not None
-            else "No disc position saved in this profile yet.")
+            f"Saved: ({stored[0]:.2f}, {stored[1]:.2f}, {stored[2]:.2f})."
+            if stored is not None else "No disc position saved.")
         if stored is not None:
             self.position.set_state(OK)
         elif not placed:
@@ -689,25 +680,25 @@ class PipetteCalibration(QWidget):
         self.remember_button.setEnabled(connected and profile is not None
                                         and placed and not running)
         self.remember_button.setToolTip(
-            "" if placed else "Place the disc first (step 1).")
+            "" if placed else "Requires step 1.")
 
         # 3. the tip
         tip = session.tip
         if not connected:
             self.tip.set_state(BLOCKED, "First: connect the robot.")
-            self.tip_text.setText("Connect the robot on the Profile page.")
+            self.tip_text.setText("Robot not connected.")
         elif tip.attached is True:
             self.tip.set_state(OK)
-            self.tip_text.setText("The robot reports a tip on the pipette"
+            self.tip_text.setText("Tip on"
                                   + (f", from slot {tip.slot} {tip.well}"
                                      if tip.returnable else "") + ".")
         else:
             self.tip.set_state(TODO)
             self.tip_text.setText(
-                ("The robot reports no tip on the pipette."
+                ("No tip on the pipette."
                  if tip.attached is False else
-                 "The robot's tip state is unknown.")
-                + " Pick one up on Robot & Deck, or with the tip button in "
+                 "Tip state unknown.")
+                + " Pick one up on Robot & Deck or with the tip button in "
                   "the status bar.")
         self.tip_link.setVisible(connected and tip.attached is not True)
 
@@ -715,9 +706,9 @@ class PipetteCalibration(QWidget):
         offset = profile.calibration.pipette_offset if profile else None
         if offset is None:
             self.offset_note.setText(
-                f"No offset in the profile yet: starting from the usual "
-                f"values, dx {DEFAULT_OFFSET_MM[0]:g} mm and dy "
-                f"{DEFAULT_OFFSET_MM[1]:g} mm.")
+                f"No saved offset. Start values: dx "
+                f"{DEFAULT_OFFSET_MM[0]:g} mm, dy {DEFAULT_OFFSET_MM[1]:g} "
+                f"mm.")
         else:
             when = (offset.measured_at.strftime("%Y-%m-%d %H:%M")
                     if offset.measured_at else "date unknown")
@@ -725,7 +716,7 @@ class PipetteCalibration(QWidget):
                 f"Last offset: ({offset.dx:+.3f}, {offset.dy:+.3f}) mm, "
                 f"{offset.method}, {when}"
                 + (f", tip {offset.tip_type}" if offset.tip_type else "")
-                + ". The calibration starts from it.")
+                + ".")
         for widget in (self.dx, self.dy, self.reset_offset_button):
             widget.setEnabled(not running)
         if not running:
@@ -744,7 +735,7 @@ class PipetteCalibration(QWidget):
         if running:
             self.checks.setText(f"Running: {self._last_line}"
                                 if self._last_line else
-                                "Running. The lower camera is in the picture.")
+                                "Running.")
             self.run.set_state(TODO)
         else:
             text = ("Ready: press Start." if not problems else

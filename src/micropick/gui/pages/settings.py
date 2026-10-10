@@ -183,12 +183,12 @@ class SettingsPage(QWidget):
                                      | Qt.AlignmentFlag.AlignVCenter)
         bar.addWidget(self.save_state, 1)
         self.revert_button = secondary_button("Revert", self)
-        self.revert_button.setToolTip("Back to what is saved.")
+        self.revert_button.setToolTip("Discard unsaved changes.")
         self.revert_button.clicked.connect(self._show)
         self.save_button = primary_button("Save", self)
-        self.save_button.setToolTip("Save this computer's settings (the left "
-                                    "column). The profile's are saved as "
-                                    "they are chosen.")
+        self.save_button.setToolTip("Save this computer's settings (left "
+                                    "column). Profile settings save "
+                                    "immediately.")
         self.save_button.clicked.connect(self._save)
         bar.addWidget(self.revert_button)
         bar.addWidget(self.save_button)
@@ -214,29 +214,26 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Robot", 2))
         box.layout().addWidget(_label(
-            "Where the robot is on the network. Over the direct cable this is "
-            "usually 169.254.x.x; over Wi-Fi, the address the Opentrons app "
-            "shows for the robot."))
+            "Robot network address: 169.254.x.x over the direct cable, or "
+            "the address shown in the Opentrons app."))
         grid = QGridLayout()
         grid.addWidget(QLabel("Address"), 0, 0)
         self.host = QLineEdit(self)
         self.host.setPlaceholderText("169.254.241.245 (the default)")
-        self.host.setToolTip("An IP address or a name, optionally with "
-                             ":port. Empty is the default.")
+        self.host.setToolTip("IP address or host name, optionally :port. "
+                             "Empty: default.")
         self.host.textEdited.connect(lambda _t: self._edited())
         grid.addWidget(self.host, 0, 1)
         grid.addWidget(QLabel("Port"), 1, 0)
         self.port = spin_box(self)
         self.port.setRange(1, 65535)
-        self.port.setToolTip("The robot server's port; 31950 unless it was "
-                             "changed on the robot.")
+        self.port.setToolTip("Robot server port (default 31950).")
         self.port.valueChanged.connect(lambda _v: self._edited())
         grid.addWidget(self.port, 1, 1, Qt.AlignmentFlag.AlignLeft)
         box.layout().addLayout(grid)
         row = QHBoxLayout()
         self.test_button = secondary_button("Test connection", self)
-        self.test_button.setToolTip("Ask the robot at this address who it is. "
-                                    "Nothing is saved or moved.")
+        self.test_button.setToolTip("Query the robot at this address.")
         self.test_button.clicked.connect(self._test)
         row.addWidget(self.test_button)
         row.addStretch(1)
@@ -249,9 +246,7 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Folders", 2))
         box.layout().addWidget(_label(
-            "Where what the application produces is put. Empty is the default "
-            "folder under the data root; a new folder is used from the next "
-            "file on."))
+            "Output locations. Empty: default folder under the data root."))
         grid = QGridLayout()
         self.folders: dict[str, QLineEdit] = {}
         for row, (key, title, what, default) in enumerate(FOLDERS):
@@ -269,7 +264,7 @@ class SettingsPage(QWidget):
             browse.clicked.connect(lambda _c=False, k=key: self._browse(k))
             grid.addWidget(browse, 2 * row, 2)
             default_button = secondary_button("Default", self)
-            default_button.setToolTip("Back to the default folder.")
+            default_button.setToolTip("Use the default folder.")
             default_button.clicked.connect(
                 lambda _c=False, k=key: self._default_folder(k))
             grid.addWidget(default_button, 2 * row, 3)
@@ -288,9 +283,7 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Camera calibration sweep", 2))
         box.layout().addWidget(_label(
-            "The marker the camera calibration looks for, and how the sweep "
-            "samples it. Change them only for another marker or after a "
-            "sweep that came out poor."))
+            "Calibration marker and sweep sampling."))
         self.marker_side = double_spin_box(self)
         self.marker_side.setRange(1.0, 60.0)
         self.marker_side.setDecimals(2)
@@ -308,18 +301,13 @@ class SettingsPage(QWidget):
         grid = QGridLayout()
         for row, (label, widget, hint) in enumerate((
                 ("Marker side", self.marker_side,
-                 "The printed size. Never used by the fit - it is the "
-                 "independent check on the recovered size."),
+                 "Printed marker size; checks the fitted scale."),
                 ("Dictionary", self.dictionary,
-                 "The wrong one detects nothing, which looks like bad "
-                 "lighting. The Camera calibration page offers the one the "
-                 "marker is found in."),
+                 "ArUco dictionary of the printed marker."),
                 ("Grid", self.grid_n,
-                 "Poses per axis; the sweep measures its own extent from the "
-                 "marker, so this is only how densely it samples it."),
+                 "Poses per axis."),
                 ("Degree", self.degree,
-                 "3 is the minimum that can represent radial distortion at "
-                 "all. 4 does not help and is worse at the extremes."))):
+                 "Polynomial degree of the fit (3 recommended)."))):
             grid.addWidget(QLabel(label), 2 * row, 0)
             grid.addWidget(widget, 2 * row, 1, Qt.AlignmentFlag.AlignLeft)
             grid.addWidget(muted_label(hint), 2 * row + 1, 1)
@@ -335,7 +323,7 @@ class SettingsPage(QWidget):
         self.sweep_defaults_button.setToolTip(
             f"Marker side {defaults.sweep_marker_side_mm:g} mm, "
             f"{defaults.sweep_dictionary}, grid {defaults.sweep_grid_n}, "
-            f"degree {defaults.sweep_degree}. Save keeps them.")
+            f"degree {defaults.sweep_degree}.")
         self.sweep_defaults_button.clicked.connect(self._sweep_defaults)
         row.addWidget(self.sweep_defaults_button)
         row.addStretch(1)
@@ -348,7 +336,7 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Tip calibration", 2))
         self.tip_type = QLineEdit(self)
-        self.tip_type.setPlaceholderText("from the rack the tip came from")
+        self.tip_type.setPlaceholderText("from the tip rack")
         self.tip_type.textEdited.connect(lambda _t: self._edited())
         self.tip_frames = spin_box(self)
         self.tip_frames.setRange(1, 30)
@@ -356,11 +344,9 @@ class SettingsPage(QWidget):
         grid = QGridLayout()
         for row, (label, widget, hint) in enumerate((
                 ("Tip type", self.tip_type,
-                 "Recorded with the offset. Empty: the rack the tip came "
-                 "from, as the robot's record names it."),
+                 "Recorded with the offset. Empty: the tip rack's type."),
                 ("Frames", self.tip_frames,
-                 "Per reading; detections are averaged and their spread is "
-                 "reported."))):
+                 "Frames averaged per reading."))):
             grid.addWidget(QLabel(label), 2 * row, 0)
             if widget is self.tip_type:            # the whole width
                 grid.addWidget(widget, 2 * row, 1)
@@ -370,13 +356,11 @@ class SettingsPage(QWidget):
         grid.setColumnStretch(1, 1)
         box.layout().addLayout(grid)
         self.tip_verify = QCheckBox("Verify after the correction", self)
-        self.tip_verify.setToolTip("Drive to the corrected offset and measure "
-                                   "again, to show what is left.")
+        self.tip_verify.setToolTip("Measure again at the corrected offset.")
         self.tip_touch_up = QCheckBox(
-            "Manual adjustment: nudge the tip onto the crosshair at the end, "
-            "then Done", self)
-        self.tip_touch_up.setToolTip("Off: the automatic result is saved "
-                                     "as it is.")
+            "Manual adjustment at the end", self)
+        self.tip_touch_up.setToolTip("Nudge the tip onto the crosshair "
+                                     "before saving.")
         for box_ in (self.tip_verify, self.tip_touch_up):
             box_.toggled.connect(lambda _on: self._edited())
             box.layout().addWidget(box_)
@@ -387,8 +371,8 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Keys", 2))
         box.layout().addWidget(_label(
-            "Keys for moving the robot and for Manual control. Click a field "
-            "and press the new key."))
+            "Keys for moving the robot and for Manual control. Click a "
+            "field and press a key."))
         grid = QGridLayout()
         self.key_edits: dict[str, QKeySequenceEdit] = {}
         for row, action in enumerate(keys.ACTIONS):
@@ -465,15 +449,13 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Pickup clips", 2))
         box.layout().addWidget(_label(
-            "The lower camera's mode while a picking run records pickup "
-            "clips, and how much of the middle of the frame is kept. A smaller "
-            "mode records more frames a second. The pipette calibration "
-            "always opens the camera in the profile's own mode."))
+            "Lower camera mode and crop for pickup clips. Smaller modes "
+            "record at a higher frame rate."))
         grid = QGridLayout()
         grid.addWidget(QLabel("Resolution"), 0, 0)
         self.clip_resolution = combo_box(self)
         self.clip_resolution.setToolTip(
-            "The modes the profile lists for the lower camera.")
+            "Lower camera modes from the profile.")
         self.clip_resolution.currentIndexChanged.connect(
             lambda _i: self._edited())
         grid.addWidget(self.clip_resolution, 0, 1, Qt.AlignmentFlag.AlignLeft)
@@ -482,9 +464,8 @@ class SettingsPage(QWidget):
         self.clip_crop.setRange(0.1, 1.0)
         self.clip_crop.setSingleStep(0.05)
         self.clip_crop.setDecimals(2)
-        self.clip_crop.setToolTip("The side of the centred square kept, as a "
-                                  "fraction of the frame's height; 1 is the "
-                                  "whole frame.")
+        self.clip_crop.setToolTip("Side of the centred square kept, as a "
+                                  "fraction of the frame height.")
         self.clip_crop.valueChanged.connect(lambda _v: self._edited())
         grid.addWidget(self.clip_crop, 1, 1, Qt.AlignmentFlag.AlignLeft)
         grid.setColumnStretch(2, 1)
@@ -495,9 +476,8 @@ class SettingsPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Cameras", 2))
         box.layout().addWidget(_label(
-            "Which of the cameras attached to this computer looks down on "
-            "the deck and which up from under the dish. Choosing the other "
-            "camera's device swaps the two."))
+            "Assign the attached cameras to the upper (deck) and lower "
+            "(under the dish) roles."))
         grid = QGridLayout()
         self.role_combo: dict[str, object] = {}
         self.role_info: dict[str, QLabel] = {}
@@ -523,8 +503,7 @@ class SettingsPage(QWidget):
         box.layout().addLayout(self.attached)
         row = QHBoxLayout()
         self.rescan_button = secondary_button("Look again", self)
-        self.rescan_button.setToolTip("List the attached cameras again, after "
-                                      "plugging one in or out.")
+        self.rescan_button.setToolTip("Rescan attached cameras.")
         self.rescan_button.clicked.connect(self._scan_devices)
         row.addWidget(self.rescan_button)
         row.addStretch(1)
@@ -614,8 +593,7 @@ class SettingsPage(QWidget):
         self.save_state.setText(
             self.session.settings_note
             or (f"Saved in {settings_path()}." if settings_path().is_file()
-                else f"The defaults: nothing is saved yet. Save writes "
-                     f"{settings_path()}."))
+                else "Defaults (not saved yet)."))
         self._refresh()
 
     def _typed(self) -> AppSettings:
@@ -643,7 +621,7 @@ class SettingsPage(QWidget):
                            keys=self._typed_keys())
 
     def _edited(self) -> None:
-        self.save_state.setText("Changed: Save keeps it.")
+        self.save_state.setText("Unsaved changes.")
         self._refresh()
 
     def _save(self) -> None:
@@ -665,7 +643,7 @@ class SettingsPage(QWidget):
         self.session.set_settings(settings)
         self.save_state.setText(
             f"Saved in {settings_path()}."
-            + (" The robot's address is used at the next Connect."
+            + (" The address applies at the next Connect."
                if self.session.robot is None else ""))
 
     def _browse(self, key: str) -> None:
@@ -692,10 +670,8 @@ class SettingsPage(QWidget):
     def _on_profile_changed(self, profile) -> None:
         self._fill_clip_modes()
         self.profile_note.setText(
-            "Load a profile on the Profile page to choose its cameras and "
-            "models." if profile is None else
-            f"The profile <b>{profile.name}</b>: what is chosen here is "
-            f"saved in it at once.")
+            "No profile loaded." if profile is None else
+            f"Profile <b>{profile.name}</b>: saved immediately.")
         self._show_cameras()
         self._reload_models()
         self.calibration.setText(
@@ -748,8 +724,7 @@ class SettingsPage(QWidget):
                     combo.addItem(device.name, device.name)
                 combo.setCurrentIndex(0)
                 combo.setEnabled(bool(self._devices))
-                info.setText("Not set in this profile yet: choose which "
-                             "attached camera it is.")
+                info.setText("Not set.")
                 continue
             spec = profile.cameras[label]
             current = self._attached_as(label)
@@ -824,7 +799,7 @@ class SettingsPage(QWidget):
                 detail = muted_label(
                     f"{len({(m.width, m.height) for m in modes})} sizes, up to "
                     f"{biggest.width}×{biggest.height}, up to {fastest:.0f} "
-                    f"frames a second (hover for the list)")
+                    f"fps")
                 # On both lines: the muted one is disabled, and a disabled
                 # widget's tooltip is not to be relied on.
                 for widget in (name, detail):
@@ -838,8 +813,8 @@ class SettingsPage(QWidget):
         if profile is None or name is None:
             return
         if any_running():
-            self.cameras_state.setText("Not now: something is running. "
-                                       "Choose again when it has finished.")
+            self.cameras_state.setText("Busy: try again when the current "
+                                       "task finishes.")
             self._show_cameras()
             return
         title = dict(ROLES)[role]
@@ -863,8 +838,8 @@ class SettingsPage(QWidget):
             return
         self.cameras_state.setText(
             f"{title}: {name}."
-            + (f" The two were swapped: {dict(ROLES)[other_role].lower()} "
-               f"is now {was}." if swapped else ""))
+            + (f" Swapped: {dict(ROLES)[other_role].lower()} is now {was}."
+               if swapped else ""))
 
     def _add_camera(self, role: str, name: str) -> None:
         """The profile's first camera for `role`, on the device `name`."""
@@ -873,8 +848,7 @@ class SettingsPage(QWidget):
         other = self._role_label(other_role)
         if other is not None and self._attached_as(other) == name:
             self.cameras_state.setText(
-                f"{name} is already the {dict(ROLES)[other_role].lower()}. "
-                f"Choose another camera there first.")
+                f"{name} is already the {dict(ROLES)[other_role].lower()}.")
             self._show_cameras()
             return
         sizes = [(m.width, m.height) for m in self._modes.get(name, [])]
@@ -886,8 +860,8 @@ class SettingsPage(QWidget):
             return
         spec = self.session.profile.cameras[label]
         self.cameras_state.setText(
-            f"{title}: {name}, added to the profile; it opens at "
-            "{}×{}.".format(*spec.default_resolution))
+            f"{title}: {name}, added to the profile "
+            "({}×{}).".format(*spec.default_resolution))
 
     def _reload_models(self) -> None:
         """What is in ml_models/, plus the stand-in for the cuboid detector.
@@ -922,11 +896,9 @@ class SettingsPage(QWidget):
                    if name and name != STANDIN and name not in found]
         self.models_note.setText(
             "No profile loaded." if profile is None else
-            "The pages that need a model load whichever is named here."
+            ""
             if not missing else
-            f"Not in {paths.ml_models_dir()}: {', '.join(missing)}. "
-            f"Weights are not tracked in the repository; copy the file in, "
-            f"or choose another.")
+            f"Not found in {paths.ml_models_dir()}: {', '.join(missing)}.")
 
     def _cuboid_model_chosen(self, name: str) -> None:
         profile = self.session.profile
@@ -958,8 +930,7 @@ class SettingsPage(QWidget):
         if self._worker is not None and self._worker.running:
             return
         if self.session.mock:
-            self.robot_state.setText("Running with --mock: there is no robot "
-                                     "on the network to ask.")
+            self.robot_state.setText("Mock mode: no robot.")
             return
         try:
             settings = self._typed()
@@ -996,8 +967,7 @@ class SettingsPage(QWidget):
         self._worker = None
         short = reason.splitlines()[0][:300]
         self.robot_state.setText(
-            f"No answer: {short}\nCheck the address, that the robot is on and "
-            f"finished starting up, and the cable or the network.")
+            f"No answer: {short}")
         log.error("robot test: %s", reason)
         self._refresh()
 
@@ -1011,8 +981,8 @@ class SettingsPage(QWidget):
         self.test_button.setEnabled(not testing)
         if connected and not testing:
             self.robot_state.setText(
-                f"Connected to {self.session.robot_address}. Press Disconnect "
-                f"robot session on the Profile page to change the address.")
+                f"Connected to {self.session.robot_address}. Disconnect to "
+                f"change the address.")
         elif not self.robot_state.text():
             self.robot_state.setText(f"Connect goes to "
                                      f"{self.session.robot_address}.")

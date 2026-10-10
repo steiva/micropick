@@ -296,8 +296,7 @@ class ProfilePage(QWidget):
         title.addWidget(self.checks_done)
         box.layout().addLayout(title)
         box.layout().addWidget(QLabel(
-            "From top to bottom, before a picking run. A grey step waits for "
-            "one above it; hover over a step for details.", self))
+            "Steps before a picking run. Hover for details.", self))
         self.checklist = Checklist(self, numbered=True)
         self.checklist.go.connect(self.session.page_requested)
         box.layout().addWidget(self.checklist)
@@ -361,8 +360,8 @@ class ProfilePage(QWidget):
         # Connect pressed while the robot is still starting up fails with a
         # network error that says nothing about why.
         self.robot_hint = QLabel(
-            "Turn the robot on and wait about a minute, until the light on "
-            "its front button stops blinking. Then press Connect.")
+            "Turn the robot on; when the button light stops blinking, "
+            "Connect.")
         self.robot_hint.setWordWrap(True)
         box.layout().addWidget(self.robot_hint)
 
@@ -371,8 +370,8 @@ class ProfilePage(QWidget):
         self.new_run_button = secondary_button("Start new robot session",
                                                self)
         self.new_run_button.setToolTip(
-            "Leave the robot's current session and start a new one, with an "
-            "empty deck. The robot homes its axes first; it asks before.")
+            "Start a new robot session with an empty deck. The robot homes "
+            "first.")
         self.new_run_button.clicked.connect(self._new_run)
         row = QHBoxLayout()
         row.addWidget(self.connect_button)
@@ -469,9 +468,7 @@ class ProfilePage(QWidget):
         answer = QMessageBox.warning(
             self, "Delete profile",
             f"Delete the profile {name!r}?\n\n"
-            f"Everything in {path} goes with it: calibration and its "
-            f"history, picking settings, cameras, positions and deck. "
-            f"This cannot be undone.",
+            f"All of {path} is deleted. This cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
@@ -597,9 +594,9 @@ class ProfilePage(QWidget):
         chosen = self.chooser.currentText()
         self.delete_button.setEnabled(not busy and self._deletable(chosen))
         self.delete_button.setToolTip(
-            "Load another profile first: this one is in use."
+            "Profile in use."
             if profile is not None and chosen == profile.name else
-            f"Delete {chosen!r}, after asking." if chosen else "")
+            f"Delete {chosen!r}." if chosen else "")
 
         connected = session.has_connection
         if session.robot is None and connected and not busy:
@@ -609,7 +606,7 @@ class ProfilePage(QWidget):
                 "Connected, without a robot session"
                 + (f" ({state.describe()})" if state is not None
                    and state.exists else "")
-                + ". Press Start new robot session.")
+                + ". Start a new robot session.")
         else:
             self.robot_state.setText(f"State: {session.robot_state}")
         self.robot_hint.setVisible(not connected)

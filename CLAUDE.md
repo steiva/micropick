@@ -148,9 +148,11 @@ picking position**.
   its mark (done / to do / note / blocked, dimmed while a step it needs is
   not done). What is particular to now goes in the tooltip. A button goes
   to the page where it is done (`Session.page_requested`). The Profile page
-  shows it in full; the Picking page shows what is left of it on other
-  pages as its step 1, and its own steps (detector, camera, clips) under
-  Start. Anything to do or blocked, in either, blocks Start; optional
+  shows it in full; the Picking page's step 1 lists what is left of it on
+  other pages and the page's own set-up while not ready (detector, upper
+  camera, clips camera - all opened by themselves); the Start card lists
+  nothing, it names the steps that stop it. Anything to do or blocked
+  blocks Start; optional
   steps never do. "Calibrate the tip" is done only while the tip it
   measured is on, in the robot session it was measured in
   (`readiness.tip_calibration_status`).
@@ -182,14 +184,32 @@ Camera calibration is the same (`widgets.step_card.StepCard`): place the
 marker (done when it is seen), centre it (done within two of its sides of
 the centre), sweep, save the result; the upper camera, no chooser.
 Picking is the same, leading to the run: complete the Operation checklist,
-set the picking position (the jog panel under it), the shake position, the
-dish bottom (optional), analyse the dish (the sizes follow), start picking.
-Steps 2-4 are marked from the checklist's own lines. Settings
+set the picking position, the shake position, the dish bottom (optional),
+analyse the dish, start picking; the jog panel last. Steps 2-4 are marked
+from the checklist's own lines. The cuboids' figures are a window of their
+own (`widgets.cuboid_stats`: counts, a histogram per picking measure
+against its window, a table), toggled by the chart button on the size
+histogram over the picture (`CameraView.enable_stats_button`). Settings
 keeps Save and Revert at its bottom right, outside the scrolling columns.
 
 The keys box on a picture has a bold "Keyboard shortcuts" title and the
 keys in blue (`camera_view.HELP_KEY`); a help line is "keys   what it
 does", split at its first three spaces.
+
+The keys that move the robot (and Manual control's aspirate, dispense) are
+`gui.keys` actions with today's keys as defaults, rebound on the Settings
+page's Keys card (`AppSettings.keys`, only the changed ones stored). The
+jog panel and Manual control bind from it, rebind on save, and the key box
+names the keys as bound. A new robot key is an action there, never a
+hard-coded QShortcut.
+
+### Words on screen: short and neutral
+
+An explanation on screen is one short sentence of what a control does or
+what state something is in: no judgement ("worth it"), no reasoning, no
+directions to another page when the button beside it goes there. Status
+lines read "Robot busy.", "No profile loaded.", "Not set.". The reasoning
+belongs in docstrings.
 
 The Settings page's second column is the loaded profile's, saved into it at
 once: which attached camera is the upper and which the lower

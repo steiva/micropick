@@ -167,9 +167,8 @@ class RoutinePage(QWidget):
         # What the page is for, before anything on it: the tab says "Plate
         # plan", and the word alone does not say whose plan or of what.
         intro = QLabel(
-            "This page maps how many cuboids go into which wells of the "
-            "plate. Choose the plate, select wells, set how many each gets, "
-            "then Create: the Picking page fills the plate by this plan.")
+            "Number of cuboids per well. Choose the plate, select wells, set "
+            "the count, then Create.")
         intro.setWordWrap(True)
         column.addWidget(intro)
         column.addWidget(self._plate_card())
@@ -305,11 +304,10 @@ class RoutinePage(QWidget):
 
         history = QHBoxLayout()
         self.undo_button = secondary_button("Undo", self)
-        self.undo_button.setToolTip("Undo the last change to the plan. "
-                                    "Ctrl+Z")
+        self.undo_button.setToolTip("Undo. Ctrl+Z")
         self.undo_button.clicked.connect(self._undo_plan)
         self.redo_button = secondary_button("Redo", self)
-        self.redo_button.setToolTip("Redo what was undone. Ctrl+Y")
+        self.redo_button.setToolTip("Redo. Ctrl+Y")
         self.redo_button.clicked.connect(self._redo_plan)
         history.addWidget(self.undo_button)
         history.addWidget(self.redo_button)
@@ -338,13 +336,11 @@ class RoutinePage(QWidget):
         self.save_preset_button = secondary_button("Save plan as preset…",
                                                    self)
         self.save_preset_button.setToolTip(
-            "Keep this plate's kind and the counts, to start another plan "
-            "from. No progress is kept.")
+            "Save the plate type and counts as a preset.")
         self.save_preset_button.clicked.connect(self._save_preset)
         self.from_preset_button = secondary_button("New from preset…", self)
         self.from_preset_button.setToolTip(
-            "A new plan from a preset, on a plate of its kind the robot "
-            "holds. Create it as usual.")
+            "Start a new plan from a preset.")
         self.from_preset_button.clicked.connect(self._from_preset)
         row.addWidget(self.save_preset_button)
         row.addWidget(self.from_preset_button)
@@ -375,8 +371,8 @@ class RoutinePage(QWidget):
         box.layout().addWidget(self.edit_note)
         row = QHBoxLayout()
         self.save_edit_button = primary_button("Save changes", self)
-        self.save_edit_button.setToolTip("Write the changed counts into this "
-                                         "plan, keeping its progress.")
+        self.save_edit_button.setToolTip("Save the changed counts; progress "
+                                         "is kept.")
         self.save_edit_button.clicked.connect(self._save_edit)
         self.discard_edit_button = secondary_button("Discard changes", self)
         self.discard_edit_button.clicked.connect(self._discard_edit)
@@ -391,9 +387,7 @@ class RoutinePage(QWidget):
         box.layout().addWidget(heading("Labware in the slot", 2))
         self.labware_state = QLabel()
         self.labware_state.setToolTip(
-            "Checked by itself against what the robot session holds. It "
-            "verifies the kind of plate in the slot, not that it is the same "
-            "physical plate - no software check can tell those apart.")
+            "Checks the plate type in the slot, not the physical plate.")
         self.labware_state.setWordWrap(True)
         self.labware_state.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -450,8 +444,7 @@ class RoutinePage(QWidget):
                 self._chose_plate(index)
                 return
         self.plate_state.setText(
-            f"slot {slot} holds nothing a plate plan can deliver into. Load a "
-            f"plate there on the Robot & Deck page.")
+            f"Slot {slot}: no plate loaded.")
 
     def _chose_plate(self, _index: int) -> None:
         data = self.definition.currentData()
@@ -516,8 +509,7 @@ class RoutinePage(QWidget):
 
     def _apply_count(self) -> None:
         if not self._selection:
-            self.plan_state.setText("nothing is selected. Click a well, or a "
-                                    "row letter, or drag a box.")
+            self.plan_state.setText("No wells selected.")
             return
         count = self.per_well.value()
         plan = dict(self._plan)
@@ -553,8 +545,8 @@ class RoutinePage(QWidget):
                 self.plan_state.setText("Not changed: " + "; ".join(problems))
                 return
         elif self.routine is not None:
-            self.plan_state.setText("Not changed: a plan under way cannot be "
-                                    "emptied; open or create another.")
+            self.plan_state.setText("A plan in progress cannot be "
+                                    "emptied.")
             return
         self._change_plan(plan, kind)
 
@@ -783,13 +775,12 @@ class RoutinePage(QWidget):
         labware changes, and that is what this reads."""
         routine, session = self.routine, self.session
         if routine is None:
-            self.labware_state.setText("Open or create a plan: its slot is "
-                                       "checked here.")
+            self.labware_state.setText("No plan.")
             return
         slot = str(routine.destination.slot)
         if session.robot is None or session.run_state is None:
-            self.labware_state.setText(f"No robot session: slot {slot} is "
-                                       f"checked once the robot is connected.")
+            self.labware_state.setText(f"Slot {slot}: robot not "
+                                       f"connected.")
             return
         loaded = session.run_state.labware
         try:
@@ -806,8 +797,8 @@ class RoutinePage(QWidget):
         note = (f" (the slot reports v{reported}, the plan v{want}: only the "
                 f"definition's revision)" if reported is not None
                 and want is not None and int(reported) != int(want) else "")
-        self.labware_state.setText(f"Slot {slot} holds {entry.load_name} - "
-                                   f"matches the plan.{note}")
+        self.labware_state.setText(f"Slot {slot}: {entry.load_name}, "
+                                   f"matches.{note}")
 
     # -- display -------------------------------------------------------------
 
@@ -834,21 +825,15 @@ class RoutinePage(QWidget):
         self.edit_note.setVisible(edited)
         if edited:
             self.edit_note.setText(
-                "Changed on the page, not yet in the plan: Save changes "
-                "writes it, keeping what is already delivered. Picking runs "
-                "the saved plan until then.")
+                "Unsaved changes. Picking uses the saved plan.")
         self.save_preset_button.setEnabled(has_plate and bool(self._plan))
 
 
         if self.definition.count() == 0:
             self.plate_state.setText(
-                "The robot session holds nothing to deliver into. Load a "
-                "plate on the Robot & Deck page; tip racks and the trash are "
-                "not offered here."
+                "No plate loaded."
                 if self.session.robot is not None else
-                "No robot session. Connect the robot on the Profile page; "
-                "the plate is chosen from what the robot session actually "
-                "holds.")
+                "Robot not connected.")
 
         wells = len(self._plan)
         objects = sum(self._plan.values())
@@ -871,8 +856,6 @@ class RoutinePage(QWidget):
         self.confirm_note.setVisible(needs)
         if needs:
             self.confirm_note.setText(
-                "This plate plan was restored with progress already on it. "
-                "If the plate in the slot is a fresh one of the same kind, do "
-                "not confirm — build a new plate plan, or its first well will "
-                "be the middle of this one. Nothing can tell those two apart "
-                "but you.")
+                "Restored plan with progress. Confirm only if the same "
+                "plate is in the slot; for a fresh plate, create a new "
+                "plan.")

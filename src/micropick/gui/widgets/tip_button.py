@@ -85,10 +85,9 @@ class _Panel(QFrame):
 
         row = QHBoxLayout()
         self.drop_place = secondary_button("Drop in place", self)
-        self.drop_place.setToolTip("Let go of the tip where the pipette is.")
+        self.drop_place.setToolTip("Drop the tip at the current position.")
         self.drop_trash = secondary_button("Drop in trash", self)
-        self.drop_trash.setToolTip("Carry the tip to the trash in slot 12 "
-                                   "and drop it there. The gantry moves.")
+        self.drop_trash.setToolTip("Drop the tip in the trash (slot 12).")
         row.addWidget(self.drop_place)
         row.addWidget(self.drop_trash)
         row.addStretch(1)
@@ -115,7 +114,7 @@ class _Panel(QFrame):
         layout.addLayout(row)
         row = QHBoxLayout()
         self.pick = primary_button("Pick up", self)
-        self.pick.setToolTip("Take a tip from this well. The gantry moves.")
+        self.pick.setToolTip("Pick up a tip from this well.")
         row.addWidget(self.pick)
         row.addStretch(1)
         layout.addLayout(row)
@@ -134,22 +133,19 @@ class _Panel(QFrame):
         tip, racks, busy = source.tip, source.racks, source.busy
         self._racks = racks
         if tip is None:
-            self.state.setText("No robot session: connect the robot on the "
-                               "Profile page.")
+            self.state.setText("Robot not connected.")
         elif tip.attached is None:
-            self.state.setText("The robot's tip state could not be read. "
-                               "Nothing here moves until it is: connect "
-                               "again on the Profile page.")
+            self.state.setText("Tip state unknown: reconnect the robot.")
         elif tip.attached:
-            self.state.setText("The robot reports a tip on the pipette"
+            self.state.setText("Tip on"
                                + (f", from slot {tip.slot} {tip.well}"
                                   if tip.returnable else "") + ".")
         else:
-            self.state.setText("The robot reports no tip on the pipette.")
+            self.state.setText("No tip.")
         if busy:
             # Said, not a reason to grey the buttons: what the robot is doing
             # may be over by the click, and the click is refused if not.
-            self.state.setText(self.state.text() + " The robot is busy now.")
+            self.state.setText(self.state.text() + " Robot busy.")
 
         chosen = self.slot.currentData()
         self.slot.blockSignals(True)
@@ -164,8 +160,7 @@ class _Panel(QFrame):
         self._fill_wells(next_well)
         self.racks_note.setText(
             "" if racks or tip is None else
-            "No tip rack in the robot session: load one on the Robot & Deck "
-            "page.")
+            "No tip rack loaded.")
         self.racks_note.setVisible(bool(self.racks_note.text()))
 
         known = tip is not None and tip.attached is not None
@@ -244,30 +239,28 @@ class TipButton(QToolButton):
         if tip is None:
             self.setIcon(qta.icon("mdi6.eyedropper-off"))
             self.setText("tip")
-            self.setToolTip("Tip: connect the robot first.")
+            self.setToolTip("Tip: robot not connected.")
             return
         if tip.attached:
             icon = qta.icon("mdi6.eyedropper", color=TIP_ON)
             text = tip.describe()
-            hint = ("The robot reports a tip on the pipette. Every move is "
-                    "that much lower than it looks.")
+            hint = "Tip on."
             if tip.returnable:
                 self._remember(tip.slot, tip.well)
         elif tip.attached is None:
             icon = qta.icon("mdi6.help-circle-outline", color=TIP_ON)
             text = "tip: unknown"
-            hint = ("The robot's tip state could not be read. Connect again "
-                    "on the Profile page before moving anything.")
+            hint = "Tip state unknown: reconnect the robot."
         else:
             icon = qta.icon("mdi6.eyedropper-off")
             text = "no tip"
-            hint = "The robot reports no tip on the pipette."
+            hint = "No tip."
         self.setIcon(icon)
         self.setText(text)
         # The amber of a tip on, or of not knowing, carries to the words.
         self.setStyleSheet(f"QToolButton {{ color: {TIP_ON}; font-weight: "
                            f"600; }}" if tip.attached is not False else "")
-        self.setToolTip(hint + " Click for drop and pick-up.")
+        self.setToolTip(hint)
 
     def _remember(self, slot, well: str) -> None:
         """The well after `well` in its rack, for the next pick-up."""

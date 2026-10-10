@@ -100,13 +100,12 @@ def save_report_asking(session, parent=None) -> Path | None:
         path = save_report(session)
     except Exception as exc:                         # noqa: BLE001
         log.error("report not saved: %s", exc)
-        QMessageBox.warning(parent, "Report", f"The report could not be "
-                                              f"saved: {exc}")
+        QMessageBox.warning(parent, "Report", f"Could not save the report: "
+                                              f"{exc}")
         return None
     box = QMessageBox(parent)
     box.setWindowTitle("Report saved")
-    box.setText("A report was saved. Send this file to whoever helps you "
-                "with the robot:")
+    box.setText("Report saved:")
     box.setInformativeText(str(path))
     opener = box.addButton("Open folder", QMessageBox.ButtonRole.ActionRole)
     box.addButton(QMessageBox.StandardButton.Close)
