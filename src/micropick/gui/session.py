@@ -91,6 +91,14 @@ REUSABLE_STATUSES = ("idle", "running", "paused")
 # it reaches this much further on every side.
 MODULE_MARGIN_MM = 3.0
 
+# The top of the jog envelope in Z with a tip on. The robot reports Z at the
+# tip's end with a tip and at the bare nozzle without one - a tip's length
+# (about 50 mm) higher for the same gantry - so without a tip, or with the
+# tip state unknown, the top is this much higher. Generous: it only has to
+# clear the retracted nozzle, and the gantry has a physical top anyway.
+Z_TOP_MM = 150.0
+NO_TIP_EXTRA_MM = 60.0
+
 
 @dataclass
 class RunState:
@@ -420,7 +428,12 @@ class Session(QObject):
                 name = f"{module.name or 'module'} in slot {slot}"
                 floors.append((cx - half_x, cy - half_y, cx + half_x,
                                cy + half_y, float(module.height_mm), name))
-        return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, 150.0),
+        # The top follows the tip (see Z_TOP_MM): with a fixed 150 a gantry
+        # with no tip read ~200 when retracted, sat above its own envelope,
+        # and every step up was refused.
+        top = (Z_TOP_MM if self.tip.attached is True
+               else Z_TOP_MM + NO_TIP_EXTRA_MM)
+        return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, top),
                       floors=tuple(floors))
 
     @property

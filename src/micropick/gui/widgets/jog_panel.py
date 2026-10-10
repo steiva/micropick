@@ -354,6 +354,8 @@ class JogPanel(QWidget):
         session.robot_state_changed.connect(self._on_robot_changed)
         session.settings_changed.connect(lambda _s: self._rebind())
         session.profile_changed.connect(self._on_profile_changed)
+        # The Z top depends on whether a tip is on (`Session.jog_limits`).
+        session.tip_changed.connect(lambda _t: self._on_profile_changed(None))
 
         self._on_robot_changed(session.robot_state)
 
