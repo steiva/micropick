@@ -8,6 +8,37 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## 0.3.0 - 2026-10-12
+
+Picking as numbered steps with a cuboid statistics window, keys set in
+Settings, and a Z jog limit that follows the tip. Profiles from 0.2.0 load
+as they are; a tip calibration made before this version shows as to do
+until it is made again.
+
+- Calibrate the tip counts as done only while the tip it measured is on,
+  in the robot session it was measured in: a new tip, no tip or a
+  restarted robot means calibrating again.
+- The Z jog limit is the height the tip reaches on Retract, never above
+  (above it the pipette stops answering until homed): 200.6 mm with no
+  tip, less the tip's length as the robot reports it (wide bore 200 µl:
+  159.4 for jog steps). The position shown is read again when the tip
+  changes and when a page is opened.
+- Keys for moving the robot, and Manual control's aspirate and dispense,
+  can be changed on the Settings page (Keys); the defaults are as before.
+- Picking is numbered steps leading to Start: the Operation checklist
+  left on other pages, the picking position, the shake position, the dish
+  bottom, analysis, Start picking; Move and Positions at the end. The
+  lower camera for pickup clips opens by itself while the box is ticked.
+- The Sizes card is replaced by a window opened from the chart button on
+  the size histogram over the picture: counts, rejections by reason, a
+  histogram per measure (diameter, circularity, aspect ratio, solidity,
+  radial CV, nearest neighbour, confidence, distance from the dish centre)
+  against its picking setting, and a table of medians and ranges.
+- The next-step hint sits at the top centre and can be dragged anywhere.
+- Fold arrows are smaller, and opening a section no longer makes the
+  other cards flicker.
+- Shorter, plainer texts throughout the interface.
+
 ## 0.2.0 - 2026-10-08
 
 A reworked interface: an Operation checklist that says what to do next,
