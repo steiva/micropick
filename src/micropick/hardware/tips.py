@@ -25,13 +25,32 @@ from dataclasses import dataclass
 from .protocols import require_ok
 
 __all__ = ["TipState", "tip_state", "drop_tip_in_trash", "FIXED_TRASH_AREA",
-           "TIP_COMMANDS"]
+           "TIP_COMMANDS", "TIP_OVERLAP_MM", "nominal_tip_length"]
 
 FIXED_TRASH_AREA = "fixedTrash"
 
 # The commands that change what is on the pipette. Anything else in the log,
 # a move, a home, a labware load, leaves the tip as it was.
 TIP_COMMANDS = ("pickUpTip", "dropTip", "dropTipInPlace")
+
+# How far a tip slides onto the p300_single_gen2 nozzle: the pipette
+# definition's `tipOverlaps.v0.default`, which the robot (7.x) uses for every
+# rack, custom ones included - the `tipOverlap` in a rack's own file is not
+# read. The tip adds `tipLength - TIP_OVERLAP_MM` to the reported Z.
+TIP_OVERLAP_MM = 8.2
+
+
+def nominal_tip_length(load_name: str) -> float | None:
+    """What a tip from the rack `load_name` adds below the nozzle, from its
+    definition, as the robot computes it; None when unknown. For when the
+    robot's own `pickUpTip` result does not say."""
+    from .labware import resolve_definition
+    try:
+        definition = resolve_definition(load_name)
+        length = definition.data["parameters"]["tipLength"]
+    except Exception:                                  # noqa: BLE001
+        return None
+    return float(length) - TIP_OVERLAP_MM if length else None
 
 
 @dataclass(frozen=True)
@@ -43,13 +62,16 @@ class TipState:
     prevent. `labware_id` and `well` are where a tip was taken from, when it
     was one this run picked up. `pickup` is the id of the pickUpTip command
     that put it on: one tip in one robot session, so a tip calibration can
-    say which tip it measured.
+    say which tip it measured. `length` is what the tip adds below the
+    nozzle, as the robot's `pickUpTip` result gives it (`tipLength`, the
+    rack's length less the overlap), when it does.
     """
 
     attached: bool | None
     labware_id: str | None = None
     well: str | None = None
     pickup: str | None = None
+    length: float | None = None
 
     @classmethod
     def unknown(cls) -> "TipState":
@@ -87,8 +109,10 @@ def tip_state(api, run_id: str, *, page: int = 100, timeout: float = 10.0,
             kind = command.get("commandType")
             if kind == "pickUpTip":
                 p = command.get("params", {})
+                length = (command.get("result") or {}).get("tipLength")
                 return TipState(True, p.get("labwareId"), p.get("wellName"),
-                                command.get("id"))
+                                command.get("id"),
+                                float(length) if length else None)
             if kind in TIP_COMMANDS:
                 return TipState(False)
         start = int(body.get("meta", {}).get("cursor", 0))

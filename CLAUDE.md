@@ -83,6 +83,14 @@ run's own moves to them) is reached no higher than that travel height
 (`reachable_z`): taught after a retract, it is out of bounds for the robot. Click-to-move is off on every entry to the
 tab.
 
+The robot reports Z at the tip's end with a tip on and at the nozzle
+without one. The jog envelope's Z top is therefore the nozzle's
+(`Session.Z_NOZZLE_TOP_MM`, 210; retracted with no tip the bench reads
+200.6) less the tip's length (`Tip.length`: the robot's `pickUpTip`
+result, else the rack's `tipLength` less the p300's 8.2 mm overlap,
+`tips.nominal_tip_length`). A jog panel reads the pose again when the tip
+changes and when it is shown.
+
 Home robot position in the status bar is reachable from every page: it is
 refused while any jog panel or any worker is busy, and goes through the
 shown page's `JogPanel.run_job` when that page has one.

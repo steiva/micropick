@@ -91,13 +91,14 @@ REUSABLE_STATUSES = ("idle", "running", "paused")
 # it reaches this much further on every side.
 MODULE_MARGIN_MM = 3.0
 
-# The top of the jog envelope in Z with a tip on. The robot reports Z at the
-# tip's end with a tip and at the bare nozzle without one - a tip's length
-# (about 50 mm) higher for the same gantry - so without a tip, or with the
-# tip state unknown, the top is this much higher. Generous: it only has to
-# clear the retracted nozzle, and the gantry has a physical top anyway.
-Z_TOP_MM = 150.0
-NO_TIP_EXTRA_MM = 60.0
+# The top of the jog envelope in Z, for the bare nozzle. The robot reports Z
+# at the tip's end with a tip on and at the nozzle without one, so with a tip
+# the top is this less the tip's length (`Tip.length`): the same gantry
+# height either way. Retracted with no tip the robot reads 200.6 mm (bench,
+# 2026-10-12); this clears it.
+Z_NOZZLE_TOP_MM = 210.0
+# The top with a tip on whose length is not known.
+Z_TOP_UNKNOWN_TIP_MM = 150.0
 
 
 @dataclass
@@ -184,6 +185,7 @@ class Tip:
     slot: str | None = None
     well: str | None = None
     pickup: str | None = None
+    length: float | None = None              # below the nozzle, mm
 
     @classmethod
     def unknown(cls) -> "Tip":
@@ -428,11 +430,16 @@ class Session(QObject):
                 name = f"{module.name or 'module'} in slot {slot}"
                 floors.append((cx - half_x, cy - half_y, cx + half_x,
                                cy + half_y, float(module.height_mm), name))
-        # The top follows the tip (see Z_TOP_MM): with a fixed 150 a gantry
-        # with no tip read ~200 when retracted, sat above its own envelope,
-        # and every step up was refused.
-        top = (Z_TOP_MM if self.tip.attached is True
-               else Z_TOP_MM + NO_TIP_EXTRA_MM)
+        # The top follows the tip (see Z_NOZZLE_TOP_MM): with a fixed 150 a
+        # gantry with no tip read ~200 when retracted, sat above its own
+        # envelope, and every step up was refused.
+        tip = self.tip
+        if tip.attached is not True:
+            top = Z_NOZZLE_TOP_MM
+        elif tip.length is not None:
+            top = Z_NOZZLE_TOP_MM - tip.length
+        else:
+            top = Z_TOP_UNKNOWN_TIP_MM
         return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, top),
                       floors=tuple(floors))
 
@@ -986,11 +993,17 @@ class Session(QObject):
                 log.warning("could not read the tip state: %s", exc)
                 state = tips.TipState.unknown()
         slot = well = None
+        length = state.length
         if state.attached and state.labware_id:
             for entry in (self.run_state.labware if self.run_state else {}).values():
                 if entry.labware_id == state.labware_id:
                     slot, well = entry.slot, state.well
-        tip = Tip(state.attached, slot, well, state.pickup)
+                    if length is None:
+                        # The robot's answer did not say: from the rack's
+                        # definition, as the robot computes it.
+                        length = tips.nominal_tip_length(entry.load_name)
+        tip = Tip(state.attached, slot, well, state.pickup,
+                  round(length, 3) if length is not None else None)
         if tip != self.tip:
             log.info("robot reports: %s", tip.describe())
         self.tip = tip

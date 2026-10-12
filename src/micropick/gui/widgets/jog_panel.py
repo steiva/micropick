@@ -354,8 +354,9 @@ class JogPanel(QWidget):
         session.robot_state_changed.connect(self._on_robot_changed)
         session.settings_changed.connect(lambda _s: self._rebind())
         session.profile_changed.connect(self._on_profile_changed)
-        # The Z top depends on whether a tip is on (`Session.jog_limits`).
-        session.tip_changed.connect(lambda _t: self._on_profile_changed(None))
+        # A bound method, not a lambda: the tip changes on a worker thread,
+        # and only a slot with a receiver is queued to this one.
+        session.tip_changed.connect(self._on_tip_changed)
 
         self._on_robot_changed(session.robot_state)
 
@@ -1027,6 +1028,16 @@ class JogPanel(QWidget):
         self._refresh_saved()
         self._refresh_buttons()
 
+    def _on_tip_changed(self, _tip) -> None:
+        """Another tip, or none: the Z top follows it (`Session.jog_limits`),
+        and so does the Z the robot reports for the same gantry height, so
+        the pose shown is read again - on the page on screen; another page
+        reads it when it is shown."""
+        if self.controller is not None:
+            self.controller.limits = self.session.jog_limits
+        if self.isVisible():
+            self.refresh_position()
+
     def _on_robot_changed(self, _state: str) -> None:
         robot = self.session.robot
         if robot is None:
@@ -1080,6 +1091,12 @@ class JogPanel(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._set_enabled(self._worker is None)
+        # The pose as it is now: the robot may have moved, or the tip may
+        # have changed - and with it the Z reported - while this page was
+        # not on screen.
+        if self.controller is not None:
+            self.controller.limits = self.session.jog_limits
+            self.refresh_position()
 
     def hideEvent(self, event) -> None:
         """Give up the arrow keys.
