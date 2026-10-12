@@ -91,14 +91,19 @@ REUSABLE_STATUSES = ("idle", "running", "paused")
 # it reaches this much further on every side.
 MODULE_MARGIN_MM = 3.0
 
-# The top of the jog envelope in Z, for the bare nozzle. The robot reports Z
-# at the tip's end with a tip on and at the nozzle without one, so with a tip
-# the top is this less the tip's length (`Tip.length`): the same gantry
-# height either way. Retracted with no tip the robot reads 200.6 mm (bench,
-# 2026-10-12); this clears it.
-Z_NOZZLE_TOP_MM = 210.0
-# The top with a tip on whose length is not known.
-Z_TOP_UNKNOWN_TIP_MM = 150.0
+# The top of Z for the bare nozzle: what the robot reads retracted with no
+# tip (bench, 2026-10-12). A hard ceiling - a pipette driven above its
+# retracted height stops answering until it is homed. The robot reports Z
+# at the tip's end with a tip on, so the top is then this less the tip's
+# length (`Tip.length`): the retracted height with that tip, 159.9 mm for
+# the wide bore rack.
+Z_NOZZLE_TOP_MM = 200.6
+# Jog steps stop this far under the top: the robot refuses a target at the
+# retracted height itself (`workflows.manual`), and Retract still gets there.
+JOG_BELOW_TOP_MM = 0.5
+# The length assumed for a tip on whose rack is not known: longer than any
+# rack on the bench (the XL's 91 mm), so the top is too low, never too high.
+UNKNOWN_TIP_LENGTH_MM = 100.0
 
 
 @dataclass
@@ -434,12 +439,13 @@ class Session(QObject):
         # gantry with no tip read ~200 when retracted, sat above its own
         # envelope, and every step up was refused.
         tip = self.tip
-        if tip.attached is not True:
-            top = Z_NOZZLE_TOP_MM
-        elif tip.length is not None:
-            top = Z_NOZZLE_TOP_MM - tip.length
-        else:
-            top = Z_TOP_UNKNOWN_TIP_MM
+        if tip.attached is False:
+            length = 0.0
+        elif tip.attached and tip.length is not None:
+            length = tip.length
+        else:                                 # a tip of unknown length, or
+            length = UNKNOWN_TIP_LENGTH_MM    # not known whether there is one
+        top = Z_NOZZLE_TOP_MM - length - JOG_BELOW_TOP_MM
         return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, top),
                       floors=tuple(floors))
 
@@ -999,11 +1005,17 @@ class Session(QObject):
                 if entry.labware_id == state.labware_id:
                     slot, well = entry.slot, state.well
                     if length is None:
-                        # The robot's answer did not say: from the rack's
-                        # definition, as the robot computes it.
+                        # The robot's answer did not say: the rack's whole
+                        # tip length, longer than what the robot adds, so
+                        # the Z top comes out low rather than high.
                         length = tips.nominal_tip_length(entry.load_name)
         tip = Tip(state.attached, slot, well, state.pickup,
                   round(length, 3) if length is not None else None)
+        if tip.attached and tip != self.tip:
+            log.info("tip length %s mm (%s)", tip.length,
+                     "robot" if state.length is not None else
+                     "rack definition, whole" if tip.length is not None
+                     else "unknown")
         if tip != self.tip:
             log.info("robot reports: %s", tip.describe())
         self.tip = tip

@@ -84,12 +84,14 @@ run's own moves to them) is reached no higher than that travel height
 tab.
 
 The robot reports Z at the tip's end with a tip on and at the nozzle
-without one. The jog envelope's Z top is therefore the nozzle's
-(`Session.Z_NOZZLE_TOP_MM`, 210; retracted with no tip the bench reads
-200.6) less the tip's length (`Tip.length`: the robot's `pickUpTip`
-result, else the rack's `tipLength` less the p300's 8.2 mm overlap,
-`tips.nominal_tip_length`). A jog panel reads the pose again when the tip
-changes and when it is shown.
+without one. The jog envelope's Z top is the retracted height, a hard
+ceiling (above it the pipette stops answering until homed): the bare
+nozzle's 200.6 mm (`Session.Z_NOZZLE_TOP_MM`, measured on the bench) less
+the tip's length (`Tip.length`: the robot's own `pickUpTip` result; else
+the rack's whole `tipLength`, which errs low; else 100 mm), less 0.5 mm
+for jog steps. Never an overlap computed here: the robot's differs from
+the installed pipette definition's. A jog panel reads the pose again when
+the tip changes and when it is shown.
 
 Home robot position in the status bar is reachable from every page: it is
 refused while any jog panel or any worker is busy, and goes through the

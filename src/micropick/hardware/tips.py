@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from .protocols import require_ok
 
 __all__ = ["TipState", "tip_state", "drop_tip_in_trash", "FIXED_TRASH_AREA",
-           "TIP_COMMANDS", "TIP_OVERLAP_MM", "nominal_tip_length"]
+           "TIP_COMMANDS", "nominal_tip_length"]
 
 FIXED_TRASH_AREA = "fixedTrash"
 
@@ -33,24 +33,23 @@ FIXED_TRASH_AREA = "fixedTrash"
 # a move, a home, a labware load, leaves the tip as it was.
 TIP_COMMANDS = ("pickUpTip", "dropTip", "dropTipInPlace")
 
-# How far a tip slides onto the p300_single_gen2 nozzle: the pipette
-# definition's `tipOverlaps.v0.default`, which the robot (7.x) uses for every
-# rack, custom ones included - the `tipOverlap` in a rack's own file is not
-# read. The tip adds `tipLength - TIP_OVERLAP_MM` to the reported Z.
-TIP_OVERLAP_MM = 8.2
-
-
 def nominal_tip_length(load_name: str) -> float | None:
-    """What a tip from the rack `load_name` adds below the nozzle, from its
-    definition, as the robot computes it; None when unknown. For when the
-    robot's own `pickUpTip` result does not say."""
+    """The rack's `tipLength`, whole; None when unknown.
+
+    Not what the robot adds below the nozzle: it subtracts an overlap that
+    depends on its software (on the bench 9.7 mm for the wide bore rack -
+    200.6 retracted bare, 159.9 with the tip - against 8.2 in the pipette
+    definition installed here). The whole length is longer than that, so
+    a Z top computed from it is lower than the real one, never higher. For
+    when the robot's own `pickUpTip` result does not say.
+    """
     from .labware import resolve_definition
     try:
         definition = resolve_definition(load_name)
         length = definition.data["parameters"]["tipLength"]
     except Exception:                                  # noqa: BLE001
         return None
-    return float(length) - TIP_OVERLAP_MM if length else None
+    return float(length) if length else None
 
 
 @dataclass(frozen=True)
@@ -64,7 +63,7 @@ class TipState:
     that put it on: one tip in one robot session, so a tip calibration can
     say which tip it measured. `length` is what the tip adds below the
     nozzle, as the robot's `pickUpTip` result gives it (`tipLength`, the
-    rack's length less the overlap), when it does.
+    rack's length less the overlap the robot uses), when it does.
     """
 
     attached: bool | None
@@ -109,10 +108,9 @@ def tip_state(api, run_id: str, *, page: int = 100, timeout: float = 10.0,
             kind = command.get("commandType")
             if kind == "pickUpTip":
                 p = command.get("params", {})
-                length = (command.get("result") or {}).get("tipLength")
+                length = _tip_length(command, url, api, get, timeout)
                 return TipState(True, p.get("labwareId"), p.get("wellName"),
-                                command.get("id"),
-                                float(length) if length else None)
+                                command.get("id"), length)
             if kind in TIP_COMMANDS:
                 return TipState(False)
         start = int(body.get("meta", {}).get("cursor", 0))
@@ -120,6 +118,23 @@ def tip_state(api, run_id: str, *, page: int = 100, timeout: float = 10.0,
             # The whole log, and no tip command in it: the run never had one.
             return TipState(False)
         cursor = max(0, start - page)
+
+
+def _tip_length(command: dict, url: str, api, get, timeout: float):
+    """`tipLength` from a pickUpTip's result: in the listed command if the
+    robot put it there, else from the command itself, one request. None
+    when neither says."""
+    result = command.get("result")
+    if result is None and command.get("id"):
+        try:
+            response = get(f"{url}/{command['id']}", headers=api.HEADERS,
+                           timeout=timeout)
+            if 200 <= response.status_code < 300:
+                result = response.json().get("data", {}).get("result")
+        except Exception:                              # noqa: BLE001
+            result = None
+    length = (result or {}).get("tipLength")
+    return float(length) if length else None
 
 
 def drop_tip_in_trash(api, *, pipette_id: str | None = None) -> None:
