@@ -97,9 +97,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.liquid import (MEASURED_BOTTOM, Group, Location, Program,
-                           aspirate_volume, empties_now, needed_after,
-                           ordered_wells, refills)
+from ..core.liquid import (MEASURED_BOTTOM, BlowOut, Group, Location,
+                           Program, aspirate_volume, empties_now,
+                           needed_after, ordered_wells, refills)
 from ..hardware.protocols import (Robot, move_relative, move_to,
                                   prepare_to_aspirate, require_ok, xyz)
 from . import manual as moves
@@ -220,16 +220,22 @@ def _locations(program: Program):
                 yield gi, group, si, location
 
 
+def _all_locations(program: Program) -> list[Location]:
+    """Every location the program sends the tip to, the trash's included."""
+    out = [loc for _gi, _g, _si, loc in _locations(program)]
+    return out + ([program.trash] if program.trash is not None else [])
+
+
 def slots_used(program: Program) -> set[str]:
     """Every slot the program sends the tip to."""
     slots = {g.slot for g in program.groups}
-    slots |= {loc.slot for _gi, _g, _si, loc in _locations(program)
+    slots |= {loc.slot for loc in _all_locations(program)
               if loc.kind == "well" and loc.slot}
     return slots
 
 
 def points_used(program: Program) -> set[str]:
-    return {loc.point for _gi, _g, _si, loc in _locations(program)
+    return {loc.point for loc in _all_locations(program)
             if loc.kind == "point" and loc.point}
 
 
@@ -249,16 +255,21 @@ def _plate_problem(plates: dict[str, Plate], slot: str | None,
 
 def problems(program: Program, plates: dict[str, Plate],
              positions: dict, *, volumes: bool = True,
-             in_tip: float = 0.0) -> list[str]:
+             in_tip: float = 0.0, trash: bool = True) -> list[str]:
     """What stops the program from running as written, in words. Only what
     the data says; the page adds the robot, the tip and the deck. Without
     `volumes` the run is not played through for the tip's contents - for one
     step tried on its own, whose dispense may be of liquid already drawn.
-    `in_tip` is what the tip holds when the run starts."""
+    `in_tip` is what the tip holds when the run starts, unless a trash blows
+    it out first. Without `trash` none is needed: a step tried on its own."""
     out = []
     if not program.groups:
         return ["the program has no groups: select wells on the plate and "
                 "make one."]
+    if trash:
+        out += _trash_problems(program.trash, plates, positions)
+        if program.trash is not None:
+            in_tip = 0.0
     for group in program.groups:
         name = f"group {group.name!r}"
         if not group.wells:
@@ -301,6 +312,31 @@ def problems(program: Program, plates: dict[str, Plate],
     if volumes:
         out += _volume_problems(program, plates, in_tip)
     return out
+
+
+def _trash_problems(location: Location | None, plates: dict[str, Plate],
+                    positions: dict) -> list[str]:
+    if location is None:
+        return ["no trash: choose the well or point the tip is blown out "
+                "over before a run."]
+    if location.kind == "well":
+        why = _plate_problem(plates, location.slot, location.load_name)
+        if why:
+            return [f"trash: {why}."]
+        if not location.well:
+            return ["trash: no well chosen."]
+        if location.well not in plates[location.slot].wells:
+            return [f"trash: slot {location.slot} has no well "
+                    f"{location.well}."]
+        return []
+    if location.kind == "point":
+        if not location.point:
+            return ["trash: no point chosen."]
+        if location.point not in positions:
+            return [f"trash: there is no saved point {location.point!r} in "
+                    f"the profile."]
+        return []
+    return ["trash: a well or a saved point."]
 
 
 def _volume_problems(program: Program, plates: dict[str, Plate],
@@ -746,11 +782,13 @@ def _retract(robot: Robot, state: LiquidState) -> None:
 def run(robot: Robot, program: Program, plates: dict[str, Plate],
         positions: dict, state: LiquidState, *, pause=None, stop=None,
         log=None, on_well=None, on_progress=None, on_paused=None,
-        log_path: Path | None = None) -> None:
+        log_path: Path | None = None, clear_first: bool = False) -> None:
     """Do the program, skipping the wells in `state.done` and starting a
-    stopped well at its next step. `on_well(gi, well)` as a well is begun,
-    `on_progress(done, total, gi, well)` as it is finished. The tip is
-    raised however this ends."""
+    stopped well at its next step. With `clear_first` - a run from the
+    first well - the tip is blown out over the program's trash before
+    anything else (`core.liquid`, "The trash"). `on_well(gi, well)` as a
+    well is begun, `on_progress(done, total, gi, well)` as it is finished.
+    The tip is raised however this ends."""
     jobs = plan(program, plates)
     total = len(jobs)
     capacity = program.tip_ul
@@ -762,6 +800,14 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
         first_well.setdefault(gi, well)
     state.at = None
     try:
+        if clear_first and program.trash is not None and jobs:
+            _, group, well = jobs[0]
+            _say(log, "clearing the tip over the trash")
+            said = do_step(robot, BlowOut(location=program.trash), group,
+                           well, plates, positions, state, pause=pause,
+                           stop=stop, log=log)
+            _log_row(log_path, step="trash", in_tip=f"{state.in_tip:g}",
+                     note=said)
         for gi, group, well in jobs:
             if (gi, well) in state.done:
                 continue

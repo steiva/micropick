@@ -178,7 +178,50 @@ def test_problems_catch_a_dispense_of_more_than_the_tip_holds():
     found = liquid.problems(program, PLATES, POSITIONS)
     assert any("dispenses 15 µl" in p for p in found)
     ok = _program([Aspirate(volume_ul=10), Dispense()])
+    ok.trash = WASTE
     assert liquid.problems(ok, PLATES, POSITIONS) == []
+
+
+def test_a_run_needs_a_trash_and_a_tried_step_does_not():
+    program = _program([Aspirate(volume_ul=10), Dispense()])
+    assert any("no trash" in p
+               for p in liquid.problems(program, PLATES, POSITIONS))
+    assert liquid.problems(program, PLATES, POSITIONS, trash=False) == []
+    program.trash = Location(kind="well", slot="7", load_name="res", well="A1")
+    assert liquid.problems(program, PLATES, POSITIONS) == [
+        "trash: slot 7 holds nothing now; load res there on the Robot & "
+        "Deck page."]
+    program.trash = Location(kind="point", point="waste")
+    assert liquid.problems(program, PLATES, POSITIONS) == []
+    assert "waste" in liquid.points_used(program)    # its reach is checked
+    program.trash = WASTE
+    assert "2" in liquid.slots_used(program)         # and its slot's deck
+
+
+def test_a_trash_empties_what_the_tip_held_before_the_first_well():
+    """Played through from an empty tip, so a run that starts with a
+    dispense of what an earlier run left is refused on paper."""
+    program = _program([Dispense(volume_ul=20, location=WASTE)])
+    program.trash = WASTE
+    found = liquid.problems(program, PLATES, POSITIONS, in_tip=50.0)
+    assert any("dispenses 20 µl" in p for p in found)
+
+
+def test_start_blows_out_over_the_trash_first_and_continue_does_not():
+    robot, state = MockRobot(), LiquidState()
+    state.in_tip = 30.0                        # left by a step tried earlier
+    program = _program([Aspirate(volume_ul=20), Dispense(location=WASTE)],
+                       wells=["A1"])
+    program.trash = WASTE
+    liquid.run(robot, program, PLATES, POSITIONS, state, clear_first=True)
+    calls = _liquid_calls(robot)
+    assert calls[0][:3] == ("blow_out", "res-id", "A1")
+    assert ("aspirate", "plate-id", "A1", 20.0, 50.0) in calls
+    assert state.in_tip == 0.0
+
+    robot, state = MockRobot(), LiquidState()
+    liquid.run(robot, program, PLATES, POSITIONS, state)
+    assert not any(c[0] == "blow_out" for c in _liquid_calls(robot))
 
 
 def test_slots_and_points_used():

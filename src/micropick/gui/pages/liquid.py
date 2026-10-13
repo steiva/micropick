@@ -55,11 +55,15 @@ Running it
 Through the jog panel's queue like every robot command on a page with a
 panel (`JogPanel.run_job`), so while it runs no key and no button can move
 the robot. Pause and Stop are `threading.Event`s the run checks between
-commands. What the tip holds and how far the run got are kept on the page
-(`LiquidState`) across a stop: Continue carries on from the step after the
-last one done, Start always begins again from the first well. Changing the
-groups or their wells forgets that progress; changing a step's numbers does
-not, so a flow rate can be corrected between Stop and Continue.
+commands. Start first blows the tip out over the program's trash (Program
+card, "Trash": a well or a saved point; `core.liquid`, "The trash"), so
+nothing a tried step or an earlier run left in it goes into the first well;
+Continue does not. What the tip holds and how far the run got are kept on
+the page (`LiquidState`) across a stop: Continue carries on from the step
+after the last one done, Start always begins again from the first well.
+Changing the groups or their wells forgets that progress; changing a step's
+numbers does not, so a flow rate can be corrected between Stop and
+Continue.
 """
 
 from __future__ import annotations
@@ -69,16 +73,17 @@ import threading
 import time
 from pathlib import Path
 
+import qtawesome as qta
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (QCheckBox, QColorDialog, QFileDialog,
                                QHBoxLayout, QInputDialog, QLabel, QListWidget,
                                QListWidgetItem, QMenu, QMessageBox,
-                               QVBoxLayout, QWidget)
+                               QToolButton, QVBoxLayout, QWidget)
 
 from ... import paths
-from ...core.liquid import (ACTIONS, Group, Program, ProgramError, describe,
-                            new_step, ordered_wells)
+from ...core.liquid import (ACTIONS, Group, Location, Program, ProgramError,
+                            describe, new_step, ordered_wells)
 from ...core.routine import Destination, RoutineError
 from ...hardware.protocols import xyz
 from ...workflows import liquid
@@ -93,8 +98,9 @@ from ..widgets.card_columns import CardColumns
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
-from ..widgets.liquid_steps import StepEditor
+from ..widgets.liquid_steps import LocationEditor, StepEditor
 from ..widgets.plate_view import PlateView
+from ..widgets.plate_window import PlateWindow
 
 __all__ = ["LiquidHandlingPage", "programs_dir", "CURRENT_FILE"]
 
@@ -103,7 +109,9 @@ TITLE = "Liquid handling"
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 460
-PLATE_HEIGHT = 220
+# The map's height, whatever the plate: across both columns of the panel it
+# is wide enough that the height is what limits a 384.
+PLATE_HEIGHT = 420
 LIST_HEIGHT = 120
 
 # The program is saved this long after the last edit, so typing "300" is one
@@ -196,9 +204,12 @@ class LiquidHandlingPage(QWidget):
         self._save_timer.setInterval(SAVE_MS)
         self._save_timer.timeout.connect(self._save_current)
 
-        self._editing = [self._plate_card(), self._groups_card(),
+        plate_card = self._plate_card()
+        self._editing = [plate_card, self._groups_card(),
                          self._steps_card(), self._program_card()]
-        panel = CardColumns(self._editing + [self._run_card(), self.jog], self)
+        # The plate across both columns: it needs the width more than they.
+        panel = CardColumns(self._editing[1:] + [self._run_card(), self.jog],
+                            self, wide=[plate_card])
         body = QHBoxLayout()
         body.setSpacing(SPACING)
         body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
@@ -239,12 +250,23 @@ class LiquidHandlingPage(QWidget):
         self.plate_choice.currentIndexChanged.connect(
             lambda _i: self._show_plate())
         row.addWidget(self.plate_choice, 1)
+        self.enlarge_button = QToolButton(self)
+        self.enlarge_button.setIcon(qta.icon("mdi6.arrow-expand"))
+        self.enlarge_button.setToolTip("Show the plate in its own window.")
+        self.enlarge_button.clicked.connect(self._show_plate_window)
+        row.addWidget(self.enlarge_button)
         box.layout().addLayout(row)
 
         self.plate = PlateView(self)
         self.plate.setFixedHeight(PLATE_HEIGHT)
         self.plate.selection_changed.connect(lambda _s: self._refresh())
+        self.plate.hovered.connect(self._hovered)
         box.layout().addWidget(self.plate)
+        # The well under the pointer, by name: on a 384 the map has no room
+        # for it. A line always there, so the cards below do not move.
+        self.hover_line = QLabel(" ", self)
+        box.layout().addWidget(self.hover_line)
+        self.plate_window = PlateWindow(self.plate, self)
 
         row = QHBoxLayout()
         self.new_group_button = primary_button("New group", self)
@@ -437,6 +459,12 @@ class LiquidHandlingPage(QWidget):
         row.addWidget(self.tip_volume)
         row.addStretch(1)
         box.layout().addLayout(row)
+        box.layout().addWidget(heading("Trash", 3))
+        box.layout().addWidget(_label("Start blows the tip out here first."))
+        self.trash = LocationEditor(self)
+        self.trash.limit_kinds(("well", "point"))
+        self.trash.changed.connect(self._trash_edited)
+        box.layout().addWidget(self.trash)
         self.program_state = _label()
         box.layout().addWidget(self.program_state)
         return box
@@ -595,7 +623,8 @@ class LiquidHandlingPage(QWidget):
 
     def _new_program(self) -> None:
         if not self._running and self._confirm_replace("New program"):
-            self._adopt(Program())
+            # The same deck: its trash stays.
+            self._adopt(Program(trash=self.program.trash))
 
     def _open_program(self) -> None:
         if self._running or not self._confirm_replace("Open a program"):
@@ -662,11 +691,37 @@ class LiquidHandlingPage(QWidget):
             except (RoutineError, ValueError) as exc:
                 log.error("liquid handling: cannot draw slot %s: %s", slot, exc)
         self.plate.set_destination(destination)
+        self.plate_window.setWindowTitle(
+            f"plate: {self.plate_choice.currentText() or 'none'}")
         group = self._group()
         if group is not None and self._on_shown_plate(group):
             self.plate.set_selection(group.wells)
         self._paint_plate()
         self._refresh()
+
+    def _show_plate_window(self) -> None:
+        self.plate_window.setWindowTitle(
+            f"plate: {self.plate_choice.currentText() or 'none'}")
+        self.plate_window.show_window()
+
+    def _hovered(self, name: str | None) -> None:
+        text = self._hover_text(name)
+        self.hover_line.setText(text or " ")
+        self.plate_window.say(text)
+
+    def _hover_text(self, name: str | None) -> str:
+        """The well, its group and how far the run got with it."""
+        if name is None:
+            return ""
+        shown = self._shown_plate()
+        for gi, group in enumerate(self.program.groups):
+            if (group.slot, group.load_name) != shown or name not in group.wells:
+                continue
+            state = ("done" if (gi, name) in self.state.done else
+                     "in progress" if self._current == (gi, name) else
+                     "to do")
+            return f"{name} — {group.name}, {state}"
+        return f"{name} — no group"
 
     def _paint_plate(self) -> None:
         shown = self._shown_plate()
@@ -701,6 +756,7 @@ class LiquidHandlingPage(QWidget):
         row = self.groups.currentRow() if select is None else select
         self._loading = True
         self.tip_volume.setValue(self.program.tip_ul)
+        self.trash.set_location(self.program.trash or Location(kind="well"))
         self.groups.clear()
         for group in self.program.groups:
             text = (f"{group.name} — slot {group.slot}, {len(group.wells)} "
@@ -829,6 +885,14 @@ class LiquidHandlingPage(QWidget):
         self._save_timer.start()
         self._refresh()
 
+    def _trash_edited(self) -> None:
+        if self._loading:
+            return
+        where = self.trash.location()
+        self.program.trash = where if (where.slot or where.point) else None
+        self._save_timer.start()
+        self._refresh()
+
     def _pause_first_toggled(self, on: bool) -> None:
         group = self._group()
         if self._loading or group is None:
@@ -926,6 +990,7 @@ class LiquidHandlingPage(QWidget):
             plates.append((slot, definition.load_name,
                            f"slot {slot} — {definition.display_name}", wells))
         self.editor.set_choices(plates, list(self._positions()))
+        self.trash.set_choices(plates, list(self._positions()))
         self._show_measured()
         self._refresh()
 
@@ -1060,7 +1125,7 @@ class LiquidHandlingPage(QWidget):
         out = self._robot_problems(tip=step.action in LIQUID_ACTIONS)
         single = Program(groups=[group.model_copy(update={"steps": [step]})])
         out += liquid.problems(single, self._plates(), self._positions(),
-                               volumes=False)
+                               volumes=False, trash=False)
         out += self._reach_problems(single)
         return out
 
@@ -1157,7 +1222,7 @@ class LiquidHandlingPage(QWidget):
         self.state.reset()
         self._log_path = (paths.logs_dir() / f"liquid_"
                           f"{time.strftime('%Y%m%d_%H%M%S')}.csv")
-        self._launch()
+        self._launch(clear_first=True)
 
     def _continue(self) -> None:
         if self._running:
@@ -1171,7 +1236,9 @@ class LiquidHandlingPage(QWidget):
                 and not self._run_problems()):
             self._launch()
 
-    def _launch(self) -> None:
+    def _launch(self, *, clear_first: bool = False) -> None:
+        """`clear_first`: a run from the first well, which blows the tip out
+        over the trash before anything else."""
         robot, emit = self.session.robot, self.job_said.emit
         # A copy: the page may not be edited during the run, but a copy
         # makes that a rule of the data rather than of the buttons.
@@ -1189,7 +1256,7 @@ class LiquidHandlingPage(QWidget):
                            on_progress=lambda n, total, gi, well:
                            emit(("progress", (n, total, gi, well))),
                            on_paused=lambda message: emit(("paused", message)),
-                           log_path=log_path)
+                           log_path=log_path, clear_first=clear_first)
             except liquid.Stopped:
                 emit(("ended", "stopped"))
                 return "run stopped."

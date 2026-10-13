@@ -40,6 +40,19 @@ each in its own colour. `set_colours` gives wells a colour - outline and a
 faint fill - and while it holds any, it is what is drawn instead of the
 plan. `set_done` fills a well solid, `set_current` rings the one being
 worked on. Inside a well is its name, since there is no count to show.
+
+Under the mouse
+---------------
+The well under the pointer lights its row letter and column number, so a
+well too small for its name on a 384 is still found by its headers, and
+`hovered` names it (None off the wells) for a page to say more about it.
+
+A second, larger view
+---------------------
+`PlateMirror` is another view of the same scene: the same wells, colours
+and selection, drawn at the size of its own window, and the mouse does the
+same in it - it selects on the plate it mirrors. Nothing is copied, so the
+two cannot disagree.
 """
 
 from __future__ import annotations
@@ -52,7 +65,7 @@ from PySide6.QtWidgets import (QGraphicsEllipseItem, QGraphicsRectItem,
 
 from ...core.routine import grid_labels
 
-__all__ = ["PlateView"]
+__all__ = ["PlateView", "PlateMirror"]
 
 # One accent, as on the calibration plots. A plate map is its own surface, like
 # the camera viewport, so the ink is fixed rather than taken from the palette.
@@ -100,7 +113,115 @@ class _Header(QGraphicsRectItem):
         self.setAcceptHoverEvents(True)
 
 
-class PlateView(QGraphicsView):
+class _Interaction:
+    """The mouse on a view of a plate's scene: selecting, the band, the
+    pointer. Selects on `_owner`, the PlateView that holds the state, so a
+    PlateMirror does exactly what the view it mirrors does."""
+
+    def _set_up_view(self) -> None:
+        self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        self.setBackgroundBrush(QBrush(BACKDROP))
+        self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        # The plate is the thing being looked at; nothing here scrolls.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setMouseTracking(True)
+        self._press_scene: QPointF | None = None
+        self._press_mods = Qt.KeyboardModifier.NoModifier
+        self._band: QGraphicsRectItem | None = None
+
+    def _item_at(self, position, kind):
+        item = self.itemAt(position)
+        while item is not None and not isinstance(item, kind):
+            item = item.parentItem()
+        return item
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self._press_scene = self.mapToScene(event.position().toPoint())
+        self._press_mods = event.modifiers()
+        header = self._item_at(event.position().toPoint(), _Header)
+        if header is not None:
+            self._owner._apply(header.wells, event.modifiers())
+            self._press_scene = None
+        event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._press_scene is None:
+            well = self._item_at(event.position().toPoint(), _Well)
+            self._owner._set_hover(well.name if well is not None else None)
+            super().mouseMoveEvent(event)
+            return
+        here = self.mapToScene(event.position().toPoint())
+        rect = QRectF(self._press_scene, here).normalized()
+        if (rect.width() < DRAG_SLOP and rect.height() < DRAG_SLOP
+                and self._band is None):
+            return
+        if self._band is None:
+            self._band = QGraphicsRectItem()
+            self._band.setPen(QPen(BAND_EDGE, 1, Qt.PenStyle.DashLine))
+            self._band.setBrush(QBrush(BAND_FILL))
+            self._band.setZValue(10)
+            self.scene().addItem(self._band)
+        self._band.setRect(rect)
+        event.accept()
+
+    def leaveEvent(self, event) -> None:
+        self._owner._set_hover(None)
+        super().leaveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() != Qt.MouseButton.LeftButton or self._press_scene is None:
+            super().mouseReleaseEvent(event)
+            return
+        owner = self._owner
+        if self._band is not None:
+            rect = self._band.rect()
+            self.scene().removeItem(self._band)
+            self._band = None
+            inside = [name for name, well in owner._wells.items()
+                      if rect.contains(well.sceneBoundingRect().center())]
+            owner._apply(inside, self._press_mods)
+        else:
+            well = self._item_at(event.position().toPoint(), _Well)
+            if well is not None:
+                if self._press_mods & Qt.KeyboardModifier.ControlModifier:
+                    # Ctrl on a single well toggles: adding one at a time is
+                    # what Ctrl means everywhere, and removing it again is
+                    # the same gesture rather than a different modifier.
+                    names = (owner._selected - {well.name}
+                             if well.name in owner._selected
+                             else owner._selected | {well.name})
+                    owner.set_selection(names)
+                else:
+                    owner._apply([well.name], self._press_mods)
+            elif not (self._press_mods & (Qt.KeyboardModifier.ControlModifier
+                                          | Qt.KeyboardModifier.ShiftModifier)):
+                owner.clear_selection()
+        self._press_scene = None
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        well = self._item_at(event.position().toPoint(), _Well)
+        if well is not None:
+            self._owner.well_activated.emit(well.name)
+        super().mouseDoubleClickEvent(event)
+
+    # -- geometry ------------------------------------------------------------
+
+    def _fit(self, *_args) -> None:
+        if self.scene().sceneRect().isValid():
+            self.fitInView(self.scene().sceneRect(),
+                           Qt.AspectRatioMode.KeepAspectRatio)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._fit()
+
+
+class PlateView(_Interaction, QGraphicsView):
     """A plate that can be selected on. Owns no routine and changes no plan."""
 
     # The set of well names now selected. One signal for every way of
@@ -108,16 +229,14 @@ class PlateView(QGraphicsView):
     selection_changed = Signal(object)
     # A double click, for "this one well, now".
     well_activated = Signal(str)
+    # The well under the pointer, in this view or a mirror; None off them.
+    hovered = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._owner = self
         self.setScene(QGraphicsScene(self))
-        self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        self.setBackgroundBrush(QBrush(BACKDROP))
-        self.setFrameShape(QGraphicsView.Shape.NoFrame)
-        # The plate is the thing being looked at; nothing here scrolls.
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._set_up_view()
 
         self._wells: dict[str, _Well] = {}
         self._labels: dict[str, QGraphicsSimpleTextItem] = {}
@@ -129,10 +248,12 @@ class PlateView(QGraphicsView):
         self._colours: dict[str, QColor] = {}
         self._done: set[str] = set()
         self._current: str | None = None
-
-        self._press_scene: QPointF | None = None
-        self._press_mods = Qt.KeyboardModifier.NoModifier
-        self._band: QGraphicsRectItem | None = None
+        # Where each well is, (column, row), and the header text of each
+        # column and row: what the pointer lights.
+        self._position: dict[str, tuple[int, int]] = {}
+        self._column_labels: list[QGraphicsSimpleTextItem] = []
+        self._row_labels: list[QGraphicsSimpleTextItem] = []
+        self._hover: str | None = None
 
     # -- building ------------------------------------------------------------
 
@@ -142,6 +263,9 @@ class PlateView(QGraphicsView):
         self._wells.clear()
         self._labels.clear()
         self._selected.clear()
+        self._position.clear()
+        self._column_labels, self._row_labels = [], []
+        self._hover = None
         self._band = None
         self._destination = destination
         if destination is None or not destination.is_plate:
@@ -167,6 +291,7 @@ class PlateView(QGraphicsView):
                 well = _Well(name, rect)
                 scene.addItem(well)
                 self._wells[name] = well
+                self._position[name] = (column, row)
                 if self._show_names:
                     label = QGraphicsSimpleTextItem("", well)
                     label.setFont(font)
@@ -177,18 +302,20 @@ class PlateView(QGraphicsView):
         # Headers last, so they sit over nothing and hit-test first.
         for column, wells in enumerate(ordering):
             x = column * WELL_PITCH
-            self._add_header(str(columns[column]), header_font,
-                             QRectF(x - WELL_PITCH / 2, -HEADER_GAP - WELL_PITCH / 2,
-                                    WELL_PITCH, WELL_PITCH),
-                             list(wells))
+            self._column_labels.append(self._add_header(
+                str(columns[column]), header_font,
+                QRectF(x - WELL_PITCH / 2, -HEADER_GAP - WELL_PITCH / 2,
+                       WELL_PITCH, WELL_PITCH),
+                list(wells)))
         for row in range(len(ordering[0]) if ordering else 0):
             y = row * WELL_PITCH
             column_wells = [ordering[c][row] for c in range(len(ordering))
                             if row < len(ordering[c])]
-            self._add_header(str(rows[row]), header_font,
-                             QRectF(-HEADER_GAP - WELL_PITCH / 2, y - WELL_PITCH / 2,
-                                    WELL_PITCH, WELL_PITCH),
-                             column_wells)
+            self._row_labels.append(self._add_header(
+                str(rows[row]), header_font,
+                QRectF(-HEADER_GAP - WELL_PITCH / 2, y - WELL_PITCH / 2,
+                       WELL_PITCH, WELL_PITCH),
+                column_wells))
 
         scene.setSceneRect(scene.itemsBoundingRect().adjusted(-8, -8, 8, 8))
         self._repaint_wells()
@@ -196,7 +323,7 @@ class PlateView(QGraphicsView):
         self.selection_changed.emit(set())
 
     def _add_header(self, text: str, font: QFont, rect: QRectF,
-                    wells: list[str]) -> None:
+                    wells: list[str]) -> QGraphicsSimpleTextItem:
         header = _Header(rect, wells)
         header.setToolTip(f"{text}: click to select, Ctrl to add, "
                           f"Shift to remove")
@@ -208,6 +335,25 @@ class PlateView(QGraphicsView):
         label.setPos(rect.center().x() - bounds.width() / 2,
                      rect.center().y() - bounds.height() / 2)
         label.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        return label
+
+    def _set_hover(self, name: str | None) -> None:
+        """Light the row and the column of the well under the pointer."""
+        if name == self._hover:
+            return
+        for hot, brush in ((self._hover, HEADER), (name, HEADER_HOT)):
+            if hot in self._position:
+                column, row = self._position[hot]
+                for labels, index in ((self._column_labels, column),
+                                      (self._row_labels, row)):
+                    if index < len(labels):
+                        labels[index].setBrush(QBrush(brush))
+        self._hover = name
+        self.hovered.emit(name)
+
+    @property
+    def destination(self):
+        return self._destination
 
     # -- state ---------------------------------------------------------------
 
@@ -334,87 +480,13 @@ class PlateView(QGraphicsView):
             label.setPos(rect.center().x() - bounds.width() / 2,
                          rect.center().y() - bounds.height() / 2)
 
-    # -- interaction ---------------------------------------------------------
 
-    def _item_at(self, position, kind):
-        item = self.itemAt(position)
-        while item is not None and not isinstance(item, kind):
-            item = item.parentItem()
-        return item
+class PlateMirror(_Interaction, QGraphicsView):
+    """Another view of a PlateView's scene; see "A second, larger view"."""
 
-    def mousePressEvent(self, event) -> None:
-        if event.button() != Qt.MouseButton.LeftButton:
-            super().mousePressEvent(event)
-            return
-        self._press_scene = self.mapToScene(event.position().toPoint())
-        self._press_mods = event.modifiers()
-        header = self._item_at(event.position().toPoint(), _Header)
-        if header is not None:
-            self._apply(header.wells, event.modifiers())
-            self._press_scene = None
-        event.accept()
-
-    def mouseMoveEvent(self, event) -> None:
-        if self._press_scene is None:
-            super().mouseMoveEvent(event)
-            return
-        here = self.mapToScene(event.position().toPoint())
-        rect = QRectF(self._press_scene, here).normalized()
-        if (rect.width() < DRAG_SLOP and rect.height() < DRAG_SLOP
-                and self._band is None):
-            return
-        if self._band is None:
-            self._band = QGraphicsRectItem()
-            self._band.setPen(QPen(BAND_EDGE, 1, Qt.PenStyle.DashLine))
-            self._band.setBrush(QBrush(BAND_FILL))
-            self._band.setZValue(10)
-            self.scene().addItem(self._band)
-        self._band.setRect(rect)
-        event.accept()
-
-    def mouseReleaseEvent(self, event) -> None:
-        if event.button() != Qt.MouseButton.LeftButton or self._press_scene is None:
-            super().mouseReleaseEvent(event)
-            return
-        if self._band is not None:
-            rect = self._band.rect()
-            self.scene().removeItem(self._band)
-            self._band = None
-            inside = [name for name, well in self._wells.items()
-                      if rect.contains(well.sceneBoundingRect().center())]
-            self._apply(inside, self._press_mods)
-        else:
-            well = self._item_at(event.position().toPoint(), _Well)
-            if well is not None:
-                if self._press_mods & Qt.KeyboardModifier.ControlModifier:
-                    # Ctrl on a single well toggles: adding one at a time is
-                    # what Ctrl means everywhere, and removing it again is
-                    # the same gesture rather than a different modifier.
-                    names = (self._selected - {well.name}
-                             if well.name in self._selected
-                             else self._selected | {well.name})
-                    self.set_selection(names)
-                else:
-                    self._apply([well.name], self._press_mods)
-            elif not (self._press_mods & (Qt.KeyboardModifier.ControlModifier
-                                          | Qt.KeyboardModifier.ShiftModifier)):
-                self.clear_selection()
-        self._press_scene = None
-        event.accept()
-
-    def mouseDoubleClickEvent(self, event) -> None:
-        well = self._item_at(event.position().toPoint(), _Well)
-        if well is not None:
-            self.well_activated.emit(well.name)
-        super().mouseDoubleClickEvent(event)
-
-    # -- geometry ------------------------------------------------------------
-
-    def _fit(self) -> None:
-        if self.scene().sceneRect().isValid():
-            self.fitInView(self.scene().sceneRect(),
-                           Qt.AspectRatioMode.KeepAspectRatio)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._fit()
+    def __init__(self, source: PlateView, parent=None):
+        super().__init__(parent)
+        self._owner = source
+        self.setScene(source.scene())
+        self._set_up_view()
+        source.scene().sceneRectChanged.connect(self._fit)

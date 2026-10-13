@@ -56,6 +56,15 @@ did, instead of after every well.
 The program says how much a tip holds (`Program.tip_ul`), and nothing may
 put more in it: the run refuses such an aspirate, and `problems` finds it on
 paper first.
+
+The trash
+---------
+A run started from its first well begins by blowing the tip out over the
+program's trash (`Program.trash`: one fixed well - a trash or a reservoir -
+or a saved point), so whatever an earlier run, a tried step or a hand left
+in it goes there and not into the first well. Carrying on after a stop
+does not: the tip may hold what the chain drew on purpose. A run needs a
+trash; a step tried on its own does not.
 """
 
 from __future__ import annotations
@@ -246,6 +255,9 @@ class Program(_Model):
     name: str = ""
     # The most the tip holds, in µl.
     tip_ul: float = Field(default=TIP_UL, gt=0)
+    # Where the tip is blown out before a run from the first well: a well
+    # or a saved point. See "The trash".
+    trash: Location | None = None
     groups: list[Group] = Field(default_factory=list)
 
     @property

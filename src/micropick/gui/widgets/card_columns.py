@@ -11,6 +11,9 @@ height at the width they will have. It is chosen when the arrangement
 changes, not on every resize, so the cards do not hop between columns while
 a window is being dragged.
 
+`wide` cards go above the columns, across both: a plate map on the Liquid
+handling page, which needs the room more than any column of buttons.
+
 This is the inner widget of `theme.factory.scroll_column`, which measures
 its height for its width; a pair of box layouts answers that like one does.
 """
@@ -28,14 +31,21 @@ COLUMN_MIN = 300
 
 class CardColumns(QWidget):
     def __init__(self, cards, parent: QWidget | None = None, *,
-                 column_min: int = COLUMN_MIN):
+                 column_min: int = COLUMN_MIN, wide=()):
         super().__init__(parent)
         self._cards = list(cards)
         self._column_min = column_min
         self._two: bool | None = None
 
-        self._outer = QHBoxLayout(self)
+        top = QVBoxLayout(self)
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(SPACING)
+        for card in wide:
+            card.setParent(self)
+            top.addWidget(card)
+        self._outer = QHBoxLayout()
         self._outer.setContentsMargins(0, 0, 0, 0)
+        top.addLayout(self._outer, 1)
         self._columns = []
         for _ in range(2):
             column = QVBoxLayout()
@@ -91,6 +101,9 @@ class CardColumns(QWidget):
         # An empty right column is an empty layout, which the outer layout
         # skips, spacing and all.
         self._outer.setSpacing(SPACING if groups[1] else 0)
+        # And no share of the width: with the stretch it kept, one column
+        # was cards narrower than the panel beside an empty strip.
+        self._outer.setStretch(1, 1 if groups[1] else 0)
         for column, cards in zip(self._columns, groups):
             for card in cards:
                 column.addWidget(card)

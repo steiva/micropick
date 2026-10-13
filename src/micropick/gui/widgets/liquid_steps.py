@@ -129,6 +129,18 @@ class LocationEditor(QWidget):
 
     # -- what is on offer ----------------------------------------------------
 
+    def limit_kinds(self, kinds) -> None:
+        """Offer only these kinds of place: a trash is a well or a point,
+        never each well of a group or wherever the tip is."""
+        self._loading = True
+        self.kind.clear()
+        for kind in kinds:
+            self.kind.addItem(KINDS[kind], kind)
+        self.kind.setToolTip("one fixed well: a trash or a reservoir.\n"
+                             "a saved point: a position from the jog panel.")
+        self._loading = False
+        self._show_rows()
+
     def set_choices(self, plates: list[PlateChoice], points: list[str]) -> None:
         location = self.location()
         self._plates = list(plates)
@@ -156,8 +168,9 @@ class LocationEditor(QWidget):
             self.labware.addItem(f"slot {location.slot} — "
                                  f"{location.load_name} (not on the deck)",
                                  wanted)
-        if location.slot:
-            self.labware.setCurrentIndex(self.labware.findData(wanted))
+        # No labware chosen is shown as none, not as the first on the deck.
+        self.labware.setCurrentIndex(
+            self.labware.findData(wanted) if location.slot else -1)
         self._fill_wells(location.well)
         self.point.clear()
         self.point.addItems(self._points)

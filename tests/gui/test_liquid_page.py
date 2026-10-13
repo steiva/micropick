@@ -92,13 +92,22 @@ def test_a_run_goes_through_every_well(app, session):
     page._add_step("dispense")
     page.program.groups[0].steps[1].location = Location(kind="here")
     _wait(app, page)
+    assert any("no trash" in p for p in page._run_problems())
+    page.trash.set_location(Location(kind="well", slot="5", load_name=PLATE,
+                                     well="H12"))
+    page._trash_edited()
     assert page._run_problems() == []
     page._confirm_start = lambda: True
     page._start()
     _wait(app, page)
     assert page.state.done == [(0, "A1"), (0, "A2")]
-    aspirates = [c for c in session.robot.calls if c[0] == "aspirate"]
-    assert len(aspirates) == 2
+    liquid_calls = [c for c in session.robot.calls
+                    if c[0] in ("aspirate", "dispense", "blow_out")]
+    assert liquid_calls[0][0] == "blow_out" and liquid_calls[0][2] == "H12"
+    aspirates = [c for c in liquid_calls if c[0] == "aspirate"]
+    # The two of the program, after the shake that resets the plunger at
+    # the trash.
+    assert [c[2] for c in aspirates][-2:] == ["A1", "A2"]
     assert "Finished" in page.run_state.text()
     assert page.done.done                               # the green check
     assert "2 wells done" in page.done.detail.text()
@@ -130,4 +139,28 @@ def test_a_well_location_on_the_deck_is_not_marked_missing(app, session):
     where = page.editor.where
     assert "not on the deck" not in where.labware.currentText()
     assert where.location() == step.location
+    page.deleteLater()
+
+
+def test_the_well_under_the_pointer_is_named_and_the_window_mirrors(app,
+                                                                    session):
+    page = page_module.LiquidHandlingPage(session)
+    page.plate.set_selection({"A1", "A2"})
+    page._new_group()
+    page.plate._set_hover("A2")
+    group = page.program.groups[0].name
+    assert page.hover_line.text() == f"A2 — {group}, to do"
+    page.state.done = [(0, "A2")]
+    page.plate._set_hover("A1")
+    page.plate._set_hover("A2")
+    assert page.hover_line.text() == f"A2 — {group}, done"
+    page.plate._set_hover("H12")
+    assert page.hover_line.text() == "H12 — no group"
+    assert page.plate_window.readout.text() == "H12 — no group"
+    page._show_plate_window()
+    assert page.plate_window.isVisible()
+    assert page.plate_window.view.scene() is page.plate.scene()
+    assert "slot 5" in page.plate_window.windowTitle()
+    page.plate_window.close()                        # hides, keeps the window
+    assert not page.plate_window.isVisible()
     page.deleteLater()

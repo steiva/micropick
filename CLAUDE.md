@@ -126,7 +126,11 @@ points are `profile.positions`, not a list of the page's own. The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing is a program written with these blocks
 (measured well centre, auto empty, slow lift, pause after the first well),
-not a page of its own.
+not a page of its own. Start blows the tip out over the program's trash
+(`Program.trash`, a well or a saved point) before the first well; Continue
+does not. The plate map spans both card columns (`CardColumns(wide=...)`),
+names the well under the pointer, and opens in its own window as a
+`PlateMirror` - the same scene, never a copy.
 
 ### Words on screen
 

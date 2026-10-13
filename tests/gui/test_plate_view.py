@@ -18,7 +18,9 @@ from PySide6.QtGui import QMouseEvent                            # noqa: E402
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.core.routine import Destination                   # noqa: E402
-from micropick.gui.widgets.plate_view import (LABEL_MIN_WELLS,   # noqa: E402
+from micropick.gui.widgets.plate_view import (HEADER,            # noqa: E402
+                                              HEADER_HOT,
+                                              LABEL_MIN_WELLS, PlateMirror,
                                               PlateView, _Header)
 
 CTRL = Qt.KeyboardModifier.ControlModifier
@@ -46,7 +48,7 @@ def view(app):
 def centre(view, well):
     """The viewport point of a well's centre. Mouse events go to the
     viewport, which is where Qt delivers them in a QGraphicsView."""
-    item = view._wells[well]
+    item = view._owner._wells[well]                 # a mirror's are its plate's
     return QPointF(view.mapFromScene(item.sceneBoundingRect().center()))
 
 
@@ -195,3 +197,52 @@ def test_group_colours_replace_the_plan_and_done_fills_solid(app, view):
     assert view._wells["A1"].pen().widthF() > 3
     view.set_colours({})
     assert view._labels["A1"].text() == "2"
+
+
+def move(app, view, point):
+    app.sendEvent(view.viewport(), QMouseEvent(
+        QMouseEvent.Type.MouseMove, point, view.viewport().mapToGlobal(point),
+        Qt.MouseButton.NoButton, Qt.MouseButton.NoButton, NONE))
+    app.processEvents()
+
+
+def header_colour(view, text):
+    for item in view.scene().items():
+        if isinstance(item, _Header) and item.childItems()[0].text() == text:
+            return item.childItems()[0].brush().color()
+    raise KeyError(text)
+
+
+def test_the_well_under_the_pointer_lights_its_row_and_column(app, view):
+    said = []
+    view.hovered.connect(said.append)
+    move(app, view, centre(view, "C7"))
+    assert said[-1] == "C7"
+    assert header_colour(view, "C") == HEADER_HOT
+    assert header_colour(view, "7") == HEADER_HOT
+    assert header_colour(view, "D") == HEADER
+    move(app, view, centre(view, "D8"))
+    assert said[-1] == "D8"
+    assert header_colour(view, "C") == HEADER
+    assert header_colour(view, "D") == HEADER_HOT
+    view._set_hover(None)                     # what leaving the view does
+    assert said[-1] is None and header_colour(view, "D") == HEADER
+
+
+def test_a_mirror_shows_the_same_plate_and_selects_on_it(app, view):
+    mirror = PlateMirror(view)
+    mirror.resize(1200, 840)
+    mirror.show()
+    app.processEvents()
+    assert mirror.scene() is view.scene()
+    assert mirror.transform().m11() > view.transform().m11()   # larger
+    click(app, mirror, centre(mirror, "B3"))
+    assert view.selection == {"B3"}
+    click(app, mirror, centre(mirror, "B4"), CTRL)
+    assert view.selection == {"B3", "B4"}
+    # Past the corner wells, so none sits on the band's edge.
+    start, end = centre(mirror, "E1"), centre(mirror, "F2")
+    drag(app, mirror, QPointF(start.x() - 8, start.y() - 8),
+         QPointF(end.x() + 8, end.y() + 8))
+    assert view.selection == {"E1", "E2", "F1", "F2"}
+    mirror.close()
