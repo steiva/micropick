@@ -408,6 +408,10 @@ class Session(QObject):
         address is used at the next Connect."""
         app_settings.save_settings(settings)
         app_settings.apply(settings)
+        if settings.inference_device != self.settings.inference_device:
+            # Loaded for the old device; the next page that needs it loads
+            # it again.
+            self.detector.forget()
         self.settings, self.settings_note = settings, ""
         log.info("settings saved to %s", app_settings.settings_path())
         self.settings_changed.emit(settings)

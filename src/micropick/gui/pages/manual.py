@@ -182,6 +182,7 @@ class ManualPage(QWidget):
         self.session = session
         self._worker: Worker | None = None
         self._tip_detector = None
+        self._tip_device = None             # the setting it was loaded with
         # The top of the Z travel with the tip that is on; see raise_tip.
         self._z_top: float | None = None
         self._forget_targets(redraw=False)
@@ -501,12 +502,16 @@ class ManualPage(QWidget):
         profile, robot, camera = session.profile, session.robot, self._camera()
         pmap = PixelMap.from_config(profile.pixel_map)
         mock, detector = session.mock, self._tip_detector
+        device = session.settings.inference_device
+        if device != self._tip_device:
+            detector = None                  # loaded for another device
 
         def job(log):
             nonlocal detector
             if detector is None:
                 log("loading the tip detector")
-                detector = load_tip_detector(profile, mock=mock, robot=robot)
+                detector = load_tip_detector(profile, mock=mock, robot=robot,
+                                             device=device)
             # The pose is read next to the frame, not after it: it is part
             # of the conversion rather than a correction applied later.
             gantry = np.array(xyz(robot)[:2])
@@ -525,6 +530,7 @@ class ManualPage(QWidget):
     def _crosshairs_found(self, payload) -> None:
         detector, points, worlds, outside = payload
         self._tip_detector = detector
+        self._tip_device = self.session.settings.inference_device
         self._cross = points
         self._cross_worlds = worlds
         self._cross_outside = outside

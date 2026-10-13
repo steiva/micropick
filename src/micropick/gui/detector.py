@@ -100,18 +100,23 @@ class DetectorService(QObject):
         super().__init__(parent)
         self._model = None
         self._name: str | None = None
+        self._runs_on = ""
 
     # -- what is available ---------------------------------------------------
 
     @staticmethod
     def available_weights() -> list[str]:
-        """Every `.pt` in ml_models/. The directory is not created on demand:
-        a missing one is a real problem and an empty folder that looks correct
-        is worse than an error."""
+        """Every `.pt` in ml_models/, and an `.onnx` with no `.pt` beside it
+        (an export beside its `.pt` is how that `.pt` is run, not a model of
+        its own; see `core.vision.yolo`). The directory is not created on
+        demand: a missing one is a real problem and an empty folder that
+        looks correct is worse than an error."""
         directory = paths.ml_models_dir()
         if not directory.is_dir():
             return []
-        return sorted(p.name for p in directory.glob("*.pt"))
+        weights = {p.stem: p.name for p in directory.glob("*.onnx")}
+        weights.update({p.stem: p.name for p in directory.glob("*.pt")})
+        return sorted(weights.values())
 
     @property
     def model(self):
@@ -135,12 +140,20 @@ class DetectorService(QObject):
             return "no detector loaded"
         if self.is_standin:
             return IS_STANDIN_NOTE
-        return f"model: {self._name}"
+        return f"model: {self._name}, {self._runs_on}"
 
     # -- loading -------------------------------------------------------------
 
-    def load(self, name: str) -> str:
-        """Blocking: importing ultralytics alone takes seconds. Use a Worker."""
+    def forget(self) -> None:
+        """Unload, so the next page that needs the model loads it again - on
+        the device the settings now ask for."""
+        self._model, self._name, self._runs_on = None, None, ""
+        self.changed.emit()
+
+    def load(self, name: str, *, device: str = "auto",
+             imgsz: int = 640) -> str:
+        """Blocking: seconds, and more when Auto measures the devices (see
+        `core.vision.yolo`). Use a Worker."""
         if name == STANDIN:
             self._model, self._name = StandInDetector(), STANDIN
             log.info("using the %s", IS_STANDIN_NOTE)
@@ -153,9 +166,11 @@ class DetectorService(QObject):
                 f"no weights at {path}. Put the .pt file in "
                 f"{paths.ml_models_dir()}; weights are not tracked in the "
                 f"repository.")
-        from ..core.vision.yolo import load_yolo   # seconds, and optional
+        from ..core.vision.yolo import load_detector   # seconds, and optional
 
-        self._model, self._name = load_yolo(path), name
+        loaded = load_detector(path, device=device, imgsz=imgsz)
+        self._model, self._name = loaded.model, name
+        self._runs_on = loaded.device
         log.info("loaded cuboid weights %s", name)
         self.changed.emit()
         return self.description

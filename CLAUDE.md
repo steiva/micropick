@@ -185,6 +185,13 @@ mode, and the pipette calibration reopens it in the profile's own.
 The camera calibration sweep's parameters (marker side, dictionary, grid,
 degree) are settings too (`AppSettings.sweep_*`); the Camera calibration
 page shows them and links to Settings.
+So is where the models run (`AppSettings.inference_device`: Auto, CPU,
+GPU). A `.pt` is run as its ONNX export beside it (`name.onnx`, made by
+`python -m micropick.export_models`, checked against the `.pt`; the build
+runs it) through ONNX Runtime - DirectML on Windows, so any GPU - and Auto
+measures each device that works on the first load and takes the faster
+(`core.vision.yolo`). `core.vision.onnx_yolo` gives ultralytics' own boxes:
+change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
 verify, manual adjustment). The Tip calibration page is numbered steps,
 each a card with a mark: place the disc (ticked by the operator), set the

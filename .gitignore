@@ -153,6 +153,7 @@ outputs/
 legacy/
 
 ml_models/*.pt
+ml_models/*.onnx
 
 profiles/*/
 !profiles/example/legacy/

@@ -26,6 +26,11 @@ Keys: the keys that move the robot and Manual control's aspirate and
 dispense (`gui.keys`), one per action, for a keyboard without PgUp and
 PgDn. Save refuses a key used twice, or Esc, which is Stop.
 
+Inference: Auto, CPU or GPU for the machine learning models
+(`core.vision.yolo`), with the GPUs found and what each model loaded so far
+runs on. A change unloads the cuboid detector, so the next page that needs
+it loads it on the new device.
+
 Beside them, in a column of its own, what belongs to the loaded profile and
 is set as seldom: which attached camera is the upper (overview) and which
 the lower (underview) one, which machine learning models it uses, and what
@@ -49,6 +54,7 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout,
 
 from ... import paths
 from ...config.app_settings import AppSettings, settings_path
+from ...core.vision import yolo
 from ...hardware import devices as camera_devices
 from .. import keys
 from ..detector import STANDIN, DetectorService
@@ -149,6 +155,7 @@ class SettingsPage(QWidget):
         column.addWidget(self._clips_card())
         column.addWidget(self._sweep_card())
         column.addWidget(self._tip_card())
+        column.addWidget(self._inference_card())
         column.addWidget(self._keys_card())
         column.addStretch(1)
 
@@ -445,6 +452,37 @@ class SettingsPage(QWidget):
         self._show_sweep(AppSettings())
         self._edited()
 
+    def _inference_card(self) -> QWidget:
+        """Where the models run: see `core.vision.yolo`."""
+        box = card(self)
+        box.layout().addWidget(heading("Inference", 2))
+        box.layout().addWidget(_label(
+            "Where the machine learning models run."))
+        grid = QGridLayout()
+        grid.addWidget(QLabel("Device"), 0, 0)
+        self.inference_device = combo_box(self)
+        for text, value in (("Auto", "auto"), ("CPU", "cpu"), ("GPU", "gpu")):
+            self.inference_device.addItem(text, value)
+        self.inference_device.setToolTip(
+            "Auto measures each device on the first load and uses the "
+            "faster.")
+        self.inference_device.currentIndexChanged.connect(
+            lambda _i: self._edited())
+        grid.addWidget(self.inference_device, 0, 1,
+                       Qt.AlignmentFlag.AlignLeft)
+        grid.setColumnStretch(2, 1)
+        box.layout().addLayout(grid)
+        self.inference_state = _label()
+        box.layout().addWidget(self.inference_state)
+        return box
+
+    def _show_inference(self) -> None:
+        """The GPUs found, and what each model loaded so far runs on."""
+        found = yolo.gpus()
+        lines = [f"GPU: {', '.join(found)}." if found else "No GPU found."]
+        lines += [f"{name}: {loaded}." for name, loaded in yolo.LOADED.items()]
+        self.inference_state.setText("\n".join(lines))
+
     def _clips_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Pickup clips", 2))
@@ -590,6 +628,11 @@ class SettingsPage(QWidget):
         self._show_sweep(settings)
         self._show_tip(settings)
         self._show_keys(settings.keys)
+        self.inference_device.blockSignals(True)
+        self.inference_device.setCurrentIndex(
+            self.inference_device.findData(settings.inference_device))
+        self.inference_device.blockSignals(False)
+        self._show_inference()
         self.save_state.setText(
             self.session.settings_note
             or (f"Saved in {settings_path()}." if settings_path().is_file()
@@ -618,6 +661,7 @@ class SettingsPage(QWidget):
                            tip_cal_frames=int(self.tip_frames.value()),
                            tip_cal_verify=self.tip_verify.isChecked(),
                            tip_cal_touch_up=self.tip_touch_up.isChecked(),
+                           inference_device=self.inference_device.currentData(),
                            keys=self._typed_keys())
 
     def _edited(self) -> None:

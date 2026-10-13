@@ -95,11 +95,13 @@ class StandInTipDetector:
                            detections=[])
 
 
-def load_tip_detector(profile, *, mock: bool = False, robot=None):
+def load_tip_detector(profile, *, mock: bool = False, robot=None,
+                      device: str = "auto"):
     """The detector the profile names. Blocking: run it in a Worker.
 
-    Raises FileNotFoundError for missing weights and ImportError for a
-    missing ultralytics, each with the sentence that says what to do.
+    Raises FileNotFoundError for missing weights and ImportError for
+    nothing to run them with, each with the sentence that says what to do.
+    `device` is the computer's setting (`core.vision.yolo`).
     """
     target = profile.calibration.tip_target
     if mock:
@@ -111,11 +113,13 @@ def load_tip_detector(profile, *, mock: bool = False, robot=None):
             f"names {target.model_file!r}; put that file in "
             f"{paths.ml_models_dir()} (weights are not tracked in the "
             f"repository).")
-    from ..core.vision.yolo import load_yolo
+    from ..core.vision.yolo import load_detector
     try:
-        model = load_yolo(path)               # seconds, and optional
+        # seconds, and optional; `device` is the computer's setting
+        model = load_detector(path, device=device, imgsz=target.imgsz).model
     except ImportError as exc:
         raise ImportError(
-            "ultralytics is not installed, and the tip detector is a YOLO "
-            "model; install the 'ml' extra (pip install -e \".[ml]\")") from exc
+            "neither onnxruntime nor ultralytics is installed, and the tip "
+            "detector is a YOLO model; install the 'ml' extra "
+            "(pip install -e \".[ml]\")") from exc
     return TipDetector(model, imgsz=target.imgsz, conf=target.conf)

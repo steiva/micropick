@@ -83,19 +83,26 @@ def root() -> Path:
 
 
 def seed_from_bundle() -> list[Path]:
-    """A packaged build's first start: copy the labware and the weights it
-    shipped with into the root, where they can be added to and replaced.
-    Nothing already there is touched. Returns what was copied."""
+    """Copy the labware and the weights a packaged build shipped with into
+    the root, where they can be added to and replaced: every file the root
+    does not have yet, so a new version's files (a model's ONNX export)
+    reach an installation that has the folders already. Nothing already
+    there is touched. Returns what was copied."""
     import shutil
     bundle = bundle_dir()
     if bundle is None:
         return []
     copied = []
     for name in ("labware", "ml_models"):
-        source, target = bundle / name, root() / name
-        if source.is_dir() and not target.exists():
-            shutil.copytree(source, target)
-            copied.append(target)
+        source = bundle / name
+        if not source.is_dir():
+            continue
+        for item in sorted(source.rglob("*")):
+            target = root() / name / item.relative_to(source)
+            if item.is_file() and not target.exists():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(item, target)
+                copied.append(target)
     return copied
 
 

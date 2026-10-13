@@ -106,3 +106,18 @@ def test_connect_goes_to_the_saved_address_or_the_command_lines(
             s.probe_robot()
         assert made[-1] == url
         s.shutdown()
+
+
+def test_the_inference_device_is_saved_and_the_detector_reloads(app, session,
+                                                                 tmp_path):
+    from micropick.gui.detector import STANDIN
+    session.detector.load(STANDIN)
+    page = SettingsPage(session)
+    page.inference_device.setCurrentIndex(
+        page.inference_device.findData("gpu"))
+    page._save()
+    data = json.loads((tmp_path / "settings.json").read_text())
+    assert data["inference_device"] == "gpu"
+    assert session.detector.name is None          # loaded again when needed
+    assert "GPU" in page.inference_state.text()   # found, or none found
+    page.deleteLater()

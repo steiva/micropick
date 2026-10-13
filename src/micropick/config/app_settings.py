@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -73,6 +74,10 @@ class AppSettings(BaseModel):
     tip_cal_frames: int = Field(default=7, ge=1, le=30)
     tip_cal_verify: bool = True
     tip_cal_touch_up: bool = True
+    # What runs the machine learning models: "auto" measures the CPU and
+    # any GPU on the first load and takes the faster, "cpu" and "gpu" ask
+    # for one (`core.vision.yolo`). A computer's, like its graphics card.
+    inference_device: Literal["auto", "cpu", "gpu"] = "auto"
     # The keys that drive the robot, where they differ from the defaults:
     # action id -> key in Qt's portable text (`gui.keys`).
     keys: dict[str, str] = Field(default_factory=dict)

@@ -478,6 +478,7 @@ class PipetteCalibration(QWidget):
         tip_type = self._tip_type()
         touch_up = self._touch_up if settings.tip_cal_touch_up else None
         mock = session.mock
+        device = session.settings.inference_device
         # Which tip is measured: the offset holds for it alone
         # (`readiness.tip_calibration_status`).
         robot_session = (session.run_state.run_id
@@ -496,7 +497,8 @@ class PipetteCalibration(QWidget):
 
         def job(log):
             log("loading the tip detector")
-            detector = load_tip_detector(profile, mock=mock, robot=robot)
+            detector = load_tip_detector(profile, mock=mock, robot=robot,
+                                         device=device)
             standin = bool(getattr(detector, "is_standin", False))
             if standin:
                 log(STANDIN_NOTE)

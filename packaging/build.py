@@ -1,5 +1,9 @@
 """Build the Windows package: `python packaging/build.py`.
 
+0. The models' ONNX exports, beside their `.pt` in ml_models/
+   (`python -m micropick.export_models`, checked against the `.pt`): what
+   the application runs, faster, and on any GPU (`core.vision.yolo`). The
+   spec has to ship `ml_models/*.onnx` and onnxruntime's DirectML DLLs.
 1. Stamp the build: `src/micropick/_build.py` gets the commit (and "+dirty"
    when the tree has uncommitted changes) so the window title, the log and
    a report say exactly what was built. The file is removed afterwards and
@@ -103,12 +107,18 @@ def main() -> int:
     v = version()
     tag = f"v{v}"
     tagged = tag in git("tag", "--points-at", "HEAD").split()
-    build = stamp(dirty)
-    print(f"building micropick {v} ({build})"
-          + ("" if tagged else f" - HEAD is not tagged {tag}"))
     # ultralytics pip-installs into the environment on import unless told
     # not to; the spec says so too, this covers its analysis subprocesses.
     env = dict(os.environ, YOLO_AUTOINSTALL="false")
+    print("exporting the models to ONNX")
+    if subprocess.run([sys.executable, "-m", "micropick.export_models"],
+                      cwd=ROOT, env=env).returncode:
+        print("A model was not exported (see above). Without its .onnx the "
+              "build would run it on PyTorch, slower.")
+        return 1
+    build = stamp(dirty)
+    print(f"building micropick {v} ({build})"
+          + ("" if tagged else f" - HEAD is not tagged {tag}"))
     try:
         subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm",
                         "--clean", "--distpath", str(DIST),

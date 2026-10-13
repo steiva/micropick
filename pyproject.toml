@@ -18,7 +18,13 @@ hardware = [
     "keyboard",
     "pygrabber; sys_platform == 'win32'",
 ]
-ml = ["ultralytics"]
+# ONNX Runtime runs the models' ONNX exports (`micropick.export_models`);
+# on Windows the DirectML build, which also reaches any DirectX 12 GPU.
+ml = [
+    "ultralytics",
+    "onnxruntime; sys_platform != 'win32'",
+    "onnxruntime-directml; sys_platform == 'win32'",
+]
 # The desktop application. Deliberately free of `ml`: the GUI is developed
 # against mocks, and a machine that only drives the robot by hand should not
 # be made to install a training stack to do it.
@@ -28,7 +34,7 @@ gui = ["PySide6>=6.7", "pyqtdarktheme-fork", "pyqtgraph", "qtawesome"]
 # stack needs; install with pip's warning (runtime works with numpy 2), or keep
 # your plates in labware/.
 stock = ["opentrons-shared-data"]
-dev = ["nbstripout", "pytest", "ruff"]
+dev = ["nbstripout", "pytest", "ruff", "onnx", "onnxslim"]
 
 [project.scripts]
 micropick-gui = "micropick.gui.__main__:main"

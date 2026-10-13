@@ -787,6 +787,8 @@ class PickingPage(QWidget):
         if self._detection is None:
             self.result.setText("loading the detector…")
         worker = Worker(self.detector.load, wanted,
+                        device=self.session.settings.inference_device,
+                        imgsz=self.session.profile.picking.yolo_imgsz,
                         what="loading the detector")
         worker.robot = False                 # weights, not the robot
         self._run(worker, self._loaded)
