@@ -336,7 +336,7 @@ BOUNDS: dict[str, tuple[float, float]] = {
     "circle_radius": (10, 10000),
     "capture_settle_s": (0.0, 10.0),
     "verify_settle_s": (0.0, 10.0),
-    "clip_max_frames": (10, 5000),
+    "clip_max_frames": (10, 20000),
     "deposit_z_optional": (0.0, 150.0),
 }
 

@@ -136,6 +136,7 @@ import pandas as pd
 from ..core.vision import cuboids as vision
 from ..core.vision import floaters
 from ..core.calibration.homography import Homography, HomographyError
+from ..hardware.camera import ClipWriter
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, set_lights, xyz)
 from .manual import reachable_z
@@ -235,7 +236,11 @@ def _clip_view(camera, crop: float | None = None
     if frac >= 1.0:
         return (0, 0), (w, h), None
     x0, y0, side = vision.center_crop_box((h, w), frac)
-    return (x0, y0), (side, side), lambda f: vision.center_crop(f, frac)[0]
+    # A copy, not the slice: the frames wait in the clip writer's queue, and
+    # a slice keeps the whole sensor frame under it alive - 9 MB a frame at
+    # 2000x1500 rather than 3 MB.
+    return ((x0, y0), (side, side),
+            lambda f: np.ascontiguousarray(vision.center_crop(f, frac)[0]))
 
 
 @dataclass
@@ -388,9 +393,9 @@ class PickingSession:
         # that held nothing.
         self._after_return: RobotState | None = None
 
-        # Lower-camera clip recording is fully optional. The recorder is created
-        # and attached only when both a lower camera and a destination folder are
-        # given; otherwise nothing is created and no frames are ever accumulated.
+        # Lower-camera clip recording is fully optional. The clip writer is
+        # created and attached only when both a lower camera and a destination
+        # folder are given; otherwise nothing is created and no frame is taken.
         self._under_cam = under_cam
         self._clip_dir = None
         self._recorder = None
@@ -408,8 +413,11 @@ class PickingSession:
             # `clip_crop` None is the camera's own view crop.
             self._clip_crop, self._clip_size, transform = _clip_view(
                 under_cam, clip_crop)
-            self._recorder = under_cam.record(
+            # Written as it is recorded (`ClipWriter`): a pickup's frames
+            # held until its end were gigabytes.
+            self._recorder = ClipWriter(
                 max_frames=self.config.clip_max_frames, transform=transform)
+            under_cam.attach(self._recorder)
             hcfg = profile.calibration.homography
             if hcfg is not None:
                 self._homography = Homography.from_config(hcfg)
@@ -485,6 +493,8 @@ class PickingSession:
         """
         if self._recorder is not None and self._under_cam is not None:
             self._under_cam.detach(self._recorder)
+            # A pickup cut short by a stop or an error did not happen.
+            self._recorder.abort()
             self._recorder = None
         if self._lights_before:
             set_lights(self.robot, True)
@@ -514,7 +524,7 @@ class PickingSession:
         except _Shaken:
             # A clip begun for a pickup that will not happen is dropped.
             if self._recorder is not None and self._recorder.recording:
-                self._recorder.stop()
+                self._recorder.abort()
             self._choice = None
             self.state = RobotState.DETECT_FLOATERS
             return self._event("shaken", "shook the dish, as asked")
@@ -1301,7 +1311,10 @@ class PickingSession:
             marked = self._mark_choice()
         except HomographyError as exc:
             self._log(f"no ROI box on the clip: {exc}")
-        self._recorder.start()
+        # Named for the target being filled; the pickup does not change it.
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        target = str(self.routine.current).replace(" ", "")
+        self._recorder.start(f"{self._clip_dir}/{target}_{stamp}.mp4")
         return marked
 
     def _mark_choice(self) -> int:
@@ -1368,18 +1381,11 @@ class PickingSession:
                            retries=sum(retries))
 
     def _save_clip(self) -> None:
-        """Stop the clip and write it, named for the current target. Encoding
-        runs off the picking loop so it does not stall the next pickup."""
+        """End the clip. It was written while it was recorded; its writer
+        finishes the file off the picking loop."""
         if self._recorder is None or not self._recorder.recording:
             return
         self._recorder.stop()
-        stamp = time.strftime("%Y%m%d_%H%M%S")
-        target = str(self.routine.current).replace(" ", "")
-        path = f"{self._clip_dir}/{target}_{stamp}.mp4"
-        try:
-            self._recorder.save_async(path, color=True)
-        except Exception as exc:                       # a clip is never critical
-            self._log(f"clip not saved: {exc}")
 
     def _state_verify_pickup(self, pause, stop) -> PickEvent:
         self._gate(pause, stop)

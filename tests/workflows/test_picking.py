@@ -492,15 +492,15 @@ def test_recording_on_saves_a_clip(tmp_path):
     under = open_mock_camera(width=320, height=240, fps=120.0)
     session, robot, camera = make_session(dish, routine, under_cam=under,
                                           clip_dir=tmp_path)
-    saved = []
-    session._recorder.save_async = lambda path, **kw: saved.append(path)
     try:
-        assert session._recorder is not None
+        writer = session._recorder
+        assert writer is not None
         drive(session)
         assert session.state is RobotState.COMPLETED
-        assert len(saved) == 1
-        assert str(tmp_path) in saved[0] and saved[0].endswith(".mp4")
-        assert not session._recorder.recording        # stopped after the clip
+        assert not writer.recording                   # stopped after the clip
+        assert writer.wait(10)
+        clips = list(Path(tmp_path).rglob("*.mp4"))
+        assert len(clips) == 1 and clips[0].stat().st_size > 0
     finally:
         session.close()
         under.close()
@@ -524,7 +524,6 @@ def _spy_on_marks(recorder):
         marked.append([tuple(map(float, p)) for p in points])
         return real(points, *a, **kw)
     recorder.mark_rois = mark_rois
-    recorder.save_async = lambda path, **kw: None
     return marked
 
 

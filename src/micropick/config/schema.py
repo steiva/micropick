@@ -423,7 +423,7 @@ class PickingConfig(BaseModel):
                                        # after each aspirate
     capture_settle_s: float = 0.3      # pause after parking before a frame
     verify_settle_s: float = 0.75      # pause after parking before the check frame
-    clip_max_frames: int = 600         # bound on a lower-camera pickup clip
+    clip_max_frames: int = 3000        # a pickup clip is cut after this
     homography_drift_warn_mm: float = 1.0
                                        # the upper camera rides on the gantry, so
                                        # the ROI box goes stale as the pose moves

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import os
+import queue
 import threading
 import time
 from collections import deque
@@ -42,7 +43,8 @@ import numpy as np
 
 from . import devices
 
-__all__ = ["BackgroundCamera", "Recorder", "CameraManager", "CameraError",
+__all__ = ["BackgroundCamera", "Recorder", "ClipWriter", "CameraManager",
+           "CameraError",
            "ControlReport", "apply_controls", "DEFAULT_FOCUS"]
 
 log = logging.getLogger(__name__)
@@ -60,6 +62,10 @@ Annotate = Callable[[np.ndarray], np.ndarray]
 _MISSES_BEFORE_LOST = 50
 # Between attempts to open a lost device again.
 _REOPEN_EVERY_S = 2.0
+# A clip's writer: frames waiting to be encoded (about a second), and the
+# frames its rate is measured from before the file is opened.
+_CLIP_QUEUE_FRAMES = 30
+_CLIP_FPS_PROBE = 10
 
 
 class CameraError(RuntimeError):
@@ -359,6 +365,206 @@ class Recorder:
         return (f"<Recorder {'recording' if self.recording else 'idle'}, "
                 f"{len(self.frames)}/{self.max_frames} frames"
                 + (f", {self.dropped} dropped" if self.dropped else "") + ">")
+
+
+class ClipWriter:
+    """Writes a camera's frames to a video file as they arrive.
+
+    A sink like `Recorder`, for clips too long to hold: a `Recorder` keeps
+    every frame until it is saved, which for a pickup at 2000x1500 was
+    gigabytes, and the encoding then ran while the next pickup was already
+    being decided. Here the grab thread hands each frame (after `transform`,
+    on that thread, as `Recorder` does) to a short queue and a thread of the
+    clip's own encodes it, so what is held is about a second of frames
+    whatever the clip's length.
+
+    The grab thread never waits: a frame that finds the queue full is
+    dropped and counted, and a clip goes on at most `max_frames` and is cut
+    there, said in the log. The file is opened once `_CLIP_FPS_PROBE` frames
+    have come, at the rate they came at, so the clip plays at the speed it
+    happened. ROI boxes are drawn by the writer, on a copy.
+
+    `stop` ends the clip and lets the writer finish the file; `abort` ends
+    it and deletes the file - a pickup that did not happen.
+    """
+
+    def __init__(self, *, max_frames: int = 3000,
+                 transform: Transform | None = None, color: bool = True):
+        self.max_frames = int(max_frames)
+        self.transform = transform
+        self.color = color
+        self._lock = threading.Lock()
+        self._rois: list[tuple[int, int, int]] = []
+        self._clip: _Clip | None = None
+        self._ended: list[_Clip] = []
+
+    # -- called by the camera thread ---------------------------------------
+
+    def _offer(self, frame: np.ndarray, stamp: float) -> None:
+        clip = self._clip
+        if clip is None or not clip.taking:
+            return
+        if clip.offered >= self.max_frames:
+            clip.cut = True
+            return
+        clip.offered += 1
+        if self.transform is not None:
+            frame = self.transform(frame)
+        try:
+            clip.frames.put_nowait((frame, stamp))
+        except queue.Full:
+            clip.dropped += 1
+
+    # -- control ------------------------------------------------------------
+
+    def start(self, path: str) -> "ClipWriter":
+        """Begin a clip into `path`, ending one still going."""
+        self.stop()
+        with self._lock:
+            rois = list(self._rois)
+        self._clip = _Clip(str(path), self.color, rois)
+        return self
+
+    def stop(self) -> None:
+        """End the clip; the writer finishes the file by itself."""
+        self._end(discard=False)
+
+    def abort(self) -> None:
+        """End the clip and delete what was written of it."""
+        self._end(discard=True)
+
+    def _end(self, *, discard: bool) -> None:
+        clip, self._clip = self._clip, None
+        if clip is not None:
+            clip.end(discard=discard)
+            self._ended = [c for c in self._ended if c.thread.is_alive()]
+            self._ended.append(clip)
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Until every ended clip's file is finished. False on a timeout."""
+        deadline = None if timeout is None else time.monotonic() + timeout
+        for clip in list(self._ended):
+            left = None if deadline is None else max(0.0,
+                                                     deadline - time.monotonic())
+            clip.thread.join(left)
+        return not any(c.thread.is_alive() for c in self._ended)
+
+    @property
+    def recording(self) -> bool:
+        return self._clip is not None
+
+    def mark_rois(self, points, half: int = 60) -> None:
+        """Boxes round these points on the next clip started. Coordinates
+        are in the frame after `transform`, as for `Recorder.mark_rois`."""
+        with self._lock:
+            self._rois = [(int(x), int(y), int(half)) for x, y in points]
+
+    def clear_roi(self) -> None:
+        with self._lock:
+            self._rois = []
+
+    def __repr__(self) -> str:
+        return (f"<ClipWriter {'recording' if self.recording else 'idle'}, "
+                f"at most {self.max_frames} frames>")
+
+
+class _Clip:
+    """One file being written, and the thread writing it."""
+
+    def __init__(self, path: str, color: bool, rois):
+        self.path = path
+        self.color = color
+        self.rois = rois
+        self.frames: queue.Queue = queue.Queue(maxsize=_CLIP_QUEUE_FRAMES)
+        self.offered = 0
+        self.dropped = 0
+        self.cut = False
+        self.taking = True
+        self._ended = threading.Event()
+        self._discard = False
+        self.thread = threading.Thread(target=self._run, daemon=True,
+                                       name=f"clip {os.path.basename(path)}")
+        self.thread.start()
+
+    def end(self, *, discard: bool = False) -> None:
+        self.taking = False
+        self._discard = discard
+        self._ended.set()
+
+    def _next(self):
+        """The next frame, or None once the clip has ended and the queue is
+        empty (or at once, when it is to be discarded)."""
+        while not self._discard:
+            try:
+                return self.frames.get(timeout=0.1)
+            except queue.Empty:
+                if self._ended.is_set():
+                    return None
+        return None
+
+    def _prepared(self, frame: np.ndarray) -> np.ndarray:
+        if self.rois:
+            frame = (cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+                     if frame.ndim == 2 else frame.copy())
+            for cx, cy, half in self.rois:
+                cv2.rectangle(frame, (cx - half, cy - half),
+                              (cx + half, cy + half), (255, 255, 255), 2)
+        if self.color and frame.ndim == 2:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        elif not self.color and frame.ndim == 3:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return frame
+
+    def _run(self) -> None:
+        writer = None
+        written = 0
+        probe: list[tuple[np.ndarray, float]] = []
+        try:
+            while True:
+                item = self._next()
+                if item is None:
+                    break
+                if writer is None:
+                    probe.append(item)
+                    if len(probe) < _CLIP_FPS_PROBE and not self._ended.is_set():
+                        continue
+                    writer = self._open(probe)
+                    pending, probe = probe, []
+                else:
+                    pending = [item]
+                for frame, _stamp in pending:
+                    writer.write(self._prepared(frame))
+                    written += 1
+            if writer is None and probe and not self._discard:
+                # Ended before the rate could be measured from many frames.
+                writer = self._open(probe)
+                for frame, _stamp in probe:
+                    writer.write(self._prepared(frame))
+                    written += 1
+        except Exception as exc:                          # a clip is never critical
+            log.warning("clip %s not written: %s", self.path, exc)
+            self._discard = True
+        finally:
+            if writer is not None:
+                writer.release()
+        if self._discard:
+            if writer is not None and os.path.exists(self.path):
+                os.remove(self.path)
+            return
+        if written:
+            extra = "".join(
+                [f", {self.dropped} dropped" if self.dropped else "",
+                 f", cut at {self.offered} frames" if self.cut else ""])
+            log.info("clip written: %s (%d frames%s)", self.path, written,
+                     extra)
+
+    def _open(self, probe) -> cv2.VideoWriter:
+        stamps = [t for _f, t in probe]
+        span = stamps[-1] - stamps[0]
+        fps = (len(stamps) - 1) / span if len(stamps) > 1 and span > 0 else 20.0
+        h, w = probe[0][0].shape[:2]
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        return _video_writer(self.path, fps, (w, h), self.color)
 
 
 # ---------------------------------------------------------------------------
