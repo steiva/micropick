@@ -304,6 +304,35 @@ def test_pause_blocks_then_resumes():
         camera.close()
 
 
+class _CountingEvent(threading.Event):
+    def __init__(self):
+        super().__init__()
+        self.polls = 0
+
+    def is_set(self) -> bool:
+        self.polls += 1
+        return super().is_set()
+
+
+def test_a_pause_sleeps_rather_than_spins():
+    """A paused run held the GIL in a loop of `pause.wait`, which returns at
+    once while the pause is set, and the window crawled until it was stopped."""
+    dish = Dish()
+    dish.add(1, (450, 350))
+    routine = Routine(Destination.coordinates([(200.0, 200.0)]),
+                      {(200.0, 200.0): 1})
+    session, _robot, camera = make_session(dish, routine)
+    try:
+        _run_to_state(session, RobotState.PICKUP_SAMPLE)
+        pause = _CountingEvent()
+        pause.set()
+        threading.Timer(0.3, pause.clear).start()
+        session.step(pause=pause, stop=threading.Event())
+        assert pause.polls < 100                      # ~6 at 50 ms a poll
+    finally:
+        camera.close()
+
+
 # ---------------------------------------------------------------------------
 # 3. interrupted then recreated session resumes from disk
 # ---------------------------------------------------------------------------

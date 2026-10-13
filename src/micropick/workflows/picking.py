@@ -700,7 +700,13 @@ class PickingSession:
                 if stop is not None and stop.is_set():
                     raise _Cancelled
                 self._shake_if_asked(stop)
-                pause.wait(0.05)
+                # Not `pause.wait`: it returns at once while the pause is
+                # set, and the loop would spin, holding the GIL the window
+                # needs. A stop still ends the wait at once.
+                if stop is not None:
+                    stop.wait(0.05)
+                else:
+                    time.sleep(0.05)
 
     def _shake_if_asked(self, stop) -> None:
         """Do a shake asked for, if it can be done here: stir, back to the

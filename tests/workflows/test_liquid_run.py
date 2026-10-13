@@ -138,6 +138,23 @@ def test_a_pause_step_holds_the_run_until_continue():
     assert state.done == [(0, "A1")]
 
 
+def test_a_pause_sleeps_rather_than_spins():
+    """`pause.wait` returns at once while the pause is set; a gate that
+    looped on it held the GIL and the window crawled."""
+    polls = []
+
+    class Counting(threading.Event):
+        def is_set(self):
+            polls.append(1)
+            return super().is_set()
+
+    pause = Counting()
+    pause.set()
+    threading.Timer(0.3, pause.clear).start()
+    liquid._gate(pause, threading.Event())
+    assert len(polls) < 100                 # ~6 at 50 ms a poll
+
+
 def test_problems_name_what_is_missing():
     program = Program(groups=[
         Group(name="g", slot="7", load_name="plate", wells=["A1"],

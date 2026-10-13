@@ -197,7 +197,12 @@ def _gate(pause, stop) -> None:
         while pause.is_set():
             if stop is not None and stop.is_set():
                 raise Stopped("stopped")
-            pause.wait(0.05)
+            # Not `pause.wait`: it returns at once while the pause is set,
+            # and the loop would spin, holding the GIL the window needs.
+            if stop is not None:
+                stop.wait(0.05)
+            else:
+                time.sleep(0.05)
 
 
 def _say(log, text: str) -> None:
