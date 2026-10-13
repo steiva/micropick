@@ -83,3 +83,18 @@ def test_refused_while_a_jog_panel_is_busy(app, window, monkeypatch):
     window.status.home.click()
     assert asked == []
     assert "busy" in window.status.currentMessage()
+
+
+def test_a_camera_is_closed_from_its_window_unless_the_robot_is_busy(window):
+    session = window.session
+    label = session.lower_camera_label
+    session.connect_robot()           # the mock scene needs the gantry
+    session.open_camera(label)
+    feed = window._feed(label)
+    window._robot_busy = lambda: True
+    assert window._close_camera(label) == "Robot busy."
+    assert session.camera(label) is not None
+    window._robot_busy = lambda: False
+    feed.close_button.click()
+    assert session.camera(label) is None
+    assert not feed.isVisible()

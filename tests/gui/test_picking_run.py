@@ -128,3 +128,17 @@ def test_the_histogram_cannot_be_moved_by_the_mouse(page):
     view = page.hist.getPlotItem().getViewBox()
     assert view.state["mouseEnabled"] == [False, False]
     assert not view.menuEnabled()
+
+
+def test_clips_off_lets_the_lower_camera_go(page):
+    """Open, its grab thread decodes every frame at the clips' mode."""
+    session = page.session
+    lower = session.lower_camera_label
+    session.connect_robot()           # the mock scene needs the gantry
+    session.open_camera(session.upper_camera_label)    # what the page shows
+    session.open_camera(lower, resolution=page._clip_mode())
+    page.clips_box.setChecked(True)
+    assert session.camera(lower) is not None
+    page.clips_box.setChecked(False)
+    assert session.camera(lower) is None
+    session.shutdown()

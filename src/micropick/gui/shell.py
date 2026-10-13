@@ -640,9 +640,18 @@ class MainWindow(QMainWindow):
         if window is None:
             window = FeedWindow(
                 label, self,
-                save_controls=self.session.save_camera_controls)
+                save_controls=self.session.save_camera_controls,
+                close_camera=self._close_camera)
             self._feeds[label] = window
         return window
+
+    def _close_camera(self, label: str) -> str | None:
+        """The feed window's Close camera. Refused while a run or any robot
+        work goes on: a picking run reads both cameras. Returns why not."""
+        if self._robot_busy():
+            return "Robot busy."
+        self.session.close_camera(label)
+        return None
 
     def _show_robot(self, _arg=None) -> None:
         """The robot's state, and where Connect goes while it is not

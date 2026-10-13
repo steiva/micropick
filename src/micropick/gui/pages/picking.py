@@ -129,8 +129,11 @@ Ticking Save pickup clips is the notebook's `CLIP_DIR`: the lower camera
 opens, and the run records it from the approach to the end of each
 aspirate, with a box round every cuboid of the batch where the homography
 puts it, and writes one mp4 per pickup, named for its target well, into a
-folder for the run under the Outputs folder's `clips`. Off by default: no
-recorder is made, and a run does not need the lower camera at all.
+folder for the run under the Outputs folder's `clips`. Each clip is written
+while it is recorded (`hardware.camera.ClipWriter`), so a pickup's frames
+are never held in memory. Off by default: no writer is made, and a run does
+not need the lower camera at all - unticking the box closes it, unless this
+page shows it.
 
 The clips' camera mode and crop are Settings (`clip_resolution`,
 `clip_crop`; 2000x1500 and the middle half by default): fewer pixels is
@@ -943,6 +946,8 @@ class PickingPage(QWidget):
 
     def _pause_toggled(self, on: bool) -> None:
         self._pause.set() if on else self._pause.clear()
+        if self._running():
+            log.info("picking run %s", "paused" if on else "unpaused")
         self._refresh()
 
     def _stop_run(self) -> None:
@@ -1190,8 +1195,23 @@ class PickingPage(QWidget):
     def _clips_toggled(self, on: bool) -> None:
         self._clips_failure = ""
         self.opener.forget(self.session.lower_camera_label)
-        self._ensure_clip_camera()
+        if on:
+            self._ensure_clip_camera()
+        else:
+            self._release_clip_camera()
         self._refresh()
+
+    def _release_clip_camera(self) -> None:
+        """Clips off: the lower camera closes, unless a run holds it or this
+        page shows it. Open, its grab thread decodes every frame at the
+        clips' 2000x1500, a core the run's inference could use."""
+        label = self.session.lower_camera_label
+        camera = self.session.camera(label) if label else None
+        if (camera is None or self._running()
+                or label == self.session.upper_camera_label
+                or camera is self.view.camera):
+            return
+        self.session.close_camera(label)
 
     def _on_settings_changed(self, _settings) -> None:
         self.opener.forget(self.session.lower_camera_label)
