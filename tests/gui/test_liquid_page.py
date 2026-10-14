@@ -76,9 +76,10 @@ def test_steps_are_added_edited_and_saved(app, session, tmp_path):
     page._save_current()
     saved = Program.load(page_module.programs_dir() / page_module.CURRENT_FILE)
     assert saved == page.program
-    # And it comes back on the next start.
+    # The next start keeps the trash and not the groups.
     again = page_module.LiquidHandlingPage(session)
-    assert again.program == page.program
+    assert again.program.groups == []
+    assert again.program.trash == page.program.trash
     page.deleteLater()
     again.deleteLater()
 

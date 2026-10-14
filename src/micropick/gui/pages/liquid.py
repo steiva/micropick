@@ -36,9 +36,11 @@ Saved points are the profile's positions, the same list as the jog panel's
 Positions: jog the tip to the spot, save it there, and it is on offer as a
 location at once. The "points" box on the picture draws them where they are.
 
-The program is saved as it is edited, into `outputs/liquid/current.json`,
-and comes back on the next start; Save as and Open keep named copies beside
-it.
+The program is saved as it is edited, into `outputs/liquid/current.json`.
+The next start keeps only its trash, as New does: groups are chosen for the
+plates on the deck that day, and a day's groups met again the next are
+groups for plates that are no longer there. A program to use again is kept
+with Save as and brought back with Open.
 
 What the tip holds
 ------------------
@@ -653,11 +655,13 @@ class LiquidHandlingPage(QWidget):
     # -- the program file ----------------------------------------------------
 
     def _load_current(self) -> Program:
+        """A new program with the last one's trash; see "The program is
+        saved as it is edited"."""
         path = programs_dir() / CURRENT_FILE
         if not path.is_file():
             return Program()
         try:
-            return Program.load(path)
+            return Program(trash=Program.load(path).trash)
         except ProgramError as exc:
             log.error("liquid handling: could not read %s: %s", path, exc)
             return Program()
