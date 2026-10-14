@@ -253,6 +253,11 @@ class PlateView(_Interaction, QGraphicsView):
         self._position: dict[str, tuple[int, int]] = {}
         self._column_labels: list[QGraphicsSimpleTextItem] = []
         self._row_labels: list[QGraphicsSimpleTextItem] = []
+        # Held here, not only by the scene: a header no Python object holds is
+        # handed back by `parentItem()` as a new wrapper, and that wrapper,
+        # collected, deletes the header and its text - the pointer over a row
+        # letter or a column number wiped it out.
+        self._headers: list[_Header] = []
         self._hover: str | None = None
 
     # -- building ------------------------------------------------------------
@@ -265,6 +270,7 @@ class PlateView(_Interaction, QGraphicsView):
         self._selected.clear()
         self._position.clear()
         self._column_labels, self._row_labels = [], []
+        self._headers = []
         self._hover = None
         self._band = None
         self._destination = destination
@@ -325,6 +331,7 @@ class PlateView(_Interaction, QGraphicsView):
     def _add_header(self, text: str, font: QFont, rect: QRectF,
                     wells: list[str]) -> QGraphicsSimpleTextItem:
         header = _Header(rect, wells)
+        self._headers.append(header)
         header.setToolTip(f"{text}: click to select, Ctrl to add, "
                           f"Shift to remove")
         self.scene().addItem(header)
