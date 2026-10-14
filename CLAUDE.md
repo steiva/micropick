@@ -63,7 +63,10 @@ the tab row; Stop is the right-hand end of the status bar.
 The keys a page binds and what the mouse does are listed in a box at the
 picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
 plus the page's `add_help`); H toggles it. A key added to a page belongs in
-that list too.
+that list too. A text or number field with the keyboard keeps the keys it
+uses (never taken from it: the robot would move while a digit is
+corrected); the box then says so (`jog_panel.TYPING_HELP`), and Enter in
+the field or a click on the picture or the page gives them back.
 
 A camera's focus is tuned only in its own window (the status bar camera
 button, which toggles it): `CameraView.enable_focus_tools` - slider, typed

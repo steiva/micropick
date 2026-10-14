@@ -105,6 +105,16 @@ The keys are listed there too, in a box in the picture's bottom-right corner
 (`help_changed`, `CameraView.set_help`), shown until H hides it. A page adds
 its own keys and mouse actions to the same list with `add_help`.
 
+A field has the keys
+--------------------
+The keys are window shortcuts, and a text or number field with the keyboard
+takes the ones it can use first: the arrows move its cursor or step its
+number, a letter is typed. Taking them from it would move the robot while
+someone corrects a digit, so the field keeps them, and the box says so
+instead of listing keys (`TYPING_HELP`). Enter in the field, or a click on
+the picture or on the page beside the fields, takes the keyboard off it and
+the keys move the robot again.
+
 And the saved positions, on a "points" box on the picture: the pose read
 with every status line is sent on as `pose_changed`, and the
 `gui.position_marks.PositionMarks` that `show_position_on` attaches draws
@@ -118,11 +128,13 @@ import logging
 import re
 from dataclasses import replace
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QInputDialog,
-                               QLabel, QListWidget, QListWidgetItem,
-                               QMessageBox, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QGridLayout,
+                               QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+                               QListWidget, QListWidgetItem, QMessageBox,
+                               QPlainTextEdit, QTextEdit, QVBoxLayout,
+                               QWidget)
 
 from ...workflows import manual as moves
 from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
@@ -135,6 +147,20 @@ from ..theme.factory import (Section, card, combo_box, heading,
 
 # What the picture says while there is no robot to ask.
 NO_ROBOT = "robot not connected"
+
+# The keys box while a field has the keyboard; see "A field has the keys".
+TYPING_HELP = ("Keys now control the input field, not the robot.",
+               "Press Enter or click the picture to move the robot again.")
+_ENTER = (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+
+
+def _input_field(widget) -> QWidget | None:
+    """The text or number field `widget` is, or None."""
+    if isinstance(widget, QAbstractSpinBox):
+        return widget
+    if isinstance(widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+        return None if widget.isReadOnly() else widget
+    return None
 from ..workers import Worker
 
 __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS", "HOME_TITLE",
@@ -330,6 +356,7 @@ class JogPanel(QWidget):
         self._extra_help: list[str] = []
         self._help = self._key_help()
         self._help_shown = True
+        self._typing = False                # a field on the page has the keys
         self.pose: tuple[float, float, float] | None = None
 
         # Not a scroll area itself. The page that hosts it may put it in one
@@ -350,6 +377,9 @@ class JogPanel(QWidget):
 
         self._host = shortcut_host or self
         self._install_shortcuts(self._host)
+        # A click beside the fields; see "A field has the keys".
+        self._host.installEventFilter(self)
+        QApplication.instance().focusChanged.connect(self._focus_moved)
 
         session.robot_state_changed.connect(self._on_robot_changed)
         session.settings_changed.connect(lambda _s: self._rebind())
@@ -886,11 +916,47 @@ class JogPanel(QWidget):
         view.set_position(self.position_lines)
         self.help_changed.connect(view.set_help)
         view.set_help(self.help_lines)
+        view.installEventFilter(self)       # a click on it gives the keys back
         PositionMarks.on(self.session, view).follow(self)
 
     @property
     def help_lines(self) -> list[str]:
+        if self._typing:
+            return list(TYPING_HELP)
         return list(self._help) if self._help_shown else []
+
+    # -- a field with the keys ------------------------------------------------
+
+    def _focus_moved(self, _old, new) -> None:
+        field = _input_field(new)
+        typing = field is not None and self._host.isAncestorOf(field)
+        if typing:
+            field.installEventFilter(self)      # for its Enter
+        if typing != self._typing:
+            self._typing = typing
+            self._emit_help()
+
+    def eventFilter(self, watched, event) -> bool:
+        """Enter in a field, a click on the picture or the page: the
+        keyboard off the field. Nothing is taken from anyone: the field
+        still gets its Enter, the picture its click."""
+        if not self._typing:
+            return False
+        kind = event.type()
+        if kind == QEvent.Type.MouseButtonPress:
+            # Not a click in a field: that one places its cursor.
+            if _input_field(watched) is None:
+                self._release_keys()
+        elif (kind == QEvent.Type.KeyPress and event.key() in _ENTER
+              and isinstance(watched, (QLineEdit, QAbstractSpinBox))):
+            # After the field has had it, so the number is taken first.
+            QTimer.singleShot(0, self._release_keys)
+        return False
+
+    def _release_keys(self) -> None:
+        field = _input_field(QApplication.focusWidget())
+        if field is not None and self._host.isAncestorOf(field):
+            field.clearFocus()
 
     def add_help(self, lines) -> None:
         """A page's own keys and mouse actions, after the jog keys."""
