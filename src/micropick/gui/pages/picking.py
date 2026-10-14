@@ -242,6 +242,7 @@ class PickingPage(QWidget):
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._view = None
+        self._overlaid = None                     # the view its overlays are from
         self._state_text = ""
         self._last_event = ""
         # What the last run ended as, kept until another one starts. Held
@@ -1059,6 +1060,7 @@ class PickingPage(QWidget):
         overlays. The last analysis went with them - the run has changed
         the dish it described."""
         self._detection = None
+        self._overlaid = None
         self.view.set_status([])
         self.view.set_overlay_items([])
         self._draw_histogram()
@@ -1110,7 +1112,12 @@ class PickingPage(QWidget):
             lines.append(f"stuck: {stuck} (tried again after a shake)")
         lines.append("   ".join(f"{key} {what}" for key, what, _ in KEYS))
         self.view.set_status(lines)
-        self.view.set_overlay_items(overlays.items(frame.shape, **view.overlays))
+        # Only for a new view: the same items handed over again every tick
+        # would have the view paint a full dish's contours afresh each time.
+        if view is not self._overlaid:
+            self._overlaid = view
+            self.view.set_overlay_items(
+                overlays.items(frame.shape, **view.overlays))
 
     def _target(self) -> str:
         routine = self.session.routine

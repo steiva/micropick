@@ -115,7 +115,7 @@ from datetime import datetime
 import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTransform
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox,
                                QHBoxLayout, QLabel, QSlider, QSpinBox,
                                QToolButton, QWidget)
@@ -244,6 +244,7 @@ class CameraView(QWidget):
         self._fps_at = time.monotonic()
         self._fps_count = 0
         self._overlay: list = []
+        self._overlay_layer = None                # (transform, size, dpr, pixmap)
         self._marks: list = []
         self._axes: dict | None = None
         self._flash: list[str] = []               # "saved: …", for a moment
@@ -820,6 +821,7 @@ class CameraView(QWidget):
         the picture instead of staying a crisp line over it.
         """
         self._overlay = list(primitives or ())
+        self._overlay_layer = None
         self.update()
 
     def set_position(self, lines) -> None:
@@ -1046,6 +1048,29 @@ class CameraView(QWidget):
 
     # -- drawing -------------------------------------------------------------
 
+    def _overlay_pixmap(self) -> QPixmap:
+        """The overlay drawn once into a transparent layer the widget's size,
+        and drawn again only when the items, the transform or the size change.
+
+        A live feed repaints at its frame rate and a picking run's view every
+        100 ms, and a full dish is some 650 contours: painted afresh each time
+        they took the GUI thread most of its time, and the GIL with it, which
+        slowed the run's own analysis by the number of cuboids in the dish.
+        """
+        dpr = self.devicePixelRatioF()
+        key = (QTransform(self._transform), self.size(), dpr)
+        cached = self._overlay_layer
+        if cached is not None and cached[:3] == key:
+            return cached[3]
+        pixmap = QPixmap(self.size() * dpr)
+        pixmap.setDevicePixelRatio(dpr)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        layer = QPainter(pixmap)
+        overlay_painter.paint(layer, self._overlay, self._transform)
+        layer.end()
+        self._overlay_layer = (*key, pixmap)
+        return pixmap
+
     def paintEvent(self, event) -> None:
         """Draws, and computes nothing. Everything it needs was built when the
         frame arrived or when the widget was resized."""
@@ -1064,7 +1089,7 @@ class CameraView(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         painter.drawImage(self._shown, self._image)
         if self._overlay:
-            overlay_painter.paint(painter, self._overlay, self._transform)
+            painter.drawPixmap(0, 0, self._overlay_pixmap())
         if self._marks and self.marks_shown:
             overlay_painter.paint(painter, self._marks, self._transform)
         if self.crosshair_box.isChecked():

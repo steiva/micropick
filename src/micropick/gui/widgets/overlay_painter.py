@@ -22,6 +22,7 @@ Coordinates are therefore mapped by hand and the pen is set afterwards.
 
 from __future__ import annotations
 
+import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygonF
 
@@ -36,6 +37,21 @@ CV_FONT_PX = 22.0
 # Below this a label is not a label. A scaled-down frame would otherwise render
 # the floater tags at two pixels high.
 MIN_TEXT_PX = 9.0
+
+
+def _mapped(points, transform) -> list:
+    """`points` (N x 2, frame coordinates) through the affine part of
+    `transform`, as plain [x, y] lists.
+
+    In numpy rather than `transform.map` point by point: a full dish is some
+    46 000 contour points, and a QPointF and a map() call for each cost about
+    100 ms of the GUI thread a repaint, holding the GIL a picking run needs.
+    The camera view's transform is a scale and a shift, never a projection.
+    """
+    p = np.asarray(points, dtype=float).reshape(-1, 2)
+    x = p[:, 0] * transform.m11() + p[:, 1] * transform.m21() + transform.dx()
+    y = p[:, 0] * transform.m12() + p[:, 1] * transform.m22() + transform.dy()
+    return np.column_stack((x, y)).tolist()
 
 
 def _colour(bgr) -> QColor:
@@ -71,8 +87,8 @@ def paint(painter: QPainter, primitives, transform) -> None:
             painter.drawRect(QRectF(top_left, bottom_right).normalized())
 
         elif isinstance(item, overlays.Polyline):
-            polygon = QPolygonF([transform.map(QPointF(float(x), float(y)))
-                                 for x, y in item.points])
+            polygon = QPolygonF([QPointF(x, y) for x, y in
+                                 _mapped(item.points, transform)])
             if item.closed:
                 painter.drawPolygon(polygon)
             else:
