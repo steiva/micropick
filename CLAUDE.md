@@ -92,7 +92,10 @@ ceiling (above it the pipette stops answering until homed): the bare
 nozzle's 200.6 mm (`Session.Z_NOZZLE_TOP_MM`, measured on the bench) less
 the tip's length (`Tip.length`: the robot's own `pickUpTip` result; else
 the rack's whole `tipLength`, which errs low; else 100 mm), less 0.5 mm
-for jog steps. Never an overlap computed here: the robot's differs from
+for jog steps. A step taken above that top (after a retract or a home)
+is one straight move that also comes down to it
+(`JogController._from_the_top`): a relative step there keeps a height the
+robot refuses. Never an overlap computed here: the robot's differs from
 the installed pipette definition's. A jog panel reads the pose again when
 the tip changes and when it is shown.
 

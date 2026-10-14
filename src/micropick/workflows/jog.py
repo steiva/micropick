@@ -191,6 +191,12 @@ class JogController:
             return MoveResult(False, axis, requested, reason=reason,
                               position=self.position)
 
+        pos = self.position
+        top = self.limits.z[1]
+        if pos[2] > top + self.limits.tol and (axis in "xy" or allowed < 0):
+            return self._from_the_top(axis, requested, allowed, pos, top,
+                                      record)
+
         self._busy = True
         try:
             self.robot.move_relative(axis, allowed, verbose=False)
@@ -202,6 +208,34 @@ class JogController:
         if record:
             self._history.append((axis, allowed))
         return MoveResult(True, axis, requested, allowed, reason, self.position)
+
+    def _from_the_top(self, axis, requested, allowed, pos, top,
+                      record) -> MoveResult:
+        """A step from above the envelope's top: after a retract or a home.
+
+        The robot refuses a target at the retracted height itself, and a
+        relative step keeps the height it starts from, so a step sideways
+        there did nothing, and so did one down by less than the gap to the
+        top. The step is one straight move that comes down to the top as
+        well (a step down: to the top at least), and says so."""
+        target = list(pos)
+        if axis == "z":
+            target[2] = min(pos[2] + allowed, top)
+            performed = target[2] - pos[2]
+        else:
+            target[AXES.index(axis)] += allowed
+            target[2] = top
+            performed = allowed
+        self._busy = True
+        try:
+            self.robot.move_to_coordinates(tuple(target), min_z_height=1,
+                                           force_direct=True, verbose=False)
+        finally:
+            self._busy = False
+        if record:
+            self._history.append((axis, performed))
+        return MoveResult(True, axis, requested, performed,
+                          f"from the top of Z: z {top:.1f} mm", self.position)
 
     def move_to(self, position) -> MoveResult:
         """Absolute move, subject to the same rule on every axis."""

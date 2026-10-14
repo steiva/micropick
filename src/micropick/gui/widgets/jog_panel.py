@@ -880,7 +880,7 @@ class JogPanel(QWidget):
             self._say("")
         elif not result.ok:
             self._say(result.reason or "refused", firm=True)
-        elif result.clamped:
+        elif result.clamped or result.reason:
             self._say(result.reason, firm=False)
         else:
             self._say("")
