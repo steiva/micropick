@@ -101,13 +101,19 @@ def tip_target(pmap, u: float, v: float, gantry, offset) -> np.ndarray:
 
 
 def unreachable(limits: Limits, position) -> str:
-    """Why a target is outside the working envelope, or "" if it is not."""
+    """Why a target is outside the working envelope, or "" if it is not.
+
+    A Z above the top is not a reason: every move these targets are for
+    goes no higher than the travel height (`reachable_z`), and the Z given
+    is often where the tip is now - after a retract, above the jog top -
+    or a pose taught there.
+    """
     reasons = []
     for axis, value in zip(AXES, position):
         lo, hi = limits.bounds(axis)
         if value < lo - limits.tol:
             reasons.append(f"{axis} {value:.1f} is below the limit {lo:g}")
-        elif value > hi + limits.tol:
+        elif axis != "z" and value > hi + limits.tol:
             reasons.append(f"{axis} {value:.1f} is past the limit {hi:g}")
     floor, what = limits.floor(position[0], position[1])
     if what and position[2] < floor - limits.tol:
