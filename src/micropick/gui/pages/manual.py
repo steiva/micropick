@@ -559,9 +559,12 @@ class ManualPage(QWidget):
             frame = camera.read_after(time.monotonic())
             detection = service.detect(frame, cfg, profile.pixel_map)
             df = detection.df
-            worlds = (np.array([pmap.to_robot(x, y, gantry)
-                                for x, y in zip(df.cX, df.cY)]).reshape(-1, 2)
-                      if len(df) else np.empty((0, 2)))
+            # A frame with nothing on it gives a table without columns.
+            if not len(df):
+                return (frame.shape, detection, np.empty((0, 2)),
+                        np.empty(0, dtype=bool))
+            worlds = np.array([pmap.to_robot(x, y, gantry)
+                               for x, y in zip(df.cX, df.cY)]).reshape(-1, 2)
             covered = np.array([pmap.covers(x, y)
                                 for x, y in zip(df.cX, df.cY)], dtype=bool)
             return frame.shape, detection, worlds, covered
