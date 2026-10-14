@@ -20,6 +20,12 @@ marks draw differently:
 
 Both are the same green; the shape says which is which.
 
+And the memo points (`Session.memo_points`), marked by a click on Manual
+control's picture and kept until the program closes: a ring with a cross in
+it, in cyan, named with its Z when it has one. Tip points like most
+positions, drawn the same way; the one chosen in Manual control's list is
+drawn thicker.
+
 Which is which is decided by the name, never by the operator: a camera pose
 is only taught by the button of the page that uses it, and the jog panel
 refuses those names, so there is no switch to set wrong.
@@ -45,8 +51,8 @@ from PySide6.QtCore import QObject
 from ..core.calibration.pixel_map import PixelMap
 from ..viz import overlays
 
-__all__ = ["MARK", "CAMERA_POSITIONS", "mark_items", "axis_directions",
-           "PositionMarks"]
+__all__ = ["MARK", "MEMO", "CAMERA_POSITIONS", "mark_items", "memo_items",
+           "axis_directions", "PositionMarks"]
 
 # The camera poses, by name, with the tab that sets each. The names are the
 # workflows': `PickingSession` reads `observe` (`pages.picking.DISH_POSITION`)
@@ -57,6 +63,8 @@ CAMERA_POSITIONS = {"observe": "Picking", "tip_calib": "Pipette"}
 # BGR, as every overlay colour. A light green, for both kinds: paler than
 # the pure green of the isolated cuboids, so the two are not confused.
 MARK = (120, 255, 120)
+# The memo points': a cyan nothing else on the picture uses.
+MEMO = (255, 220, 0)
 RADIUS_PX = 22
 # Half the gap in the middle of each side of a camera pose's square.
 GAP_PX = 8
@@ -67,10 +75,10 @@ def _inside(u, v, width, height) -> bool:
     return 0 <= u < width and 0 <= v < height
 
 
-def _label(name, at) -> overlays.Text:
+def _label(name, at, color=MARK) -> overlays.Text:
     return overlays.Text(text=str(name),
                          org=(at[0] + RADIUS_PX + 4, at[1] - RADIUS_PX // 2),
-                         scale=LABEL_SCALE, color=MARK, thickness=2)
+                         scale=LABEL_SCALE, color=color, thickness=2)
 
 
 def _tip_items(name, pose, pmap, pipette_offset, gantry_xy, image_size):
@@ -129,6 +137,32 @@ def mark_items(positions: dict, pmap: PixelMap, pipette_offset, gantry_xy,
     return out
 
 
+def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
+               image_size, chosen: str | None = None) -> list:
+    """Each memo point inside the frame: a ring with a cross in it where
+    the tip goes down, and its name with its Z."""
+    width, height = image_size
+    out = []
+    for point in points:
+        pixel = pmap.to_pixel(point.x - float(pipette_offset.dx),
+                              point.y - float(pipette_offset.dy), gantry_xy)
+        if pixel is None or not _inside(*pixel, width, height):
+            continue
+        cx, cy = int(round(pixel[0])), int(round(pixel[1]))
+        thick = 4 if point.name == chosen else 2
+        arm = RADIUS_PX // 2
+        out.append(overlays.Circle(center=(cx, cy), radius=RADIUS_PX,
+                                   color=MEMO, thickness=thick))
+        for dx, dy in ((arm, 0), (0, arm)):
+            out.append(overlays.Polyline(
+                points=np.array([(cx - dx, cy - dy), (cx + dx, cy + dy)],
+                                np.int32),
+                closed=False, color=MEMO, thickness=thick))
+        name = point.name if point.z is None else f"{point.name} z {point.z:g}"
+        out.append(_label(name, (cx, cy), MEMO))
+    return out
+
+
 def axis_directions(pmap: PixelMap) -> dict | None:
     """Which way +X and +Y of the deck point in the picture, in pixels per
     millimetre: where a deck point 1 mm along each axis from the one at the
@@ -164,7 +198,9 @@ class PositionMarks(QObject):
         self.session = session
         self.view = view
         self.pose = None
+        self.memo_chosen: str | None = None      # drawn thicker
         session.profile_changed.connect(lambda _p: self.update())
+        session.memo_points_changed.connect(self.update)
         view.camera_changed.connect(self.update)
         view.marks_toggled.connect(lambda _on: self.update())
         self.update()
@@ -174,6 +210,10 @@ class PositionMarks(QObject):
         jog.pose_changed.connect(self._set_pose)
         if jog.pose is not None:
             self._set_pose(jog.pose)
+
+    def choose_memo(self, name: str | None) -> None:
+        self.memo_chosen = name
+        self.update()
 
     def _set_pose(self, pose) -> None:
         self.pose = pose
@@ -207,5 +247,8 @@ class PositionMarks(QObject):
             return
         pmap, offset = found
         positions = dict(self.session.profile.positions or {})
-        self.view.set_marks(mark_items(positions, pmap, offset, pose[:2],
-                                       pmap.config.image_size))
+        size = pmap.config.image_size
+        self.view.set_marks(
+            mark_items(positions, pmap, offset, pose[:2], size)
+            + memo_items(self.session.memo_points, pmap, offset, pose[:2],
+                         size, self.memo_chosen))

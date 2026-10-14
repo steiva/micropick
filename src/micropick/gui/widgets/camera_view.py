@@ -71,8 +71,8 @@ deciding on it. A "focus" box hides the row.
 
 A third, "points", appears only while a page has marks to offer
 (`set_marks_available`): the profile's saved positions drawn where they are
-on the deck (`gui.position_marks`). Off by default, and remembered per camera
-like the crosshair. The marks are a layer of their own, apart from
+on the deck (`gui.position_marks`). Off by default (a page may turn the
+default on, `marks_default`), and remembered per camera like the crosshair. The marks are a layer of their own, apart from
 `set_overlay_items`, so a page's detections and the saved points never
 overwrite each other.
 
@@ -213,6 +213,9 @@ class CameraView(QWidget):
     # Not emitted for a click outside the picture, or on the controls that
     # sit over it - those are widgets and take their own clicks.
     clicked = Signal(float, float)
+    # A left double click on the picture, in sensor pixels as `clicked`. A
+    # double click is never also a click.
+    double_clicked = Signal(float, float)
     # Another camera, or none, is now shown.
     camera_changed = Signal()
     # The "points" box was ticked or cleared.
@@ -273,6 +276,11 @@ class CameraView(QWidget):
         self._crosshair_choice: dict[str, bool] = {}
         self._marks_choice: dict[str, bool] = {}
         self._marks_available = False
+        # "points" for a camera not yet ticked or cleared on this view.
+        self.marks_default = False
+        # A double click fits the picture. Off on a page where it is a
+        # command of its own (Manual control's move); the wheel still does.
+        self.double_click_fits = True
         self._focus_tools = False                 # see enable_focus_tools
         self._stats_enabled = False               # see enable_stats_button
         self._build_controls()
@@ -301,7 +309,7 @@ class CameraView(QWidget):
         self.marks_box = QCheckBox("points", self)
         self.marks_box.setChecked(False)
         self.marks_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.marks_box.setToolTip("Show saved positions.")
+        self.marks_box.setToolTip("Show saved positions and memo points.")
         self.marks_box.toggled.connect(self._marks_toggled)
         self.marks_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.marks_box.hide()
@@ -462,7 +470,8 @@ class CameraView(QWidget):
         self.crosshair_box.setVisible(self._camera is not None)
         self.snapshot_button.setVisible(self._camera is not None)
         self.marks_box.blockSignals(True)
-        self.marks_box.setChecked(self._marks_choice.get(label, False))
+        self.marks_box.setChecked(self._marks_choice.get(label,
+                                                         self.marks_default))
         self.marks_box.blockSignals(False)
         self.marks_box.setVisible(self._camera is not None
                                   and self._marks_available)
@@ -769,7 +778,14 @@ class CameraView(QWidget):
         self._click_timer.stop()
         self._pending_click = None
         self._after_double = True
-        if self._zoom != ZOOM_MIN:
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self._image is not None
+                and self._shown.contains(event.position().toPoint())):
+            inverse, ok = self._transform.inverted()
+            if ok:
+                point = inverse.map(event.position())
+                self.double_clicked.emit(point.x(), point.y())
+        if self.double_click_fits and self._zoom != ZOOM_MIN:
             self._zoom = ZOOM_MIN
             self._centre = None
             self._dirty = True

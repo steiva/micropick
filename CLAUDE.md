@@ -86,6 +86,16 @@ run's own moves to them) is reached no higher than that travel height
 (`reachable_z`): taught after a retract, it is out of bounds for the robot. Click-to-move is off on every entry to the
 tab.
 
+On Manual control a **double** click moves (`CameraView.double_clicked`,
+`double_click_fits` off there: the wheel zooms back out); a click marks a
+**memo point** (`Session.memo_points`: tip XY and a Z or none, M1, M2 ...,
+in memory until the program closes, never in the profile), drawn in cyan
+on the "points" layer of every page (`position_marks.memo_items`; that
+layer is on by default on Manual control) and listed in the Memo points
+card (`widgets.memo_points.MemoTable`). A new point takes New point Z, the
+last Z given (typed into a point, or Z from tip); "travel height" (no Z)
+until one is given, so a first click never sends the tip down.
+
 The robot reports Z at the tip's end with a tip on and at the nozzle
 without one. The jog envelope's Z top is the retracted height, a hard
 ceiling (above it the pipette stops answering until homed): the bare

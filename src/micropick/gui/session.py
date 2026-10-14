@@ -63,6 +63,7 @@ from .widgets.deck_view import (SLOT_HEIGHT, SLOT_WIDTH,  # noqa: E402
 from .detector import DetectorService              # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
+           "MemoPoint",
            "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
 
 log = logging.getLogger(__name__)
@@ -235,6 +236,21 @@ class DeckProblem:
                 f"there. A well move will hit the module. Load it again.")
 
 
+@dataclass
+class MemoPoint:
+    """A point marked on Manual control's picture, for this start only.
+
+    Where the tip goes, in the robot's frame - a position's coordinates, so
+    it is drawn as a position is. `z` None: over it at the travel height,
+    not down to anything, until a height is given.
+    """
+
+    name: str
+    x: float
+    y: float
+    z: float | None = None
+
+
 class SessionError(RuntimeError):
     """Something was asked of the session that it cannot do yet."""
 
@@ -336,6 +352,8 @@ class Session(QObject):
     # A page asks for another to be shown, by its name in `shell.PAGES`:
     # the checklist before a run sends the operator where a step is done.
     page_requested = Signal(str)
+    # A memo point was added, changed or removed; see `memo_points`.
+    memo_points_changed = Signal()
 
     def __init__(self, options, parent: QObject | None = None):
         super().__init__(parent)
@@ -358,6 +376,11 @@ class Session(QObject):
         # control both run it, and the weights are seconds to load and
         # hundreds of megabytes to hold twice.
         self.detector = DetectorService(self)
+        # Points marked on Manual control's picture: held here, so the
+        # "points" layer of every page draws them, and gone at the next
+        # start - a profile's positions are what is kept.
+        self.memo_points: list[MemoPoint] = []
+        self._memo_count = 0
         # This computer's settings (config.app_settings): the robot's address
         # and where outputs go. Applied at once, so every writer asks paths
         # for the right folder from the first file.
@@ -365,6 +388,42 @@ class Session(QObject):
         app_settings.apply(self.settings)
         if self.settings_note:
             log.error("%s", self.settings_note)
+
+    # -- memo points ---------------------------------------------------------
+
+    def add_memo_point(self, x: float, y: float,
+                       z: float | None) -> MemoPoint:
+        """A new point, named M1, M2 ... in the order marked; a name is not
+        given again after its point is deleted."""
+        self._memo_count += 1
+        point = MemoPoint(f"M{self._memo_count}", float(x), float(y),
+                          None if z is None else float(z))
+        self.memo_points.append(point)
+        log.info("memo point %s at (%.2f, %.2f)%s", point.name, point.x,
+                 point.y, "" if z is None else f", z {point.z:g}")
+        self.memo_points_changed.emit()
+        return point
+
+    def memo_point(self, name: str) -> MemoPoint | None:
+        return next((p for p in self.memo_points if p.name == name), None)
+
+    def change_memo_point(self, name: str, **values) -> None:
+        """Set any of x, y and z (None for z: the travel height)."""
+        point = self.memo_point(name)
+        if point is None:
+            return
+        for key, value in values.items():
+            if key not in ("x", "y", "z"):
+                raise ValueError(f"a memo point has no {key!r}")
+            setattr(point, key, None if value is None else float(value))
+        self.memo_points_changed.emit()
+
+    def remove_memo_points(self, names) -> None:
+        names = set(names)
+        kept = [p for p in self.memo_points if p.name not in names]
+        if len(kept) != len(self.memo_points):
+            self.memo_points = kept
+            self.memo_points_changed.emit()
 
     # -- state ---------------------------------------------------------------
 
