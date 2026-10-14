@@ -17,9 +17,13 @@ mark (`widgets.step_card`), as on the calibration pages, ending at the run:
 The jog panel comes last. Steps 2 to 4 are marked from the Operation
 checklist's own lines, so the page and the checklist cannot disagree.
 
-The cuboids' figures are in a window of their own
-(`widgets.cuboid_stats`), opened and closed by the chart button on the
-size histogram over the picture.
+The sizes are a card over the picture's bottom-left corner
+(`widgets.size_panel`), shown after an analysis and by Sizes: the size
+window is dragged on its histogram and saved as the picking settings'
+Save does - the previous picking.json archived, old -> new in the log -
+and the analysis labelled again under it without running the model. The
+card's expand button opens the cuboids' figures in a window of their own
+(`widgets.cuboid_stats`). A run hides it: the run judges its own frames.
 
 The run itself comes later. What is here is everything that has to be true
 before a run is worth starting, and it is the same code the run will use,
@@ -178,7 +182,8 @@ from ..widgets.checklist import BLOCKED, NOTE, OK, TODO, Check, Checklist
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.cuboid_stats import CuboidStats
-from ..widgets.size_histogram import size_bins
+from ..widgets.picking_fields import BOUNDS
+from ..widgets.size_panel import SizePanel
 from ..widgets.jog_panel import JogPanel
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.settings_form import PickingSettingsDialog
@@ -263,16 +268,18 @@ class PickingPage(QWidget):
                  self._jog_section()]
         panel = CardColumns(cards, self)
 
-        # The cuboids in figures, in a window of its own: the chart button
-        # on the picture's size histogram opens and closes it.
+        # The sizes in a card over the picture's bottom-left corner, where
+        # the size window is dragged; the cuboids in figures in a window of
+        # their own, which the card's expand button opens and closes.
         self.stats = CuboidStats(self)
+        self.sizes = SizePanel(self.view)
+        self.sizes.follow(self.view)
+        self.sizes.expand_clicked.connect(self._toggle_stats)
+        self.sizes.window_moved.connect(self._size_window_moved)
         # The names the page and its tests have always used for the size
         # plot and its sentence.
-        self.hist, self.window_state = (self.stats.sizes.plot,
-                                        self.stats.sizes.state)
-        self.view.enable_stats_button()
-        self.view.stats_toggled.connect(self.stats.setVisible)
-        self.stats.closed.connect(lambda: self.view.set_stats_open(False))
+        self.hist, self.window_state = (self.sizes.histogram.plot,
+                                        self.sizes.histogram.state)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -402,9 +409,15 @@ class PickingPage(QWidget):
         self.analyse_button.clicked.connect(self._analyse)
         box.layout().addWidget(self.analyse_button)
 
+        row = QHBoxLayout()
         self.settings_button = secondary_button("Picking settings…", self)
         self.settings_button.clicked.connect(self._settings)
-        box.layout().addWidget(self.settings_button)
+        self.sizes_button = secondary_button("Sizes", self)
+        self.sizes_button.setToolTip("Show the size histogram on the picture.")
+        self.sizes_button.clicked.connect(self._show_sizes)
+        row.addWidget(self.settings_button, 1)
+        row.addWidget(self.sizes_button)
+        box.layout().addLayout(row)
 
         self.result = QLabel("Not analysed.")
         self.result.setWordWrap(True)
@@ -735,6 +748,7 @@ class PickingPage(QWidget):
         # sign to analyse again.
         self._draw_overlay()
         self._draw_histogram()
+        self._show_sizes()
         self._refresh()
 
     def _draw_overlay(self) -> None:
@@ -763,14 +777,51 @@ class PickingPage(QWidget):
         profile = self.session.profile
         cfg = profile.picking if profile is not None else None
         self.stats.show_detection(self._detection, cfg)
-        # The same bins over the picture, small: what the window counts.
-        bins = size_bins(self._detection,
-                         cfg.cuboid_size_threshold if cfg else None)
-        self.view.set_histogram(None if isinstance(bins, str) else bins)
-        if isinstance(bins, str):
-            # Nothing to show the figures of: the window goes with the button.
+        histogram = self.sizes.histogram
+        # Dragged only between runs: a run took its settings when it began.
+        histogram.set_editable(not self._running(),
+                               BOUNDS["cuboid_size_threshold"])
+        bins = histogram.show_detection(
+            self._detection, cfg.cuboid_size_threshold if cfg else None)
+        if bins is None:
+            # Nothing measured: the card and the figures go.
+            self.sizes.hide()
             self.stats.hide()
-            self.view.set_stats_open(False)
+
+    def _show_sizes(self) -> None:
+        if self._detection is not None and not self._running():
+            self.sizes.show()
+            self.sizes.raise_()
+
+    def _toggle_stats(self) -> None:
+        self.stats.setVisible(not self.stats.isVisible())
+        if self.stats.isVisible():
+            self.stats.raise_()
+
+    def _size_window_moved(self, low: int, high: int) -> None:
+        """The size window set on the histogram: into the picking settings,
+        saved as Save in the settings saves them - the previous file
+        archived, the change logged - and the analysis labelled again
+        under it, without running the model again."""
+        profile = self.session.profile
+        if profile is None or self._running():
+            self._draw_histogram()
+            return
+        old = tuple(profile.picking.cuboid_size_threshold)
+        if (low, high) == old:
+            return
+        profile.picking = profile.picking.model_validate(
+            {**profile.picking.model_dump(),
+             "cuboid_size_threshold": (low, high)})
+        profile.save_picking()
+        log.info("picking settings: cuboid_size_threshold %s -> %s (dragged "
+                 "on the histogram)", old, (low, high))
+        if self._detection is not None:
+            self._detection = self.detector.relabel(self._detection,
+                                                    profile.picking)
+        self._draw_overlay()
+        self._draw_histogram()
+        self._refresh()
 
     # -- the detector ----------------------------------------------------------
 
@@ -931,6 +982,10 @@ class PickingPage(QWidget):
         self._run_worker.message.connect(self._said)
         self._run_worker.start()
         self._view_timer.start()
+        # The run decides from its own frames; the last analysis's sizes
+        # are not what it sees, and its settings are fixed for it.
+        self.sizes.hide()
+        self.stats.hide()
         self._refresh()
 
     def _running(self) -> bool:
@@ -1006,6 +1061,7 @@ class PickingPage(QWidget):
         self._detection = None
         self.view.set_status([])
         self.view.set_overlay_items([])
+        self._draw_histogram()
         self.view.resume()
         self._show_camera()
 
@@ -1248,8 +1304,6 @@ class PickingPage(QWidget):
         self._ensure_clip_camera()
         self._ensure_detector()
         self._show_camera()
-        if self.view.stats_button.isChecked():
-            self.stats.show()
 
     def hideEvent(self, event) -> None:
         """A run keeps running; only the picture stops being fetched. The

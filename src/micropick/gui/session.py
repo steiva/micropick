@@ -1149,36 +1149,25 @@ class Session(QObject):
         log.warning("STOP pressed: stopping after the current move")
         self.stop_requested.emit()
 
-    def halt_robot(self) -> None:
-        """Stop the robot where it is, at once. Blocking (one request).
-
-        The robot server's only immediate stop is to stop the robot session
-        itself (POST .../actions stop): the move in progress is cut short,
-        and the session takes no commands afterwards. So the robot is let go
-        of here as far as the pages are concerned - they grey out - while
-        the connection stays, and the Profile page offers Start new robot
-        session, which lifts the tip and homes. The labware has to be loaded
-        again into the new session."""
+    def hold_robot(self) -> None:
+        """The second Stop: no command that moves is sent any more; the one
+        in progress finishes. The robot session, its labware and the tip
+        stay as they are. The robot server's only immediate stop ends the
+        robot session itself, which loses all of that, so it is not used.
+        `release_robot` lets commands through again."""
         if self._api is None:
-            raise SessionError("not connected")
-        if self.mock:
-            log.warning("robot halted (mock: nothing to cut short)")
-        else:
-            self._api.control_run("stop")
-            log.warning("robot halted: robot session %s stopped",
-                        getattr(self._api, "run_id", "?"))
-        try:
-            self.run_state = _run_state(self._api)
-        except Exception as exc:                     # noqa: BLE001
-            log.warning("could not read the robot session after the stop: %s",
-                        exc)
-        if self.mock and self.run_state is not None:
-            # The mock's run never ends by itself; say what a robot would.
-            self.run_state.status = "stopped"
-        self.robot = None
-        self.run_origin = None
-        self._forget_tip()
-        self.robot_state_changed.emit(self.robot_state)
+            return
+        self._api.hold.set()
+        log.warning("robot held: no command until the jobs using it stop")
+
+    def release_robot(self) -> None:
+        if self._api is not None and self._api.hold.is_set():
+            self._api.hold.clear()
+            log.info("robot released")
+
+    @property
+    def robot_held(self) -> bool:
+        return self._api is not None and self._api.hold.is_set()
 
     def refresh_lights(self) -> None:
         """Read the lights again after something switched them behind the

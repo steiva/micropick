@@ -9,11 +9,14 @@ calibration point, which is nearly impossible to chase.
 
 from __future__ import annotations
 
+import functools
 import threading
 import time
 
 import cv2
 import numpy as np
+
+from opentrons_api.ot2_api import RobotHeld
 
 __all__ = ["FakeVideoCapture", "MockRobot", "open_mock_camera"]
 
@@ -115,6 +118,8 @@ class MockRobot:
         # entries carry the same fields the real run reports
         self._run_labware: list[dict] = []
         self._run_offsets: list[dict] = []
+        # As the real wrapper's: set, every command that moves raises.
+        self.hold = threading.Event()
         self._lw_counter = 0
         # ot2_api's client-side table of slot offsets, same shape, so the
         # session registers deck modules on the mock as on the wrapper.
@@ -313,6 +318,27 @@ def open_mock_camera(label="mock", width=640, height=480, fps=30.0, render=None)
 # ---------------------------------------------------------------------------
 # a scene the calibration workflow can actually be run against
 # ---------------------------------------------------------------------------
+
+# What a hold refuses, as the real wrapper refuses its commands.
+_MOVES = ("move_to_coordinates", "move_relative", "home_robot",
+          "retract_axis", "move_to_well", "aspirate_in_place",
+          "dispense_in_place", "dispense", "aspirate", "blow_out",
+          "blow_out_in_place", "prepare_to_aspirate", "pick_up_tip",
+          "drop_tip", "drop_tip_in_place", "move_to_trash", "move_labware")
+
+
+def _held(method):
+    @functools.wraps(method)
+    def refuse_when_held(self, *args, **kwargs):
+        if self.hold.is_set():
+            raise RobotHeld()
+        return method(self, *args, **kwargs)
+    return refuse_when_held
+
+
+for _name in _MOVES:
+    setattr(MockRobot, _name, _held(getattr(MockRobot, _name)))
+
 
 class MarkerScene:
     """Renders a real ArUco marker as a gantry camera would see it.

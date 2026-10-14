@@ -152,8 +152,12 @@ picking position**.
 - **Stop** is the status bar's red button and Esc, window-wide; no page
   binds Esc itself (two shortcuts on one key cancel out). First press:
   `Session.stop_requested`, every page stops at its next safe point. Second
-  press within 10 s while work runs: `Session.halt_robot` stops the robot
-  session (the server's only immediate stop) and a dialog says what next.
+  press within 10 s while work runs: `Session.hold_robot` - the API
+  wrapper refuses every command that moves (`RobotHeld`), the one in
+  progress finishes, the robot session, labware and tip are kept; it is
+  released once no job using the robot runs. Never stop the robot session
+  for this: the server's only immediate stop ends the session, and with it
+  the labware, the tip and the run's place.
 - A page that runs robot work listens to `stop_requested`.
 - What has to be done before a picking run is the **Operation checklist**
   (`gui.readiness.STEPS`, shown with `widgets.checklist`): fixed steps in
@@ -207,10 +211,12 @@ the centre), sweep, save the result; the upper camera, no chooser.
 Picking is the same, leading to the run: complete the Operation checklist,
 set the picking position, the shake position, the dish bottom (optional),
 analyse the dish, start picking; the jog panel last. Steps 2-4 are marked
-from the checklist's own lines. The cuboids' figures are a window of their
-own (`widgets.cuboid_stats`: counts, a histogram per picking measure
-against its window, a table), toggled by the chart button on the size
-histogram over the picture (`CameraView.enable_stats_button`). Settings
+from the checklist's own lines. On Picking the size histogram is a card
+over the picture's bottom-left corner (`widgets.size_panel`), not drawn
+into the view: the size window is dragged on it and saved like the
+settings' Save. Its expand button toggles the cuboids' figures, a window
+of their own (`widgets.cuboid_stats`: counts, a histogram per picking
+measure against its window, a table). Settings
 keeps Save and Revert at its bottom right, outside the scrolling columns.
 
 The keys box on a picture has a bold "Keyboard shortcuts" title and the

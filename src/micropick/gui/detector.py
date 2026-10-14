@@ -81,6 +81,9 @@ class Detection:
     classified: bool
     standin: bool
     notes: list[str] = field(default_factory=list)
+    # The measured table before the picking filters labelled it: what a
+    # changed window is applied to again (`relabel`) without inference.
+    measured: pd.DataFrame | None = None
 
     @property
     def summary(self) -> str:
@@ -201,8 +204,19 @@ class DetectorService(QObject):
                              notes=notes)
 
         df = cuboids.add_derived(df, one_d ** 2, one_d, cfg.circle_center)
-        labels = cuboids.label_rejections(df, cfg)
-        df = df.join(labels)
+        return self._labelled(boxes, confs, df, cfg, notes)
+
+    def relabel(self, detection: Detection, cfg: PickingConfig) -> Detection:
+        """The same detection under other picking settings - the size
+        window dragged on the histogram: the filters again, not the model."""
+        if not detection.classified or detection.measured is None:
+            return detection
+        return self._labelled(detection.boxes, detection.confs,
+                              detection.measured, cfg, list(detection.notes))
+
+    def _labelled(self, boxes, confs, measured, cfg, notes) -> Detection:
+        labels = cuboids.label_rejections(measured, cfg)
+        df = measured.join(labels)
 
         # The same three selections `PickingSession._analyze` makes, and for the
         # same reason: every detection is labelled once and pickable/isolated
@@ -215,7 +229,8 @@ class DetectorService(QObject):
         bubbles = df[df.is_bubble].copy()
         return Detection(boxes, confs, df, pickable, isolated, bubbles,
                          cuboids.reject_counts(df), classified=True,
-                         standin=self.is_standin, notes=notes)
+                         standin=self.is_standin, notes=notes,
+                         measured=measured)
 
     @staticmethod
     def _mm_per_px(frame, pixel_map, notes: list[str]) -> float | None:

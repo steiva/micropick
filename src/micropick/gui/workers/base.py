@@ -92,6 +92,10 @@ NO_ROBOT_ANSWER = ("The robot did not answer. Check that it is switched on "
                    "stops blinking), and that the cable is plugged in.")
 
 
+# A job cut short by the second Stop (`MainWindow._hold`).
+HELD = "Stopped: Stop was pressed twice."
+
+
 def describe_error(exc: BaseException) -> str:
     """What a failure says on screen; the traceback goes to the log.
 
@@ -108,6 +112,9 @@ def describe_error(exc: BaseException) -> str:
             return NO_ROBOT_ANSWER
     except ImportError:                      # the gui extra without requests
         pass
+    from opentrons_api.ot2_api import RobotHeld
+    if isinstance(exc, RobotHeld):
+        return HELD
     text = str(exc)
     if type(exc).__module__.startswith("micropick") and text:
         return text
@@ -270,7 +277,11 @@ class Worker(QObject):
 
     @property
     def running(self) -> bool:
-        return self._thread is not None and self._thread.isRunning()
+        # A thread already deleted has ended, as `wait` says.
+        try:
+            return self._thread is not None and self._thread.isRunning()
+        except RuntimeError:
+            return False
 
     def wait(self, timeout_ms: int = 30_000) -> bool:
         """Block until the thread ends. For shutdown and for tests.

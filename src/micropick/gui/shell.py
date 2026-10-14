@@ -114,17 +114,15 @@ STOP_NOW_TEXT = "Stop NOW"
 STOP_STYLE = ("QToolButton { background: #c62828; color: white; "
               "font-weight: bold; border-radius: 4px; padding: 2px 10px; }"
               "QToolButton:pressed { background: #8e0000; }")
-# After a first Stop, how long a second one halts the robot at once.
+# After a first Stop, how long a second one holds the robot.
 STOP_AGAIN_S = 10
+# How often a held robot is looked at to be let go.
+RELEASE_POLL_MS = 200
 
-# What to do after the robot was stopped at once, in order.
-HALTED_STEPS = (
-    "1. Clear the robot's path, then Start new robot session (Profile). "
-    "The robot homes.\n\n"
-    "2. Load the labware again (Robot & Deck).\n\n"
-    "3. If the tip holds liquid or cuboids, return them first (Liquid "
-    "handling or Manual control).\n\n"
-    "4. Plate plans keep their progress.")
+HELD_DETAIL = (
+    "The robot finishes the command it is doing and takes no other until "
+    "every job using it has stopped. The robot session, the labware and "
+    "the tip are kept.")
 
 
 class NavTab(QWidget):
@@ -490,7 +488,11 @@ class MainWindow(QMainWindow):
         self._stop_reset = QTimer(self)
         self._stop_reset.setSingleShot(True)
         self._stop_reset.timeout.connect(self._disarm_stop)
-        self._halt_worker: Worker | None = None
+        # The second Stop holds the robot (`_hold`); this lets it go once
+        # nothing that uses it runs any more.
+        self._release_timer = QTimer(self)
+        self._release_timer.setInterval(RELEASE_POLL_MS)
+        self._release_timer.timeout.connect(self._release_when_idle)
         self.status.camera_clicked.connect(self._show_feed)
         # The tip panel: what it shows is read when it opens, and what it
         # asks for runs as Home does (`_tip_command`).
@@ -716,10 +718,11 @@ class MainWindow(QMainWindow):
     def _stop(self) -> None:
         """First press: every page stops at its next safe point. A second
         press within STOP_AGAIN_S while something still runs: the robot is
-        stopped at once (`Session.halt_robot`)."""
+        held - no command after the one it is doing - whether or not a job
+        listens (`Session.hold_robot`). The robot session is kept."""
         now = time.monotonic()
         if now < self._stop_again_until and any_running():
-            self._halt()
+            self._hold()
             return
         self.session.request_stop()
         if not any_running():
@@ -729,50 +732,43 @@ class MainWindow(QMainWindow):
         self.status.stop.setText(STOP_NOW_TEXT)
         self._stop_reset.start(STOP_AGAIN_S * 1000)
         self.status.showMessage(
-            "Stopping after the current move. Press Stop again to stop "
-            "immediately.",
+            "Stopping after the current move. Press Stop again to hold the "
+            "robot.",
             STOP_AGAIN_S * 1000)
 
     def _disarm_stop(self) -> None:
         self._stop_again_until = 0.0
         self.status.stop.setText(STOP_TEXT)
 
-    def _halt(self) -> None:
+    def _hold(self) -> None:
         self._stop_reset.stop()
         self._disarm_stop()
-        if self.session._api is None or (self._halt_worker is not None
-                                         and self._halt_worker.running):
+        if self.session._api is None:
             return
-        worker = Worker(self.session.halt_robot, what="stopping the robot")
-        self._halt_worker = worker
-        worker.finished.connect(self._halted)
-        worker.failed.connect(self._halt_failed)
-        worker.start()
-
-    def _halted(self, _result=None) -> None:
-        self._halt_worker = None
+        self.session.request_stop()
+        self.session.hold_robot()
+        self._release_timer.start()
+        self.status.showMessage("Robot held.")
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle("Robot stopped")
-        box.setText("Robot stopped.")
-        box.setInformativeText(HALTED_STEPS)
+        box.setWindowTitle("Robot held")
+        box.setText("Robot held.")
+        box.setInformativeText(HELD_DETAIL)
         report = box.addButton("Save report for help…",
                                QMessageBox.ButtonRole.ActionRole)
-        profile = box.addButton("Go to Profile",
-                                QMessageBox.ButtonRole.AcceptRole)
         box.addButton(QMessageBox.StandardButton.Close)
         box.exec()
         if box.clickedButton() is report:
             save_report_asking(self.session, self)
-        elif box.clickedButton() is profile:
-            self.show_page("profile")
 
-    def _halt_failed(self, reason: str) -> None:
-        self._halt_worker = None
-        _log.error("halt: %s", reason)
-        QMessageBox.critical(
-            self, "Stop", f"Could not stop the robot: {reason}\n\nUse the "
-                          f"robot's power switch if it is still moving.")
+    def _release_when_idle(self) -> None:
+        """Let the robot go once no job that may use it runs: a job cut
+        short still has its way out (a retract) refused until then."""
+        if self._robot_busy():
+            return
+        self._release_timer.stop()
+        self.session.release_robot()
+        self.status.showMessage("Robot released.", 4000)
 
     def _home_robot(self) -> None:
         """Home from the status bar. Through the shown page's jog panel when

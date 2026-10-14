@@ -83,7 +83,8 @@ from PySide6.QtWidgets import (QCheckBox, QColorDialog, QFileDialog,
 
 from ... import paths
 from ...core.liquid import (ACTIONS, Group, Location, Program, ProgramError,
-                            describe, new_step, ordered_wells)
+                            describe, describe_location, new_step,
+                            ordered_wells)
 from ...core.routine import Destination, RoutineError
 from ...hardware.protocols import xyz
 from ...workflows import liquid
@@ -95,6 +96,7 @@ from ..theme.factory import (card, combo_box, double_spin_box, heading,
                              primary_button, scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
+from ..widgets.deck_view import DeckView
 from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
@@ -137,6 +139,54 @@ def programs_dir():
     directory = paths.outputs_dir() / "liquid"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
+
+
+# The Deck card's map.
+DECK_HEIGHT = 200
+TRASH_COLOUR = "#b0b2ba"
+_VERBS = {action: title.lower() for action, _cls, title in ACTIONS}
+
+
+def deck_marks(group, trash) -> tuple[dict, list[str]]:
+    """(marks for `DeckView.set_marks`, lines for what is not in a slot):
+    the group's plate filled in its colour with its wells and the steps done
+    in them; every other slot a step goes to dashed, with the step's number,
+    what it does and the well; the trash. A saved point is not in a slot,
+    so it is a line."""
+    marks: dict[str, tuple[str, str, bool]] = {}
+    elsewhere: list[str] = []
+    if group is not None:
+        at: dict[str, list[str]] = {}
+        for n, step in enumerate(group.steps, 1):
+            location = getattr(step, "location", None)
+            if location is None:
+                continue
+            verb = _VERBS[step.action]
+            if location.kind == "this_well":
+                at.setdefault(str(group.slot), []).append(f"{n} {verb}")
+            elif location.kind == "well" and location.slot:
+                at.setdefault(str(location.slot), []).append(
+                    f"{n} {verb} {location.well or '?'}")
+            elif location.kind == "point":
+                elsewhere.append(f"Step {n} {verb}: point "
+                                 f"{location.point or '?'}.")
+        own = at.pop(str(group.slot), [])
+        marks[str(group.slot)] = (
+            group.color, f"{group.name}: {len(group.wells)} wells"
+            + (f"\n{', '.join(own)}" if own else ""), True)
+        for slot, lines in at.items():
+            marks[slot] = (group.color, ", ".join(lines), False)
+    if trash is not None and trash.kind == "well" and trash.slot:
+        slot = str(trash.slot)
+        line = f"trash {trash.well or '?'}"
+        if slot in marks:
+            colour, text, solid = marks[slot]
+            marks[slot] = (colour, f"{text}\n{line}", solid)
+        else:
+            marks[slot] = (TRASH_COLOUR, line, False)
+    elif trash is not None and trash.kind == "point":
+        elsewhere.append(f"Trash: point {trash.point or '?'}.")
+    return marks, elsewhere
 
 
 def _label(text: str = "") -> QLabel:
@@ -204,11 +254,13 @@ class LiquidHandlingPage(QWidget):
         self._save_timer.setInterval(SAVE_MS)
         self._save_timer.timeout.connect(self._save_current)
 
-        plate_card = self._plate_card()
-        self._editing = [plate_card, self._groups_card(),
-                         self._steps_card(), self._program_card()]
+        plate_card, groups_card = self._plate_card(), self._groups_card()
+        self._editing = [plate_card, groups_card, self._steps_card(),
+                         self._program_card()]
         # The plate across both columns: it needs the width more than they.
-        panel = CardColumns(self._editing[1:] + [self._run_card(), self.jog],
+        # The deck beside the groups: where the chosen one goes.
+        panel = CardColumns([groups_card, self._deck_card()]
+                            + self._editing[2:] + [self._run_card(), self.jog],
                             self, wide=[plate_card])
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -238,7 +290,9 @@ class LiquidHandlingPage(QWidget):
 
     def _plate_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Wells", 2))
+        # Names the slot: the same plate may stand in two.
+        self.wells_heading = heading("Wells", 2)
+        box.layout().addWidget(self.wells_heading)
         box.layout().addWidget(_label(
             "Select wells (click, drag, or a row or column label; Ctrl adds, "
             "Shift removes), then New group."))
@@ -431,6 +485,31 @@ class LiquidHandlingPage(QWidget):
         self.steps_state = _label()
         box.layout().addWidget(self.steps_state)
         return box
+
+    def _deck_card(self) -> QWidget:
+        """Where the chosen group's wells are and where its steps go, on the
+        deck: two slots holding the same plate are otherwise one misread
+        away from the wrong one."""
+        box = card(self)
+        box.layout().addWidget(heading("Deck", 2))
+        box.layout().addWidget(_label(
+            "The chosen group: its wells (filled) and where its steps go "
+            "(dashed)."))
+        self.deck = DeckView(self)
+        self.deck.setFixedHeight(DECK_HEIGHT)
+        box.layout().addWidget(self.deck)
+        self.deck_state = _label()
+        box.layout().addWidget(self.deck_state)
+        return box
+
+    def _show_deck(self) -> None:
+        names = {slot: definition.display_name
+                 for slot, _entry, definition in self._deck}
+        self.deck.set_labware(names)
+        marks, elsewhere = deck_marks(self._group(), self.program.trash)
+        self.deck.set_marks(marks)
+        self.deck_state.setText("\n".join(elsewhere))
+        self.deck_state.setVisible(bool(elsewhere))
 
     def _program_card(self) -> QWidget:
         box = card(self)
@@ -691,6 +770,8 @@ class LiquidHandlingPage(QWidget):
             except (RoutineError, ValueError) as exc:
                 log.error("liquid handling: cannot draw slot %s: %s", slot, exc)
         self.plate.set_destination(destination)
+        self.wells_heading.setText(f"Wells: slot {data[0]}" if data is not None
+                                   else "Wells")
         self.plate_window.setWindowTitle(
             f"plate: {self.plate_choice.currentText() or 'none'}")
         group = self._group()
@@ -916,10 +997,11 @@ class LiquidHandlingPage(QWidget):
         self.steps.clear()
         if group is not None:
             for n, step in enumerate(group.steps, 1):
-                self.steps.addItem(f"{n}. {describe(step)}")
+                self.steps.addItem(f"{n}. {describe(step, group.slot)}")
             if group.steps:
                 self.steps.setCurrentRow(max(0, min(row, len(group.steps) - 1)))
-        self.steps_heading.setText(f"Steps of {group.name}" if group is not None
+        self.steps_heading.setText(f"Steps of {group.name}, slot {group.slot}"
+                                   if group is not None
                                    else "Steps")
         self._loading = False
         self._step_chosen()
@@ -975,7 +1057,7 @@ class LiquidHandlingPage(QWidget):
         group.steps[index] = step
         item = self.steps.item(index)
         if item is not None:
-            item.setText(f"{index + 1}. {describe(step)}")
+            item.setText(f"{index + 1}. {describe(step, group.slot)}")
         self._save_timer.start()
         self._refresh()
 
@@ -1200,8 +1282,10 @@ class LiquidHandlingPage(QWidget):
         groups = self.program.groups
         box.setText(f"Run {len(groups)} group{'s' if len(groups) != 1 else ''}"
                     f", {self._total()} wells?")
-        lines = [f"{g.name}: {len(g.wells)} wells in slot {g.slot}, "
-                 f"{len(g.steps)} steps" for g in groups]
+        lines = [self._group_route(g) for g in groups]
+        trash = self.program.trash
+        if trash is not None:
+            lines.append("Trash: " + describe_location(trash) + ".")
         again = ("\n\nWells done earlier count as not done: the run starts "
                  "again from the first well." if self.state.done else "")
         box.setInformativeText("\n".join(lines) + again + "\n\n" + CONFIRM_START)
@@ -1210,6 +1294,22 @@ class LiquidHandlingPage(QWidget):
         box.setDefaultButton(QMessageBox.StandardButton.Cancel)
         box.exec()
         return box.clickedButton() is start
+
+    def _group_route(self, group: Group) -> str:
+        """A group in one line: its wells' slot and plate, and every other
+        slot its steps go to - what Start asks to be checked on the deck."""
+        names = {slot: definition.display_name
+                 for slot, _entry, definition in self._deck}
+        goes = sorted({str(loc.slot) for loc in
+                       (getattr(step, "location", None) for step in group.steps)
+                       if loc is not None and loc.kind == "well" and loc.slot
+                       and str(loc.slot) != str(group.slot)})
+        text = (f"{group.name}: {len(group.wells)} wells of slot {group.slot} "
+                f"({names.get(group.slot, group.load_name)})")
+        if goes:
+            text += "; to " + ", ".join(
+                f"slot {slot} ({names.get(slot, '?')})" for slot in goes)
+        return text + "."
 
     def _start(self) -> None:
         if self._running or self.jog.busy or self._run_problems():
@@ -1411,6 +1511,7 @@ class LiquidHandlingPage(QWidget):
         idle = not running and not busy
         for box in self._editing:
             box.setEnabled(not running)
+        self._show_deck()
 
         # The plate.
         shown, selection = self._shown_plate(), self.plate.selection

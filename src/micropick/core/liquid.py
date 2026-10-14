@@ -367,7 +367,9 @@ def _mm(value: float) -> str:
     return f"{value:+g} mm"
 
 
-def describe_location(location: Location) -> str:
+def describe_location(location: Location, slot=None) -> str:
+    """`slot`: the group's, said for each well of it - the same plate in
+    two slots is told apart by nothing else."""
     if location.kind == "here":
         return "same place as the step before"
     x, y, z = location.offset
@@ -376,13 +378,14 @@ def describe_location(location: Location) -> str:
     if location.kind == "point":
         return f"point {location.point or '?'}" + (f" {_mm(z)}" if z else "") \
             + shift
-    where = ("each well" if location.kind == "this_well" else
+    where = ((f"each well of slot {slot}" if slot is not None
+              else "each well") if location.kind == "this_well" else
              f"slot {location.slot or '?'} {location.well or '?'}")
     return f"{where}, {LEVEL_NAMES[location.level]} {_mm(z)}{shift}"
 
 
-def describe(step) -> str:
-    """One line for the list of steps."""
+def describe(step, slot=None) -> str:
+    """One line for the list of steps; `slot` is the group's."""
     action = step.action
     if action == "aspirate":
         text = (f"Refill to {step.volume_ul:g} µl when short"
@@ -409,4 +412,4 @@ def describe(step) -> str:
         return f"Pause: {step.message}"
     else:                                    # the union rules this out
         raise ValueError(f"unknown step {action!r}")
-    return f"{text} @ {describe_location(step.location)}"
+    return f"{text} @ {describe_location(step.location, slot)}"

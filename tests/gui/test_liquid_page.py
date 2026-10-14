@@ -164,3 +164,37 @@ def test_the_well_under_the_pointer_is_named_and_the_window_mirrors(app,
     page.plate_window.close()                        # hides, keeps the window
     assert not page.plate_window.isVisible()
     page.deleteLater()
+
+
+def test_the_deck_says_where_the_group_is_and_where_it_goes(app, session):
+    from micropick.core.liquid import Aspirate, Dispense, Group
+    from micropick.gui.pages.liquid import TRASH_COLOUR, deck_marks
+    group = Group(name="Wash", color="#ff0000", slot="5", load_name=PLATE,
+                  wells=["A1", "A2"],
+                  steps=[Aspirate(),
+                         Dispense(location=Location(kind="well", slot="2",
+                                                    load_name="res",
+                                                    well="A1")),
+                         Dispense(location=Location(kind="point",
+                                                    point="waste"))])
+    trash = Location(kind="well", slot="3", load_name="trash", well="A1")
+    marks, elsewhere = deck_marks(group, trash)
+    assert marks["5"] == ("#ff0000", "Wash: 2 wells\n1 aspirate", True)
+    assert marks["2"] == ("#ff0000", "2 dispense A1", False)
+    assert marks["3"] == (TRASH_COLOUR, "trash A1", False)
+    assert "6" not in marks                       # the same plate elsewhere
+    assert elsewhere == ["Step 3 dispense: point waste."]
+
+
+def test_steps_name_the_slot_of_each_well(app, session):
+    from micropick.core.liquid import Aspirate, describe
+    assert "each well of slot 5" in describe(Aspirate(), "5")
+    page = page_module.LiquidHandlingPage(session)
+    page.plate.set_selection({"A1"})
+    page._new_group()
+    page._add_step("aspirate")
+    assert "each well of slot 5" in page.steps.item(0).text()
+    assert page.wells_heading.text() == "Wells: slot 5"
+    assert page.deck.parent() is not None
+    assert "slot 5" in page._group_route(page.program.groups[0])
+    page.deleteLater()

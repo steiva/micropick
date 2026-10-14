@@ -111,3 +111,38 @@ def test_nothing_detected_is_not_an_error(page):
     page._draw_histogram()
     assert bars(page) == []
     assert "no detections" in page.window_state.text()
+
+
+def test_the_window_is_dragged_on_the_histogram_and_saved(page, tmp_path):
+    profile = page.session.profile
+    profile.picking.cuboid_size_threshold = (250, 500)
+    page._detection = detection([100, 200, 300, 400, 450, 600, 900])
+    page._draw_histogram()
+    page._show_sizes()
+    assert page.sizes.isVisibleTo(page)
+    region = regions(page)[0]
+    assert region.movable
+    region.setRegion((150, 700))                 # the band, dragged
+    assert "5 of 7" in page.window_state.text()  # followed while moving
+    region.sigRegionChangeFinished.emit(region)  # and let go
+    assert tuple(profile.picking.cuboid_size_threshold) == (150, 700)
+    saved = (profile.path / "picking.json").read_text()
+    assert "150" in saved and "700" in saved
+    assert "5 of 7" in page.window_state.text()
+
+
+def test_the_card_hides_without_an_analysis_and_reopens_with_sizes(page):
+    page._detection = detection([300, 400])
+    page._draw_histogram()
+    page._show_sizes()
+    page.sizes.close_button.click()
+    assert not page.sizes.isVisibleTo(page)
+    page.sizes_button.click()
+    assert page.sizes.isVisibleTo(page)
+    page.sizes.expand_button.click()
+    assert page.stats.isVisible()
+    page.sizes.expand_button.click()
+    assert not page.stats.isVisible()
+    page._detection = None
+    page._draw_histogram()
+    assert not page.sizes.isVisibleTo(page)

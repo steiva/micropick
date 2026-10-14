@@ -98,3 +98,43 @@ def test_a_camera_is_closed_from_its_window_unless_the_robot_is_busy(window):
     feed.close_button.click()
     assert session.camera(label) is None
     assert not feed.isVisible()
+
+
+def test_a_second_stop_holds_the_robot_and_keeps_its_session(app, window,
+                                                             monkeypatch):
+    from micropick.gui.workers import Worker
+    from opentrons_api.ot2_api import RobotHeld
+
+    _connect(app, window)
+    session = window.session
+    robot, run = session.robot, session.run_state
+    shown = []
+    monkeypatch.setattr(QMessageBox, "exec", lambda box: shown.append(
+        box.text()) or 0)
+
+    def job():
+        # A job that does not listen to Stop: only the hold ends it.
+        while True:
+            robot.move_relative("x", 0.1)
+            time.sleep(0.01)
+
+    worker = Worker(job, what="moving")
+    failures = []
+    worker.failed.connect(failures.append)
+    worker.start()
+    window._stop()
+    window._stop()
+    assert shown == ["Robot held."]
+    assert session.robot_held
+    end = time.monotonic() + 5
+    while (worker.running or session.robot_held) and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    assert failures and "Stop was pressed twice" in failures[0]
+    assert not session.robot_held                  # let go once it stopped
+    assert session.robot is robot and session.run_state is run
+    robot.move_relative("x", 0.1)                  # moves again
+    robot.hold.set()
+    with pytest.raises(RobotHeld):
+        robot.move_relative("x", 0.1)
+    robot.hold.clear()

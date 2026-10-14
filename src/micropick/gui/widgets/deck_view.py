@@ -15,6 +15,11 @@ slot pitch and slot size in millimetres from the OT-2 deck definition — rather
 than a grid of equal buttons, because an operator who has looked at the real
 deck should recognise this one without reading the numbers.
 
+Marks (`set_marks`) say what a program does where: a slot in a colour, solid
+for where a group's wells are, dashed for where its steps go, with a line of
+what happens there. The Liquid handling page marks the chosen group's slots,
+because two slots holding the same plate are otherwise one misread away.
+
 Like `PlateView`, this owns no session and changes no state. It shows what it
 is given by `set_labware` and says which slot was clicked. What that click
 means is the page's business.
@@ -108,6 +113,9 @@ class DeckView(QGraphicsView):
         self._labware: dict[str, str] = {}
         self._modules: dict[str, str] = {}          # slot -> text on the band
         self._problems: dict[str, str] = {}         # slot -> tooltip
+        # slot -> (colour, text, solid); see set_marks.
+        self._marks: dict[str, tuple[str, str, bool]] = {}
+        self._mark_texts: dict[str, QGraphicsTextItem] = {}
         self._selected: str | None = None
         self._build()
 
@@ -135,6 +143,14 @@ class DeckView(QGraphicsView):
             label.setBrush(QBrush(DIM_LABEL if name == TRASH_SLOT else LABEL))
             label.setPos(rect.left() + 6, rect.top() + 4)
             label.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
+            # What a mark says, in the mark's colour, low in the slot.
+            mark = QGraphicsTextItem(slot)
+            mark.setFont(number_font)
+            mark.setTextWidth(SLOT_WIDTH - 12)
+            mark.setPos(rect.left() + 6, rect.top() + 46)
+            mark.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+            self._mark_texts[name] = mark
 
             if name == TRASH_SLOT:
                 continue
@@ -190,6 +206,13 @@ class DeckView(QGraphicsView):
         self._problems = {str(k): v for k, v in (problems or {}).items()}
         self._repaint()
 
+    def set_marks(self, marks: dict) -> None:
+        """Slots to mark, by name: (colour, text, solid). Solid is a filled
+        slot with a full outline, for where the wells are; otherwise a
+        dashed outline, for where steps go. {} for none."""
+        self._marks = {str(k): v for k, v in (marks or {}).items()}
+        self._repaint()
+
     def select(self, slot: str | None) -> None:
         self._selected = str(slot) if slot is not None else None
         self._repaint()
@@ -200,6 +223,9 @@ class DeckView(QGraphicsView):
 
     def _repaint(self) -> None:
         for name, slot in self._slots.items():
+            self._paint_mark(name, slot)
+            if name in self._marks:
+                continue
             if name == TRASH_SLOT:
                 slot.setPen(QPen(TRASH_EDGE, 1, Qt.PenStyle.DashLine))
                 slot.setBrush(Qt.BrushStyle.NoBrush)
@@ -235,6 +261,27 @@ class DeckView(QGraphicsView):
             band.setPen(QPen(HAZARD if problem else MODULE_EDGE, 0.8))
             band.setBrush(QBrush(HAZARD if problem else MODULE_FILL,
                                  Qt.BrushStyle.BDiagPattern))
+
+    def _paint_mark(self, name: str, slot) -> None:
+        """A mark's outline, fill and line; the slot's own look when it has
+        none. The labware's name stays, under the slot number."""
+        text_item = self._mark_texts[name]
+        if name not in self._marks:
+            text_item.setPlainText("")
+            return
+        colour, text, solid = self._marks[name]
+        colour = QColor(colour)
+        fill = QColor(colour)
+        fill.setAlpha(70)
+        slot.setPen(QPen(colour, 3.0, Qt.PenStyle.SolidLine if solid
+                         else Qt.PenStyle.DashLine))
+        slot.setBrush(QBrush(fill) if solid else Qt.BrushStyle.NoBrush)
+        held = self._labware.get(name)
+        slot.setToolTip(f"slot {name}: {held or 'empty'}\n{text}")
+        text_item.setDefaultTextColor(colour if not solid else LABEL)
+        text_item.setPlainText(text)
+        if name in self._names:
+            self._names[name].setPlainText(held or "")
 
     # -- interaction ---------------------------------------------------------
 

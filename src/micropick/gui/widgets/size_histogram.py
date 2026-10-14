@@ -14,6 +14,14 @@ two cannot disagree about what is inside the window.
 The numbers are `size_bins`, apart from the drawing: the same bins are
 drawn here and, small and translucent, over the picture by `CameraView`
 (`set_histogram`), so the plot and the picture cannot count differently.
+
+The window can be dragged
+-------------------------
+`set_editable(True)` lets the mouse move the window's band and its two
+edges. While it moves, the bars and the sentence follow it from the sizes
+already measured; when it is let go, `window_moved(low, high)` says where,
+in whole micrometres inside `bounds`, and what that means for the run is
+the page's to decide.
 """
 
 from __future__ import annotations
@@ -22,6 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pyqtgraph as pg
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -117,8 +126,17 @@ class SizeHistogram(QWidget):
     detection against a window; `intro` is what the sentence says before
     there is anything to draw."""
 
+    # The dragged window, let go: (low, high) µm. Only when editable.
+    window_moved = Signal(int, int)
+
     def __init__(self, intro: str = "", parent: QWidget | None = None):
         super().__init__(parent)
+        self._editable = False
+        self._bounds: tuple[float, float] | None = None
+        self._detection = None
+        self._after = ""
+        self._region = None
+        self._bars: list = []
         self.plot = pg.PlotWidget(background=None)
         ink = self.palette().color(QPalette.ColorRole.Text)
         for axis in ("left", "bottom"):
@@ -151,6 +169,15 @@ class SizeHistogram(QWidget):
         column.addWidget(self.plot)
         column.addWidget(self.state)
 
+    def set_editable(self, editable: bool,
+                     bounds: tuple[float, float] | None = None) -> None:
+        """Let the mouse move the window, within `bounds` (µm)."""
+        self._editable = bool(editable)
+        if bounds is not None:
+            self._bounds = (float(bounds[0]), float(bounds[1]))
+        if self._region is not None:
+            self._region.setMovable(self._editable)
+
     def show_detection(self, detection, window, *,
                        after: str = "") -> SizeBins | None:
         """Draw `detection`'s diameters against `window` (low, high µm).
@@ -160,13 +187,50 @@ class SizeHistogram(QWidget):
         # clear() drops the items; the ranges below are what stop the view
         # box from keeping the last dish's.
         self.plot.clear()
+        self._region, self._bars = None, []
+        self._detection, self._after = detection, after
         bins = size_bins(detection, window)
         if isinstance(bins, str):
             self.state.setText(bins)
             return None
-        # Two series rather than one recoloured: a bar is inside the window
-        # or it is not, and the eye should not have to compare a shade with
-        # the band behind it.
+        self._draw_bars(bins)
+        region = pg.LinearRegionItem(values=(bins.low, bins.high),
+                                     movable=self._editable,
+                                     brush=pg.mkBrush(*WINDOW_EDGE, 28),
+                                     pen=pg.mkPen(*WINDOW_EDGE, width=2),
+                                     hoverBrush=pg.mkBrush(*WINDOW_EDGE, 50),
+                                     hoverPen=pg.mkPen(*WINDOW_EDGE, width=3))
+        if self._bounds is not None:
+            region.setBounds(self._bounds)
+        region.setZValue(-10)
+        region.sigRegionChanged.connect(self._dragging)
+        region.sigRegionChangeFinished.connect(self._dropped)
+        self._region = region
+        self.plot.addItem(region)
+        # Both the population and the window in view, so "the cuboids are to
+        # the left of the window" is a thing that can be seen rather than
+        # inferred from two numbers off the edge of the plot.
+        left, right = bins.x_range
+        if self._editable:
+            # Room beyond both, or the window could not be dragged wider
+            # than what was measured.
+            extra = (right - left) * 0.25
+            left, right = max(0.0, left - extra), right + extra
+        self.plot.setXRange(left, right, padding=0)
+        # And the height, for the same reason: a bar chart whose y range is
+        # remembered from another dish is a bar chart of the wrong height.
+        self.plot.setYRange(0, max(1, int(bins.counts.max())) * 1.1,
+                            padding=0)
+        self.state.setText(bins.summary() + (f" {after}" if after else ""))
+        return bins
+
+    def _draw_bars(self, bins: SizeBins) -> None:
+        """Two series rather than one recoloured: a bar is inside the
+        window or it is not, and the eye should not have to compare a shade
+        with the band behind it."""
+        for item in self._bars:
+            self.plot.removeItem(item)
+        self._bars = []
         inside_bin = bins.inside_bins
         ink = self.palette().color(QPalette.ColorRole.Text)
         outside = (ink.red(), ink.green(), ink.blue())
@@ -174,25 +238,33 @@ class SizeHistogram(QWidget):
                                     (inside_bin, INSIDE, INSIDE_ALPHA)):
             if not mask.any():
                 continue
-            self.plot.addItem(pg.BarGraphItem(
+            bars = pg.BarGraphItem(
                 x=bins.centres[mask], height=bins.counts[mask],
                 width=bins.width * 0.92,
                 brush=pg.mkBrush(*colour, alpha),
-                pen=pg.mkPen(*colour, min(255, alpha + 60))))
+                pen=pg.mkPen(*colour, min(255, alpha + 60)))
+            self.plot.addItem(bars)
+            self._bars.append(bars)
 
-        region = pg.LinearRegionItem(values=(bins.low, bins.high),
-                                     movable=False,
-                                     brush=pg.mkBrush(*WINDOW_EDGE, 28),
-                                     pen=pg.mkPen(*WINDOW_EDGE, width=2))
-        region.setZValue(-10)
-        self.plot.addItem(region)
-        # Both the population and the window in view, so "the cuboids are to
-        # the left of the window" is a thing that can be seen rather than
-        # inferred from two numbers off the edge of the plot.
-        self.plot.setXRange(*bins.x_range, padding=0)
-        # And the height, for the same reason: a bar chart whose y range is
-        # remembered from another dish is a bar chart of the wrong height.
-        self.plot.setYRange(0, max(1, int(bins.counts.max())) * 1.1,
-                            padding=0)
-        self.state.setText(bins.summary() + (f" {after}" if after else ""))
-        return bins
+    def dragged_window(self) -> tuple[int, int] | None:
+        """The band where it is now, in whole micrometres, low below high."""
+        if self._region is None:
+            return None
+        low, high = (int(round(v)) for v in self._region.getRegion())
+        return low, max(high, low + 1)
+
+    def _dragging(self) -> None:
+        """The bars and the sentence follow the band; the ranges stay put,
+        or the plot would slide away under the mouse."""
+        window = self.dragged_window()
+        bins = size_bins(self._detection, window)
+        if isinstance(bins, str):
+            return
+        self._draw_bars(bins)
+        self.state.setText(bins.summary()
+                           + (f" {self._after}" if self._after else ""))
+
+    def _dropped(self) -> None:
+        window = self.dragged_window()
+        if self._editable and window is not None:
+            self.window_moved.emit(*window)
