@@ -58,6 +58,7 @@ from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..workflows.jog import Limits                  # noqa: E402
+from ..workflows.manual import unreachable          # noqa: E402
 from .widgets.deck_view import (SLOT_HEIGHT, SLOT_WIDTH,  # noqa: E402
                                 slot_centre)
 from .detector import DetectorService              # noqa: E402
@@ -380,7 +381,6 @@ class Session(QObject):
         # "points" layer of every page draws them, and gone at the next
         # start - a profile's positions are what is kept.
         self.memo_points: list[MemoPoint] = []
-        self._memo_count = 0
         # This computer's settings (config.app_settings): the robot's address
         # and where outputs go. Applied at once, so every writer asks paths
         # for the right folder from the first file.
@@ -393,16 +393,32 @@ class Session(QObject):
 
     def add_memo_point(self, x: float, y: float,
                        z: float | None) -> MemoPoint:
-        """A new point, named M1, M2 ... in the order marked; a name is not
-        given again after its point is deleted."""
-        self._memo_count += 1
-        point = MemoPoint(f"M{self._memo_count}", float(x), float(y),
+        """A new point, named with the lowest free number: M1, M2 ... in the
+        order marked, and a deleted point's number is the next one's."""
+        taken = {p.name for p in self.memo_points}
+        number = 1
+        while f"M{number}" in taken:
+            number += 1
+        point = MemoPoint(f"M{number}", float(x), float(y),
                           None if z is None else float(z))
         self.memo_points.append(point)
         log.info("memo point %s at (%.2f, %.2f)%s", point.name, point.x,
                  point.y, "" if z is None else f", z {point.z:g}")
         self.memo_points_changed.emit()
         return point
+
+    def memo_problem(self, point: MemoPoint) -> str:
+        """Why the tip cannot go to `point`, or "".
+
+        The jog envelope's checks: X and Y on the deck, and Z not below the
+        floor there - the top of a deck module in the profile, over its slot
+        (the deck definition's slot, in the robot's frame), so a point
+        marked over a 64 mm platform at z 50 is said to be inside it. A
+        point with no Z is gone to at the travel height, over everything.
+        """
+        limits = self.jog_limits
+        z = limits.z[1] if point.z is None else point.z
+        return unreachable(limits, (point.x, point.y, z))
 
     def memo_point(self, name: str) -> MemoPoint | None:
         return next((p for p in self.memo_points if p.name == name), None)

@@ -1,8 +1,8 @@
 """Manual control: the robot by hand, from the keys and from the picture.
 
 The jog panel drives the axes as before. What this page adds is the picture
-as a way of pointing. A click marks a memo point (below); a **double click**
-moves:
+as a way of pointing. A click marks a memo point (below) while Mark points
+is ticked; a **double click** moves:
 
 * **A double click sends the camera there** - in Camera mode, the default. The
   gantry travels so that the clicked point comes under the pixel map's
@@ -21,18 +21,26 @@ moves:
   same jog panel to get back to the disc afterwards.
 * **A double click on a detected cuboid sends the tip to it**, at the Cuboid Z -
   the profile's pickup height, one number shared with the run.
-* **A double click on a memo point sends the tip to it**, at its own Z, or
-  over it at the travel height while it has none.
 
 Memo points
 -----------
-A click on the picture marks a point where the tip would go down there
-(`Session.memo_points`, named M1, M2 ...), drawn on the "points" layer -
+With Mark points ticked (off to begin with), a click on the picture marks
+a point where the tip would go down there (`Session.memo_points`, named
+with the lowest free number, M1, M2 ...), drawn on the "points" layer -
 ticked on this page unless it was cleared - and listed in the Memo points
-card, where X, Y and Z are edited and a point is gone to or deleted. They
-last until the program closes; a point to keep is a position (the jog
-panel's Positions). A click near a point chooses it instead of marking
-another one. Marking moves nothing, so it does not need Click to move.
+card, where X, Y and Z are edited and a point is deleted. The tip goes to
+one only by its Go to: a double click on a point is a move like any other,
+to the pixel. They last until the program closes; a point to keep is a
+position (the jog panel's Positions). A click near a point chooses it
+instead of marking another one, ticked or not. Marking moves nothing, so
+it does not need Click to move.
+
+A point the tip cannot go to is said where it is made and shown in red,
+on the picture and in its Z (`Session.memo_problem`): the jog envelope's
+checks, the one that matters being a Z below the top of a deck module.
+The modules are the profile's, over the deck definition's slots in the
+robot's frame, which is the frame a point's X and Y are in - so a point
+marked over a 64 mm platform at z 50 is known to be inside it.
 
 The height is the part a click cannot give. A new point takes New point Z,
 and New point Z is the last height given: typed into a point's Z, or taken
@@ -168,7 +176,7 @@ DECK_HEIGHT = 170
 LOWER_CAMERA_NOTE = "lower camera: clicks do not mark or move"
 
 # What the mouse does on the picture, for the same box.
-MOUSE_HELP = ("click   mark a memo point",
+MOUSE_HELP = ("click   mark a memo point (Mark points on)",
               "double-click   move there (Click to move on)",
               "wheel   zoom",
               "middle-drag   pan")
@@ -301,9 +309,9 @@ class ManualPage(QWidget):
 
         note = QLabel("Camera: the double-clicked point moves under the "
                       "crosshair. Tip: the tip moves over it at travel "
-                      "height. A double click on a detected crosshair, "
-                      "cuboid or memo point lowers the tip to it. A click "
-                      "marks a memo point. Turns off when the tab is opened.")
+                      "height. A double click on a detected crosshair or "
+                      "cuboid lowers the tip to it. Turns off when the tab "
+                      "is opened.")
         note.setWordWrap(True)
         box.layout().addWidget(note)
         return box
@@ -311,14 +319,18 @@ class ManualPage(QWidget):
     def _memo_card(self) -> QWidget:
         box = card(self)
         box.layout().addWidget(heading("Memo points", 2))
-        note = QLabel("Click the picture to mark a point. Kept until the "
-                      "program closes.")
+        self.memo_on = QCheckBox("Mark points", self)
+        self.memo_on.setToolTip("A click on the picture marks a memo point.")
+        # The keys over the picture are the robot's.
+        self.memo_on.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        box.layout().addWidget(self.memo_on)
+        note = QLabel("Kept until the program closes.")
         note.setWordWrap(True)
         box.layout().addWidget(note)
         self.memo_table = MemoTable(self.session, self)
         self.memo_table.setToolTip("Double-click X, Y or Z to change it.")
         self.memo_table.chosen.connect(self._memo_chosen)
-        self.memo_table.z_typed.connect(self._set_new_z)
+        self.memo_table.z_typed.connect(self._memo_z_typed)
         box.layout().addWidget(self.memo_table)
 
         self.new_z = _number_box(self, 0.0, (0.0, Z_TOP_MM), " mm")
@@ -683,15 +695,6 @@ class ManualPage(QWidget):
         target = self._target_at(u, v)
         notes = []
 
-        if target is not None and target[0] == "memo":
-            point = self.session.memo_point(target[1])
-            self.memo_table.choose(point.name)
-            if not self.armed.isChecked():
-                self.jog.tell(f"tip to {point.name} - switch on Click to "
-                              f"move to go there")
-                return
-            self._drive_to_memo(point)
-            return
         if target is not None:
             kind, index, world = target
             offset = profile.calibration.pipette_offset
@@ -788,6 +791,8 @@ class ManualPage(QWidget):
         if near is not None:
             self.memo_table.choose(near)
             return
+        if not self.memo_on.isChecked():
+            return
         profile = self.session.profile
         offset = profile.calibration.pipette_offset
         if offset is None:
@@ -807,8 +812,10 @@ class ManualPage(QWidget):
         # Marked to be seen.
         if self.view.marks_box.isVisible():
             self.view.marks_box.setChecked(True)
+        problem = self.session.memo_problem(point)
         self.jog.tell(f"{point.name} at ({point.x:.2f}, {point.y:.2f}), "
-                      f"z {_memo_z_text(point.z)}")
+                      f"z {_memo_z_text(point.z)}"
+                      + (f" - NOT REACHABLE: {problem}" if problem else ""))
 
     def _memo_pixels(self) -> list[tuple[str, float, float]]:
         """(name, u, v) of each memo point on the picture now."""
@@ -841,6 +848,16 @@ class ManualPage(QWidget):
         """The last Z given is the next point's; see "Memo points"."""
         self.new_z.setValue(self.new_z.minimum() if z is None else float(z))
 
+    def _memo_z_typed(self, z) -> None:
+        self._set_new_z(z)
+        self._say_memo_problem(self.memo_table.chosen_name)
+
+    def _say_memo_problem(self, name) -> None:
+        point = self.session.memo_point(name or "")
+        problem = self.session.memo_problem(point) if point else ""
+        if problem:
+            self.jog.tell(f"{point.name} NOT REACHABLE: {problem}")
+
     def _memo_chosen(self, name) -> None:
         self.marks.choose_memo(name)
         self._refresh_memo_buttons()
@@ -861,6 +878,7 @@ class ManualPage(QWidget):
         self.session.change_memo_point(name, z=z)
         self._set_new_z(z)
         self.jog.tell(f"{name}: z {z:g}")
+        self._say_memo_problem(name)
 
     def _delete_memo(self) -> None:
         name = self.memo_table.chosen_name
@@ -935,10 +953,6 @@ class ManualPage(QWidget):
                 if inside >= -CUBOID_SNAP_PX and self._cuboid_covered[i]:
                     found.append((float(np.hypot(cx - u, cy - v)), "cuboid", i,
                                   self._cuboid_worlds[i]))
-        for name, pu, pv in self._memo_pixels():
-            distance = float(np.hypot(pu - u, pv - v))
-            if distance <= SNAP_PX:
-                found.append((distance, "memo", name, None))
         if not found:
             return None
         _, kind, index, world = min(found, key=lambda f: f[0])

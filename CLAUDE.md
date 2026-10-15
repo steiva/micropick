@@ -87,9 +87,14 @@ run's own moves to them) is reached no higher than that travel height
 tab.
 
 On Manual control a **double** click moves (`CameraView.double_clicked`,
-`double_click_fits` off there: the wheel zooms back out); a click marks a
-**memo point** (`Session.memo_points`: tip XY and a Z or none, M1, M2 ...,
-in memory until the program closes, never in the profile), drawn in cyan
+`double_click_fits` off there: the wheel zooms back out); with Mark points
+ticked (off by default) a click marks a **memo point** (`Session.memo_points`:
+tip XY and a Z or none, named with the lowest free number M1, M2 ...,
+in memory until the program closes, never in the profile). The tip goes
+to one only by the card's Go to, never by a double click. A point below
+a deck module's top is flagged (`Session.memo_problem`, the jog
+envelope's floors: the profile's modules over the deck definition's
+slots, in the robot's frame), red on the picture and in its Z. Drawn in cyan
 on the "points" layer of every page (`position_marks.memo_items`; that
 layer is on by default on Manual control) and listed in the Memo points
 card (`widgets.memo_points.MemoTable`). A new point takes New point Z, the

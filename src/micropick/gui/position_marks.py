@@ -24,7 +24,8 @@ And the memo points (`Session.memo_points`), marked by a click on Manual
 control's picture and kept until the program closes: a ring with a cross in
 it, in cyan, named with its Z when it has one. Tip points like most
 positions, drawn the same way; the one chosen in Manual control's list is
-drawn thicker.
+drawn thicker, and one the tip cannot go to (`Session.memo_problem`: below
+a deck module's top, say) in red with a "!".
 
 Which is which is decided by the name, never by the operator: a camera pose
 is only taught by the button of the page that uses it, and the jog panel
@@ -65,6 +66,8 @@ CAMERA_POSITIONS = {"observe": "Picking", "tip_calib": "Pipette"}
 MARK = (120, 255, 120)
 # The memo points': a cyan nothing else on the picture uses.
 MEMO = (255, 220, 0)
+# A memo point the tip cannot go to.
+MEMO_BAD = (0, 0, 255)
 RADIUS_PX = 22
 # Half the gap in the middle of each side of a camera pose's square.
 GAP_PX = 8
@@ -138,9 +141,10 @@ def mark_items(positions: dict, pmap: PixelMap, pipette_offset, gantry_xy,
 
 
 def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
-               image_size, chosen: str | None = None) -> list:
+               image_size, chosen: str | None = None, bad=()) -> list:
     """Each memo point inside the frame: a ring with a cross in it where
-    the tip goes down, and its name with its Z."""
+    the tip goes down, and its name with its Z. Those named in `bad` in
+    red, with a "!"."""
     width, height = image_size
     out = []
     for point in points:
@@ -150,16 +154,19 @@ def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
             continue
         cx, cy = int(round(pixel[0])), int(round(pixel[1]))
         thick = 4 if point.name == chosen else 2
+        colour = MEMO_BAD if point.name in bad else MEMO
         arm = RADIUS_PX // 2
         out.append(overlays.Circle(center=(cx, cy), radius=RADIUS_PX,
-                                   color=MEMO, thickness=thick))
+                                   color=colour, thickness=thick))
         for dx, dy in ((arm, 0), (0, arm)):
             out.append(overlays.Polyline(
                 points=np.array([(cx - dx, cy - dy), (cx + dx, cy + dy)],
                                 np.int32),
-                closed=False, color=MEMO, thickness=thick))
+                closed=False, color=colour, thickness=thick))
         name = point.name if point.z is None else f"{point.name} z {point.z:g}"
-        out.append(_label(name, (cx, cy), MEMO))
+        if point.name in bad:
+            name += " !"
+        out.append(_label(name, (cx, cy), colour))
     return out
 
 
@@ -251,4 +258,6 @@ class PositionMarks(QObject):
         self.view.set_marks(
             mark_items(positions, pmap, offset, pose[:2], size)
             + memo_items(self.session.memo_points, pmap, offset, pose[:2],
-                         size, self.memo_chosen))
+                         size, self.memo_chosen,
+                         {p.name for p in self.session.memo_points
+                          if self.session.memo_problem(p)}))

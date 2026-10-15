@@ -4,7 +4,9 @@ The points are the session's (`Session.memo_points`); this shows them and
 writes an edit back, and the "points" layer of the picture follows the same
 list. A cell is edited by a double click, in a number box that takes Enter;
 Z's box goes down to "travel height", which is a point with no Z of its own
-(the tip stays at the travel height over it).
+(the tip stays at the travel height over it). A Z the tip cannot go to -
+below the top of a deck module there, say (`Session.memo_problem`) - is
+red, with the reason under the pointer.
 
 The table takes no focus: the arrows and PageUp/PageDown are the robot's
 keys on this page, and a table with the keyboard would scroll on them
@@ -15,6 +17,7 @@ does (`JogPanel`, "A field has the keys").
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (QAbstractItemView, QHeaderView,
                                QStyledItemDelegate, QTableWidget,
                                QTableWidgetItem)
@@ -36,6 +39,10 @@ XY_RANGE = (-20.0, 420.0)
 Z_TOP_MM = 200.0
 
 _VALUE = Qt.ItemDataRole.UserRole
+
+# A Z the tip cannot go to (`Session.memo_problem`), with the reason as
+# the cell's tooltip.
+BAD = "#ff5c5c"
 
 
 def _text(value) -> str:
@@ -94,6 +101,8 @@ class MemoTable(QTableWidget):
         self.itemSelectionChanged.connect(
             lambda: self.chosen.emit(self.chosen_name))
         session.memo_points_changed.connect(self.refresh)
+        # The deck modules, and with them what is too low, are the profile's.
+        session.profile_changed.connect(lambda _p: self.refresh())
         self.refresh()
 
     @property
@@ -139,6 +148,13 @@ class MemoTable(QTableWidget):
                     item.setText(_text(value))
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight
                                           | Qt.AlignmentFlag.AlignVCenter)
+                # Said on the point's Z: the height is what is wrong when
+                # it is below a module's top, and the only thing to change.
+                problem = self.session.memo_problem(point)
+                z_item = self.item(row, Z_COLUMN)
+                z_item.setForeground(QBrush(QColor(BAD)) if problem
+                                     else QBrush())
+                z_item.setToolTip(problem)
         finally:
             self.blockSignals(False)
             self._filling = False
