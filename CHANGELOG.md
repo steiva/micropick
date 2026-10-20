@@ -8,6 +8,44 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## 0.4.0 - 2026-10-19
+
+Memo points and the well center on Manual control, a trash and a deck map
+for liquid runs, a second Stop that keeps the robot session, and the
+models on the GPU. Profiles from 0.3.0 load as they are.
+
+- Manual control: Go to well goes to the plate's measured well center
+  (it used the labware definition's before), and the Well card measures
+  it - Go to well top, jog, Set well center - the same measurement as
+  Liquid handling's.
+- Manual control: memo points. With Mark points ticked, a click on the
+  picture marks a point (M1, M2 ...) kept until the program closes and
+  listed in the Memo points card, where its X, Y and Z are edited; the
+  tip goes there with Go to. A point below the top of a deck module is
+  shown in red with the reason. Moving from the picture is now a double
+  click.
+- A second press of Stop holds the robot instead of ending the robot
+  session: the command in progress finishes, nothing else moves, and the
+  labware and the tip are kept.
+- Liquid handling: Start first blows the tip out over the program's trash
+  (a well or a saved point); a Deck card shows where the run goes; the
+  plate map is larger and opens in its own window. A new start keeps only
+  the trash, not the last day's groups.
+- Picking: the size histogram is a card over the picture; drag the size
+  window on it to change and save it.
+- The machine learning models run on the GPU when there is one (Settings >
+  Inference: Auto, CPU, GPU), and faster on the CPU too.
+- Faster runs: a full dish's contours are no longer repainted every
+  100 ms, pickup clips are written while recorded (they held gigabytes of
+  memory), and a paused run no longer makes the window crawl.
+- A camera can be closed from its window; unticking Save pickup clips
+  closes the lower camera.
+- Fixes: a jog step right after Retract moves; a move from the retracted
+  height is no longer refused for its Z; a number field that has the
+  keyboard says so, and Enter gives the keys back to the robot; Detect
+  cuboids on a frame with none; the plate map's row and column labels.
+- American spelling throughout the interface (center, color, analyze).
+
 ## 0.3.0 - 2026-10-12
 
 Picking as numbered steps with a cuboid statistics window, keys set in
