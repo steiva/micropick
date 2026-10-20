@@ -88,7 +88,7 @@ FIELDS: dict[str, Field] = {
         MAIN, "mm"),
     "minimum_distance": Field(
         "Minimum spacing",
-        "Cuboids with a neighbour closer than this are not picked.",
+        "Cuboids with a neighbor closer than this are not picked.",
         MAIN, "mm"),
     "one_by_one": Field(
         "One cuboid per trip",
@@ -96,7 +96,7 @@ FIELDS: dict[str, Field] = {
         MAIN),
     "well_offset_x": Field(
         "Well offset X",
-        "Deposit offset from the well centre (measured centre if set), "
+        "Deposit offset from the well center (measured center if set), "
         "along X.",
         MAIN, "mm"),
     "well_offset_y": Field(
@@ -155,8 +155,8 @@ FIELDS: dict[str, Field] = {
 
     # -- the dish in the picture -------------------------------------------------
     "circle_center": Field(
-        "Dish centre (px)",
-        "Working circle centre in the upper camera picture.",
+        "Dish center (px)",
+        "Working circle center in the upper camera picture.",
         PICTURE),
     "circle_radius": Field(
         "Dish radius",
@@ -208,7 +208,7 @@ FIELDS: dict[str, Field] = {
         SHAPE),
     "max_radial_cv": Field(
         "Most radial spread",
-        "Spread of outline distance from the centre.",
+        "Spread of outline distance from the center.",
         SHAPE),
 
     # -- bubbles ---------------------------------------------------------------
@@ -218,7 +218,7 @@ FIELDS: dict[str, Field] = {
         BUBBLES),
     "bubble_core_r": Field(
         "Core radius",
-        "Centre region, fraction of the radius.",
+        "Center region, fraction of the radius.",
         BUBBLES),
     "bubble_ring_window": Field(
         "Rim window",

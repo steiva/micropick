@@ -502,7 +502,7 @@ class SettingsPage(QWidget):
         self.clip_crop.setRange(0.1, 1.0)
         self.clip_crop.setSingleStep(0.05)
         self.clip_crop.setDecimals(2)
-        self.clip_crop.setToolTip("Side of the centred square kept, as a "
+        self.clip_crop.setToolTip("Side of the centered square kept, as a "
                                   "fraction of the frame height.")
         self.clip_crop.valueChanged.connect(lambda _v: self._edited())
         grid.addWidget(self.clip_crop, 1, 1, Qt.AlignmentFlag.AlignLeft)

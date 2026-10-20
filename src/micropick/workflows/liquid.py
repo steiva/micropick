@@ -292,7 +292,7 @@ def problems(program: Program, plates: dict[str, Plate],
             plate = plates.get(slot)
             if plate is not None and not plate.has_bottom:
                 out.append(f"{where}: the measured bottom of slot {slot} is "
-                           f"not known - measure its well centre and set the "
+                           f"not known - measure its well center and set the "
                            f"well depth on the Wells card.")
         if location.kind == "well":
             why = _plate_problem(plates, location.slot, location.load_name)
@@ -506,7 +506,7 @@ def _descend(robot: Robot, location: Location, group: Group, well: str,
     plate, target = _plate_well(location, group, well, plates)
     if not plate.has_bottom:
         raise ValueError(f"slot {plate.slot}: the measured bottom needs the "
-                         f"well centre and the well depth")
+                         f"well center and the well depth")
     x, y, z = (float(v) for v in location.offset)
     cx, cy, cz = (float(v) for v in plate.centre)
     over = cz + APPROACH_MM

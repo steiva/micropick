@@ -246,7 +246,7 @@ class LocationEditor(QWidget):
             plate = None
         self.offset_label.setText(
             "Offset from the point, mm" if kind == "point" else
-            "Offset, mm (x, y from the measured centre)"
+            "Offset, mm (x, y from the measured center)"
             if plate in self._measured
             else "Offset from there, mm")
         self.form.setRowVisible(self.offset_row, kind != "here")

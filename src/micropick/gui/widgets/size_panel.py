@@ -67,7 +67,7 @@ class SizePanel(QWidget):
         row.addWidget(self.close_button)
         layout.addLayout(row)
 
-        self.histogram = SizeHistogram("Not analysed yet.", self)
+        self.histogram = SizeHistogram("Not analyzed yet.", self)
         self.histogram.plot.setMinimumHeight(140)
         self.histogram.plot.setMaximumHeight(170)
         self.histogram.window_moved.connect(self.window_moved)

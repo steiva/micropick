@@ -74,17 +74,29 @@ page and on A and D - the in-place commands the run uses, for trying a
 pickup by hand. They are refused unless the robot reports a tip on.
 
 A small deck map is the way across the deck: a click on a slot sends the
-camera or the tip, as "A click moves" says, over that slot's centre at the
+camera or the tip, as "A click moves" says, over that slot's center at the
 travel height (`deck_view.slot_centre`, the deck definition's geometry). The
-definition is in the robot's frame, the tip's: the tip goes to the centre
+definition is in the robot's frame, the tip's: the tip goes to the center
 itself, the camera to it less the pipette offset. It obeys Click to move
 like the picture does, and goes through the same queue.
 
 A cuboid picked by hand needs somewhere to go, so a well of any plate the
 run holds can be driven to: the robot's own `move_to_well`, to the top,
-centre or bottom of the well with an offset from it. Two switches make the
+center or bottom of the well with an offset from it. Two switches make the
 pair a pickup: aspirate as soon as the tip reaches a clicked cuboid, and
 dispense as soon as it reaches the well.
+
+The well center
+---------------
+Go to well is measured from the plate's measured well center where there
+is one (`config.schema.WellCentre`, per slot and plate type): its x and y
+are added to the profile's well offsets, as a picking run adds them to its
+deposit, and the level keeps the robot's own heights. It is the same
+measurement as the Liquid handling page's, and is taken here the same
+way: Go to well top puts the tip where the robot thinks the chosen well's
+top center is, the jog panel walks it onto the real center level with the
+rim, and Set well center stores the difference. Forget well center drops
+it, and the wells are where the labware definition puts them again.
 
 Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
@@ -122,7 +134,8 @@ from ..detector import wanted_model
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (Section, card, combo_box, double_spin_box,
-                             heading, scroll_column, secondary_button)
+                             heading, primary_button, scroll_column,
+                             secondary_button)
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
@@ -223,6 +236,10 @@ class ManualPage(QWidget):
         self._tip_device = None             # the setting it was loaded with
         # The top of the Z travel with the tip that is on; see raise_tip.
         self._z_top: float | None = None
+        # (slot, load name, well, pose) of the last Go to well top: the
+        # robot's own idea of that well's top center, which Set well center
+        # measures the real one against.
+        self._nominal: tuple | None = None
         self._forget_targets(redraw=False)
 
         self.opener = CameraOpener(session, self)
@@ -236,6 +253,9 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
         self.jog.moved.connect(self._forget_targets)
+        # Emitted whenever a job ends: Go to well top's nominal is in, and
+        # the buttons greyed for the job come back.
+        self.jog.position_changed.connect(lambda _lines: self._refresh())
         self.jog.set_page_help(self._page_help())
 
         self.marks = PositionMarks.on(session, self.view)
@@ -363,12 +383,12 @@ class ManualPage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Deck", 2))
         note = QLabel("Click a slot to move the camera or tip over its "
-                      "centre (with Click to move on).")
+                      "center (with Click to move on).")
         note.setWordWrap(True)
         box.layout().addWidget(note)
         self.deck = DeckView(self)
         self.deck.setFixedHeight(DECK_HEIGHT)
-        self.deck.setToolTip("Move over the clicked slot's centre.")
+        self.deck.setToolTip("Move over the clicked slot's center.")
         self.deck.slot_clicked.connect(self._slot_clicked)
         box.layout().addWidget(self.deck)
         return box
@@ -458,6 +478,7 @@ class ManualPage(QWidget):
         # and the completer the editable box brings finds it either way.
         self.well_choice.setEditable(True)
         self.well_choice.setInsertPolicy(self.well_choice.InsertPolicy.NoInsert)
+        self.well_choice.currentTextChanged.connect(lambda _t: self._refresh())
         self.well_level = combo_box(self)
         self.well_level.addItems(moves.WELL_LEVELS)
         self.well_offset = _number_box(self, 0.0, WELL_OFFSET_RANGE, " mm")
@@ -476,11 +497,39 @@ class ManualPage(QWidget):
         _row(box, "Offset Z", self.well_offset)
 
         self.well_button = secondary_button("Go to well", self)
+        self.well_button.setToolTip(
+            "Move the tip into the chosen well (measured center if set).")
         self.well_button.clicked.connect(self._go_to_well)
         box.layout().addWidget(self.well_button)
         self.well_state = QLabel()
         self.well_state.setWordWrap(True)
         box.layout().addWidget(self.well_state)
+
+        # The plate's measured well center, the same one the Liquid handling
+        # page sets: see "The well center" in the module docstring.
+        self.centre_state = QLabel()
+        self.centre_state.setWordWrap(True)
+        box.layout().addWidget(self.centre_state)
+        self.go_top_button = secondary_button("Go to well top", self)
+        self.go_top_button.setToolTip(
+            "Move the tip to the chosen well's top center from the labware "
+            "definition.")
+        self.go_top_button.clicked.connect(self._go_to_well_top)
+        self.set_centre_button = primary_button("Set well center", self)
+        self.set_centre_button.setToolTip(
+            "Save the current tip position as this plate's well center and "
+            "rim.")
+        self.set_centre_button.clicked.connect(self._set_well_centre)
+        self.forget_centre_button = secondary_button("Forget well center",
+                                                     self)
+        self.forget_centre_button.setToolTip(
+            "Use the labware definition's well positions.")
+        self.forget_centre_button.clicked.connect(self._forget_well_centre)
+        row = QHBoxLayout()
+        for button in (self.go_top_button, self.set_centre_button):
+            row.addWidget(button, 1)
+        box.layout().addLayout(row)
+        box.layout().addWidget(self.forget_centre_button)
         return box
 
     def _install_shortcuts(self) -> None:
@@ -1063,7 +1112,11 @@ class ManualPage(QWidget):
             return
         cfg = self.session.profile.picking
         level = self.well_level.currentText()
-        offset = (cfg.well_offset_x, cfg.well_offset_y,
+        # From the measured center where there is one, as a picking run
+        # deposits: its x and y only, the level keeps the robot's heights.
+        centre = self._well_centre(slot, definition.load_name)
+        cx, cy = (centre.offset[0], centre.offset[1]) if centre else (0, 0)
+        offset = (cfg.well_offset_x + cx, cfg.well_offset_y + cy,
                   float(self.well_offset.value()))
         volume, rate = self._liquid_amount()
 
@@ -1071,6 +1124,8 @@ class ManualPage(QWidget):
             self._z_top = moves.drive_to_well(robot, labware_id, well, level,
                                               offset, self._z_top, log=log)
             said = f"tip in {well} of slot {slot} ({level} {offset[2]:+g} mm)"
+            if centre is not None:
+                said += ", from the measured center"
             if drop:
                 log(f"dispense {volume:g} µl at {rate:g} µl/s")
                 moves.dispense(robot, volume, rate)
@@ -1079,6 +1134,124 @@ class ManualPage(QWidget):
 
         log.info("going to well %s in slot %s", well, slot)
         self.jog.run_job(job)
+
+    # -- the well center ----------------------------------------------------------
+
+    def _well_centre(self, slot, load_name):
+        profile = self.session.profile
+        return (profile.deck.well_centre(slot, load_name)
+                if profile is not None else None)
+
+    def _chosen_well(self):
+        """(slot, labware id, definition, well) chosen in the Well card, or
+        None while the well typed is not one of the plate's."""
+        data = self.plate_choice.currentData()
+        if data is None:
+            return None
+        well = self.well_choice.currentText().strip().upper()
+        return (*data, well) if well in data[2].wells else None
+
+    def _shown_nominal(self):
+        """The last Go to well top, while its plate is still the chosen one."""
+        data = self.plate_choice.currentData()
+        nominal = self._nominal
+        if nominal is None or data is None:
+            return None
+        return (nominal if (nominal[0], nominal[1])
+                == (data[0], data[2].load_name) else None)
+
+    def _go_to_well_top(self) -> None:
+        chosen, robot = self._chosen_well(), self.session.robot
+        if chosen is None or robot is None or self.jog.busy:
+            return
+        slot, labware_id, definition, well = chosen
+        load_name = definition.load_name
+
+        def job(log):
+            self._z_top = moves.drive_to_well(robot, labware_id, well, "top",
+                                              (0.0, 0.0, 0.0), self._z_top,
+                                              log=log)
+            # Read on this thread, shown on the next refresh: the job's end
+            # emits position_changed.
+            self._nominal = (slot, load_name, well, xyz(robot))
+            return (f"at the top of {well} as the robot has it: jog onto the "
+                    f"real center, level with the rim, then Set well center.")
+
+        log.info("manual control: to the top of %s in slot %s", well, slot)
+        if not self.jog.run_job(job):
+            self.jog.tell("Robot busy.")
+
+    def _set_well_centre(self) -> None:
+        nominal, pose = self._shown_nominal(), self.jog.pose
+        if nominal is None or pose is None or self.jog.busy:
+            return
+        slot, load_name, well, at = nominal
+        offset = [float(p) - float(a) for p, a in zip(pose, at)]
+        if self._well_centre(slot, load_name) is not None:
+            answer = QMessageBox.question(
+                self, "Set well center",
+                f"Replace the measured center of {load_name} in slot "
+                f"{slot}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        definition = self.plate_choice.currentData()[2]
+        try:
+            depth = float(definition.data["wells"][well]["depth"])
+        except (KeyError, TypeError, ValueError):
+            depth = None
+        try:
+            self.session.set_well_centre(slot, load_name, offset, well,
+                                         depth_mm=depth)
+        except Exception as exc:                 # noqa: BLE001
+            self.jog.tell(f"not saved: {exc}")
+            return
+        # Measured: measuring again starts from Go to well top.
+        self._nominal = None
+        self._refresh()
+        self.jog.tell(f"well center of slot {slot} saved: ({offset[0]:+.2f}, "
+                      f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
+
+    def _forget_well_centre(self) -> None:
+        data = self.plate_choice.currentData()
+        if data is None:
+            return
+        slot, load_name = data[0], data[2].load_name
+        if self._well_centre(slot, load_name) is None:
+            return
+        answer = QMessageBox.question(
+            self, "Forget well center",
+            f"Forget the measured center of {load_name} in slot {slot}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self.session.forget_well_centre(slot, load_name)
+
+    def _show_centre(self, has_robot: bool) -> None:
+        """The well center line and its buttons, for the chosen plate."""
+        data = self.plate_choice.currentData()
+        idle = not self.jog.busy
+        centre = (self._well_centre(data[0], data[2].load_name)
+                  if data is not None else None)
+        nominal = self._shown_nominal()
+        self.go_top_button.setEnabled(idle and has_robot
+                                      and self._chosen_well() is not None)
+        self.set_centre_button.setEnabled(idle and nominal is not None
+                                          and self.jog.pose is not None)
+        self.forget_centre_button.setEnabled(idle and centre is not None)
+        if data is None:
+            text = ""
+        elif centre is not None:
+            text = f"Well center {centre.describe()}."
+        else:
+            text = "Well center not measured."
+        if nominal is not None:
+            text += (f"\nAt the top of {nominal[2]} as the robot has it: jog "
+                     f"the tip onto the real center, level with the rim, then "
+                     f"Set well center.")
+        self.centre_state.setText(text)
+        self.centre_state.setVisible(bool(text))
 
     # -- the profile's number -----------------------------------------------------
 
@@ -1199,6 +1372,7 @@ class ManualPage(QWidget):
             "" if has_plate else
             "No plate loaded.")
         self.well_state.setVisible(not has_plate)
+        self._show_centre(has_robot)
         if busy:
             return
         if problems:
@@ -1209,7 +1383,7 @@ class ManualPage(QWidget):
             text = f"{len(self._cross)} crosshairs"
             if len(self._cross_outside):
                 text += (f" (+{len(self._cross_outside)} outside the "
-                         f"calibrated area, grey)")
+                         f"calibrated area, gray)")
             parts.append(text)
         if self._cuboids is not None:
             parts.append(self._cuboids.summary.replace("\n", "; "))
@@ -1219,7 +1393,7 @@ class ManualPage(QWidget):
         text = "\n".join(parts)
         if self._cross_standin:
             text += ("\nStand-in tip detector: the crosshairs are invented "
-                     "from the frame's centre.")
+                     "from the frame's center.")
         if self._cuboids is not None and self._cuboids.standin:
             text += "\nStand-in cuboid detector: bright blobs, not the model."
         self.state.setText(text)
@@ -1248,6 +1422,7 @@ class ManualPage(QWidget):
 
     def _robot_changed(self, _state: str) -> None:
         self._lose_top()
+        self._nominal = None
         self._reload_plates()
 
     def _lose_top(self) -> None:

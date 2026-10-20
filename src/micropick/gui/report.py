@@ -54,7 +54,7 @@ def summary(session) -> str:
         try:
             lines.append("plate plan:\n" + routine.summary())
         except Exception as exc:                     # noqa: BLE001
-            lines.append(f"plate plan: could not summarise ({exc})")
+            lines.append(f"plate plan: could not summarize ({exc})")
     return "\n".join(lines) + "\n"
 
 

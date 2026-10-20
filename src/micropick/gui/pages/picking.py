@@ -355,12 +355,12 @@ class PickingPage(QWidget):
         box = self.step_bottom.box
         box.layout().addWidget(wrapped(
             "Reference height for pickups. Move the tip over the dish "
-            "centre, lower it until it touches the bottom, then Set dish "
+            "center, lower it until it touches the bottom, then Set dish "
             "bottom here."))
 
         # One above the other: side by side in half the panel, the two
         # names did not fit their buttons.
-        self.over_centre_button = secondary_button("Tip over the dish centre",
+        self.over_centre_button = secondary_button("Tip over the dish center",
                                                    self)
         self.over_centre_button.clicked.connect(self._tip_over_centre)
         self.set_bottom_button = secondary_button("Set dish bottom here", self)
@@ -400,13 +400,13 @@ class PickingPage(QWidget):
         return box
 
     def _analysis_card(self) -> QWidget:
-        self.step_analysis = StepCard(self, 5, "Analyse the dish")
+        self.step_analysis = StepCard(self, 5, "Analyze the dish")
         box = self.step_analysis.box
         box.layout().addWidget(wrapped(
             "Detect cuboids in the current picture and mark those a run "
             "would pick."))
 
-        self.analyse_button = primary_button("Analyse the dish", self)
+        self.analyse_button = primary_button("Analyze the dish", self)
         self.analyse_button.clicked.connect(self._analyse)
         box.layout().addWidget(self.analyse_button)
 
@@ -420,7 +420,7 @@ class PickingPage(QWidget):
         row.addWidget(self.sizes_button)
         box.layout().addLayout(row)
 
-        self.result = QLabel("Not analysed.")
+        self.result = QLabel("Not analyzed.")
         self.result.setWordWrap(True)
         self.result.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -538,7 +538,7 @@ class PickingPage(QWidget):
         if profile is None:
             return None, "no profile loaded"
         if observe is None:
-            return None, (f"no {DISH_POSITION!r} position: the dish centre is "
+            return None, (f"no {DISH_POSITION!r} position: the dish center is "
                           f"found from the picture taken there")
         if profile.pixel_map is None:
             return None, "no pixel map: run the camera calibration"
@@ -567,9 +567,9 @@ class PickingPage(QWidget):
         def job(log):
             moves.drive_tip(robot, xy, z, None, log=log)
             return (f"tip {ABOVE_BOTTOM_MM:g} mm over the dish bottom, at the "
-                    f"dish centre: jog it down until it touches")
+                    f"dish center: jog it down until it touches")
 
-        if not self.jog.run_job(job, what="tip over the dish centre"):
+        if not self.jog.run_job(job, what="tip over the dish center"):
             self.jog.tell("Robot busy.")
 
     def _set_bottom(self) -> None:
@@ -735,13 +735,13 @@ class PickingPage(QWidget):
             log("detecting")
             return frame, detector.detect(frame, cfg, pixel_map)
 
-        self.result.setText("analysing…")
-        self._run(Worker(job, what="analysing the dish"), self._analysed)
+        self.result.setText("analyzing…")
+        self._run(Worker(job, what="analyzing the dish"), self._analysed)
 
     def _analysed(self, payload) -> None:
         frame, detection = payload
         self._frame, self._detection = frame, detection
-        self.result.setText(f"analysed at {time.strftime('%H:%M:%S')}\n"
+        self.result.setText(f"analyzed at {time.strftime('%H:%M:%S')}\n"
                             f"{detection.summary}")
         log.info("analysis: %s", detection.summary.replace("\n", " | "))
         # Over the live feed, not a held frame: if the dish moves after
@@ -847,7 +847,7 @@ class PickingPage(QWidget):
 
     def _loaded(self, _description) -> None:
         if self._detection is None:
-            self.result.setText("Not analysed.")
+            self.result.setText("Not analyzed.")
         self._refresh()
 
     # -- the run ----------------------------------------------------------------
@@ -1351,14 +1351,14 @@ class PickingPage(QWidget):
                      if card.state in (TODO, BLOCKED)]
 
         if self._detection is not None:
-            self.step_analysis.set_state(OK, "Analysed.")
+            self.step_analysis.set_state(OK, "Analyzed.")
         elif self.detector.model is None:
             self.step_analysis.set_state(BLOCKED, "Cuboid detector not "
                                                   "loaded.")
         elif self._camera() is None:
             self.step_analysis.set_state(BLOCKED, "Upper camera not open.")
         else:
-            self.step_analysis.set_state(NOTE, "Not analysed yet.")
+            self.step_analysis.set_state(NOTE, "Not analyzed yet.")
 
         if self._filled and not self._running():
             self.step_run.set_state(OK, "The last run filled the plate plan.")
@@ -1398,7 +1398,7 @@ class PickingPage(QWidget):
         self.over_centre_button.setEnabled(
             connected and centre is not None and not running)
         self.over_centre_button.setToolTip(
-            f"Move the tip over the dish centre, {ABOVE_BOTTOM_MM:g} mm "
+            f"Move the tip over the dish center, {ABOVE_BOTTOM_MM:g} mm "
             f"above the dish bottom."
             if centre is not None else f"Unavailable: {why}.")
         self.set_bottom_button.setEnabled(

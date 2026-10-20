@@ -201,7 +201,7 @@ class FitReport:
             f"  held out   mean {self.holdout_mean_um:7.1f}  max {self.holdout_max_um:7.1f} um",
             f"  coverage   u [{u0:.0f}, {u1:.0f}]  v [{v0:.0f}, {v1:.0f}]  "
             f"({self.coverage_frac[0]*100:.0f} % x {self.coverage_frac[1]*100:.0f} % of frame)",
-            f"  scale      centre {self.scale_centre_um:.2f}  edge {self.scale_edge_um:.2f} um/px "
+            f"  scale      center {self.scale_centre_um:.2f}  edge {self.scale_edge_um:.2f} um/px "
             f"({self.scale_variation_pct:+.1f} %)",
             f"  track side {self.track_side_mm:.4f} mm" if self.track_side_mm else "",
         ]).rstrip()

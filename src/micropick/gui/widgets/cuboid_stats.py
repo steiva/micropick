@@ -48,10 +48,10 @@ MEASURES = (
     ("aspect_ratio", "Aspect ratio", "", lambda c: tuple(c.aspect_ratio_window)),
     ("solidity", "Solidity", "", lambda c: (c.min_solidity, None)),
     ("radial_cv", "Radial CV", "", lambda c: (None, c.max_radial_cv)),
-    ("min_dist_mm", "Nearest neighbour", "mm",
+    ("min_dist_mm", "Nearest neighbor", "mm",
      lambda c: (c.minimum_distance, None)),
     ("conf", "Detector confidence", "", lambda c: (c.yolo_conf, None)),
-    ("distance_to_center", "Distance from dish centre", "px",
+    ("distance_to_center", "Distance from dish center", "px",
      lambda c: (None, c.circle_radius)),
 )
 
@@ -105,12 +105,12 @@ class CuboidStats(QWidget):
         self.setWindowTitle("Cuboid statistics")
         self.resize(1280, 820)
 
-        self.counts = QLabel("Analyse the dish to fill this window.")
+        self.counts = QLabel("Analyze the dish to fill this window.")
         self.counts.setWordWrap(True)
         self.counts.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
 
-        self.sizes = SizeHistogram("Not analysed yet.", self)
+        self.sizes = SizeHistogram("Not analyzed yet.", self)
         self.sizes.plot.setTitle(
             "Diameter", color=self.palette().color(QPalette.ColorRole.Text),
             size="10pt")
@@ -156,7 +156,7 @@ class CuboidStats(QWidget):
         window = tuple(cfg.cuboid_size_threshold) if cfg is not None else None
         self.sizes.show_detection(detection, window)
         if detection is None or cfg is None:
-            self.counts.setText("Analyse the dish to fill this window.")
+            self.counts.setText("Analyze the dish to fill this window.")
             for plot in self.plots.values():
                 plot.clear()
             self.table.clearContents()

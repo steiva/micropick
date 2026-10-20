@@ -176,7 +176,7 @@ class PipetteCalibration(QWidget):
         self.disc = StepCard(self, 1, "Place the calibration disc on the "
                                    "calibration module")
         self.disc.add(wrapped(
-            "Place the crosshair disc flat and centred on the calibration "
+            "Place the crosshair disc flat and centered on the calibration "
             "module."))
         self.disc_placed = QCheckBox("The disc is on the module", self)
         # The keys over this page are the gantry's.
@@ -225,7 +225,7 @@ class PipetteCalibration(QWidget):
         self.run = StepCard(self, 4, "Calibrate")
         self.run.add(wrapped(
             "Moves to the disc position and measures the tip offset from "
-            "the camera centre with the lower camera."))
+            "the camera center with the lower camera."))
 
         # The starting offset: where the routine first looks for the tip.
         self.offset_note = muted_label()

@@ -897,7 +897,7 @@ class CameraManager:
             return self.cameras[label]
         except KeyError:
             raise CameraError(
-                f"no camera labelled {label!r} in the profile; "
+                f"no camera labeled {label!r} in the profile; "
                 f"known: {', '.join(self.labels()) or 'none'}"
             ) from None
 

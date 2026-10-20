@@ -365,17 +365,17 @@ class LiquidHandlingPage(QWidget):
         box.layout().addLayout(row)
         self.go_top_button = secondary_button("Go to well top", self)
         self.go_top_button.setToolTip(
-            "Move the tip to the selected well's top centre from the labware "
+            "Move the tip to the selected well's top center from the labware "
             "definition.")
         self.go_top_button.clicked.connect(self._go_to_well_top)
-        self.set_centre_button = primary_button("Set well centre", self)
+        self.set_centre_button = primary_button("Set well center", self)
         self.set_centre_button.setToolTip(
-            "Save the current tip position as this plate's well centre and "
+            "Save the current tip position as this plate's well center and "
             "rim.")
         self.set_centre_button.clicked.connect(self._set_well_centre)
-        self.go_centre_button = secondary_button("Go to centre", self)
+        self.go_centre_button = secondary_button("Go to center", self)
         self.go_centre_button.setToolTip(
-            "Move the tip to the measured centre of the selected well.")
+            "Move the tip to the measured center of the selected well.")
         self.go_centre_button.clicked.connect(self._go_to_well_centre)
         self.forget_centre_button = secondary_button("Forget", self)
         self.forget_centre_button.setToolTip(
@@ -401,7 +401,7 @@ class LiquidHandlingPage(QWidget):
         row = QHBoxLayout()
         self.rename_group_button = secondary_button("Rename…", self)
         self.rename_group_button.clicked.connect(self._rename_group)
-        self.colour_button = secondary_button("Colour…", self)
+        self.colour_button = secondary_button("Color…", self)
         self.colour_button.clicked.connect(self._recolour_group)
         self.delete_group_button = secondary_button("Delete", self)
         self.delete_group_button.clicked.connect(self._delete_group)
@@ -931,7 +931,7 @@ class LiquidHandlingPage(QWidget):
         group = self._group()
         if group is None or self._running:
             return
-        colour = QColorDialog.getColor(QColor(group.color), self, "Group colour")
+        colour = QColorDialog.getColor(QColor(group.color), self, "Group color")
         if colour.isValid():
             group.color = colour.name()
             self._changed()
@@ -1114,7 +1114,7 @@ class LiquidHandlingPage(QWidget):
                                               log=log_)
             emit(("nominal", (slot, load_name, well, xyz(robot))))
             return (f"at the top of {well} as the robot has it: jog onto the "
-                    f"real centre, level with the rim, then Set well centre.")
+                    f"real center, level with the rim, then Set well center.")
 
         log.info("liquid handling: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job):
@@ -1131,8 +1131,8 @@ class LiquidHandlingPage(QWidget):
         offset = [float(p) - float(a) for p, a in zip(pose, at)]
         if self._well_centre(slot, load_name) is not None:
             answer = QMessageBox.question(
-                self, "Set well centre",
-                f"Replace the measured centre of {load_name} in slot "
+                self, "Set well center",
+                f"Replace the measured center of {load_name} in slot "
                 f"{slot}?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
@@ -1148,7 +1148,7 @@ class LiquidHandlingPage(QWidget):
         # Measured: measuring again starts from Go to well top.
         self._nominal = None
         self._refresh()
-        self.jog.tell(f"well centre of slot {slot} saved: ({offset[0]:+.2f}, "
+        self.jog.tell(f"well center of slot {slot} saved: ({offset[0]:+.2f}, "
                       f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
 
     def _well_depth_edited(self) -> None:
@@ -1176,7 +1176,7 @@ class LiquidHandlingPage(QWidget):
         def job(log_):
             state.z_top = moves.drive_to_well(robot, labware_id, well, "top",
                                               offset, state.z_top, log=log_)
-            return f"at the measured centre and rim of {well}."
+            return f"at the measured center and rim of {well}."
 
         if not self.jog.run_job(job):
             self.jog.tell("Robot busy.")
@@ -1187,8 +1187,8 @@ class LiquidHandlingPage(QWidget):
             return
         slot, load_name = shown
         answer = QMessageBox.question(
-            self, "Forget well centre",
-            f"Forget the measured centre of {load_name} in slot {slot}?",
+            self, "Forget well center",
+            f"Forget the measured center of {load_name} in slot {slot}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer == QMessageBox.StandardButton.Yes:
@@ -1498,15 +1498,15 @@ class LiquidHandlingPage(QWidget):
         if shown is None:
             text = ""
         elif centre is not None:
-            text = f"Well centre {centre.describe()}."
+            text = f"Well center {centre.describe()}."
         else:
-            text = ("Well centre not measured: the wells are where the "
+            text = ("Well center not measured: the wells are where the "
                     "labware definition puts them. To measure, select one "
                     "well and Go to well top.")
         if nominal is not None:
             text += (f"\nAt the top of {nominal[2]} as the robot has it: jog "
-                     f"the tip onto the real centre, level with the rim, then "
-                     f"Set well centre.")
+                     f"the tip onto the real center, level with the rim, then "
+                     f"Set well center.")
         self.centre_state.setText(text)
         self.centre_state.setVisible(bool(text))
 

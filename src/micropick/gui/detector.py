@@ -244,7 +244,7 @@ class DetectorService(QObject):
         """
         if pixel_map is None:
             notes.append("no pixel map in the profile, so nothing is measured "
-                         "in millimetres and the shape windows cannot run: "
+                         "in millimeters and the shape windows cannot run: "
                          "detections only.")
             return None
         height, width = frame.shape[:2]

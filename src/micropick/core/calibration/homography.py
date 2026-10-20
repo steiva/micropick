@@ -108,7 +108,7 @@ class HomographyReport:
     warnings: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
-        text = (f"homography: held-out centre {self.centre_error_px:.2f} px, "
+        text = (f"homography: held-out center {self.centre_error_px:.2f} px, "
                 f"rotation {self.rotation_deg:+.1f} deg, det {self.det:+.3f}, "
                 f"match within {self.angle_error_deg:.1f} deg")
         for w in self.warnings:
@@ -152,7 +152,7 @@ def _match_by_angle(over_dirs: np.ndarray, under_dirs: np.ndarray,
         raise HomographyError(
             f"the best match is {worst:.1f} deg off, beyond {max_angle_err_deg:g}. "
             f"The crosshairs sit ninety degrees apart, so this is close to "
-            f"picking a neighbour at random; check under_rotation_deg="
+            f"picking a neighbor at random; check under_rotation_deg="
             f"{rotation_deg:g} and its sign (v grows downwards)")
     return order, worst
 
@@ -164,7 +164,7 @@ def _decompose(H: np.ndarray) -> tuple[float, float]:
     a check on orientation, not a measurement.
     """
     if abs(H[2, 2]) < 1e-12:
-        raise HomographyError("the fitted matrix is not normalisable (h33 ~ 0)")
+        raise HomographyError("the fitted matrix is not normalizable (h33 ~ 0)")
     A = H[:2, :2] / H[2, 2]
     return (float(np.degrees(np.arctan2(A[1, 0], A[0, 0]))),
             float(np.linalg.det(A)))
@@ -194,7 +194,7 @@ def fit_homography(over_centre, over_neighbours, under_centre, under_neighbours,
 
     if len(over_n) < 4 or len(under_n) < 4:
         raise HomographyError(
-            f"need four neighbours in each view, got {len(over_n)} and "
+            f"need four neighbors in each view, got {len(over_n)} and "
             f"{len(under_n)}")
 
     order, angle_err = _match_by_angle(over_n - over_c, under_n - under_c,

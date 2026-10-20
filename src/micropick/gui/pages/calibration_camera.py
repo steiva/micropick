@@ -224,7 +224,7 @@ def judge(report, printed_side_mm: float | None) -> Verdict:
                          f"{limit:g} {'%' if unit == '%' else unit})")
         line = f"{level}: " + "; ".join(parts) + "."
         if level == REDO:
-            line += " Centre the marker and sweep again."
+            line += " Center the marker and sweep again."
     return Verdict(level, line, checks)
 
 
@@ -321,7 +321,7 @@ class CameraCalibration(QWidget):
         return self.place.box
 
     def _centre_step(self) -> QWidget:
-        self.centre = StepCard(self, 2, "Centre it under the crosshair")
+        self.centre = StepCard(self, 2, "Center it under the crosshair")
         self.centre.add(wrapped(
             "Jog the marker under the camera crosshair, at the height where "
             "the picture is in focus."))
@@ -574,7 +574,7 @@ class CameraCalibration(QWidget):
         elif not self._seen():
             out.append("Step 1: the marker is not seen.")
         elif not self._centred():
-            out.append("Step 2: centre the marker under the crosshair.")
+            out.append("Step 2: center the marker under the crosshair.")
         return out
 
     def _start(self) -> None:
@@ -652,7 +652,7 @@ class CameraCalibration(QWidget):
         # loop is blocked inside the sweep. The workflow sees the event between
         # poses, so the gantry finishes the move it is making first.
         self._worker.request_cancel()
-        self._append("cancelling at the next pose")
+        self._append("canceling at the next pose")
         self.cancel_button.setEnabled(False)
 
     def _on_progress(self, done: int, total: int) -> None:
@@ -708,10 +708,10 @@ class CameraCalibration(QWidget):
         detail = reason
         self._append(f"{kind}: {detail}")
         self._append("nothing was written to the profile")
-        self._append("the gantry has moved: centre the marker again before "
+        self._append("the gantry has moved: center the marker again before "
                      "the next sweep")
         self._outcome = (f"Sweep {kind}: {detail}\nNothing was written. The "
-                         f"gantry is no longer where the sweep started: centre "
+                         f"gantry is no longer where the sweep started: center "
                          f"the marker again before the next one.")
         log.info("camera calibration %s: %s", kind, detail)
         self._refresh()

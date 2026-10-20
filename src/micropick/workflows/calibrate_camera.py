@@ -164,7 +164,7 @@ def measure_scale(robot: Robot, camera: Camera, tracker: MarkerTracker, *,
     base = tracker.measure(camera)
     if base is None:
         raise CalibrationError(
-            "marker not detected at the starting pose; centre it in the frame first"
+            "marker not detected at the starting pose; center it in the frame first"
         )
 
     width = camera.resolution[0]

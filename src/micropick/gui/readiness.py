@@ -219,7 +219,7 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
             centre = well_centre(session)
             if centre is not None:
                 x, y, _z = centre.offset
-                detail += (f" Measured well centre "
+                detail += (f" Measured well center "
                            f"({centre.well or 'a well'}): {x:+.2f}, "
                            f"{y:+.2f} mm.")
             out["plate"] = (True, detail, False)

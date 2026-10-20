@@ -172,8 +172,8 @@ class TipDetector:
         points = np.array([d.xy for d in dets if d.label == self.point_label])
         if len(points) < 5:
             raise _TooFewCrosshairs(
-                f"found {len(points)} crosshairs, need the centre plus four "
-                f"neighbours; check lighting and focus"
+                f"found {len(points)} crosshairs, need the center plus four "
+                f"neighbors; check lighting and focus"
             )
 
         best = None
@@ -198,7 +198,7 @@ class TipDetector:
 
         if asymmetry > 0.25:
             raise TipCalibrationError(
-                f"no crosshair has four symmetric neighbours (best asymmetry "
+                f"no crosshair has four symmetric neighbors (best asymmetry "
                 f"{asymmetry:.2f}); the pattern is partly out of frame or a "
                 f"crosshair was missed"
             )
@@ -207,9 +207,9 @@ class TipDetector:
         img_centre = np.array([image_shape[1] / 2, image_shape[0] / 2])
         if np.linalg.norm(centre - img_centre) > centre_tol_px:
             raise TipCalibrationError(
-                f"the disc centre is {np.linalg.norm(centre - img_centre):.0f} px "
-                f"from the frame centre, beyond the {centre_tol_px:.0f} px "
-                f"tolerance; re-centre the disc under the camera"
+                f"the disc center is {np.linalg.norm(centre - img_centre):.0f} px "
+                f"from the frame center, beyond the {centre_tol_px:.0f} px "
+                f"tolerance; re-center the disc under the camera"
             )
 
         mm_per_px = float(spacing_mm / np.mean(radii))
@@ -420,7 +420,7 @@ def calibrate_pipette_offset(
     if not pixel_map.covers(*over_view.centre):
         raise TipCalibrationError(
             f"the crosshair is at {over_view.centre.round(0)}, outside the "
-            f"calibrated area of the pixel map; centre the disc better"
+            f"calibrated area of the pixel map; center the disc better"
         )
     target_xy = np.asarray(pixel_map.to_robot(over_view.centre[0],
                                               over_view.centre[1], (gx, gy)))

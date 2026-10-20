@@ -643,7 +643,7 @@ static until the session owns them.
   panel's positions like any other pose.
 
 - [ ] **The analysis counts what a run would pick.**
-  With the real weights loaded, Analyse the dish: the overlay is the picking
+  With the real weights loaded, Analyze the dish: the overlay is the picking
   window's own - red for every detection, yellow for pickable, green for
   isolated - and the histogram shows the population against the size
   window. Compare the "N of M inside" figure with what the first batch of a
@@ -682,7 +682,7 @@ static until the session owns them.
   live.
 
 - [ ] **Analysis is drawn over the live feed.**
-  Analyse the dish, then nudge the dish by hand: the contours stay where
+  Analyze the dish, then nudge the dish by hand: the contours stay where
   they were and the cuboids move out from under them. Analyse again and they
   line up. Switching camera removes them.
 
@@ -968,9 +968,9 @@ Kept for the record of what washing needs when it returns as a program.
 - [ ] **A plate's well centre, measured.**
   On the Wells card select one well with a cuboid in it (D5), Go to well
   top: the tip stops over D5 where the definition has its top. Jog it onto
-  the real centre, level with the rim, and Set well centre: the line under
+  the real centre, level with the rim, and Set well center: the line under
   the map says "measured on D5" with the offset, and deck.json has it.
-  Go to centre with another well selected lands on that well's real centre
+  Go to center with another well selected lands on that well's real centre
   and rim. Well depth appears under the line, filled from the definition;
   set the real one. A step on this plate now says "x, y from the measured
   centre". Forget drops it; the line says it is not measured.
@@ -995,3 +995,25 @@ Kept for the record of what washing needs when it returns as a program.
   it - the cuboid is still in its well. Continue: the waste is visited after
   every second well and after the last, with a blow out each time; no
   retract between wells.
+
+## Manual control: the well center
+
+- [ ] **Go to well uses the measured center.**
+  With a well center measured on Liquid handling, Manual control's Well
+  card says "Well center measured on …". Go to well, Level top, Offset Z
+  0, picking well offsets 0: the tip lands on the real center, where
+  Liquid handling's Go to center puts it, and the jog panel says "from the
+  measured center". Forget well center: Go to well goes to the
+  definition's center again.
+
+- [ ] **Set well center from Manual control.**
+  Choose the plate and one well, Go to well top: the tip stops where the
+  definition has its top, and the card says to jog onto the real center.
+  Jog there, level with the rim, Set well center: the line shows the new
+  offset, and Liquid handling's Wells card shows the same measurement at
+  once. Choosing another plate greys Set well center.
+
+- [ ] **American spelling.**
+  Center, color, analyze on every page (Picking's "Analyze the dish",
+  Liquid handling's "Set well center", Camera calibration's "Center it
+  under the crosshair").

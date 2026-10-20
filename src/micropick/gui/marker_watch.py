@@ -105,7 +105,7 @@ class Sighting:
                 f"is the case this cannot tell you any other way. Otherwise "
                 f"it is out of frame, out of focus, or too dark.")
         offset = self.offset_px
-        where = (f"{np.linalg.norm(offset):.0f} px from the frame centre"
+        where = (f"{np.linalg.norm(offset):.0f} px from the frame center"
                  if offset is not None else "")
         text = (f"Marker {self.marker_id} found, "
                 f"{markers.orientation(self.corners)}, {where}.")
@@ -115,7 +115,7 @@ class Sighting:
                      f"or the sweep will not find it either.")
         if self.others:
             text += (f"\nAlso in frame: {', '.join(str(i) for i in self.others)}. "
-                     f"The sweep tracks the one nearest the centre.")
+                     f"The sweep tracks the one nearest the center.")
         return text
 
 

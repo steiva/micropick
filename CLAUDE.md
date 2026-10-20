@@ -31,7 +31,7 @@ and, in a build, its commit.
 
 ### Picking: analysis is live, a run holds its decision frame
 
-- On the Picking page, *Analyse the dish* draws its contours over the
+- On the Picking page, *Analyze the dish* draws its contours over the
   **live** feed. If the dish moves afterwards, the contours visibly stop
   matching, which is the cue to analyse again. There is no "back to live".
 - During a **run**, the view follows `PickView` from `workflows/picking`:
@@ -146,12 +146,16 @@ point, here); `workflows.liquid` runs it through `JogPanel.run_job`. Saved
 points are `profile.positions`, not a list of the page's own. The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing is a program written with these blocks
-(measured well centre, auto empty, slow lift, pause after the first well),
+(measured well center, auto empty, slow lift, pause after the first well),
 not a page of its own. Start blows the tip out over the program's trash
 (`Program.trash`, a well or a saved point) before the first well; Continue
 does not. The plate map spans both card columns (`CardColumns(wide=...)`),
 names the well under the pointer, and opens in its own window as a
-`PlateMirror` - the same scene, never a copy.
+`PlateMirror` - the same scene, never a copy. A plate's measured well
+center (`WellCentre`) is one per slot and plate type, set on Liquid
+handling or on Manual control's Well card (Go to well top, jog, Set well
+center); Manual control's Go to well and a picking deposit add its x
+and y, Liquid handling's steps all of it.
 
 ### Words on screen
 
@@ -227,11 +231,11 @@ each a card with a mark: place the disc (ticked by the operator), set the
 disc position, put a tip on, calibrate, nudge the tip (only while it
 waits); its cameras are the profile's upper and lower ones.
 Camera calibration is the same (`widgets.step_card.StepCard`): place the
-marker (done when it is seen), centre it (done within two of its sides of
+marker (done when it is seen), center it (done within two of its sides of
 the centre), sweep, save the result; the upper camera, no chooser.
 Picking is the same, leading to the run: complete the Operation checklist,
 set the picking position, the shake position, the dish bottom (optional),
-analyse the dish, start picking; the jog panel last. Steps 2-4 are marked
+analyze the dish, start picking; the jog panel last. Steps 2-4 are marked
 from the checklist's own lines. On Picking the size histogram is a card
 over the picture's bottom-left corner (`widgets.size_panel`), not drawn
 into the view: the size window is dragged on it and saved like the
@@ -258,6 +262,11 @@ what state something is in: no judgement ("worth it"), no reasoning, no
 directions to another page when the button beside it goes there. Status
 lines read "Robot busy.", "No profile loaded.", "Not set.". The reasoning
 belongs in docstrings.
+
+Words on screen are spelled American: center, color, gray, analyze,
+neighbor, millimeter, labeled, canceled. Only the strings shown (and the
+log's); code names, docstrings and saved keys (`WellCentre`,
+`well_centres` in deck.json) keep their spelling.
 
 The Settings page's second column is the loaded profile's, saved into it at
 once: which attached camera is the upper and which the lower

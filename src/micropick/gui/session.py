@@ -990,7 +990,7 @@ class Session(QObject):
         `WellCentre`), replacing any earlier measurement of it. The depth
         set for it before is kept; `depth_mm` is used when there was none."""
         if self.profile is None:
-            raise SessionError("no profile to save the well centre into")
+            raise SessionError("no profile to save the well center into")
         deck = self.profile.deck
         before = deck.well_centre(slot, load_name)
         if before is not None and before.depth_mm is not None:
@@ -1004,7 +1004,7 @@ class Session(QObject):
                                                           load_name)]
         deck.well_centres.append(centre)
         self.profile.save_deck()
-        log.info("well centre of %s in slot %s: %s", load_name, slot,
+        log.info("well center of %s in slot %s: %s", load_name, slot,
                  centre.describe())
         self.profile_changed.emit(self.profile)
 
@@ -1014,7 +1014,7 @@ class Session(QObject):
         centre = (self.profile.deck.well_centre(slot, load_name)
                   if self.profile is not None else None)
         if centre is None:
-            raise SessionError("measure the well centre first")
+            raise SessionError("measure the well center first")
         depth = round(float(depth_mm), 3)
         if centre.depth_mm == depth:
             return
@@ -1033,7 +1033,7 @@ class Session(QObject):
             return
         deck.well_centres = kept
         self.profile.save_deck()
-        log.info("well centre of %s in slot %s forgotten", load_name, slot)
+        log.info("well center of %s in slot %s forgotten", load_name, slot)
         self.profile_changed.emit(self.profile)
 
     def remember_labware(self, load_name: str) -> None:
@@ -1357,7 +1357,7 @@ class Session(QObject):
         spec = self.profile.cameras.get(label)
         if spec is None:
             raise SessionError(
-                f"no camera labelled {label!r} in profile {self.profile.name!r}; "
+                f"no camera labeled {label!r} in profile {self.profile.name!r}; "
                 f"known: {', '.join(sorted(self.profile.cameras)) or 'none'}")
         width, height = resolution or spec.default_resolution
         scene = MarkerScene(image_size=(width, height))

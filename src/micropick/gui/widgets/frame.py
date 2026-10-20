@@ -44,7 +44,7 @@ def to_qimage(bgr: np.ndarray) -> QImage:
     """
     if bgr.ndim != 3 or bgr.shape[2] != 3:
         raise ValueError(
-            f"expected an HxWx3 BGR frame, got shape {bgr.shape}. Greyscale "
+            f"expected an HxWx3 BGR frame, got shape {bgr.shape}. Grayscale "
             f"has no Format_BGR888 equivalent; convert it first.")
     if bgr.dtype != np.uint8:
         raise ValueError(
@@ -53,7 +53,7 @@ def to_qimage(bgr: np.ndarray) -> QImage:
     if not bgr.flags["C_CONTIGUOUS"]:
         raise ValueError(
             "expected a C-contiguous array; this one is a view, which is what "
-            "a centre crop returns. Wrap it in np.ascontiguousarray at the "
+            "a center crop returns. Wrap it in np.ascontiguousarray at the "
             "call site, where it is known whether that copy is affordable.")
 
     height, width = bgr.shape[:2]
