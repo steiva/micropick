@@ -187,3 +187,25 @@ def test_closing_after_a_short_job_parks_the_axis(app, window):
     before = robot.calls.count(("retract_axis", "leftZ"))
     window.closeEvent(QCloseEvent())
     assert robot.calls.count(("retract_axis", "leftZ")) == before + 1
+
+
+def test_a_second_close_while_the_first_waits_does_not_shut_down_twice(
+        app, window):
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QCloseEvent
+    _connect(app, window)
+    robot = window.session.robot
+    before = robot.calls.count(("retract_axis", "leftZ"))
+    shutdowns = []
+    real = window.session.shutdown
+    window.session.shutdown = lambda: (shutdowns.append(1), real())
+    lease = window.session.robot_lease.claim("Home")   # a short job
+    second = []
+    QTimer.singleShot(50, lambda: second.append(
+        window.closeEvent(QCloseEvent())))
+    QTimer.singleShot(150, lease.release)
+    window.closeEvent(QCloseEvent())
+    assert second                                      # it did come in
+    assert shutdowns == [1]
+    assert window.session.robot is None
+    assert robot.calls.count(("retract_axis", "leftZ")) == before + 1

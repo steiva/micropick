@@ -493,6 +493,8 @@ class MainWindow(QMainWindow):
         self._stop_key.setContext(Qt.ShortcutContext.WindowShortcut)
         self._stop_key.activated.connect(self._stop)
         self._stop_again_until = 0.0
+        # A close is waiting for the robot (`closeEvent`).
+        self._closing = False
         self._stop_reset = QTimer(self)
         self._stop_reset.setSingleShot(True)
         self._stop_reset.timeout.connect(self._disarm_stop)
@@ -595,6 +597,17 @@ class MainWindow(QMainWindow):
         under it (the pipette calibration hears Stop only in its touch-up),
         and a retract sent into a move still going is the overlap the
         robot's lease is for."""
+        if self._closing:
+            # Another close while this one waits: this one decides.
+            event.ignore()
+            return
+        self._closing = True
+        try:
+            self._close(event)
+        finally:
+            self._closing = False
+
+    def _close(self, event) -> None:
         lease = self.session.robot_lease
         if lease.holding_run:
             answer = QMessageBox.question(
