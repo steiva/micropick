@@ -662,7 +662,6 @@ class JogPanel(QWidget):
         # wherever the tip is drags it across the deck. See
         # `workflows.motion`.
         def job():
-            motion.retract()
             motion.tip_to(where[:2], where[2])
             return f"at {name!r}", controller.status()
 

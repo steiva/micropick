@@ -96,6 +96,41 @@ def test_go_to_drives_to_the_named_pose(app, session):
     panel.deleteLater()
 
 
+def _settle(app, panel):
+    import time
+    deadline = time.monotonic() + 10
+    while panel.busy and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    app.processEvents()
+
+
+def test_go_to_retracts_only_when_the_tip_is_below_the_travel_height(app,
+                                                                     session):
+    # The mock retracts to 100, so the travel height is 99.
+    session.profile.positions.clear()
+    session.remember("a", (30.0, 40.0, 99.0))
+    session.remember("b", (60.0, 70.0, 99.0))
+    session.remember("low", (60.0, 70.0, 20.0))
+    panel = JogPanel(session)
+    _settle(app, panel)                      # its first read of the pose
+    robot = session.robot
+
+    def go(name):
+        before = robot.calls.count(("retract_axis", "leftZ"))
+        panel._select_position(name)
+        panel._goto()
+        _settle(app, panel)
+        return robot.calls.count(("retract_axis", "leftZ")) - before
+
+    assert go("a") == 1                      # the top is not known yet
+    assert go("b") == 0                      # already at the travel height
+    assert go("low") == 0
+    assert go("a") == 1                      # from 20 mm: up first
+    assert tuple(round(v, 1) for v in panel.controller.position) == (30.0, 40.0, 99.0)
+    panel.deleteLater()
+
+
 def test_the_positions_outlive_the_robot(app, session):
     session.profile.positions.clear()
     session.remember("kept", (1.0, 2.0, 3.0))

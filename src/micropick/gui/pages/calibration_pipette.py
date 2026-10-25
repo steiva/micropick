@@ -343,7 +343,6 @@ class PipetteCalibration(QWidget):
         robot, motion = self.session.robot, self.session.motion
 
         def job():
-            motion.retract()
             motion.tip_to(stored[:2], stored[2])
             return xyz(robot)
 
@@ -504,7 +503,6 @@ class PipetteCalibration(QWidget):
             if standin:
                 log(STANDIN_NOTE)
             log(f"driving to {POSITION_NAME} {tuple(round(v, 2) for v in stored)}")
-            motion.retract(log=log)
             motion.tip_to(stored[:2], stored[2], log=log)
             time.sleep(0.5)
             try:

@@ -504,7 +504,6 @@ class PickingPage(QWidget):
         motion = self.session.motion
 
         def job(log):
-            motion.retract(log=log)
             motion.tip_to(where[:2], where[2], log=log)
             return f"at {DISH_POSITION!r}"
 
@@ -566,7 +565,6 @@ class PickingPage(QWidget):
             return
 
         def job(log):
-            motion.retract(log=log)
             motion.tip_to(xy, z, log=log)
             return (f"tip {ABOVE_BOTTOM_MM:g} mm over the dish bottom, at the "
                     f"dish center: jog it down until it touches")
@@ -611,7 +609,7 @@ class PickingPage(QWidget):
         motion = self.session.motion
 
         def job(log):
-            motion.retract(log=log)
+            motion.raise_tip(log=log)
             return "tip up"
 
         self.jog.run_job(job, what="lifting the tip")
@@ -629,7 +627,6 @@ class PickingPage(QWidget):
         motion = self.session.motion
 
         def job(log):
-            motion.retract(log=log)
             motion.tip_to(where[:2], where[2], log=log)
             return f"at {SHAKE_POSITION!r}"
 
@@ -650,7 +647,6 @@ class PickingPage(QWidget):
         motion = self.session.motion
 
         def job(log):
-            motion.retract(log=log)
             motion.tip_to(where[:2], where[2], log=log)
             log("stirring")
             stir(robot)
