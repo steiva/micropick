@@ -20,8 +20,23 @@ from dataclasses import dataclass
 from ..hardware.protocols import xyz
 from .motion import Motion
 
-__all__ = ["go_to_top", "Nominal", "Measurement", "deposit_offset",
-           "for_plan", "definition_depth", "run_using"]
+__all__ = ["go_to_top", "Nominal", "Measurement", "xy", "deposit_offset",
+           "plan_plate", "for_plan", "definition_depth", "run_using",
+           "REACHED", "IN_HAND", "FORGET_TIP", "in_use_tip"]
+
+# What the pages say, the same on both: the tip has reached the robot's well
+# top, and a measurement is in hand.
+REACHED = ("at the top of {well} as the robot has it: jog onto the real "
+           "center, level with the rim, then Set well center.")
+IN_HAND = ("At the top of {well} as the robot has it: jog the tip onto the "
+           "real center, level with the rim, then Set well center.")
+FORGET_TIP = "Use the labware definition's well positions."
+
+
+def in_use_tip(run: str) -> str:
+    """The tooltip of a control greyed out because `run` goes into the
+    plate (`run_using`)."""
+    return f"In use by the {run}."
 
 
 @dataclass(frozen=True)
@@ -43,30 +58,44 @@ def go_to_top(motion: Motion, labware_id: str, well: str, *,
     return xyz(motion.robot)
 
 
-def deposit_offset(cfg, centre) -> tuple[float, float]:
-    """The x and y offset of a deposit into a well, from the robot's well
-    center: the picking settings' well offset (`cfg.well_offset_x`, `_y`)
-    plus the measured center's x and y. Never its z: a deposit keeps the
-    robot's own heights. `centre` is a `WellCentre`, its offset, or None
-    for a plate not measured."""
-    offset = getattr(centre, "offset", centre)
-    cx, cy = (0.0, 0.0) if offset is None else (float(offset[0]),
-                                                float(offset[1]))
-    return float(cfg.well_offset_x) + cx, float(cfg.well_offset_y) + cy
+def xy(centre) -> tuple[float, float]:
+    """Where the well's center is, in x and y, from the robot's: the
+    measured `WellCentre`'s, or (0, 0) - the labware definition's own - for
+    a plate not measured. Never its z: a deposit keeps the robot's
+    heights."""
+    if centre is None:
+        return 0.0, 0.0
+    return float(centre.offset[0]), float(centre.offset[1])
+
+
+def deposit_offset(cfg, centre_xy) -> tuple[float, float]:
+    """The x and y offset of a deposit from the robot's well center: the
+    picking settings' well offset (`cfg.well_offset_x`, `_y`) from the
+    well's center as it is now, measured or the definition's (`xy`).
+    `centre_xy` None is the definition's."""
+    cx, cy = (0.0, 0.0) if centre_xy is None else centre_xy
+    return (float(cfg.well_offset_x) + float(cx),
+            float(cfg.well_offset_y) + float(cy))
+
+
+def plan_plate(routine, run_state) -> tuple[str, str] | None:
+    """(slot, load name) of the plate a plate plan delivers to - the plan's
+    slot, with the type the robot session holds there - or None."""
+    if routine is None or run_state is None:
+        return None
+    slot = str(routine.destination.slot)
+    entry = run_state.labware.get(slot)
+    return None if entry is None else (slot, entry.load_name)
 
 
 def for_plan(profile, routine, run_state):
-    """The measured well center of the plate a plate plan delivers to - the
-    plate of the plan's slot, of the type the robot session holds there -
-    or None. Wherever it was measured; a picking run adds its x and y to
-    every deposit (`deposit_offset`)."""
-    if profile is None or routine is None or run_state is None:
+    """The measured well center of the plate a plate plan delivers to, or
+    None. Wherever it was measured; a picking run adds its x and y to every
+    deposit (`deposit_offset`)."""
+    plate = plan_plate(routine, run_state)
+    if profile is None or plate is None:
         return None
-    slot = routine.destination.slot
-    entry = run_state.labware.get(str(slot))
-    if entry is None:
-        return None
-    return profile.deck.well_centre(slot, entry.load_name)
+    return profile.deck.well_centre(*plate)
 
 
 def definition_depth(definition, well: str) -> float | None:
@@ -96,10 +125,9 @@ class Measurement:
     def __init__(self):
         self._nominal: Nominal | None = None
 
-    def started(self, slot, load_name: str, well: str, pose) -> Nominal:
+    def started(self, slot, load_name: str, well: str, pose) -> None:
         self._nominal = Nominal(str(slot), load_name, well,
                                 tuple(float(v) for v in pose))
-        return self._nominal
 
     def for_plate(self, slot, load_name: str) -> Nominal | None:
         """The measurement in hand, if it was started on this plate."""
@@ -117,6 +145,7 @@ class Measurement:
         return [float(p) - float(a) for p, a in zip(pose, self._nominal.pose)]
 
     def forget(self) -> None:
-        """Saved, or the deck or the robot changed: measuring again starts
-        from Go to well top."""
+        """Saved, or the robot changed: measuring again starts from Go to
+        well top. Labware moved elsewhere on the deck leaves it: a plate of
+        the same type put back in its slot keeps it (`for_plate`)."""
         self._nominal = None

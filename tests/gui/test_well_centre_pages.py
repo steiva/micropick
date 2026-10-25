@@ -208,3 +208,33 @@ def test_a_picking_run_says_it_goes_into_the_plans_plate(app, session,
                        {"run": True, "plates": {("5", PLATE)}})]
     monkeypatch.setattr(session.robot_lease, "claim", real)
     page.deleteLater()
+
+
+@pytest.mark.parametrize("make", [_manual, _liquid],
+                         ids=["manual control", "liquid handling"])
+def test_the_measurement_in_hand_outlives_a_change_elsewhere_on_the_deck(
+        app, session, make):
+    page = make(app, session)
+    page._go_to_well_top()
+    _settle(app, page.jog)
+    session.load_labware(resolve_definition(PLATE), 2)
+    app.processEvents()
+    page._refresh()
+    assert "At the top of B2" in page.centre_state.text()
+    assert page.set_centre_button.isEnabled()
+    page.deleteLater()
+
+
+def test_the_depth_says_which_run_uses_the_plate(app, session):
+    page = _liquid(app, session)
+    _measure(app, session, page, (0.4, -0.3, -1.5))
+    run = session.robot_lease.claim("liquid run", run=True,
+                                    plates={("5", PLATE)})
+    try:
+        app.processEvents()
+        assert "liquid run" in page.well_depth.toolTip()
+    finally:
+        run.release()
+    app.processEvents()
+    assert "liquid run" not in page.well_depth.toolTip()
+    page.deleteLater()

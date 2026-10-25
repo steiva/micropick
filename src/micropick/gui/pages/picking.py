@@ -167,10 +167,10 @@ from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
+from ...workflows import well_centre
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
-from ...workflows import well_centre
 from ..readiness import (DISH_POSITION, SHAKE_POSITION, STEPS,
                          readiness_checks)
 from ..session import Session
@@ -952,13 +952,9 @@ class PickingPage(QWidget):
     def _plan_plates(self) -> set:
         """(slot, load name) of the plate the plan delivers into, if it is
         on the deck: its measured center stays while the run uses it."""
-        session = self.session
-        routine, state = session.routine, session.run_state
-        if routine is None or state is None:
-            return set()
-        slot = str(routine.destination.slot)
-        entry = state.labware.get(slot)
-        return set() if entry is None else {(slot, entry.load_name)}
+        plate = well_centre.plan_plate(self.session.routine,
+                                       self.session.run_state)
+        return set() if plate is None else {plate}
 
     def _launch(self, lease) -> None:
         """The run on its own worker, holding `lease`."""

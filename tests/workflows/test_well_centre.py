@@ -53,16 +53,19 @@ def _centre(offset=(0.4, -0.3, -1.5), slot=5, load_name="corning_96"):
                       well="B2", depth_mm=10.9)
 
 
-def test_a_deposit_adds_the_measured_centers_x_and_y_but_not_its_z():
+def test_a_deposit_is_offset_from_the_wells_measured_center():
     from types import SimpleNamespace
     cfg = SimpleNamespace(well_offset_x=1.0, well_offset_y=-2.0)
-    assert well_centre.deposit_offset(cfg, _centre()) == pytest.approx(
+    centre_xy = well_centre.xy(_centre())
+    assert centre_xy == pytest.approx((0.4, -0.3))         # never its z
+    assert well_centre.deposit_offset(cfg, centre_xy) == pytest.approx(
         (1.4, -2.3))
 
 
-def test_with_no_measured_center_a_deposit_is_the_well_offset_alone():
+def test_with_no_measured_center_a_deposit_is_offset_from_the_robots():
     from types import SimpleNamespace
     cfg = SimpleNamespace(well_offset_x=1.0, well_offset_y=-2.0)
+    assert well_centre.xy(None) == (0.0, 0.0)
     assert well_centre.deposit_offset(cfg, None) == pytest.approx((1.0, -2.0))
 
 

@@ -523,7 +523,7 @@ class ManualPage(QWidget):
         self.forget_centre_button = secondary_button("Forget well center",
                                                      self)
         self.forget_centre_button.setToolTip(
-            "Use the labware definition's well positions.")
+            well_centre.FORGET_TIP)
         self.forget_centre_button.clicked.connect(self._forget_well_centre)
         row = QHBoxLayout()
         for button in (self.go_top_button, self.set_centre_button):
@@ -1111,7 +1111,7 @@ class ManualPage(QWidget):
         # deposits: its x and y only, the level keeps the robot's heights.
         centre = self._well_centre(slot, definition.load_name)
         dx, dy = well_centre.deposit_offset(self.session.profile.picking,
-                                            centre)
+                                            well_centre.xy(centre))
         offset = (dx, dy, float(self.well_offset.value()))
         volume, rate = self._liquid_amount()
 
@@ -1146,6 +1146,12 @@ class ManualPage(QWidget):
         well = self.well_choice.currentText().strip().upper()
         return (*data, well) if well in data[2].wells else None
 
+    def _run_using(self, slot, load_name: str) -> str | None:
+        """The run going into this plate now, if any
+        (`well_centre.run_using`)."""
+        return well_centre.run_using(self.session.robot_lease, slot,
+                                     load_name)
+
     def _shown_nominal(self):
         """The last Go to well top, while its plate is still the chosen one."""
         data = self.plate_choice.currentData()
@@ -1167,8 +1173,7 @@ class ManualPage(QWidget):
             # On the GUI thread, once the job has ended.
             self._measurement.started(slot, load_name, well, pose)
             self._refresh()
-            return (f"at the top of {well} as the robot has it: jog onto the "
-                    f"real center, level with the rim, then Set well center.")
+            return well_centre.REACHED.format(well=well)
 
         log.info("manual control: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job, then=reached):
@@ -1209,8 +1214,7 @@ class ManualPage(QWidget):
             return
         slot, load_name = data[0], data[2].load_name
         if (self._well_centre(slot, load_name) is None
-                or well_centre.run_using(self.session.robot_lease, slot,
-                                         load_name)):
+                or self._run_using(slot, load_name)):
             return
         answer = QMessageBox.question(
             self, "Forget well center",
@@ -1231,14 +1235,13 @@ class ManualPage(QWidget):
                                       and self._chosen_well() is not None)
         self.set_centre_button.setEnabled(idle and nominal is not None
                                           and self.jog.pose is not None)
-        running = (well_centre.run_using(self.session.robot_lease, data[0],
-                                         data[2].load_name)
+        running = (self._run_using(data[0], data[2].load_name)
                    if data is not None else None)
         self.forget_centre_button.setEnabled(idle and centre is not None
                                              and running is None)
         self.forget_centre_button.setToolTip(
-            f"In use by the {running}." if running is not None else
-            "Use the labware definition's well positions.")
+            well_centre.FORGET_TIP if running is None
+            else well_centre.in_use_tip(running))
         if data is None:
             text = ""
         elif centre is not None:
@@ -1246,9 +1249,7 @@ class ManualPage(QWidget):
         else:
             text = "Well center not measured."
         if nominal is not None:
-            text += (f"\nAt the top of {nominal.well} as the robot has it: jog "
-                     f"the tip onto the real center, level with the rim, then "
-                     f"Set well center.")
+            text += "\n" + well_centre.IN_HAND.format(well=nominal.well)
         self.centre_state.setText(text)
         self.centre_state.setVisible(bool(text))
 

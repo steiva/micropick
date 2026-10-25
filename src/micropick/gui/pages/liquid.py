@@ -119,6 +119,9 @@ LIST_HEIGHT = 120
 # The program is saved this long after the last edit, so typing "300" is one
 # write of 300 and not three.
 SAVE_MS = 400
+# The well depth field's tooltip while no run uses the plate.
+DEPTH_TIP = ("Rim-to-bottom depth of this plate's wells. Default: the labware "
+             "definition.")
 
 CURRENT_FILE = "current.json"
 
@@ -275,7 +278,7 @@ class LiquidHandlingPage(QWidget):
         session.profile_changed.connect(lambda _p: self._offer_choices())
         # The window's Stop, and Esc: see `shell.MainWindow._stop`.
         session.stop_requested.connect(self._stop_run)
-        session.robot_state_changed.connect(lambda _s: self._deck_changed())
+        session.robot_state_changed.connect(lambda _s: self._robot_changed())
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._deck_changed())
         session.tip_changed.connect(self._tip_changed)
@@ -354,9 +357,7 @@ class LiquidHandlingPage(QWidget):
         self.well_depth.setDecimals(2)
         self.well_depth.setSingleStep(0.1)
         self.well_depth.setSuffix(" mm")
-        self.well_depth.setToolTip(
-            "Rim-to-bottom depth of this plate's wells. Default: the labware "
-            "definition.")
+        self.well_depth.setToolTip(DEPTH_TIP)
         self.well_depth.editingFinished.connect(self._well_depth_edited)
         row.addWidget(self.well_depth)
         row.addStretch(1)
@@ -376,8 +377,7 @@ class LiquidHandlingPage(QWidget):
             "Move the tip to the measured center of the selected well.")
         self.go_centre_button.clicked.connect(self._go_to_well_centre)
         self.forget_centre_button = secondary_button("Forget", self)
-        self.forget_centre_button.setToolTip(
-            "Use the labware definition's well positions.")
+        self.forget_centre_button.setToolTip(well_centre.FORGET_TIP)
         self.forget_centre_button.clicked.connect(self._forget_well_centre)
         for pair in ((self.go_top_button, self.set_centre_button),
                      (self.go_centre_button, self.forget_centre_button)):
@@ -823,8 +823,13 @@ class LiquidHandlingPage(QWidget):
                  self.program.groups[current[0]].load_name) == shown
             else None)
 
-    def _deck_changed(self) -> None:
+    def _robot_changed(self) -> None:
+        # Another robot session: a well top measured in the last one is not
+        # this one's to finish. Labware moved on the deck leaves it.
         self._measurement.forget()
+        self._deck_changed()
+
+    def _deck_changed(self) -> None:
         self._reload_plates()
         self._offer_choices()
 
@@ -1107,8 +1112,7 @@ class LiquidHandlingPage(QWidget):
             # On the GUI thread, once the job has ended.
             self._measurement.started(slot, load_name, well, pose)
             self._refresh()
-            return (f"at the top of {well} as the robot has it: jog onto the "
-                    f"real center, level with the rim, then Set well center.")
+            return well_centre.REACHED.format(well=well)
 
         log.info("liquid handling: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job, then=reached):
@@ -1467,31 +1471,34 @@ class LiquidHandlingPage(QWidget):
 
     # -- display ------------------------------------------------------------------
 
-    def _show_centre(self, shown, selection, idle: bool,
-                     idle_here: bool) -> None:
+    def _show_centre(self, shown, selection, can_move: bool,
+                     page_idle: bool) -> None:
         """The well centre line and its buttons, for the plate on the map.
-        `idle`: the robot may be moved; `idle_here`: this page runs nothing.
-        Forgetting the center and its depth are the profile's, not the
-        robot's, and wait only for a run going into this plate."""
+        `can_move`: this page may move the robot now; `page_idle`: this page
+        runs nothing. Forgetting the center and its depth are the profile's,
+        not the robot's, and wait only for a run going into this plate."""
         robot = self.session.robot is not None
         running = self._run_using(shown) if shown is not None else None
         centre = self._well_centre(*shown) if shown is not None else None
         nominal = (self._measurement.for_plate(*shown) if shown is not None
                    else None)
         one = len(selection) == 1
-        self.go_top_button.setEnabled(idle and robot and shown is not None
+        self.go_top_button.setEnabled(can_move and robot and shown is not None
                                       and one)
-        self.set_centre_button.setEnabled(idle and nominal is not None
+        self.set_centre_button.setEnabled(can_move and nominal is not None
                                           and self.jog.pose is not None)
-        self.go_centre_button.setEnabled(idle and robot and centre is not None)
-        self.forget_centre_button.setEnabled(idle_here and centre is not None
+        self.go_centre_button.setEnabled(can_move and robot
+                                         and centre is not None)
+        self.forget_centre_button.setEnabled(page_idle and centre is not None
                                              and running is None)
         self.forget_centre_button.setToolTip(
-            f"In use by the {running}." if running is not None else
-            "Use the labware definition's well positions.")
+            well_centre.FORGET_TIP if running is None
+            else well_centre.in_use_tip(running))
         self.depth_label.setVisible(centre is not None)
         self.well_depth.setVisible(centre is not None)
-        self.well_depth.setEnabled(idle_here and running is None)
+        self.well_depth.setEnabled(page_idle and running is None)
+        self.well_depth.setToolTip(
+            DEPTH_TIP if running is None else well_centre.in_use_tip(running))
         if (centre is not None and centre.depth_mm is not None
                 and not self.well_depth.hasFocus()):
             self.well_depth.blockSignals(True)
@@ -1506,9 +1513,7 @@ class LiquidHandlingPage(QWidget):
                     "labware definition puts them. To measure, select one "
                     "well and Go to well top.")
         if nominal is not None:
-            text += (f"\nAt the top of {nominal.well} as the robot has it: jog "
-                     f"the tip onto the real center, level with the rim, then "
-                     f"Set well center.")
+            text += "\n" + well_centre.IN_HAND.format(well=nominal.well)
         self.centre_state.setText(text)
         self.centre_state.setVisible(bool(text))
 
