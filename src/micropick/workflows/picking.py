@@ -139,7 +139,7 @@ from ..core.calibration.homography import Homography, HomographyError
 from ..hardware.camera import ClipWriter
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, set_lights, xyz)
-from .manual import reachable_z
+from .motion import Motion
 
 __all__ = ["RobotState", "PickEvent", "PickView", "PickingSession",
            "PickingError", "stir"]
@@ -287,8 +287,11 @@ class PickingSession:
                  routine, detector, *, labware_id: str | None = None,
                  under_cam: Camera | None = None, clip_dir=None,
                  clip_crop: float | None = None, well_centre=None,
-                 logger=None):
+                 logger=None, motion: Motion | None = None):
         self.robot = robot
+        # The travel height and the measured top of Z: the GUI's session
+        # hands in its own, shared with every page; alone, one of its own.
+        self.motion = motion if motion is not None else Motion(robot)
         self.camera = camera
         self.pixel_map = pixel_map
         self.profile = profile
@@ -363,8 +366,6 @@ class PickingSession:
         # see "A cuboid that will not come up".
         self._missed_spots: list[_Missed] = []
         self._retry: list[bool] = []
-        # Z after the last retract; see `_reachable`.
-        self._z_top: float | None = None
         self._empty_pickups = 0
         # Which pass round the picking loop we are on, counted from 1 at the head
         # of the cycle. Only ever increases, and it is what names a frame in the
@@ -759,10 +760,9 @@ class PickingSession:
         self._forget_missed("the dish was shaken")
 
     def _retract(self) -> None:
-        """Tip to the top, and the top remembered: it depends on the tip
+        """Tip to the top, and the top measured: it depends on the tip
         fitted, and a pose is only reachable under it (`_reachable`)."""
-        require_ok(self.robot.retract_axis("leftZ"), "retract")
-        self._z_top = xyz(self.robot)[2]
+        self.motion.retract()
 
     def _reachable(self, pose) -> np.ndarray:
         """`pose`, no higher than 1 mm under the measured top.
@@ -771,10 +771,7 @@ class PickingSession:
         and the robot refuses a moveToCoordinates to the retracted height
         itself ("Destination out of bounds in the Z-axis"). The camera does
         not move with Z, so 1 mm lower is the same picture."""
-        pose = np.array(pose, dtype=float)
-        if self._z_top is not None:
-            pose[2] = reachable_z(pose[2], self._z_top)
-        return pose
+        return self.motion.reachable(pose)
 
     def _wait_for_operator(self, pause, stop) -> None:
         """Stand at the observation pose until told to go on.

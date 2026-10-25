@@ -946,6 +946,7 @@ class PickingPage(QWidget):
                 f"{time.strftime('%Y-%m-%d_%H%M%S')}_{profile.name}")
         self._clip_dir = clip_dir
         clip_crop = float(session.settings.clip_crop)
+        motion = session.motion
         pause, stop = self._pause, self._stop
         pause.clear()
         stop.clear()
@@ -957,7 +958,8 @@ class PickingPage(QWidget):
                                      detector, labware_id=labware_id,
                                      under_cam=under_cam, clip_dir=clip_dir,
                                      clip_crop=clip_crop,
-                                     well_centre=well_centre)
+                                     well_centre=well_centre,
+                                     motion=motion)
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
             picking.start()
