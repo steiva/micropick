@@ -1249,10 +1249,10 @@ class LiquidHandlingPage(QWidget):
 
     def _reach_problems(self, program: Program) -> list[str]:
         out, positions = [], self._positions()
-        limits = self.session.jog_limits
+        motion = self.session.motion
         for name in sorted(liquid.points_used(program)):
             if name in positions:
-                why = moves.unreachable(limits, positions[name])
+                why = motion.refused(positions[name])
                 if why:
                     out.append(f"point {name!r} is outside the soft limits: "
                                f"{why}.")

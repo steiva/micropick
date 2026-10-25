@@ -501,10 +501,11 @@ class PickingPage(QWidget):
         if (where is None or self.session.robot is None or self._busy()
                 or self._running()):
             return
-        robot = self.session.robot
+        motion = self.session.motion
 
         def job(log):
-            moves.drive_tip(robot, where[:2], where[2], None, log=log)
+            motion.retract(log=log)
+            motion.tip_to(where[:2], where[2], log=log)
             return f"at {DISH_POSITION!r}"
 
         if not self.jog.run_job(job):
@@ -558,14 +559,15 @@ class PickingPage(QWidget):
             self.jog.tell(f"not possible: {why}.")
             return
         z = self.session.profile.picking.dish_bottom + ABOVE_BOTTOM_MM
-        refused = moves.unreachable(self.session.jog_limits, (*xy, z))
+        motion = self.session.motion
+        refused = motion.refused((*xy, z))
         if refused:
             self.jog.tell(f"not possible: {refused}.")
             return
-        robot = self.session.robot
 
         def job(log):
-            moves.drive_tip(robot, xy, z, None, log=log)
+            motion.retract(log=log)
+            motion.tip_to(xy, z, log=log)
             return (f"tip {ABOVE_BOTTOM_MM:g} mm over the dish bottom, at the "
                     f"dish center: jog it down until it touches")
 
@@ -604,12 +606,12 @@ class PickingPage(QWidget):
         return f"dish bottom set to {z:.2f} mm"
 
     def _lift_after_bottom(self) -> None:
-        robot = self.session.robot
-        if robot is None:
+        if self.session.robot is None:
             return
+        motion = self.session.motion
 
         def job(log):
-            moves.raise_tip(robot, None, log=log)
+            motion.retract(log=log)
             return "tip up"
 
         self.jog.run_job(job, what="lifting the tip")
@@ -624,10 +626,11 @@ class PickingPage(QWidget):
         where = self._stored_shake()
         if where is None or self.session.robot is None or self._running():
             return
-        robot = self.session.robot
+        motion = self.session.motion
 
         def job(log):
-            moves.drive_tip(robot, where[:2], where[2], None, log=log)
+            motion.retract(log=log)
+            motion.tip_to(where[:2], where[2], log=log)
             return f"at {SHAKE_POSITION!r}"
 
         if not self.jog.run_job(job):
@@ -644,15 +647,17 @@ class PickingPage(QWidget):
         if where is None or self.session.robot is None:
             return
         robot, back = self.session.robot, self._stored_dish()
+        motion = self.session.motion
 
         def job(log):
-            z_top = moves.drive_tip(robot, where[:2], where[2], None, log=log)
+            motion.retract(log=log)
+            motion.tip_to(where[:2], where[2], log=log)
             log("stirring")
             stir(robot)
             if back is None:
-                moves.raise_tip(robot, z_top, log=log)
+                motion.raise_tip(log=log)
                 return "shaken"
-            moves.drive_tip(robot, back[:2], back[2], z_top, log=log)
+            motion.tip_to(back[:2], back[2], log=log)
             return f"shaken; back at {DISH_POSITION!r}"
 
         if not self.jog.run_job(job):

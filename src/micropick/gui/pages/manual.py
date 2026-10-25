@@ -63,7 +63,7 @@ into the wrong thing.
 
 Every move across the deck starts with the tip at the top of its travel,
 measured once by retracting and checked before each move after that
-(`workflows.manual.raise_tip`). A target past the soft limits is refused on
+(`workflows.motion`). A target past the soft limits is refused on
 the picture, as a jog step past them is. And nothing moves at all until
 "Click to move" is on; it is off each time this tab is opened, and with it
 off a double click only says where it would go. Since a double click is a
@@ -235,8 +235,6 @@ class ManualPage(QWidget):
         self._worker: Worker | None = None
         self._tip_detector = None
         self._tip_device = None             # the setting it was loaded with
-        # The top of the Z travel with the tip that is on; see raise_tip.
-        self._z_top: float | None = None
         # (slot, load name, well, pose) of the last Go to well top: the
         # robot's own idea of that well's top center, which Set well center
         # measures the real one against.
@@ -280,7 +278,6 @@ class ManualPage(QWidget):
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(self._robot_changed)
         session.labware_changed.connect(lambda _s: self._reload_plates())
-        session.tip_changed.connect(lambda _t: self._lose_top())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
         self._shortcuts = []
         self._install_shortcuts()
@@ -741,6 +738,7 @@ class ManualPage(QWidget):
         if self._busy() or self.jog.busy:
             return
         profile, robot = self.session.profile, self.session.robot
+        motion = self.session.motion
         pmap = PixelMap.from_config(profile.pixel_map)
         target = self._target_at(u, v)
         notes = []
@@ -768,8 +766,7 @@ class ManualPage(QWidget):
             position = (xy[0], xy[1], z)
 
             def job(log):
-                self._z_top = moves.drive_tip(robot, xy, z, self._z_top,
-                                              log=log)
+                motion.tip_to(xy, z, log=log)
                 if pick:
                     log(f"aspirate {volume:g} µl at {rate:g} µl/s")
                     moves.aspirate(robot, volume, rate)
@@ -794,8 +791,7 @@ class ManualPage(QWidget):
             def job(log):
                 # The gantry at the travel height is the tip at it: the same
                 # move as a camera move, to the tip's target.
-                self._z_top = moves.drive_camera(robot, xy, self._z_top,
-                                                 log=log)
+                motion.camera_to(xy, log=log)
                 return None
         else:
             gantry = np.array(xyz(robot)[:2])
@@ -806,11 +802,10 @@ class ManualPage(QWidget):
             position = (xy[0], xy[1], xyz(robot)[2])
 
             def job(log):
-                self._z_top = moves.drive_camera(robot, xy, self._z_top,
-                                                 log=log)
+                motion.camera_to(xy, log=log)
                 return None
 
-        why = moves.unreachable(self.session.jog_limits, position)
+        why = motion.refused(position)
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
@@ -963,8 +958,7 @@ class ManualPage(QWidget):
             pose[2] if pose is not None else 0.0)
         what = (f"tip to {point.name} ({point.x:.2f}, {point.y:.2f}) "
                 f"at z {_memo_z_text(point.z)}")
-        why = moves.unreachable(self.session.jog_limits,
-                                (point.x, point.y, check_z))
+        why = self.session.motion.refused((point.x, point.y, check_z))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
@@ -973,7 +967,7 @@ class ManualPage(QWidget):
         z = float("inf") if point.z is None else point.z
 
         def job(log_):
-            self._z_top = moves.drive_tip(robot, xy, z, self._z_top, log=log_)
+            self.session.motion.tip_to(xy, z, log=log_)
             return f"at {point.name}"
 
         self.jog.run_job(job)
@@ -1029,8 +1023,7 @@ class ManualPage(QWidget):
                 return
             xy = xy - np.array([offset.dx, offset.dy])
             what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
-        why = moves.unreachable(self.session.jog_limits,
-                                (xy[0], xy[1], xyz(robot)[2]))
+        why = self.session.motion.refused((xy[0], xy[1], xyz(robot)[2]))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
@@ -1041,7 +1034,7 @@ class ManualPage(QWidget):
         log.info("%s", what)
 
         def job(log_):
-            self._z_top = moves.drive_camera(robot, xy, self._z_top, log=log_)
+            self.session.motion.camera_to(xy, log=log_)
             return f"over slot {slot}"
 
         self.jog.run_job(job)
@@ -1122,8 +1115,8 @@ class ManualPage(QWidget):
         volume, rate = self._liquid_amount()
 
         def job(log):
-            self._z_top = moves.drive_to_well(robot, labware_id, well, level,
-                                              offset, self._z_top, log=log)
+            self.session.motion.to_well(labware_id, well, level, offset,
+                                        log=log)
             said = f"tip in {well} of slot {slot} ({level} {offset[2]:+g} mm)"
             if centre is not None:
                 said += ", from the measured center"
@@ -1169,9 +1162,8 @@ class ManualPage(QWidget):
         load_name = definition.load_name
 
         def job(log):
-            self._z_top = moves.drive_to_well(robot, labware_id, well, "top",
-                                              (0.0, 0.0, 0.0), self._z_top,
-                                              log=log)
+            self.session.motion.to_well(labware_id, well, "top",
+                                        (0.0, 0.0, 0.0), log=log)
             # Read on this thread, shown on the next refresh: the job's end
             # emits position_changed.
             self._nominal = (slot, load_name, well, xyz(robot))
@@ -1422,14 +1414,8 @@ class ManualPage(QWidget):
             self._refresh()
 
     def _robot_changed(self, _state: str) -> None:
-        self._lose_top()
         self._nominal = None
         self._reload_plates()
-
-    def _lose_top(self) -> None:
-        """The top of the travel depends on the tip and on the run; measure it
-        again before the next move."""
-        self._z_top = None
 
     # -- cameras ----------------------------------------------------------------------
 

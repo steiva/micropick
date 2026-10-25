@@ -79,7 +79,6 @@ from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
-from ...workflows import manual as moves
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..readiness import tip_calibration_status
@@ -341,10 +340,11 @@ class PipetteCalibration(QWidget):
         stored = self._stored_position()
         if stored is None or self.session.robot is None or self._busy():
             return
-        robot = self.session.robot
+        robot, motion = self.session.robot, self.session.motion
 
         def job():
-            moves.drive_tip(robot, stored[:2], stored[2], None)
+            motion.retract()
+            motion.tip_to(stored[:2], stored[2])
             return xyz(robot)
 
         self._run_short(Worker(job), f"going to {POSITION_NAME} {stored}")
@@ -469,6 +469,7 @@ class PipetteCalibration(QWidget):
         session = self.session
         settings = session.settings
         robot, profile = session.robot, session.profile
+        motion = session.motion
         over, under = self._over_camera(), self._under_camera()
         target = profile.calibration.tip_target
         pmap = PixelMap.from_config(profile.pixel_map)
@@ -503,7 +504,8 @@ class PipetteCalibration(QWidget):
             if standin:
                 log(STANDIN_NOTE)
             log(f"driving to {POSITION_NAME} {tuple(round(v, 2) for v in stored)}")
-            moves.drive_tip(robot, stored[:2], stored[2], None, log=log)
+            motion.retract(log=log)
+            motion.tip_to(stored[:2], stored[2], log=log)
             time.sleep(0.5)
             try:
                 result = calibrate_pipette_offset(

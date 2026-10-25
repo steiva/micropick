@@ -136,7 +136,6 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QGridLayout,
                                QPlainTextEdit, QTextEdit, QVBoxLayout,
                                QWidget)
 
-from ...workflows import manual as moves
 from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
 from .. import keys
 from ..position_marks import CAMERA_POSITIONS, PositionMarks
@@ -652,18 +651,19 @@ class JogPanel(QWidget):
         where = (self.session.profile.positions or {}).get(name)
         if where is None:
             return
-        why = moves.unreachable(self.controller.limits, where)
+        why = self.session.motion.refused(where)
         if why:
             self._say(f"{name!r} is outside the soft limits: {why}", firm=True)
             return
-        controller = self.controller
+        controller, motion = self.controller, self.session.motion
 
-        # drive_tip, not the controller's move_to: a pose taught at the top
-        # of Z is out of bounds for the robot, and one moveToCoordinates
-        # from wherever the tip is drags it across the deck. See
-        # `workflows.manual`.
+        # Motion, not the controller's move_to: a pose taught at the top of
+        # Z is out of bounds for the robot, and one moveToCoordinates from
+        # wherever the tip is drags it across the deck. See
+        # `workflows.motion`.
         def job():
-            moves.drive_tip(controller.robot, where[:2], where[2], None)
+            motion.retract()
+            motion.tip_to(where[:2], where[2])
             return f"at {name!r}", controller.status()
 
         self._run(Worker(job))
@@ -1090,17 +1090,17 @@ class JogPanel(QWidget):
 
     def _on_profile_changed(self, _profile) -> None:
         if self.controller is not None:
-            self.controller.limits = self.session.jog_limits
+            self.controller.limits = self.session.motion.envelope
         self._refresh_saved()
         self._refresh_buttons()
 
     def _on_tip_changed(self, _tip) -> None:
-        """Another tip, or none: the Z top follows it (`Session.jog_limits`),
+        """Another tip, or none: the Z top follows it (`Motion.envelope`),
         and so does the Z the robot reports for the same gantry height, so
         the pose shown is read again - on the page on screen; another page
         reads it when it is shown."""
         if self.controller is not None:
-            self.controller.limits = self.session.jog_limits
+            self.controller.limits = self.session.motion.envelope
         if self.isVisible():
             self.refresh_position()
 
@@ -1117,7 +1117,8 @@ class JogPanel(QWidget):
             self._refresh_saved()
             return
 
-        self.controller = JogController(robot, limits=self.session.jog_limits,
+        self.controller = JogController(robot,
+                                        limits=self.session.motion.envelope,
                                         steps=list(DEFAULT_STEPS))
         self._set_step(self.controller.step)
         self._set_enabled(True)
@@ -1161,7 +1162,7 @@ class JogPanel(QWidget):
         # have changed - and with it the Z reported - while this page was
         # not on screen.
         if self.controller is not None:
-            self.controller.limits = self.session.jog_limits
+            self.controller.limits = self.session.motion.envelope
             self.refresh_position()
 
     def hideEvent(self, event) -> None:

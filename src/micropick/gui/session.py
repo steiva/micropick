@@ -57,9 +57,7 @@ from ..hardware.mock import (MarkerScene, MockRobot,  # noqa: E402
 from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
-from ..workflows.jog import Limits                  # noqa: E402
-from ..workflows.manual import unreachable          # noqa: E402
-from ..core.deck import SLOT_HEIGHT, SLOT_WIDTH, slot_centre  # noqa: E402
+from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
@@ -87,24 +85,6 @@ MOCK = "mock"
 # on with. Anything else - stopped, failed, succeeded - is a record of a run,
 # not a run, and the only thing to do with it is start a new one.
 REUSABLE_STATUSES = ("idle", "running", "paused")
-
-# A module may stand a little past its slot opening; the raised floor over
-# it reaches this much further on every side.
-MODULE_MARGIN_MM = 3.0
-
-# The top of Z for the bare nozzle: what the robot reads retracted with no
-# tip (bench, 2026-10-12). A hard ceiling - a pipette driven above its
-# retracted height stops answering until it is homed. The robot reports Z
-# at the tip's end with a tip on, so the top is then this less the tip's
-# length (`Tip.length`): the retracted height with that tip, 159.9 mm for
-# the wide bore rack.
-Z_NOZZLE_TOP_MM = 200.6
-# Jog steps stop this far under the top: the robot refuses a target at the
-# retracted height itself (`workflows.manual`), and Retract still gets there.
-JOG_BELOW_TOP_MM = 0.5
-# The length assumed for a tip on whose rack is not known: longer than any
-# rack on the bench (the XL's 91 mm), so the top is too low, never too high.
-UNKNOWN_TIP_LENGTH_MM = 100.0
 
 
 @dataclass
@@ -369,6 +349,11 @@ class Session(QObject):
         self.run_origin: str | None = None       # "reused" or "new"
         self.routine = None                      # see routine_changed
         self.tip = Tip.unknown()                 # see tip_changed
+        # Every move across the deck: the travel height, the measured top
+        # of Z and the jog envelope (`workflows.motion`). One for the
+        # session's life; it is told the robot, the tip and the deck
+        # modules as they change.
+        self.motion = Motion(modules=self._deck_modules, tip=self.tip)
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
@@ -415,9 +400,8 @@ class Session(QObject):
         marked over a 64 mm platform at z 50 is said to be inside it. A
         point with no Z is gone to at the travel height, over everything.
         """
-        limits = self.jog_limits
-        z = limits.z[1] if point.z is None else point.z
-        return unreachable(limits, (point.x, point.y, z))
+        z = self.motion.envelope.z[1] if point.z is None else point.z
+        return self.motion.refused((point.x, point.y, z))
 
     def memo_point(self, name: str) -> MemoPoint | None:
         return next((p for p in self.memo_points if p.name == name), None)
@@ -494,38 +478,10 @@ class Session(QObject):
     def open_cameras(self) -> list[str]:
         return sorted(self._open)
 
-    @property
-    def jog_limits(self) -> Limits:
-        # The profile schema has no limits section. When it grows one, this is
-        # the only place that changes; the manual page asks the session and
-        # knows nothing about where the numbers came from.
-        #
-        # Each deck module raises the floor over its slot to its own top, so
-        # a jog or a click cannot drive the tip into it. The labware it
-        # carries sits above that top, so nothing a step needs is below it.
-        floors = []
-        modules = self.profile.deck.modules if self.profile is not None else []
-        for module in modules:
-            for slot in module.slots:
-                cx, cy = slot_centre(slot)
-                half_x = SLOT_WIDTH / 2 + MODULE_MARGIN_MM
-                half_y = SLOT_HEIGHT / 2 + MODULE_MARGIN_MM
-                name = f"{module.name or 'module'} in slot {slot}"
-                floors.append((cx - half_x, cy - half_y, cx + half_x,
-                               cy + half_y, float(module.height_mm), name))
-        # The top follows the tip (see Z_NOZZLE_TOP_MM): with a fixed 150 a
-        # gantry with no tip read ~200 when retracted, sat above its own
-        # envelope, and every step up was refused.
-        tip = self.tip
-        if tip.attached is False:
-            length = 0.0
-        elif tip.attached and tip.length is not None:
-            length = tip.length
-        else:                                 # a tip of unknown length, or
-            length = UNKNOWN_TIP_LENGTH_MM    # not known whether there is one
-        top = Z_NOZZLE_TOP_MM - length - JOG_BELOW_TOP_MM
-        return Limits(x=(0.0, 380.0), y=(0.0, 350.0), z=(0.1, top),
-                      floors=tuple(floors))
+    def _deck_modules(self) -> list:
+        """The loaded profile's deck modules, for the jog envelope's floors.
+        Asked for each time: the profile is replaced and edited in place."""
+        return list(self.profile.deck.modules) if self.profile is not None else []
 
     @property
     def upper_camera_label(self) -> str | None:
@@ -1097,6 +1053,7 @@ class Session(QObject):
         if tip != self.tip:
             log.info("robot reports: %s", tip.describe())
         self.tip = tip
+        self.motion.tip_changed(tip)
         self.tip_changed.emit(tip)
         return tip
 
@@ -1187,6 +1144,7 @@ class Session(QObject):
 
     def _forget_tip(self) -> None:
         self.tip = Tip.unknown()
+        self.motion.tip_changed(self.tip)
         self.tip_changed.emit(self.tip)
 
     # -- lights --------------------------------------------------------------
@@ -1260,6 +1218,7 @@ class Session(QObject):
 
     def _ready(self, origin: str) -> None:
         self.robot = self._api
+        self.motion.set_robot(self.robot)
         self.run_origin = origin
         # Before anything is loaded through this session: the offset attaches
         # to labware at load time, so a module registered later is a module
@@ -1292,6 +1251,7 @@ class Session(QObject):
         if self.robot is not None:
             self._retract()
         self._api = self.robot = None
+        self.motion.set_robot(None)
         self.run_state = self.run_origin = None
         self._forget_tip()
         self.lights = None
@@ -1492,6 +1452,7 @@ class Session(QObject):
         if self.robot is not None:
             self._retract()
         self._api = self.robot = None
+        self.motion.set_robot(None)
         self.run_state = self.run_origin = None
         self._forget_tip()
         self.lights = None
