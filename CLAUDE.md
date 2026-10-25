@@ -85,7 +85,8 @@ pipette calibration lends it to the touch-up's panel (`JogPanel.lend`).
 While anything holds it, every jog panel and every button that would move
 the robot is greyed out, the holder named in the tooltip. Disconnect and a
 new robot session are refused while it is held; closing the window during
-a run asks, stops it, and parks Z only once the robot is free.
+a run asks and stops it, and the window closes (and parks Z) only once the
+robot is free - else it stays open and says the run is still stopping.
 
 Robot commands from a page with a jog panel go through
 `JogPanel.run_job` (which claims the lease), never a worker of the page's

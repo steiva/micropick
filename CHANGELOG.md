@@ -23,7 +23,8 @@ the third for fixes.
   are greyed out, and their tooltip says what has the robot. Before, a
   jog on Manual control or a tip pick-up on Robot & Deck could go into a
   run's moves. Disconnect and Start new robot session wait for the robot
-  too, and closing the window during a run asks first.
+  too, and closing the window during a run asks first, then stays open
+  until the run has stopped.
 - A plate's measured well center can no longer be forgotten, nor its well
   depth changed, while a run goes into that plate: Forget well center and
   the depth are greyed out until the run ends, the run named in the
