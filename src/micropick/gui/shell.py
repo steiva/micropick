@@ -710,8 +710,7 @@ class MainWindow(QMainWindow):
     def _robot_busy(self) -> bool:
         """Something has the robot (`Session.robot_lease`): a jog step, a
         run, a labware load, on any page."""
-        return (self.session.robot_lease.busy
-                or any(panel.busy for panel in self.findChildren(JogPanel)))
+        return self.session.robot_lease.busy
 
     # -- stop ----------------------------------------------------------------
 

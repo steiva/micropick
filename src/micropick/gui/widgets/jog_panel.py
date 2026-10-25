@@ -338,6 +338,8 @@ class JogPanel(QWidget):
         self.controller: JogController | None = None
         self._worker: Worker | None = None
         self._then = None                  # run_job's, for the job in flight
+        # A lease lent by the work this panel jogs for (`lend`), or None.
+        self._lent = None
         self._shortcuts: list[QShortcut] = []
         self._all_shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
@@ -386,6 +388,7 @@ class JogPanel(QWidget):
         # A bound method, not a lambda: the tip changes on a worker thread,
         # and only a slot with a receiver is queued to this one.
         session.tip_changed.connect(self._on_tip_changed)
+        session.robot_busy_changed.connect(self._on_robot_busy)
 
         self._on_robot_changed(session.robot_state)
 
@@ -728,7 +731,7 @@ class JogPanel(QWidget):
             session.remember(name, controller.position)
             return None, controller.status()
 
-        self._run(Worker(job), moves=False)
+        self._run(Worker(job), moves=False, robot_work=False)
         # The pose just saved is the one in hand; Go to should need no
         # further aiming.
         self._select_position(name)
@@ -782,11 +785,13 @@ class JogPanel(QWidget):
                 then=None) -> bool:
         """Run `fn(log)` on this panel's worker, after any step in flight.
 
-        The one queue for the robot on a page with a panel: a click-move or an
+        The one way to the robot on a page with a panel: a click-move or an
         aspirate from the page and a jog key can then never overlap, and the
-        controls grey out for all of them. `fn` may return a MoveResult, None,
-        or a sentence to show under the position. Returns False, and runs
-        nothing, while the panel is busy or there is no robot.
+        controls grey out for all of them. It claims the robot's lease
+        (`Session.robot_lease`), so it cannot overlap work on another page
+        either. `fn` may return a MoveResult, None, or a sentence to show
+        under the position. Returns False, and runs nothing, while the panel
+        is busy, the robot is busy elsewhere, or there is no robot.
 
         `then(result)`, if given, is called on the GUI thread with what `fn`
         returned, once it has; what it returns is shown in place of that.
@@ -799,10 +804,11 @@ class JogPanel(QWidget):
         def job(log):
             return fn(log), controller.status()
 
-        self._then = then
         # `moves=False` for a job that leaves the gantry where it is, such
         # as an aspirate: what was detected on the picture still stands.
-        self._run(Worker(job, what=what), moves=moves)
+        if not self._run(Worker(job, what=what), moves=moves):
+            return False
+        self._then = then
         return True
 
     def refresh_position(self) -> None:
@@ -811,7 +817,19 @@ class JogPanel(QWidget):
         if self.controller is None or self._busy():
             return
         controller = self.controller
-        self._run(Worker(lambda: (None, controller.status())), moves=False)
+        self._run(Worker(lambda: (None, controller.status())), moves=False,
+                  robot_work=False)
+
+    def lend(self, lease) -> None:
+        """Work under someone else's lease until `end_loan`: the pipette
+        calibration's touch-up, jogged here while the calibration that holds
+        the robot waits. The steps take no lease of their own."""
+        self._lent = lease
+        self._set_enabled(self._worker is None)
+
+    def end_loan(self) -> None:
+        self._lent = None
+        self._set_enabled(self._worker is None)
 
     def tell(self, text: str) -> None:
         """A line under the position on the picture, as it is given."""
@@ -832,7 +850,20 @@ class JogPanel(QWidget):
     def _busy(self) -> bool:
         return self._worker is not None and self._worker.running
 
-    def _run(self, worker: Worker, *, moves: bool = True) -> None:
+    def _run(self, worker: Worker, *, moves: bool = True,
+             robot_work: bool = True) -> bool:
+        """Start `worker` as this panel's job. Robot work - anything that
+        moves the robot - claims the robot's lease first, or runs under a
+        lent one; refused, nothing starts and False is returned. A read
+        (`robot_work=False`) takes none."""
+        if robot_work and self._lent is None:
+            what = worker.what or ("moving the robot" if moves
+                                   else "talking to the robot")
+            lease = self.session.robot_lease.claim(what)
+            if lease is None:
+                self.tell("Robot busy.")
+                return False
+            worker.lease = lease
         self._worker = worker
         worker.what = worker.what or ("moving the robot" if moves
                                       else "talking to the robot")
@@ -847,6 +878,7 @@ class JogPanel(QWidget):
         self._set_enabled(False)
         if moves:
             self._set_pose(None)
+        return True
 
     def _job_said(self, text: str) -> None:
         log.info("%s", text)
@@ -1127,10 +1159,34 @@ class JogPanel(QWidget):
         self._refresh_saved()
         # The first pose read is HTTP like any other.
         controller = self.controller
-        self._run(Worker(lambda: (None, controller.status())))
+        self._run(Worker(lambda: (None, controller.status())),
+                  robot_work=False)
+
+    def _robot_elsewhere(self) -> str | None:
+        """What has the robot, if it is not this panel: then nothing here may
+        move it (`Session.robot_lease`)."""
+        if self._lent is not None:
+            return None
+        holder = self.session.robot_lease.holder
+        if holder is None:
+            return None
+        lease = getattr(self._worker, "lease", None)
+        if lease is not None and not lease.released:
+            return None
+        return holder
+
+    def _on_robot_busy(self, _holder) -> None:
+        """Something claimed or gave back the robot, here or on another
+        page: the controls follow."""
+        if self._worker is None:
+            self._set_enabled(True)
 
     def _set_enabled(self, enabled: bool) -> None:
-        usable = enabled and self.controller is not None
+        elsewhere = self._robot_elsewhere()
+        self.setToolTip("" if elsewhere is None
+                        else f"Robot busy: {elsewhere}.")
+        usable = (enabled and self.controller is not None
+                  and elsewhere is None)
         for widget in self._movers:
             widget.setEnabled(usable)
         # Only while on screen: a robot connect enables every panel, and a

@@ -78,11 +78,15 @@ def test_refused_while_a_jog_panel_is_busy(app, window, monkeypatch):
     asked = []
     monkeypatch.setattr(QMessageBox, "question",
                         lambda *a, **k: asked.append(1) or YES)
-    monkeypatch.setattr(type(window.manual_page.jog), "busy",
-                        property(lambda self: True))
-    window.status.home.click()
-    assert asked == []
-    assert "busy" in window.status.currentMessage()
+    # What a jog step holds while it moves, on whichever page.
+    lease = window.session.robot_lease.claim("moving the robot")
+    try:
+        window._home_robot()
+        assert asked == []
+        assert "busy" in window.status.currentMessage()
+        assert not window.status.home.isEnabled()
+    finally:
+        lease.release()
 
 
 def test_a_camera_is_closed_from_its_window_unless_the_robot_is_busy(window):
