@@ -235,6 +235,31 @@ def test_full_cycle_to_completion():
         camera.close()
 
 
+def test_a_run_started_with_the_tip_at_the_travel_height_does_not_retract():
+    # As the GUI starts one: the session's Motion, its top measured by an
+    # earlier move, and the tip left at the observation pose taught at the
+    # top (the mock's top is 100, so it stands at the travel height, 99).
+    dish = Dish()
+    dish.add(1, (300, 350))
+    targets = [(200.0, 200.0)]
+    routine = Routine(Destination.coordinates(targets), {targets[0]: 1})
+    cfg = relaxed_config()
+    profile = make_profile(cfg)
+    profile.positions["observe"] = (OBSERVE[0], OBSERVE[1], 100.0)
+    session, robot, camera = make_session(dish, routine, cfg, profile=profile)
+    try:
+        session.motion.camera_to(OBSERVE[:2])
+        robot.calls.clear()
+        drive(session)
+        assert session.state is RobotState.COMPLETED
+        assert ("retract_axis", "leftZ") not in robot.calls
+        at_observe = [p for p in robot.log
+                      if p[:2] == pytest.approx(OBSERVE[:2], abs=0.05)]
+        assert all(p[2] == pytest.approx(99.0) for p in at_observe)
+    finally:
+        camera.close()
+
+
 # ---------------------------------------------------------------------------
 # 2. pause / stop between moves inside one state
 # ---------------------------------------------------------------------------

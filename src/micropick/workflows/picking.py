@@ -735,7 +735,7 @@ class PickingSession:
         self._log("shaking the dish, as asked")
         self._stir_dish(between)
         between()
-        self._retract()
+        self._raise_tip()
         between()
         move_to(self.robot, self._reachable(self._observe),
                 min_z_height=self.config.dish_bottom)
@@ -748,7 +748,7 @@ class PickingSession:
         makes stale. AUTO_SHAKE's and a shake on request alike."""
         shake = self.profile.where("shake")
         between()
-        self._retract()
+        self._raise_tip()
         between()
         move_to(self.robot, self._reachable(shake),
                 min_z_height=self.config.dish_bottom)
@@ -759,10 +759,12 @@ class PickingSession:
         self._last_floater_s = None
         self._forget_missed("the dish was shaken")
 
-    def _retract(self) -> None:
-        """Tip to the top, and the top measured: it depends on the tip
-        fitted, and a pose is only reachable under it (`_reachable`)."""
-        self.motion.retract()
+    def _raise_tip(self) -> None:
+        """The tip to the travel height or above before a travel: a retract,
+        unless it is there already (at the observation pose, say). The top
+        is measured on the first, and a pose is only reachable under it
+        (`_reachable`)."""
+        self.motion.raise_tip()
 
     def _reachable(self, pose) -> np.ndarray:
         """`pose`, no higher than 1 mm under the measured top.
@@ -780,12 +782,12 @@ class PickingSession:
         is idle with a different reason, and anything either of them does that
         the other does not is a difference the operator has to remember.
 
-        The retract comes before the travel because this is reached from the
+        The tip goes up before the travel because this is reached from the
         dish as well as from a cold start: with the tip still down, crossing to
         the observation pose drags it through whatever it was standing in.
         """
         self._gate(pause, stop)
-        self._retract()
+        self._raise_tip()
         self._gate(pause, stop)
         move_to(self.robot, self._reachable(self._observe),
                 min_z_height=self.config.dish_bottom)
@@ -1057,10 +1059,10 @@ class PickingSession:
         cfg = self.config
         # The gantry arrives here from the shake pose and from the dish as well
         # as from the observation pose, so neither the height nor the position
-        # can be assumed. Retract before travelling, or a tip still down is
-        # dragged through whatever it was standing in.
+        # can be assumed. The tip up before travelling, or a tip still down
+        # is dragged through whatever it was standing in.
         self._gate(pause, stop)
-        self._retract()
+        self._raise_tip()
         self._gate(pause, stop)
         move_to(self.robot, self._reachable(self._observe),
                 min_z_height=cfg.dish_bottom)
