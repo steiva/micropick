@@ -24,6 +24,14 @@ the third for fixes.
   jog on Manual control or a tip pick-up on Robot & Deck could go into a
   run's moves. Disconnect and Start new robot session wait for the robot
   too, and closing the window during a run asks first.
+- A plate's measured well center can no longer be forgotten, nor its well
+  depth changed, while a run goes into that plate: Forget well center and
+  the depth are greyed out until the run ends, the run named in the
+  tooltip. They no longer wait for other robot work, which they do not
+  use.
+- Internal: Manual control and Liquid handling measure the well center
+  with the same module (`workflows.well_centre`), which the picking run's
+  deposits use too.
 - Internal: every move across the deck goes through one module
   (`workflows.motion`), which keeps the travel height and the top of Z
   for every page and run.

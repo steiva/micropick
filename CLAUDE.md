@@ -176,7 +176,13 @@ names the well under the pointer, and opens in its own window as a
 center (`WellCentre`) is one per slot and plate type, set on Liquid
 handling or on Manual control's Well card (Go to well top, jog, Set well
 center); Manual control's Go to well and a picking deposit add its x
-and y, Liquid handling's steps all of it.
+and y, Liquid handling's steps all of it. It is the plate's, wherever it
+was measured, and every page reads it the same way:
+`workflows.well_centre` holds the measurement both pages take
+(`Measurement`, `go_to_top`), the deposit's offset (`deposit_offset`) and
+the plate plan's plate's center (`for_plan`). While a run goes into a plate
+(its lease's `plates`), that plate's center is neither forgotten nor its
+depth changed (`well_centre.run_using`).
 
 ### Words on screen
 
