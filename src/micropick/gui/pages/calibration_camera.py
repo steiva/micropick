@@ -590,7 +590,7 @@ class CameraCalibration(QWidget):
             cv2.aruco.DetectorParameters())
 
         # The robot for the whole sweep (`Session.robot_lease`).
-        lease = self.session.robot_lease.claim("camera calibration sweep")
+        lease = self.session.robot_lease.claim("camera calibration sweep", run=True)
         if lease is None:
             self.verdict.setText("Robot busy.")
             return

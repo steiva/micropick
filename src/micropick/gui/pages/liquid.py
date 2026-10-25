@@ -1366,7 +1366,7 @@ class LiquidHandlingPage(QWidget):
             return "run finished."
 
         # The robot for the whole run, pauses included (`Session.robot_lease`).
-        if not self.jog.run_job(job, what="liquid run"):
+        if not self.jog.run_job(job, what="liquid run", run=True):
             self.jog.tell("Robot busy.")
             return
         self._running = True

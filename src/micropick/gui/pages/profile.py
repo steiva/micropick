@@ -274,6 +274,7 @@ class ProfilePage(QWidget):
 
         session.profile_changed.connect(self._on_profile_changed)
         session.robot_state_changed.connect(lambda _s: self.refresh())
+        session.robot_busy_changed.connect(self._on_robot_busy)
         # What the checklist reads, beyond the profile and the robot.
         for signal in (session.routine_changed, session.tip_changed,
                        session.labware_changed, session.settings_changed):
@@ -486,6 +487,10 @@ class ProfilePage(QWidget):
 
     def _connect_or_disconnect(self) -> None:
         if self.session.has_connection:
+            # Its retract would go into whatever has the robot now.
+            if self.session.robot_lease.busy:
+                self._show_error("Robot busy.")
+                return
             self._clear_error()
             self.session.disconnect_robot()
             return
@@ -506,7 +511,8 @@ class ProfilePage(QWidget):
             return
         if state.reusable:
             self._run(Worker(self.session.adopt_run),
-                      f"continuing robot session {state.label}")
+                      f"continuing robot session {state.label}",
+                      robot_work=True)
         else:
             self._new_run()
 
@@ -533,13 +539,23 @@ class ProfilePage(QWidget):
         name = dialog.textValue().strip() or None
         self._clear_error()
         self._run(Worker(self.session.new_run, name),
-                  "new robot session, then home")
+                  "new robot session, then home", robot_work=True)
 
-    def _run(self, worker: Worker, what: str, then=None) -> None:
+    def _run(self, worker: Worker, what: str, then=None,
+             robot_work: bool = False) -> None:
         """`then` is called once it finished well, after the page let go
-        of it, so it may start the next one."""
+        of it, so it may start the next one. `robot_work`: it sends the
+        robot session commands - carrying one on, starting one and homing -
+        so it claims the robot's lease first (`Session.robot_lease`); a
+        probe only asks."""
         if self._worker is not None and self._worker.running:
             return
+        if robot_work:
+            lease = self.session.robot_lease.claim(what)
+            if lease is None:
+                self._show_error("Robot busy.")
+                return
+            worker.lease = lease
         self._worker = worker
         self._then = then
         worker.what = worker.what or what
@@ -612,11 +628,13 @@ class ProfilePage(QWidget):
         self.robot_hint.setVisible(not connected)
         self.connect_button.setText("Disconnect robot session" if connected
                                     else "Connect")
-        self.connect_button.setEnabled(not busy)
+        robot_free = not session.robot_lease.busy
+        self.connect_button.setEnabled(not busy
+                                       and (robot_free or not connected))
         # The accent goes where the next act is: Connect, or a new session
         # when the robot answers but has none.
         self.connect_button.setDefault(not connected)
-        self.new_run_button.setEnabled(connected and not busy)
+        self.new_run_button.setEnabled(connected and not busy and robot_free)
         self.new_run_button.setDefault(connected and session.robot is None)
 
         self._show_checks()
@@ -638,6 +656,9 @@ class ProfilePage(QWidget):
     def _show_error(self, text: str) -> None:
         self.error.setText(text)
         self.error.show()
+
+    def _on_robot_busy(self, _holder) -> None:
+        self.refresh()
 
     def _clear_error(self) -> None:
         self.error.clear()

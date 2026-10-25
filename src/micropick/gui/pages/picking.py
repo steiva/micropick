@@ -980,7 +980,7 @@ class PickingPage(QWidget):
         self._filled = False
         # The robot for the whole run, pauses and waits included: nothing
         # else moves it until the run ends (`Session.robot_lease`).
-        lease = session.robot_lease.claim("picking run")
+        lease = session.robot_lease.claim("picking run", run=True)
         if lease is None:
             self.run_state.setText("Robot busy.")
             return

@@ -782,7 +782,7 @@ class JogPanel(QWidget):
         return self._busy()
 
     def run_job(self, fn, *, moves: bool = True, what: str | None = None,
-                then=None) -> bool:
+                then=None, run: bool = False) -> bool:
         """Run `fn(log)` on this panel's worker, after any step in flight.
 
         The one way to the robot on a page with a panel: a click-move or an
@@ -796,6 +796,7 @@ class JogPanel(QWidget):
         `then(result)`, if given, is called on the GUI thread with what `fn`
         returned, once it has; what it returns is shown in place of that.
         For a job whose answer the page acts on - asking before it saves.
+        `run`: a run that holds the robot for minutes (`Lease.run`).
         """
         if self.controller is None or self._busy():
             return False
@@ -806,7 +807,7 @@ class JogPanel(QWidget):
 
         # `moves=False` for a job that leaves the gantry where it is, such
         # as an aspirate: what was detected on the picture still stands.
-        if not self._run(Worker(job, what=what), moves=moves):
+        if not self._run(Worker(job, what=what), moves=moves, run=run):
             return False
         self._then = then
         return True
@@ -851,7 +852,7 @@ class JogPanel(QWidget):
         return self._worker is not None and self._worker.running
 
     def _run(self, worker: Worker, *, moves: bool = True,
-             robot_work: bool = True) -> bool:
+             robot_work: bool = True, run: bool = False) -> bool:
         """Start `worker` as this panel's job. Robot work - anything that
         moves the robot - claims the robot's lease first, or runs under a
         lent one; refused, nothing starts and False is returned. A read
@@ -859,7 +860,7 @@ class JogPanel(QWidget):
         if robot_work and self._lent is None:
             what = worker.what or ("moving the robot" if moves
                                    else "talking to the robot")
-            lease = self.session.robot_lease.claim(what)
+            lease = self.session.robot_lease.claim(what, run=run)
             if lease is None:
                 self.tell("Robot busy.")
                 return False

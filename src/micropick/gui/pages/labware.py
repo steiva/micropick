@@ -210,6 +210,7 @@ class LabwarePage(QWidget):
         layout.addLayout(body, 1)
 
         session.robot_state_changed.connect(self._on_robot_changed)
+        session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(self._on_labware_changed)
         session.tip_changed.connect(self._on_tip_changed)
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
@@ -781,6 +782,13 @@ class LabwarePage(QWidget):
         return self._worker is not None and self._worker.running
 
     def _run(self, worker: Worker, what: str) -> None:
+        """Every job here sends the robot commands - a load, a tip - so it
+        claims the robot's lease first (`Session.robot_lease`)."""
+        lease = self.session.robot_lease.claim(what)
+        if lease is None:
+            self._say("Robot busy.")
+            return
+        worker.lease = lease
         self._worker = worker
         worker.what = worker.what or what
         # Bound methods, not lambdas: Qt takes a connection's thread from the
@@ -858,9 +866,15 @@ class LabwarePage(QWidget):
         self.message.setText(text)
         self.message.setVisible(bool(text))
 
+    def _on_robot_busy(self, _holder) -> None:
+        self._refresh()
+
     def _refresh(self) -> None:
         session = self.session
         busy = self._busy()
+        # A labware or tip job waits for the robot (`Session.robot_lease`);
+        # a deck module is the profile's and does not.
+        robot_free = not session.robot_lease.busy
         connected = session.robot is not None
         profile = session.profile
         state = session.run_state
@@ -901,7 +915,8 @@ class LabwarePage(QWidget):
                 + "<br>".join(p.describe() for p in problems) + "</b>")
         self.hazard.setVisible(bool(problems))
         self.reload_button.setVisible(bool(problems))
-        self.reload_button.setEnabled(bool(problems) and not busy)
+        self.reload_button.setEnabled(bool(problems) and not busy
+                                      and robot_free)
         self.new_type_button.setEnabled(profile is not None)
         self.delete_type_button.setEnabled(
             profile is not None and self.module_types.currentItem() is not None)
@@ -940,7 +955,7 @@ class LabwarePage(QWidget):
                 else "Labware: none.")
         self.slot_labware.setVisible(connected and show)
         self.remove_button.setVisible(connected and show and entry is not None)
-        self.remove_button.setEnabled(not busy)
+        self.remove_button.setEnabled(not busy and robot_free)
         if show and module_slot is not None:
             self.slot_module.setText(
                 f"Deck module: {here.name or 'module'}, "
@@ -969,7 +984,8 @@ class LabwarePage(QWidget):
         where = f" slot {self._slot}" if show else " slot"
         self.load_button.setText(("Replace in" if replacing else "Load into")
                                  + where)
-        self.load_button.setEnabled(ready and not busy)
+        self.load_button.setEnabled(ready and not busy
+                                    and (robot_free or definition is None))
         self.definitions.setEnabled(not busy)
 
         # -- tips
@@ -994,7 +1010,8 @@ class LabwarePage(QWidget):
         else:
             self.tip_state.setText(
                 "No tip. Select a tip rack to pick one up.")
-        known = connected and not busy and tip.attached is not None
+        known = (connected and not busy and robot_free
+                 and tip.attached is not None)
         self.pick_button.setEnabled(known and not tip.attached
                                     and rack is not None
                                     and self.tip_well.count() > 0)

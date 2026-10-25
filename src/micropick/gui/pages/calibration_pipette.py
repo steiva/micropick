@@ -530,7 +530,7 @@ class PipetteCalibration(QWidget):
 
         # The robot for the whole calibration, the touch-up's wait included;
         # the touch-up's panel is lent it (`_begin_touch_up`).
-        lease = session.robot_lease.claim("pipette calibration")
+        lease = session.robot_lease.claim("pipette calibration", run=True)
         if lease is None:
             self._append("not started: Robot busy.")
             return

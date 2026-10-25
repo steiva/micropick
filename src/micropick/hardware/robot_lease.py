@@ -37,9 +37,12 @@ log = logging.getLogger(__name__)
 class Lease:
     """The robot, held for `what` until `release`."""
 
-    def __init__(self, owner: "RobotLease", what: str):
+    def __init__(self, owner: "RobotLease", what: str, run: bool = False):
         self._owner = owner
         self.what = what
+        # A run - picking, liquid, a calibration - rather than a short job:
+        # closing the window asks before stopping one.
+        self.run = run
         self._released = False
 
     @property
@@ -59,20 +62,26 @@ class RobotLease:
         self._held: Lease | None = None
         self._on_change = on_change
 
-    def claim(self, what: str) -> Lease | None:
-        """The robot for `what`, or None while something else has it."""
+    def claim(self, what: str, *, run: bool = False) -> Lease | None:
+        """The robot for `what`, or None while something else has it.
+        `run`: a run that holds it for minutes, not a short job."""
         with self._lock:
             if self._held is not None:
                 log.info("robot busy with %s: %s refused", self._held.what,
                          what)
                 return None
-            lease = self._held = Lease(self, what)
+            lease = self._held = Lease(self, what, run)
         self._changed(what)
         return lease
 
     @property
     def busy(self) -> bool:
         return self._held is not None
+
+    @property
+    def holding_run(self) -> bool:
+        held = self._held
+        return held is not None and held.run
 
     @property
     def holder(self) -> str | None:

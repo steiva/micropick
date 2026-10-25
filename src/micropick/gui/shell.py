@@ -34,7 +34,8 @@ from typing import TYPE_CHECKING
 import qtawesome as qta
 from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMainWindow,
+from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
+                               QMainWindow,
                                QMessageBox, QStackedWidget, QStatusBar,
                                QToolButton, QVBoxLayout, QWidget)
 
@@ -118,6 +119,8 @@ STOP_STYLE = ("QToolButton { background: #c62828; color: white; "
 STOP_AGAIN_S = 10
 # How often a held robot is looked at to be let go.
 RELEASE_POLL_MS = 200
+# How long closing the window waits for the robot to be free.
+CLOSE_WAIT_S = 10
 
 HELD_DETAIL = (
     "The robot finishes the command it is doing and takes no other until "
@@ -583,8 +586,33 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Nothing is left running: cameras hold grab threads, and the robot
-        holds an axis that should be parked before the window disappears."""
-        self.session.shutdown()
+        holds an axis that should be parked before the window disappears.
+
+        While a run has the robot, closing asks first, and on yes stops it.
+        A short job - a step, a Go to, Home - is waited for. Either way the
+        axis is parked only once the robot is free: a retract sent into a
+        move still going is the overlap the robot's lease is for."""
+        lease = self.session.robot_lease
+        if lease.holding_run:
+            answer = QMessageBox.question(
+                self, "Close micropick",
+                f"A run is in progress ({lease.holder}). Stop it and close?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self.session.request_stop()
+        if lease.busy:
+            _log.info("closing: waiting for %s", lease.holder)
+            deadline = time.monotonic() + CLOSE_WAIT_S
+            while lease.busy and time.monotonic() < deadline:
+                QApplication.processEvents()
+                time.sleep(0.02)
+        if lease.busy:
+            _log.warning("closing while %s still has the robot: the Z axis "
+                         "is not parked", lease.holder)
+        self.session.shutdown(retract=not lease.busy)
         super().closeEvent(event)
 
     # -- display -------------------------------------------------------------
