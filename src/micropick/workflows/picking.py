@@ -140,6 +140,7 @@ from ..hardware.camera import ClipWriter
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, set_lights, xyz)
 from .motion import Motion
+from .well_centre import deposit_offset
 
 __all__ = ["RobotState", "PickEvent", "PickView", "PickingSession",
            "PickingError", "stir"]
@@ -1500,8 +1501,7 @@ class PickingSession:
                 raise PickingError(
                     "the routine has a plate destination but no labware_id was "
                     "given to the session")
-            dx = cfg.well_offset_x + self._centre_xy[0]
-            dy = cfg.well_offset_y + self._centre_xy[1]
+            dx, dy = deposit_offset(cfg, self._centre_xy)
             self._gate(pause, stop)
             require_ok(self.robot.move_to_well(
                 self.labware_id, current, well_location="top",

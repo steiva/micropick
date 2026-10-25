@@ -23,12 +23,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from ..workflows import well_centre
 from .detector import STANDIN, DetectorService
 from .widgets.checklist import BLOCKED, NOTE, OK, TODO, Check
 
 __all__ = ["DISH_POSITION", "SHAKE_POSITION", "STALE_DAYS", "STEPS",
-           "readiness_checks", "step", "tip_calibration_status",
-           "well_centre"]
+           "readiness_checks", "step", "tip_calibration_status"]
 
 # The profile position the dish is looked at from, beside tip_calib. The
 # name is the workflow's: PickingSession reads profile.where("observe").
@@ -119,20 +119,6 @@ def tip_calibration_status(session) -> tuple[bool, str, bool]:
     return _dated(offset.measured_at, "Measured on this tip")
 
 
-def well_centre(session):
-    """The measured well centre of the plate the plan delivers to, if the
-    Liquid handling page measured one: the run adds its x and y to every
-    deposit (`workflows.picking`, "The measured well centre")."""
-    routine, state = session.routine, session.run_state
-    if session.profile is None or routine is None or state is None:
-        return None
-    entry = state.labware.get(str(routine.destination.slot))
-    if entry is None:
-        return None
-    return session.profile.deck.well_centre(routine.destination.slot,
-                                            entry.load_name)
-
-
 def _status(session) -> dict[str, tuple[bool, str, bool]]:
     """key -> (done, detail, stale) for every step."""
     profile, robot = session.profile, session.robot
@@ -216,7 +202,8 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
                                    f"module offset. Load it again.", False)
         else:
             detail = f"In slot {slot}."
-            centre = well_centre(session)
+            centre = well_centre.for_plan(session.profile, session.routine,
+                                          session.run_state)
             if centre is not None:
                 x, y, _z = centre.offset
                 detail += (f" Measured well center "

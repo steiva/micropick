@@ -170,8 +170,9 @@ from ...workflows import manual as moves
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
+from ...workflows import well_centre
 from ..readiness import (DISH_POSITION, SHAKE_POSITION, STEPS,
-                         readiness_checks, well_centre)
+                         readiness_checks)
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, heading, muted_label,
@@ -901,8 +902,10 @@ class PickingPage(QWidget):
         return out
 
     def _well_centre(self):
-        """See `readiness.well_centre`."""
-        return well_centre(self.session)
+        """The plan's plate's measured well center (`well_centre.for_plan`)."""
+        session = self.session
+        return well_centre.for_plan(session.profile, session.routine,
+                                    session.run_state)
 
     def _confirm_start(self) -> bool:
         box = QMessageBox(self)
@@ -955,7 +958,7 @@ class PickingPage(QWidget):
         labware_id = session.run_state.labware[slot].labware_id
         pmap = PixelMap.from_config(profile.pixel_map)
         centre = self._well_centre()
-        well_centre = None if centre is None else tuple(centre.offset[:2])
+        centre_xy = None if centre is None else tuple(centre.offset[:2])
         # A folder per run, so a run's clips are together and apart from the
         # last one's; the clips in it are named for their target well.
         under_cam = clip_dir = None
@@ -977,7 +980,7 @@ class PickingPage(QWidget):
                                      detector, labware_id=labware_id,
                                      under_cam=under_cam, clip_dir=clip_dir,
                                      clip_crop=clip_crop,
-                                     well_centre=well_centre,
+                                     well_centre=centre_xy,
                                      motion=motion)
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
