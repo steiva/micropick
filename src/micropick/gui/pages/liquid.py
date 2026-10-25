@@ -88,8 +88,7 @@ from ...core.liquid import (ACTIONS, Group, Location, Program, ProgramError,
                             describe, describe_location, new_step,
                             ordered_wells)
 from ...core.routine import Destination, RoutineError
-from ...hardware.protocols import xyz
-from ...workflows import liquid
+from ...workflows import liquid, well_centre
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
@@ -231,10 +230,9 @@ class LiquidHandlingPage(QWidget):
         self._progress = ""
         self._outcome = ""
         self._current: tuple[int, str] | None = None
-        # (slot, load name, well, pose) of the last Go to well top: the
-        # robot's own idea of that well's top centre, which Set well centre
-        # measures the real one against.
-        self._nominal: tuple | None = None
+        # The last Go to well top: the robot's own idea of that well's top
+        # centre, which Set well centre measures the real one against.
+        self._measurement = well_centre.Measurement()
         self._log_path = None
         self._loading = False
         # session.plates(), read when the deck changes rather than on every
@@ -622,10 +620,7 @@ class LiquidHandlingPage(QWidget):
         starts from, not what it is."""
         for s, _entry, definition in self._deck:
             if s == slot:
-                try:
-                    return float(definition.data["wells"][well]["depth"])
-                except (KeyError, TypeError, ValueError):
-                    return None
+                return well_centre.definition_depth(definition, well)
         return None
 
     def _positions(self) -> dict:
@@ -829,7 +824,7 @@ class LiquidHandlingPage(QWidget):
             else None)
 
     def _deck_changed(self) -> None:
-        self._nominal = None
+        self._measurement.forget()
         self._reload_plates()
         self._offer_choices()
 
@@ -1103,29 +1098,31 @@ class LiquidHandlingPage(QWidget):
         if shown is None or well is None or self._running or self.jog.busy:
             return
         slot, load_name = shown
-        labware_id, robot, motion = (self._labware_id(slot),
-                                      self.session.robot, self.session.motion)
-        emit = self.job_said.emit
+        labware_id, motion = self._labware_id(slot), self.session.motion
 
         def job(log_):
-            motion.to_well(labware_id, well, "top", (0.0, 0.0, 0.0), log=log_)
-            emit(("nominal", (slot, load_name, well, xyz(robot))))
+            return well_centre.go_to_top(motion, labware_id, well, log=log_)
+
+        def reached(pose):
+            # On the GUI thread, once the job has ended.
+            self._measurement.started(slot, load_name, well, pose)
+            self._refresh()
             return (f"at the top of {well} as the robot has it: jog onto the "
                     f"real center, level with the rim, then Set well center.")
 
         log.info("liquid handling: to the top of %s in slot %s", well, slot)
-        if not self.jog.run_job(job):
+        if not self.jog.run_job(job, then=reached):
             self.jog.tell("Robot busy.")
 
     def _set_well_centre(self) -> None:
-        nominal, pose = self._nominal, self.jog.pose
-        shown = self._shown_plate()
-        if (nominal is None or pose is None or shown is None
-                or tuple(nominal[:2]) != tuple(shown)
+        shown, pose = self._shown_plate(), self.jog.pose
+        nominal = (self._measurement.for_plate(*shown) if shown is not None
+                   else None)
+        if (nominal is None or pose is None
                 or self._running or self.jog.busy):
             return
-        slot, load_name, well, at = nominal
-        offset = [float(p) - float(a) for p, a in zip(pose, at)]
+        slot, load_name, well = nominal.slot, nominal.load_name, nominal.well
+        offset = self._measurement.offset(pose)
         if self._well_centre(slot, load_name) is not None:
             answer = QMessageBox.question(
                 self, "Set well center",
@@ -1143,7 +1140,7 @@ class LiquidHandlingPage(QWidget):
             self.jog.tell(f"not saved: {exc}")
             return
         # Measured: measuring again starts from Go to well top.
-        self._nominal = None
+        self._measurement.forget()
         self._refresh()
         self.jog.tell(f"well center of slot {slot} saved: ({offset[0]:+.2f}, "
                       f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
@@ -1399,10 +1396,6 @@ class LiquidHandlingPage(QWidget):
 
     def _on_job_said(self, payload) -> None:
         kind, value = payload
-        if kind == "nominal":
-            self._nominal = value
-            self._refresh()
-            return
         if kind == "well":
             self._current = value
             gi, well = value
@@ -1468,8 +1461,7 @@ class LiquidHandlingPage(QWidget):
         """The well centre line and its buttons, for the plate on the map."""
         robot = self.session.robot is not None
         centre = self._well_centre(*shown) if shown is not None else None
-        nominal = (self._nominal if self._nominal is not None and shown
-                   is not None and tuple(self._nominal[:2]) == tuple(shown)
+        nominal = (self._measurement.for_plate(*shown) if shown is not None
                    else None)
         one = len(selection) == 1
         self.go_top_button.setEnabled(idle and robot and shown is not None
@@ -1495,7 +1487,7 @@ class LiquidHandlingPage(QWidget):
                     "labware definition puts them. To measure, select one "
                     "well and Go to well top.")
         if nominal is not None:
-            text += (f"\nAt the top of {nominal[2]} as the robot has it: jog "
+            text += (f"\nAt the top of {nominal.well} as the robot has it: jog "
                      f"the tip onto the real center, level with the rim, then "
                      f"Set well center.")
         self.centre_state.setText(text)

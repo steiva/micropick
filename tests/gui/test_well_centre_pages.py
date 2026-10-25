@@ -79,6 +79,9 @@ def _liquid(app, session):
 def _measure(app, session, page, jog):
     page._go_to_well_top()
     _settle(app, page.jog)
+    # The measurement in hand, said under the well center line.
+    assert "At the top of B2" in page.centre_state.text()
+    assert page.set_centre_button.isEnabled()
     at = tuple(page.jog.pose)
     _jog(app, session, page.jog, *jog)
     page._set_well_centre()
