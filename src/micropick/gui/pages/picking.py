@@ -298,6 +298,7 @@ class PickingPage(QWidget):
 
         session.profile_changed.connect(self._on_profile_changed)
         session.robot_state_changed.connect(lambda _s: self._refresh())
+        session.robot_busy_changed.connect(self._on_robot_busy)
         session.routine_changed.connect(lambda _r: self._refresh())
         session.settings_changed.connect(self._on_settings_changed)
         # The window's Stop, and Esc: see `shell.MainWindow._stop`.
@@ -977,9 +978,15 @@ class PickingPage(QWidget):
 
         self._run_message = ""
         self._filled = False
+        # The robot for the whole run, pauses and waits included: nothing
+        # else moves it until the run ends (`Session.robot_lease`).
+        lease = session.robot_lease.claim("picking run")
+        if lease is None:
+            self.run_state.setText("Robot busy.")
+            return
         self.done.clear()
         self.run_state.setText("starting…")
-        self._run_worker = Worker(job, what="picking run")
+        self._run_worker = Worker(job, what="picking run", lease=lease)
         self._run_worker.finished.connect(self._run_finished)
         self._run_worker.failed.connect(self._run_failed)
         self._run_worker.message.connect(self._said)
@@ -993,6 +1000,9 @@ class PickingPage(QWidget):
 
     def _running(self) -> bool:
         return self._run_worker is not None and self._run_worker.running
+
+    def _on_robot_busy(self, _holder) -> None:
+        self._refresh()
 
     def _waiting(self) -> bool:
         return (self._running()
@@ -1373,10 +1383,13 @@ class PickingPage(QWidget):
     def _refresh(self) -> None:
         busy = self._busy()
         connected = self.session.robot is not None
+        # Nothing here may move the robot while anything holds it, this
+        # page's own jog or run included (`Session.robot_lease`).
+        movable = connected and not self.session.robot_lease.busy
         profile = self.session.profile
         stored = self._stored_dish()
 
-        self.goto_button.setEnabled(connected and stored is not None and not busy)
+        self.goto_button.setEnabled(movable and stored is not None and not busy)
         self.teach_button.setEnabled(connected and profile is not None and not busy)
         if profile is None:
             self.dish_state.setText("No profile loaded.")
@@ -1398,22 +1411,22 @@ class PickingPage(QWidget):
                 f"(+{picking.pickup_offset:g}).")
         centre, why = self._centre_target()
         self.over_centre_button.setEnabled(
-            connected and centre is not None and not running)
+            movable and centre is not None and not running)
         self.over_centre_button.setToolTip(
             f"Move the tip over the dish center, {ABOVE_BOTTOM_MM:g} mm "
             f"above the dish bottom."
             if centre is not None else f"Unavailable: {why}.")
         self.set_bottom_button.setEnabled(
-            connected and profile is not None and not running)
+            movable and profile is not None and not running)
         self.set_bottom_button.setToolTip(
             "Save the current tip Z as the dish bottom.")
         shake = self._stored_shake()
-        self.goto_shake_button.setEnabled(connected and shake is not None
+        self.goto_shake_button.setEnabled(movable and shake is not None
                                           and not running)
         # During a run only while it is paused or waits for you.
         self.shake_button.setEnabled(
             connected and shake is not None
-            and (not running or self._can_shake_in_run()))
+            and ((movable and not running) or self._can_shake_in_run()))
         self.shake_button.setToolTip(
             "Stir the dish at the shake position. During a run: while "
             "paused or waiting."
@@ -1458,7 +1471,8 @@ class PickingPage(QWidget):
         checks = self._checks()
         problems = [check.text for check in checks if check.blocking]
         stopping = self._refresh_steps(problems)
-        self.start_button.setEnabled(not busy and not running and not problems)
+        self.start_button.setEnabled(movable and not busy and not running
+                                     and not problems)
         self.resume_button.setEnabled(self._waiting())
         self.pause_button.setEnabled(running)
         self.stop_button.setEnabled(running)

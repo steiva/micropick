@@ -160,6 +160,7 @@ class PipetteCalibration(QWidget):
         session.camera_opened.connect(lambda _l: self._refresh())
         session.camera_closed.connect(lambda _l: self._refresh())
         session.robot_state_changed.connect(lambda _s: self._refresh())
+        session.robot_busy_changed.connect(self._on_robot_busy)
         session.profile_changed.connect(lambda _p: self._refresh())
         session.settings_changed.connect(lambda _s: self._refresh())
         # The window's Stop. The routine has no point to stop at between
@@ -341,12 +342,17 @@ class PipetteCalibration(QWidget):
         if stored is None or self.session.robot is None or self._busy():
             return
         robot, motion = self.session.robot, self.session.motion
+        what = f"going to {POSITION_NAME} {stored}"
+        lease = self.session.robot_lease.claim(what)
+        if lease is None:
+            self.position_note.setText("Robot busy.")
+            return
 
         def job():
             motion.tip_to(stored[:2], stored[2])
             return xyz(robot)
 
-        self._run_short(Worker(job), f"going to {POSITION_NAME} {stored}")
+        self._run_short(Worker(job, lease=lease), what)
 
     def _remember(self) -> None:
         if self.session.robot is None or self.session.profile is None or self._busy():
@@ -522,7 +528,13 @@ class PipetteCalibration(QWidget):
             robot.retract_axis("leftZ", verbose=False)
             return result, standin
 
-        worker = Worker(job, what="calibrating the pipette")
+        # The robot for the whole calibration, the touch-up's wait included;
+        # the touch-up's panel is lent it (`_begin_touch_up`).
+        lease = session.robot_lease.claim("pipette calibration")
+        if lease is None:
+            self._append("not started: Robot busy.")
+            return
+        worker = Worker(job, what="calibrating the pipette", lease=lease)
         self._worker = worker
         worker.message.connect(self._on_message)
         worker.finished.connect(self._on_finished)
@@ -554,6 +566,11 @@ class PipetteCalibration(QWidget):
         if profile is not None:
             self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
         self.touch_jog.set_step(TOUCH_UP_STEP_MM)
+        # The calibration holds the robot and waits; its steps are taken
+        # under that lease.
+        lease = getattr(self._worker, "lease", None)
+        if lease is not None:
+            self.touch_jog.lend(lease)
         self.touch_box.show()
         self._append("waiting: nudge the tip onto the crosshair, then Done")
         self._refresh()
@@ -563,6 +580,7 @@ class PipetteCalibration(QWidget):
             self._append("a jog step is still moving; press Done after it")
             return
         self.touch_box.hide()
+        self.touch_jog.end_loan()
         self._append("done adjusting")
         self._gate.set()
         self._refresh()
@@ -573,6 +591,7 @@ class PipetteCalibration(QWidget):
 
     def _abort(self) -> None:
         self.touch_box.hide()
+        self.touch_jog.end_loan()
         self._aborted = True
         self._gate.set()
         self._refresh()
@@ -582,6 +601,7 @@ class PipetteCalibration(QWidget):
 
     def _on_finished(self, payload) -> None:
         self._worker = None
+        self.touch_jog.end_loan()
         result, standin = payload
         self._result, self._standin = result, standin
         offset: PipetteOffset = result.offset
@@ -613,6 +633,7 @@ class PipetteCalibration(QWidget):
     def _on_failed(self, reason: str) -> None:
         self._worker = None
         self.touch_box.hide()
+        self.touch_jog.end_loan()
         self.done.clear()
         error = getattr(self.sender(), "error", None)
         aborted = isinstance(error, TouchUpAborted)
@@ -638,6 +659,9 @@ class PipetteCalibration(QWidget):
         self._last_line = text
         if self._busy():
             self.checks.setText(f"Running: {text}")
+
+    def _on_robot_busy(self, _holder) -> None:
+        self._refresh()
 
     def _refresh(self) -> None:
         busy = self._busy()
@@ -678,7 +702,9 @@ class PipetteCalibration(QWidget):
         else:
             self.position.set_state(TODO)
         self.goto_button.setVisible(stored is not None)
-        self.goto_button.setEnabled(connected and not busy and not running)
+        free = not session.robot_lease.busy
+        self.goto_button.setEnabled(connected and free and not busy
+                                    and not running)
         self.remember_button.setEnabled(connected and profile is not None
                                         and placed and not running)
         self.remember_button.setToolTip(
@@ -751,7 +777,8 @@ class PipetteCalibration(QWidget):
                                TODO if not problems else BLOCKED,
                                why if not measured and not problems else
                                "" if not problems else problems[0])
-        self.start_button.setEnabled(not running and not problems)
+        self.start_button.setEnabled(not running and not problems
+                                     and not session.robot_lease.busy)
 
         # 5. the touch-up
         self.touch.set_state(TODO)

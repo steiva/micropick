@@ -278,6 +278,7 @@ class LiquidHandlingPage(QWidget):
         # The window's Stop, and Esc: see `shell.MainWindow._stop`.
         session.stop_requested.connect(self._stop_run)
         session.robot_state_changed.connect(lambda _s: self._deck_changed())
+        session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._deck_changed())
         session.tip_changed.connect(self._tip_changed)
         session.camera_opened.connect(lambda _l: self._show_camera())
@@ -1364,7 +1365,8 @@ class LiquidHandlingPage(QWidget):
             emit(("ended", "done"))
             return "run finished."
 
-        if not self.jog.run_job(job):
+        # The robot for the whole run, pauses included (`Session.robot_lease`).
+        if not self.jog.run_job(job, what="liquid run"):
             self.jog.tell("Robot busy.")
             return
         self._running = True
@@ -1499,9 +1501,15 @@ class LiquidHandlingPage(QWidget):
         self.centre_state.setText(text)
         self.centre_state.setVisible(bool(text))
 
+    def _on_robot_busy(self, _holder) -> None:
+        self._refresh()
+
     def _refresh(self) -> None:
         running, busy = self._running, self.jog.busy
-        idle = not running and not busy
+        # Robot work waits for the robot to be free, on any page
+        # (`Session.robot_lease`); marking the tip empty does not.
+        idle_here = not running and not busy
+        idle = idle_here and not self.session.robot_lease.busy
         for box in self._editing:
             box.setEnabled(not running)
         self._show_deck()
@@ -1570,7 +1578,7 @@ class LiquidHandlingPage(QWidget):
         self.continue_button.setEnabled(
             paused or (idle and self._can_carry_on and not problems))
         self.stop_button.setEnabled(running)
-        self.empty_button.setEnabled(idle and self.state.in_tip > 0)
+        self.empty_button.setEnabled(idle_here and self.state.in_tip > 0)
         total, done = self._total(), len(self.state.done)
         in_tip = (f"The tip holds {self.state.in_tip:g} µl."
                   if self.state.in_tip > 0 else "The tip is empty.")

@@ -292,6 +292,7 @@ class CameraCalibration(QWidget):
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(lambda _s: self._refresh())
+        session.robot_busy_changed.connect(self._on_robot_busy)
         # The sweep's parameters are Settings'; the marker is watched for in
         # the dictionary chosen there.
         session.settings_changed.connect(lambda _s: self._refresh())
@@ -588,6 +589,12 @@ class CameraCalibration(QWidget):
                 DICTIONARIES[params["dictionary"]]),
             cv2.aruco.DetectorParameters())
 
+        # The robot for the whole sweep (`Session.robot_lease`).
+        lease = self.session.robot_lease.claim("camera calibration sweep")
+        if lease is None:
+            self.verdict.setText("Robot busy.")
+            return
+
         self.run_log.clear()
         self._saved = False
         self._outcome = ""
@@ -613,7 +620,7 @@ class CameraCalibration(QWidget):
                         grid_n=params["grid_n"],
                         degree=params["degree"],
                         on_frame=self._on_pose,
-                        what="calibrating the camera")
+                        what="calibrating the camera", lease=lease)
         self._worker = worker
         worker.progress.connect(self._on_progress)
         worker.message.connect(self._on_message)
@@ -813,6 +820,9 @@ class CameraCalibration(QWidget):
 
     # -- display -------------------------------------------------------------
 
+    def _on_robot_busy(self, _holder) -> None:
+        self._refresh()
+
     def _refresh(self) -> None:
         running = self._running()
         # Hidden while the sweep runs: its keys are given up, and nothing but
@@ -832,7 +842,8 @@ class CameraCalibration(QWidget):
                     "Before Start:\n" + "\n".join("• " + p for p in problems))
             self.checks.setText(f"{self._outcome}\n\n{text}" if self._outcome
                                 else text)
-        self.start_button.setEnabled(not problems and not running)
+        self.start_button.setEnabled(not problems and not running
+                                     and not self.session.robot_lease.busy)
         self.cancel_button.setEnabled(running)
         self.save_button.setEnabled(self._result is not None
                                     and self.session.profile is not None)
