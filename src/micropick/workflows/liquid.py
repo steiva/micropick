@@ -1,8 +1,8 @@
 """Running a liquid handling program.
 
 The program is `core.liquid`: groups of wells and the steps each well gets.
-This is what does them, with no Qt in it: every function takes the robot and
-the data and blocks, so the Liquid handling page runs them on its jog panel's
+This is what does them, with no Qt in it: every function takes the robot's
+`Motion` (or the robot, below it) and the data and blocks, so the Liquid handling page runs them on its jog panel's
 worker and a notebook can call them directly.
 
 Getting there
@@ -45,9 +45,9 @@ there it finds the next well by its own path, and a next step in the same
 well is a short move within it.
 
 A saved point is the robot's coordinates, not a place it plans a path to,
-so it is reached by the rules of manual control (`workflows.manual`): the
+so it is reached by the rules of manual control (`workflows.motion`): the
 tip raised to the travel height, one straight move across, then down,
-never higher than `reachable_z`; and the liquid commands there are the
+never higher than the travel height; and the liquid commands there are the
 in-place ones. A step whose location is the one the tip already stands at
 does not move. `here` is wherever the tip is, and its commands are in place.
 
@@ -103,6 +103,7 @@ from ..core.liquid import (MEASURED_BOTTOM, BlowOut, Group, Location,
 from ..hardware.protocols import (Robot, move_relative, move_to,
                                   prepare_to_aspirate, require_ok, xyz)
 from . import manual as moves
+from .motion import Motion
 
 __all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "problems",
            "plan", "go",
@@ -165,8 +166,7 @@ class LiquidState:
     of the next step for a well that was stopped halfway. `at` is the key of
     the location the tip stands at within one job (None: unknown, so the
     next location is driven to); `last` is the last location driven to and
-    its well, for the first `here` after the tip was raised. `z_top` is the
-    top of the Z travel with the tip that is fitted (`manual.raise_tip`).
+    its well, for the first `here` after the tip was raised.
     `loose`: the tip is in a well but got there by coordinates, so the robot
     does not know it; see "Leaving a well the robot does not know the tip is
     in".
@@ -177,7 +177,6 @@ class LiquidState:
     resume: dict[tuple[int, str], int] = field(default_factory=dict)
     at: tuple | None = None
     last: tuple[Location, Group, str] | None = None
-    z_top: float | None = None
     loose: bool = False
 
     def reset(self) -> None:
@@ -405,18 +404,19 @@ def plan(program: Program, plates: dict[str, Plate]) -> list[tuple[int, Group, s
     return out
 
 
-def go(robot: Robot, location: Location, group: Group, well: str,
+def go(motion: Motion, location: Location, group: Group, well: str,
        plates: dict[str, Plate], positions: dict, state: LiquidState, *,
        log=None, prepare: bool = False) -> None:
     """The tip to `location`, for `well` of `group`. See "Getting there".
     `prepare`: on the way to a measured bottom, prepare the plunger for an
     aspirate in place while the tip is above the liquid."""
+    robot = motion.robot
     if location.kind == "here":
         if state.at is None and state.last is not None:
             # The tip was raised since the last location: back there first.
             last, last_group, last_well = state.last
             _say(log, "back to where the tip was")
-            go(robot, last, last_group, last_well, plates, positions, state,
+            go(motion, last, last_group, last_well, plates, positions, state,
                log=log)
         return
     key = location.key(well)
@@ -426,17 +426,16 @@ def go(robot: Robot, location: Location, group: Group, well: str,
         x, y, z = positions[location.point]
         ox, oy, oz = location.offset
         _lift_out(robot, state, plates, log)
-        state.z_top = moves.drive_tip(robot, (x + ox, y + oy), z + oz,
-                                      state.z_top, log=log)
+        motion.tip_to((x + ox, y + oy), z + oz, log=log)
     elif location.level == MEASURED_BOTTOM:
-        _leave_for_well(robot, state, plates, log)
+        _leave_for_well(motion, state, plates, log)
         _descend(robot, location, group, well, plates, log, prepare)
         state.at, state.last = key, (location, group, well)
         state.loose = True
         return
     else:
         place = _well_target(location, group, well, plates, state)
-        _leave_for_well(robot, state, plates, log)
+        _leave_for_well(motion, state, plates, log)
         _say(log, f"tip to {_where(place)}")
         _in_well(robot, "move_to_well", place, verbose=False)
     state.at = key
@@ -444,15 +443,15 @@ def go(robot: Robot, location: Location, group: Group, well: str,
     state.loose = False
 
 
-def _leave_for_well(robot: Robot, state: LiquidState,
+def _leave_for_well(motion: Motion, state: LiquidState,
                     plates: dict[str, Plate], log) -> None:
     """Before a command the robot moves into a well by itself: the tip up
     first, unless a well command of the robot's put it where it is - out
     of a well it reached by coordinates by one (`_lift_out`). See "Getting
     there"."""
-    _lift_out(robot, state, plates, log)
+    _lift_out(motion.robot, state, plates, log)
     if state.at is None or state.at[0] not in ("this_well", "well"):
-        state.z_top = moves.raise_tip(robot, state.z_top, log=log)
+        motion.raise_tip(log=log)
 
 
 def _lift_out(robot: Robot, state: LiquidState, plates: dict[str, Plate],
@@ -552,13 +551,14 @@ def _overfill(step, state: LiquidState, capacity: float | None) -> None:
             f"is.")
 
 
-def do_step(robot: Robot, step, group: Group, well: str,
+def do_step(motion: Motion, step, group: Group, well: str,
             plates: dict[str, Plate], positions: dict, state: LiquidState, *,
             pause=None, stop=None, log=None, on_paused=None,
             capacity: float | None = None) -> str:
     """One step for one well. Returns what was done, for the log. With
     `capacity`, an aspirate or a mix that would overfill the tip raises
     `Overfill` before anything moves."""
+    robot = motion.robot
     action = step.action
     if action == "wait":
         _say(log, f"wait {step.seconds:g} s")
@@ -586,13 +586,13 @@ def do_step(robot: Robot, step, group: Group, well: str,
             and location.level != MEASURED_BOTTOM):
         place = _well_target(location, group, well, plates, state)
         if location.key(well) != state.at or state.loose:
-            _leave_for_well(robot, state, plates, log)
+            _leave_for_well(motion, state, plates, log)
     else:
         # An aspirate in place needs the plunger ready; an empty tip is made
         # ready on the way down to a measured bottom.
         prepare = (action in ("aspirate", "mix")
                    and state.in_tip <= VOLUME_TOL)
-        go(robot, location, group, well, plates, positions, state, log=log,
+        go(motion, location, group, well, plates, positions, state, log=log,
            prepare=prepare)
     _gate(pause, stop)
     if action == "move_to":
@@ -770,16 +770,16 @@ def _log_row(path: Path | None, **row) -> None:
                             if k != "time"}})
 
 
-def _retract(robot: Robot, state: LiquidState) -> None:
+def _retract(motion: Motion, state: LiquidState) -> None:
     state.at = None
     state.loose = False
     try:
-        require_ok(robot.retract_axis("leftZ", verbose=False), "retract")
+        motion.retract()
     except Exception:                                # noqa: BLE001
         pass
 
 
-def run(robot: Robot, program: Program, plates: dict[str, Plate],
+def run(motion: Motion, program: Program, plates: dict[str, Plate],
         positions: dict, state: LiquidState, *, pause=None, stop=None,
         log=None, on_well=None, on_progress=None, on_paused=None,
         log_path: Path | None = None, clear_first: bool = False) -> None:
@@ -803,7 +803,7 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
         if clear_first and program.trash is not None and jobs:
             _, group, well = jobs[0]
             _say(log, "clearing the tip over the trash")
-            said = do_step(robot, BlowOut(location=program.trash), group,
+            said = do_step(motion, BlowOut(location=program.trash), group,
                            well, plates, positions, state, pause=pause,
                            stop=stop, log=log)
             _log_row(log_path, step="trash", in_tip=f"{state.in_tip:g}",
@@ -835,7 +835,7 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
                              step=si + 1, in_tip=f"{state.in_tip:g}",
                              note=said)
                     continue
-                said = do_step(robot, step, group, well, plates, positions,
+                said = do_step(motion, step, group, well, plates, positions,
                                state, pause=pause, stop=stop, log=log,
                                on_paused=on_paused, capacity=capacity)
                 state.resume[(gi, well)] = si + 1
@@ -861,7 +861,7 @@ def run(robot: Robot, program: Program, plates: dict[str, Plate],
     finally:
         if state.in_tip > VOLUME_TOL:
             _log_row(log_path, note=f"ended holding {state.in_tip:g} ul")
-        _retract(robot, state)
+        _retract(motion, state)
 
 
 def _sized(step, steps: list, index: int, state: LiquidState, log):
@@ -880,7 +880,7 @@ def _sized(step, steps: list, index: int, state: LiquidState, log):
     return step, ""
 
 
-def run_step(robot: Robot, step, group: Group, well: str,
+def run_step(motion: Motion, step, group: Group, well: str,
              plates: dict[str, Plate], positions: dict, state: LiquidState, *,
              log=None, capacity: float | None = None) -> str:
     """One step for one well, to try it: the tip is left where the step put
@@ -899,5 +899,5 @@ def run_step(robot: Robot, step, group: Group, well: str,
             step, said = _sized(step, group.steps, index, state, log)
             if step is None:
                 return said
-    return do_step(robot, step, group, well, plates, positions, state,
+    return do_step(motion, step, group, well, plates, positions, state,
                    log=log, capacity=capacity)

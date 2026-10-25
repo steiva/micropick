@@ -10,6 +10,7 @@ from micropick.core.liquid import (Aspirate, BlowOut, Dispense, Group,
 from micropick.hardware.mock import MockRobot
 from micropick.workflows import liquid
 from micropick.workflows.liquid import LiquidState, Plate, Stopped
+from micropick.workflows.motion import Motion
 
 PLATE = Plate("5", "plate-id", "plate", [["A1", "B1"], ["A2", "B2"]])
 RESERVOIR = Plate("2", "res-id", "res", [["A1"]])
@@ -29,9 +30,10 @@ def _liquid_calls(robot):
 
 def test_every_well_gets_the_whole_chain_before_the_next():
     robot, state = MockRobot(), LiquidState()
+    motion = Motion(robot)
     program = _program([Aspirate(volume_ul=20),
                         Dispense(location=WASTE)])
-    liquid.run(robot, program, PLATES, POSITIONS, state)
+    liquid.run(motion, program, PLATES, POSITIONS, state)
     # In a well the robot's well-based commands take the tip there
     # themselves: no move before them, and no retract between them.
     assert _liquid_calls(robot) == [
@@ -48,10 +50,11 @@ def test_every_well_gets_the_whole_chain_before_the_next():
 
 def test_the_same_place_and_here_do_not_move():
     robot = MockRobot()
+    motion = Motion(robot)
     program = _program([Aspirate(volume_ul=10), Mix(cycles=2, volume_ul=5),
                         BlowOut(), Dispense(location=Location(kind="here"))],
                        wells=["A1"])
-    liquid.run(robot, program, PLATES, POSITIONS, LiquidState())
+    liquid.run(motion, program, PLATES, POSITIONS, LiquidState())
     # One move only: after the blow out, straight up to the well's top for
     # the shake, which a well-based aspirate would otherwise go up for and
     # come back down from.
@@ -66,17 +69,19 @@ def test_the_same_place_and_here_do_not_move():
 
 def test_a_point_is_reached_with_its_offset():
     robot = MockRobot()
+    motion = Motion(robot)
     program = _program([MoveTo(location=Location(kind="point", point="waste",
                                                  offset=[1, 2, 3]))],
                        wells=["A1"])
     state = LiquidState()
-    liquid.run(robot, program, PLATES, POSITIONS, state)
+    liquid.run(motion, program, PLATES, POSITIONS, state)
     assert (201.0, 102.0, 53.0) in [tuple(round(v) for v in p)
                                     for p in robot.log]
 
 
 def test_a_stop_keeps_the_place_and_continue_does_not_repeat_a_step():
     robot, state = MockRobot(), LiquidState()
+    motion = Motion(robot)
     stop = threading.Event()
     calls = []
 
@@ -88,14 +93,14 @@ def test_a_stop_keeps_the_place_and_continue_does_not_repeat_a_step():
 
     program = _program([Aspirate(volume_ul=20), Dispense(location=WASTE)])
     with pytest.raises(Stopped):
-        liquid.run(robot, program, PLATES, POSITIONS, state, stop=stop, log=log)
+        liquid.run(motion, program, PLATES, POSITIONS, state, stop=stop, log=log)
     assert state.in_tip == 20.0
     assert state.done == []
     assert state.resume == {(0, "A1"): 1}
 
     robot.calls.clear()
     stop.clear()
-    liquid.run(robot, program, PLATES, POSITIONS, state, stop=stop)
+    liquid.run(motion, program, PLATES, POSITIONS, state, stop=stop)
     aspirates = [c for c in robot.calls if c[0] == "aspirate"]
     # A1's aspirate is not done again; only A2's.
     assert len(aspirates) == 1
@@ -104,6 +109,7 @@ def test_a_stop_keeps_the_place_and_continue_does_not_repeat_a_step():
 
 def test_here_after_a_stop_goes_back_first():
     robot, state = MockRobot(), LiquidState()
+    motion = Motion(robot)
     stop = threading.Event()
     program = _program([Aspirate(volume_ul=20),
                         Dispense(location=Location(kind="here"))],
@@ -114,16 +120,17 @@ def test_here_after_a_stop_goes_back_first():
             stop.set()
 
     with pytest.raises(Stopped):
-        liquid.run(robot, program, PLATES, POSITIONS, state, stop=stop, log=log)
+        liquid.run(motion, program, PLATES, POSITIONS, state, stop=stop, log=log)
     robot.calls.clear()
     stop.clear()
-    liquid.run(robot, program, PLATES, POSITIONS, state)
+    liquid.run(motion, program, PLATES, POSITIONS, state)
     assert _liquid_calls(robot) == [("move_to_well", "plate-id", "A1", "top"),
                                     ("dispense_in_place", 20.0, 50.0)]
 
 
 def test_a_pause_step_holds_the_run_until_continue():
     robot, state = MockRobot(), LiquidState()
+    motion = Motion(robot)
     pause, said = threading.Event(), []
 
     def paused(message):
@@ -132,7 +139,7 @@ def test_a_pause_step_holds_the_run_until_continue():
 
     program = _program([Pause(message="look"), Aspirate(volume_ul=5)],
                        wells=["A1"])
-    liquid.run(robot, program, PLATES, POSITIONS, state, pause=pause,
+    liquid.run(motion, program, PLATES, POSITIONS, state, pause=pause,
                on_paused=paused)
     assert said == ["look"]
     assert state.done == [(0, "A1")]
@@ -209,18 +216,21 @@ def test_a_trash_empties_what_the_tip_held_before_the_first_well():
 
 def test_start_blows_out_over_the_trash_first_and_continue_does_not():
     robot, state = MockRobot(), LiquidState()
+    motion = Motion(robot)
     state.in_tip = 30.0                        # left by a step tried earlier
     program = _program([Aspirate(volume_ul=20), Dispense(location=WASTE)],
                        wells=["A1"])
     program.trash = WASTE
-    liquid.run(robot, program, PLATES, POSITIONS, state, clear_first=True)
+    liquid.run(motion, program, PLATES, POSITIONS, state, clear_first=True)
     calls = _liquid_calls(robot)
     assert calls[0][:3] == ("blow_out", "res-id", "A1")
     assert ("aspirate", "plate-id", "A1", 20.0, 50.0) in calls
     assert state.in_tip == 0.0
 
     robot, state = MockRobot(), LiquidState()
-    liquid.run(robot, program, PLATES, POSITIONS, state)
+
+    motion = Motion(robot)
+    liquid.run(motion, program, PLATES, POSITIONS, state)
     assert not any(c[0] == "blow_out" for c in _liquid_calls(robot))
 
 
@@ -233,10 +243,11 @@ def test_slots_and_points_used():
 
 def test_a_blow_out_away_from_a_well_prepares_the_plunger():
     robot = MockRobot()
+    motion = Motion(robot)
     program = _program([MoveTo(location=Location(kind="point", point="waste")),
                         BlowOut(location=Location(kind="here")),
                         Aspirate(volume_ul=5)], wells=["A1"])
-    liquid.run(robot, program, PLATES, POSITIONS, LiquidState())
+    liquid.run(motion, program, PLATES, POSITIONS, LiquidState())
     names = [c[0] for c in robot.calls]
     at = names.index("blow_out_in_place")
     assert names[at + 1] == "prepare_to_aspirate"

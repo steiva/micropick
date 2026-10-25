@@ -90,7 +90,6 @@ from ...core.liquid import (ACTIONS, Group, Location, Program, ProgramError,
 from ...core.routine import Destination, RoutineError
 from ...hardware.protocols import xyz
 from ...workflows import liquid
-from ...workflows import manual as moves
 from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
@@ -829,7 +828,6 @@ class LiquidHandlingPage(QWidget):
             else None)
 
     def _deck_changed(self) -> None:
-        self._lose_top()
         self._nominal = None
         self._reload_plates()
         self._offer_choices()
@@ -1104,14 +1102,12 @@ class LiquidHandlingPage(QWidget):
         if shown is None or well is None or self._running or self.jog.busy:
             return
         slot, load_name = shown
-        labware_id, robot, state = (self._labware_id(slot),
-                                     self.session.robot, self.state)
+        labware_id, robot, motion = (self._labware_id(slot),
+                                      self.session.robot, self.session.motion)
         emit = self.job_said.emit
 
         def job(log_):
-            state.z_top = moves.drive_to_well(robot, labware_id, well, "top",
-                                              (0.0, 0.0, 0.0), state.z_top,
-                                              log=log_)
+            motion.to_well(labware_id, well, "top", (0.0, 0.0, 0.0), log=log_)
             emit(("nominal", (slot, load_name, well, xyz(robot))))
             return (f"at the top of {well} as the robot has it: jog onto the "
                     f"real center, level with the rim, then Set well center.")
@@ -1169,13 +1165,11 @@ class LiquidHandlingPage(QWidget):
         well = self._one_selected() or (centre.well if centre else None)
         if centre is None or not well:
             return
-        labware_id, robot, state = (self._labware_id(slot),
-                                     self.session.robot, self.state)
+        labware_id, motion = self._labware_id(slot), self.session.motion
         offset = tuple(centre.offset)
 
         def job(log_):
-            state.z_top = moves.drive_to_well(robot, labware_id, well, "top",
-                                              offset, state.z_top, log=log_)
+            motion.to_well(labware_id, well, "top", offset, log=log_)
             return f"at the measured center and rim of {well}."
 
         if not self.jog.run_job(job):
@@ -1220,12 +1214,12 @@ class LiquidHandlingPage(QWidget):
             return
         group, index = self._group(), self._step_index()
         step, well = group.steps[index], self._try_well(group)
-        robot, state = self.session.robot, self.state
+        motion, state = self.session.motion, self.state
         plates, positions = self._plates(), self._positions()
         capacity = self.program.tip_ul
 
         def job(log_):
-            said = liquid.run_step(robot, step, group, well, plates, positions,
+            said = liquid.run_step(motion, step, group, well, plates, positions,
                                    state, log=log_, capacity=capacity)
             return f"{describe(step).split(' @ ')[0]} for {well}: {said}."
 
@@ -1343,7 +1337,7 @@ class LiquidHandlingPage(QWidget):
     def _launch(self, *, clear_first: bool = False) -> None:
         """`clear_first`: a run from the first well, which blows the tip out
         over the trash before anything else."""
-        robot, emit = self.session.robot, self.job_said.emit
+        motion, emit = self.session.motion, self.job_said.emit
         # A copy: the page may not be edited during the run, but a copy
         # makes that a rule of the data rather than of the buttons.
         program = self.program.model_copy(deep=True)
@@ -1354,7 +1348,7 @@ class LiquidHandlingPage(QWidget):
 
         def job(log_):
             try:
-                liquid.run(robot, program, plates, positions, state,
+                liquid.run(motion, program, plates, positions, state,
                            pause=pause, stop=stop, log=log_,
                            on_well=lambda gi, well: emit(("well", (gi, well))),
                            on_progress=lambda n, total, gi, well:
@@ -1434,13 +1428,8 @@ class LiquidHandlingPage(QWidget):
 
     # -- keeping up with the session -----------------------------------------------
 
-    def _lose_top(self) -> None:
-        """The top of the travel depends on the tip and on the run."""
-        self.state.z_top = None
-
     def _tip_changed(self, tip) -> None:
-        """A new tip has a new top of travel; and no tip holds nothing."""
-        self._lose_top()
+        """No tip holds nothing."""
         if tip.attached is False and not self._running:
             self.state.in_tip = 0.0
             self._refresh()
