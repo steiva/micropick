@@ -8,6 +8,18 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## Unreleased
+
+- The tip is no longer retracted before a move when it is already at the
+  travel height: the jog panel's Go to, Tip calibration's Go to saved
+  position, the Picking page's moves (picking position, shake position,
+  dish center) and the picking run (a travel from the observation pose)
+  now go straight there, as Manual control did. From below the travel
+  height, the dish say, the tip still goes up first.
+- Internal: every move across the deck goes through one module
+  (`workflows.motion`), which keeps the travel height and the top of Z
+  for every page and run.
+
 ## 0.4.0 - 2026-10-19
 
 Memo points and the well center on Manual control, a trash and a deck map

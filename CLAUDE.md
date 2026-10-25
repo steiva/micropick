@@ -76,15 +76,21 @@ number, default 960, save to profile - is off on the pages.
 
 Robot commands from a page with a jog panel go through
 `JogPanel.run_job`, never a worker of the page's own, so they cannot overlap
-a key press. Moves across the deck are one force_direct
+a key press. Every move across the deck goes through the session's
+`workflows.motion.Motion` (`Session.motion`): pages, the jog panel, the
+pipette calibration, the liquid run and the picking run alike, never a
+travel of their own. Moves across the deck are one force_direct
 move_to_coordinates at 1 mm under the Z measured after a retract
-(`workflows.manual.raise_tip`, `travel_z`): with a long tip the robot does
-nothing for a moveToCoordinates at the retracted height itself. A retract
-is only repeated when the tip is below that travel height. A stored pose
-(`tip_calib`, `observe`, `shake`, the jog panel's Go to, and the picking
-run's own moves to them) is reached no higher than that travel height
-(`reachable_z`): taught after a retract, it is out of bounds for the robot. Click-to-move is off on every entry to the
-tab.
+(`Motion.raise_tip`, `travel_z`): with a long tip the robot does nothing
+for a moveToCoordinates at the retracted height itself. The measured top is
+one per robot connection, shared by every caller and dropped when the tip
+or the robot changes. A retract is only made when the tip is below that
+travel height (or the top is not measured yet), everywhere, the picking
+run included. A stored pose (`tip_calib`, `observe`, `shake`, the jog
+panel's Go to, and the picking run's own moves to them) is reached no
+higher than that travel height (`Motion.reachable`): taught after a
+retract, it is out of bounds for the robot. Click-to-move is off on every
+entry to the tab.
 
 On Manual control a **double** click moves (`CameraView.double_clicked`,
 `double_click_fits` off there: the wheel zooms back out); with Mark points
@@ -93,8 +99,8 @@ tip XY and a Z or none, named with the lowest free number M1, M2 ...,
 in memory until the program closes, never in the profile). The tip goes
 to one only by the card's Go to, never by a double click. A point below
 a deck module's top is flagged (`Session.memo_problem`, the jog
-envelope's floors: the profile's modules over the deck definition's
-slots, in the robot's frame), red on the picture and in its Z. Drawn in cyan
+envelope's floors, `Motion.envelope`: the profile's modules over the deck
+definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Drawn in cyan
 on the "points" layer of every page (`position_marks.memo_items`; that
 layer is on by default on Manual control) and listed in the Memo points
 card (`widgets.memo_points.MemoTable`). A new point takes New point Z, the
@@ -102,9 +108,11 @@ last Z given (typed into a point, or Z from tip); "travel height" (no Z)
 until one is given, so a first click never sends the tip down.
 
 The robot reports Z at the tip's end with a tip on and at the nozzle
-without one. The jog envelope's Z top is the retracted height, a hard
-ceiling (above it the pipette stops answering until homed): the bare
-nozzle's 200.6 mm (`Session.Z_NOZZLE_TOP_MM`, measured on the bench) less
+without one. There are two tops, kept apart in `workflows.motion`: the
+measured one above, and the jog envelope's, computed. The jog envelope's
+Z top is the retracted height, a hard ceiling (above it the pipette stops
+answering until homed): the bare nozzle's 200.6 mm
+(`motion.Z_NOZZLE_TOP_MM`, measured on the bench) less
 the tip's length (`Tip.length`: the robot's own `pickUpTip` result; else
 the rack's whole `tipLength`, which errs low; else 100 mm), less 0.5 mm
 for jog steps. A step taken above that top (after a retract or a home)

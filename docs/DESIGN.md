@@ -1222,7 +1222,7 @@ what it does and keeps a step's place with it when it is moved up or down
 the list. In a well a step is the robot's well-based command, which takes
 the tip there along the robot's own path, with no retract before it; the
 tip is raised only when the robot did not put it where it is. Saved points
-go through `drive_tip`, so the travel rules of manual control hold there.
+go through `Motion.tip_to`, so the travel rules of manual control hold there.
 
 **What the tip holds is counted, and the program says how much it takes.**
 An aspirate from a source (one fixed well, a saved point) is an auto
