@@ -571,9 +571,9 @@ class LabwarePage(QWidget):
             return
         slot = int(self._slot)
         self._say("")
-        self._run(Worker(self.session.load_labware, definition, slot),
-                  f"loading {definition.load_name} into slot {slot}")
-        self._loading_name = definition.load_name
+        if self._run(Worker(self.session.load_labware, definition, slot),
+                     f"loading {definition.load_name} into slot {slot}"):
+            self._loading_name = definition.load_name
 
     def _remove(self) -> None:
         if self._slot is None or self._busy() or self.session.robot is None:
@@ -781,13 +781,14 @@ class LabwarePage(QWidget):
     def _busy(self) -> bool:
         return self._worker is not None and self._worker.running
 
-    def _run(self, worker: Worker, what: str) -> None:
+    def _run(self, worker: Worker, what: str) -> bool:
         """Every job here sends the robot commands - a load, a tip - so it
-        claims the robot's lease first (`Session.robot_lease`)."""
+        claims the robot's lease first (`Session.robot_lease`). False, and
+        nothing started, while the robot is busy."""
         lease = self.session.robot_lease.claim(what)
         if lease is None:
             self._say("Robot busy.")
-            return
+            return False
         worker.lease = lease
         self._worker = worker
         worker.what = worker.what or what
@@ -799,6 +800,7 @@ class LabwarePage(QWidget):
         log.info("%s", what)
         worker.start()
         self._refresh()
+        return True
 
     def _job_said(self, text: str) -> None:
         log.info("%s", text)
