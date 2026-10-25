@@ -302,10 +302,10 @@ class PickingSession:
         self.logger = logger
 
         self.config = profile.picking
-        # (x, y) of the plate's measured well center, or None: see "The
-        # measured well center".
-        self._center_xy = ((0.0, 0.0) if well_center is None else
-                           (float(well_center[0]), float(well_center[1])))
+        # (x, y) of the plate's measured well center, or None for the
+        # definition's (`well_center.deposit_offset`): see "The measured
+        # well center".
+        self._center_xy = well_center
 
         offset = profile.calibration.pipette_offset
         if offset is None:

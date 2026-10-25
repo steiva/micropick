@@ -966,7 +966,7 @@ class PickingPage(QWidget):
         labware_id = session.run_state.labware[slot].labware_id
         pmap = PixelMap.from_config(profile.pixel_map)
         center = self._well_center()
-        center_xy = None if center is None else tuple(center.offset[:2])
+        center_xy = None if center is None else well_center.xy(center)
         # A folder per run, so a run's clips are together and apart from the
         # last one's; the clips in it are named for their target well.
         under_cam = clip_dir = None

@@ -1173,7 +1173,7 @@ class ManualPage(QWidget):
             # On the GUI thread, once the job has ended.
             self._measurement.started(slot, load_name, well, pose)
             self._refresh()
-            return well_center.REACHED.format(well=well)
+            return well_center.AT_TOP.format(well=well)
 
         log.info("manual control: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job, then=reached):
@@ -1251,7 +1251,7 @@ class ManualPage(QWidget):
         else:
             text = "Well center not measured."
         if nominal is not None:
-            text += "\n" + well_center.IN_HAND.format(well=nominal.well)
+            text += "\n" + well_center.AT_TOP.format(well=nominal.well)
         self.center_state.setText(text)
         self.center_state.setVisible(bool(text))
 

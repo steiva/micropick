@@ -22,14 +22,12 @@ from .motion import Motion
 
 __all__ = ["go_to_top", "Nominal", "Measurement", "xy", "deposit_offset",
            "plan_plate", "for_plan", "definition_depth", "run_using",
-           "REACHED", "IN_HAND", "FORGET_TIP", "in_use_tip"]
+           "AT_TOP", "FORGET_TIP", "in_use_tip"]
 
-# What the pages say, the same on both: the tip has reached the robot's well
-# top, and a measurement is in hand.
-REACHED = ("at the top of {well} as the robot has it: jog onto the real "
-           "center, level with the rim, then Set well center.")
-IN_HAND = ("At the top of {well} as the robot has it: jog the tip onto the "
-           "real center, level with the rim, then Set well center.")
+# What the pages say, the same on both: the tip is at the robot's well top,
+# and a measurement is in hand.
+AT_TOP = ("At the top of {well} as the robot has it: jog the tip onto the "
+          "real center, level with the rim, then Set well center.")
 FORGET_TIP = "Use the labware definition's well positions."
 
 
