@@ -162,3 +162,22 @@ def test_a_lent_lease_lets_the_touch_up_panel_jog_and_stays_held(app,
     finally:
         calibration.release()
     panel.deleteLater()
+
+
+def test_after_a_failed_move_the_pose_is_read_without_taking_the_robot(
+        app, session):
+    panel = JogPanel(session)
+    _settled(app, panel)
+    holders = []
+    session.robot_busy_changed.connect(holders.append)
+
+    def refused(_log):
+        raise RuntimeError("Destination out of bounds")
+
+    assert panel.run_job(refused, what="moving the robot")
+    _settled(app, panel)
+    assert _until(app, lambda: panel.pose is not None)
+    # The move's claim and its release, and nothing for the read after it.
+    assert holders == ["moving the robot", None]
+    assert any("out of bounds" in line for line in panel.position_lines)
+    panel.deleteLater()

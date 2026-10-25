@@ -873,6 +873,9 @@ class JogPanel(QWidget):
         worker.what = worker.what or ("moving the robot" if moves
                                       else "talking to the robot")
         self._job_moves = moves
+        # A read says nothing of its own: what the last job said - why a
+        # move failed - stays under the pose it reads.
+        self._job_reads = not robot_work
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and a lambda has none, so it would touch these widgets from
         # the worker's thread.
@@ -913,7 +916,8 @@ class JogPanel(QWidget):
         if isinstance(result, str):
             self.tell(result)
         elif result is None:
-            self._say("")
+            if not self._job_reads:
+                self._say("")
         elif not result.ok:
             self._say(result.reason or "refused", firm=True)
         elif result.clamped or result.reason:
@@ -937,7 +941,7 @@ class JogPanel(QWidget):
             if self.controller is not None:
                 controller = self.controller
                 self._run(Worker(lambda: (None, controller.status())),
-                          moves=False)
+                          moves=False, robot_work=False)
 
     # -- display -------------------------------------------------------------
 
