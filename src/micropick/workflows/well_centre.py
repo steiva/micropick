@@ -21,7 +21,7 @@ from ..hardware.protocols import xyz
 from .motion import Motion
 
 __all__ = ["go_to_top", "Nominal", "Measurement", "deposit_offset",
-           "for_plan", "definition_depth"]
+           "for_plan", "definition_depth", "run_using"]
 
 
 @dataclass(frozen=True)
@@ -76,6 +76,15 @@ def definition_depth(definition, well: str) -> float | None:
         return float(definition.data["wells"][well]["depth"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def run_using(lease, slot, load_name: str) -> str | None:
+    """The run going into this plate now, by name, or None. Its measured
+    center is not forgotten or changed under it: the run read it at Start,
+    and the profile and the run in progress must not disagree."""
+    if lease is None or not lease.uses_plate(slot, load_name):
+        return None
+    return lease.holder
 
 
 class Measurement:

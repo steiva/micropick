@@ -278,6 +278,7 @@ class ManualPage(QWidget):
         session.camera_opened.connect(self._refresh_cameras)
         session.camera_closed.connect(self._refresh_cameras)
         session.robot_state_changed.connect(self._robot_changed)
+        session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
         self._shortcuts = []
@@ -1207,7 +1208,9 @@ class ManualPage(QWidget):
         if data is None:
             return
         slot, load_name = data[0], data[2].load_name
-        if self._well_centre(slot, load_name) is None:
+        if (self._well_centre(slot, load_name) is None
+                or well_centre.run_using(self.session.robot_lease, slot,
+                                         load_name)):
             return
         answer = QMessageBox.question(
             self, "Forget well center",
@@ -1228,7 +1231,14 @@ class ManualPage(QWidget):
                                       and self._chosen_well() is not None)
         self.set_centre_button.setEnabled(idle and nominal is not None
                                           and self.jog.pose is not None)
-        self.forget_centre_button.setEnabled(idle and centre is not None)
+        running = (well_centre.run_using(self.session.robot_lease, data[0],
+                                         data[2].load_name)
+                   if data is not None else None)
+        self.forget_centre_button.setEnabled(idle and centre is not None
+                                             and running is None)
+        self.forget_centre_button.setToolTip(
+            f"In use by the {running}." if running is not None else
+            "Use the labware definition's well positions.")
         if data is None:
             text = ""
         elif centre is not None:
@@ -1408,6 +1418,9 @@ class ManualPage(QWidget):
             self._forget_targets()
         else:
             self._refresh()
+
+    def _on_robot_busy(self, _holder) -> None:
+        self._refresh()
 
     def _robot_changed(self, _state: str) -> None:
         self._measurement.forget()

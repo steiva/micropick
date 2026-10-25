@@ -37,12 +37,16 @@ log = logging.getLogger(__name__)
 class Lease:
     """The robot, held for `what` until `release`."""
 
-    def __init__(self, owner: "RobotLease", what: str, run: bool = False):
+    def __init__(self, owner: "RobotLease", what: str, run: bool = False,
+                 plates=()):
         self._owner = owner
         self.what = what
         # A run - picking, liquid, a calibration - rather than a short job:
         # closing the window asks before stopping one.
         self.run = run
+        # (slot, load name) of the plates the run goes into: their measured
+        # well centers are not forgotten or changed under it.
+        self.plates = frozenset((str(slot), name) for slot, name in plates)
         self._released = False
 
     @property
@@ -62,15 +66,17 @@ class RobotLease:
         self._held: Lease | None = None
         self._on_change = on_change
 
-    def claim(self, what: str, *, run: bool = False) -> Lease | None:
+    def claim(self, what: str, *, run: bool = False,
+              plates=()) -> Lease | None:
         """The robot for `what`, or None while something else has it.
-        `run`: a run that holds it for minutes, not a short job."""
+        `run`: a run that holds it for minutes, not a short job; `plates`,
+        the (slot, load name) of the plates it goes into."""
         with self._lock:
             if self._held is not None:
                 log.info("robot busy with %s: %s refused", self._held.what,
                          what)
                 return None
-            lease = self._held = Lease(self, what, run)
+            lease = self._held = Lease(self, what, run, plates)
         self._changed(what)
         return lease
 
@@ -82,6 +88,11 @@ class RobotLease:
     def holding_run(self) -> bool:
         held = self._held
         return held is not None and held.run
+
+    def uses_plate(self, slot, load_name: str) -> bool:
+        """Whether what holds the robot goes into this plate's wells."""
+        held = self._held
+        return held is not None and (str(slot), load_name) in held.plates
 
     @property
     def holder(self) -> str | None:

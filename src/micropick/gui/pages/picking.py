@@ -935,7 +935,8 @@ class PickingPage(QWidget):
         # else moves it until the run ends (`Session.robot_lease`). Claimed
         # before anything is prepared, and given back if that fails before
         # the run's worker has it.
-        lease = self.session.robot_lease.claim("picking run", run=True)
+        lease = self.session.robot_lease.claim("picking run", run=True,
+                                               plates=self._plan_plates())
         if lease is None:
             self.run_state.setText("Robot busy.")
             return
@@ -947,6 +948,17 @@ class PickingPage(QWidget):
                     and worker.running):
                 lease.release()
             raise
+
+    def _plan_plates(self) -> set:
+        """(slot, load name) of the plate the plan delivers into, if it is
+        on the deck: its measured center stays while the run uses it."""
+        session = self.session
+        routine, state = session.routine, session.run_state
+        if routine is None or state is None:
+            return set()
+        slot = str(routine.destination.slot)
+        entry = state.labware.get(slot)
+        return set() if entry is None else {(slot, entry.load_name)}
 
     def _launch(self, lease) -> None:
         """The run on its own worker, holding `lease`."""

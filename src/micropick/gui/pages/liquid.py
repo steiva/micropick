@@ -1147,7 +1147,8 @@ class LiquidHandlingPage(QWidget):
 
     def _well_depth_edited(self) -> None:
         shown = self._shown_plate()
-        if shown is None or self._well_centre(*shown) is None:
+        if (shown is None or self._well_centre(*shown) is None
+                or self._run_using(shown)):
             return
         try:
             self.session.set_well_depth(*shown, self.well_depth.value())
@@ -1173,9 +1174,15 @@ class LiquidHandlingPage(QWidget):
         if not self.jog.run_job(job):
             self.jog.tell("Robot busy.")
 
+    def _run_using(self, shown) -> str | None:
+        """The run going into the shown plate now, if any
+        (`well_centre.run_using`)."""
+        return well_centre.run_using(self.session.robot_lease, *shown)
+
     def _forget_well_centre(self) -> None:
         shown = self._shown_plate()
-        if shown is None or self._well_centre(*shown) is None:
+        if (shown is None or self._well_centre(*shown) is None
+                or self._run_using(shown)):
             return
         slot, load_name = shown
         answer = QMessageBox.question(
@@ -1363,7 +1370,10 @@ class LiquidHandlingPage(QWidget):
             return "run finished."
 
         # The robot for the whole run, pauses included (`Session.robot_lease`).
-        if not self.jog.run_job(job, what="liquid run", run=True):
+        used = {(slot, plates[slot].load_name)
+                for slot in liquid.slots_used(program) if slot in plates}
+        if not self.jog.run_job(job, what="liquid run", run=True,
+                                plates=used):
             self.jog.tell("Robot busy.")
             return
         self._running = True
@@ -1457,9 +1467,14 @@ class LiquidHandlingPage(QWidget):
 
     # -- display ------------------------------------------------------------------
 
-    def _show_centre(self, shown, selection, idle: bool) -> None:
-        """The well centre line and its buttons, for the plate on the map."""
+    def _show_centre(self, shown, selection, idle: bool,
+                     idle_here: bool) -> None:
+        """The well centre line and its buttons, for the plate on the map.
+        `idle`: the robot may be moved; `idle_here`: this page runs nothing.
+        Forgetting the center and its depth are the profile's, not the
+        robot's, and wait only for a run going into this plate."""
         robot = self.session.robot is not None
+        running = self._run_using(shown) if shown is not None else None
         centre = self._well_centre(*shown) if shown is not None else None
         nominal = (self._measurement.for_plate(*shown) if shown is not None
                    else None)
@@ -1469,10 +1484,14 @@ class LiquidHandlingPage(QWidget):
         self.set_centre_button.setEnabled(idle and nominal is not None
                                           and self.jog.pose is not None)
         self.go_centre_button.setEnabled(idle and robot and centre is not None)
-        self.forget_centre_button.setEnabled(idle and centre is not None)
+        self.forget_centre_button.setEnabled(idle_here and centre is not None
+                                             and running is None)
+        self.forget_centre_button.setToolTip(
+            f"In use by the {running}." if running is not None else
+            "Use the labware definition's well positions.")
         self.depth_label.setVisible(centre is not None)
         self.well_depth.setVisible(centre is not None)
-        self.well_depth.setEnabled(idle)
+        self.well_depth.setEnabled(idle_here and running is None)
         if (centre is not None and centre.depth_mm is not None
                 and not self.well_depth.hasFocus()):
             self.well_depth.blockSignals(True)
@@ -1526,7 +1545,7 @@ class LiquidHandlingPage(QWidget):
             self.plate_state.setText(f"{len(selection)} wells selected."
                                      if selection else "")
         self.plate_state.setVisible(bool(self.plate_state.text()))
-        self._show_centre(shown, selection, idle)
+        self._show_centre(shown, selection, idle, idle_here)
 
         # Groups and steps.
         has_group = group is not None

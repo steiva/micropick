@@ -55,3 +55,19 @@ def test_only_one_of_many_threads_gets_it():
     for t in threads:
         t.join()
     assert len(got) == 1
+
+
+def test_a_run_says_which_plates_it_uses_until_it_ends():
+    lease = RobotLease()
+    run = lease.claim("picking run", run=True, plates={("5", "corning_96")})
+    assert lease.uses_plate(5, "corning_96")
+    assert not lease.uses_plate(5, "nest_96")
+    assert not lease.uses_plate(2, "corning_96")
+    run.release()
+    assert not lease.uses_plate(5, "corning_96")
+
+
+def test_a_short_job_uses_no_plate():
+    lease = RobotLease()
+    lease.claim("jog")
+    assert not lease.uses_plate(5, "corning_96")

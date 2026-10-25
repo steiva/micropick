@@ -123,3 +123,88 @@ def test_a_center_measured_on_one_page_is_the_other_pages(app, session):
     assert plate.centre == pytest.approx((0.4, -0.3, -1.5), abs=0.05)
     manual.deleteLater()
     liquid.deleteLater()
+
+
+@pytest.mark.parametrize("make", [_manual, _liquid],
+                         ids=["manual control", "liquid handling"])
+def test_a_center_a_run_uses_is_not_forgotten_under_it(app, session, make):
+    page = make(app, session)
+    _measure(app, session, page, (0.4, -0.3, -1.5))
+    page._refresh()
+    assert page.forget_centre_button.isEnabled()
+    run = session.robot_lease.claim("liquid run", run=True,
+                                    plates={("5", PLATE)})
+    try:
+        app.processEvents()
+        assert not page.forget_centre_button.isEnabled()
+        assert "liquid run" in page.forget_centre_button.toolTip()
+        if hasattr(page, "well_depth"):
+            assert not page.well_depth.isEnabled()
+        page._forget_well_centre()
+        assert session.profile.deck.well_centre(5, PLATE) is not None
+    finally:
+        run.release()
+    app.processEvents()
+    assert page.forget_centre_button.isEnabled()
+    page.deleteLater()
+
+
+def test_a_run_on_another_plate_leaves_this_ones_center_alone(app, session):
+    page = _liquid(app, session)
+    _measure(app, session, page, (0.4, -0.3, -1.5))
+    run = session.robot_lease.claim("liquid run", run=True,
+                                    plates={("2", PLATE)})
+    try:
+        app.processEvents()
+        page._refresh()
+        # The robot is busy, so no Go to; but this plate is not the run's.
+        assert page.forget_centre_button.isEnabled()
+    finally:
+        run.release()
+    page.deleteLater()
+
+
+def test_a_liquid_run_says_which_plates_it_goes_into(app, session):
+    from micropick.core.liquid import Location
+    session.tip = session.tip.__class__(attached=True)
+    page = _liquid(app, session)
+    page.plate.set_selection({"A1"})
+    page._new_group()
+    page._add_step("pause")
+    page.trash.set_location(Location(kind="well", slot="5", load_name=PLATE,
+                                     well="H12"))
+    page._trash_edited()
+    page._confirm_start = lambda: True
+    page._start()
+    end = time.monotonic() + 10
+    while not page._pause.is_set() and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    assert session.robot_lease.uses_plate(5, PLATE)
+    page._stop_run()
+    page._pause.clear()
+    _settle(app, page.jog)
+    page.deleteLater()
+
+
+def test_a_picking_run_says_it_goes_into_the_plans_plate(app, session,
+                                                         monkeypatch):
+    from types import SimpleNamespace
+    from micropick.gui.pages.picking import PickingPage
+    page = PickingPage(session)
+    monkeypatch.setattr(page, "_run_problems", lambda: [])
+    monkeypatch.setattr(page, "_confirm_start", lambda: True)
+    session.routine = SimpleNamespace(destination=SimpleNamespace(slot=5))
+    claims = []
+    real = session.robot_lease.claim
+
+    def claim(what, **kw):
+        claims.append((what, kw))
+        return None                              # stop there: refused
+
+    monkeypatch.setattr(session.robot_lease, "claim", claim)
+    page._start_run()
+    assert claims == [("picking run",
+                       {"run": True, "plates": {("5", PLATE)}})]
+    monkeypatch.setattr(session.robot_lease, "claim", real)
+    page.deleteLater()
