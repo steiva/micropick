@@ -16,6 +16,14 @@ the third for fixes.
   dish center) and the picking run (a travel from the observation pose)
   now go straight there, as Manual control did. From below the travel
   height, the dish say, the tip still goes up first.
+- One job at a time on the robot, across all pages. While a picking,
+  liquid or calibration run goes on - paused or waiting for you included -
+  nothing else moves the robot: the jog keys and moving buttons of every
+  page, Robot & Deck's labware and tip buttons, Home and the tip button
+  are greyed out, and their tooltip says what has the robot. Before, a
+  jog on Manual control or a tip pick-up on Robot & Deck could go into a
+  run's moves. Disconnect and Start new robot session wait for the robot
+  too, and closing the window during a run asks first.
 - Internal: every move across the deck goes through one module
   (`workflows.motion`), which keeps the travel height and the top of Z
   for every page and run.

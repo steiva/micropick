@@ -74,9 +74,22 @@ number, default 960, save to profile - is off on the pages.
 
 ### Manual control drives the robot from the picture
 
+One job at a time moves the robot or changes its robot session, across
+every page: it claims the robot's lease first (`Session.robot_lease`,
+`hardware.robot_lease`) and its `Worker(lease=)` gives it back as it ends.
+A claim while it is held is refused ("Robot busy."), never queued. Reads
+(the pose, the tip record, the lights state) and the lights switch take
+none. A run - picking, liquid, the camera sweep, the pipette calibration -
+holds it from Start to its end, pauses and needs operator included; the
+pipette calibration lends it to the touch-up's panel (`JogPanel.lend`).
+While anything holds it, every jog panel and every button that would move
+the robot is greyed out, the holder named in the tooltip. Disconnect and a
+new robot session are refused while it is held; closing the window during
+a run asks, stops it, and parks Z only once the robot is free.
+
 Robot commands from a page with a jog panel go through
-`JogPanel.run_job`, never a worker of the page's own, so they cannot overlap
-a key press. Every move across the deck goes through the session's
+`JogPanel.run_job` (which claims the lease), never a worker of the page's
+own, so they cannot overlap a key press. Every move across the deck goes through the session's
 `workflows.motion.Motion` (`Session.motion`): pages, the jog panel, the
 pipette calibration, the liquid run and the picking run alike, never a
 travel of their own. Moves across the deck are one force_direct
@@ -123,16 +136,16 @@ the installed pipette definition's. A jog panel reads the pose again when
 the tip changes and when it is shown.
 
 Home robot position in the status bar is reachable from every page: it is
-refused while any jog panel or any worker is busy, and goes through the
-shown page's `JogPanel.run_job` when that page has one.
+refused while the robot's lease is held, and goes through the shown page's
+`JogPanel.run_job` when that page has one, else claims the lease for a
+worker of its own.
 The status bar's tip button (`widgets.tip_button`) opens a panel growing
 up out of it - drop in place, drop in trash, pick up from a rack's well -
 and its acts run by the same rule (`MainWindow._tip_command`). Only what
 can be clicked in the status bar lights up under the mouse.
-"The robot is busy" (`MainWindow._robot_busy`) counts jog panels and the
-workers that may talk to the robot: a worker that never does - a camera
-opening, a look for the marker, a picture saved - is marked
-`worker.robot = False` (`any_running(robot_only=True)`).
+"The robot is busy" (`MainWindow._robot_busy`) is the robot's lease being
+held, nothing else: a camera opening, a look for the marker or a picture
+saved take no lease and busy nothing.
 
 The next step of the Operation checklist floats at the top centre, under
 the tab row, of every page but Profile and Settings (`widgets.next_step`),

@@ -28,6 +28,16 @@ _Avoid_: soft limits (on screen only), bounds
 **Reachable**:
 Of a stored pose: no higher than the travel height. A pose taught at the top is reached 1 mm under it.
 
+## Using the robot
+
+**Run**:
+A picking run, a liquid run, the camera calibration sweep or the pipette calibration: work that has the robot from Start to its end, its pauses and waits for the operator included.
+_Avoid_: job (a job is short: a jog step, a Go to, Home)
+
+**Robot busy**:
+Something has the robot - a run, or a short job on any page - so nothing else may move it or change its robot session until that ends. A request meanwhile is refused, never kept for later.
+_Avoid_: locked, queued
+
 **Robot session**:
 The OT-2's HTTP run, holding the loaded labware, the offsets and the tip record.
 _Avoid_: run (a run is a picking or liquid run)
