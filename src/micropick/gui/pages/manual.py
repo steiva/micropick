@@ -129,6 +129,7 @@ from ...core.deck import slot_centre
 from ...hardware.protocols import xyz
 from ...viz import markers, overlays
 from ...workflows import manual as moves
+from ...workflows import well_centre
 from ...workflows.motion import WELL_LEVELS
 from .. import keys
 from ..auto_camera import CameraOpener
@@ -236,10 +237,9 @@ class ManualPage(QWidget):
         self._worker: Worker | None = None
         self._tip_detector = None
         self._tip_device = None             # the setting it was loaded with
-        # (slot, load name, well, pose) of the last Go to well top: the
-        # robot's own idea of that well's top center, which Set well center
-        # measures the real one against.
-        self._nominal: tuple | None = None
+        # The last Go to well top: the robot's own idea of that well's top
+        # center, which Set well center measures the real one against.
+        self._measurement = well_centre.Measurement()
         self._forget_targets(redraw=False)
 
         self.opener = CameraOpener(session, self)
@@ -1105,14 +1105,13 @@ class ManualPage(QWidget):
         if drop and self._tip_problem("dispense"):
             self.jog.tell(self._tip_problem("dispense"))
             return
-        cfg = self.session.profile.picking
         level = self.well_level.currentText()
         # From the measured center where there is one, as a picking run
         # deposits: its x and y only, the level keeps the robot's heights.
         centre = self._well_centre(slot, definition.load_name)
-        cx, cy = (centre.offset[0], centre.offset[1]) if centre else (0, 0)
-        offset = (cfg.well_offset_x + cx, cfg.well_offset_y + cy,
-                  float(self.well_offset.value()))
+        dx, dy = well_centre.deposit_offset(self.session.profile.picking,
+                                            centre)
+        offset = (dx, dy, float(self.well_offset.value()))
         volume, rate = self._liquid_amount()
 
         def job(log):
@@ -1149,38 +1148,37 @@ class ManualPage(QWidget):
     def _shown_nominal(self):
         """The last Go to well top, while its plate is still the chosen one."""
         data = self.plate_choice.currentData()
-        nominal = self._nominal
-        if nominal is None or data is None:
+        if data is None:
             return None
-        return (nominal if (nominal[0], nominal[1])
-                == (data[0], data[2].load_name) else None)
+        return self._measurement.for_plate(data[0], data[2].load_name)
 
     def _go_to_well_top(self) -> None:
         chosen, robot = self._chosen_well(), self.session.robot
         if chosen is None or robot is None or self.jog.busy:
             return
         slot, labware_id, definition, well = chosen
-        load_name = definition.load_name
+        load_name, motion = definition.load_name, self.session.motion
 
         def job(log):
-            self.session.motion.to_well(labware_id, well, "top",
-                                        (0.0, 0.0, 0.0), log=log)
-            # Read on this thread, shown on the next refresh: the job's end
-            # emits position_changed.
-            self._nominal = (slot, load_name, well, xyz(robot))
+            return well_centre.go_to_top(motion, labware_id, well, log=log)
+
+        def reached(pose):
+            # On the GUI thread, once the job has ended.
+            self._measurement.started(slot, load_name, well, pose)
+            self._refresh()
             return (f"at the top of {well} as the robot has it: jog onto the "
                     f"real center, level with the rim, then Set well center.")
 
         log.info("manual control: to the top of %s in slot %s", well, slot)
-        if not self.jog.run_job(job):
+        if not self.jog.run_job(job, then=reached):
             self.jog.tell("Robot busy.")
 
     def _set_well_centre(self) -> None:
         nominal, pose = self._shown_nominal(), self.jog.pose
         if nominal is None or pose is None or self.jog.busy:
             return
-        slot, load_name, well, at = nominal
-        offset = [float(p) - float(a) for p, a in zip(pose, at)]
+        slot, load_name, well = nominal.slot, nominal.load_name, nominal.well
+        offset = self._measurement.offset(pose)
         if self._well_centre(slot, load_name) is not None:
             answer = QMessageBox.question(
                 self, "Set well center",
@@ -1190,11 +1188,8 @@ class ManualPage(QWidget):
                 QMessageBox.StandardButton.No)
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        definition = self.plate_choice.currentData()[2]
-        try:
-            depth = float(definition.data["wells"][well]["depth"])
-        except (KeyError, TypeError, ValueError):
-            depth = None
+        depth = well_centre.definition_depth(
+            self.plate_choice.currentData()[2], well)
         try:
             self.session.set_well_centre(slot, load_name, offset, well,
                                          depth_mm=depth)
@@ -1202,7 +1197,7 @@ class ManualPage(QWidget):
             self.jog.tell(f"not saved: {exc}")
             return
         # Measured: measuring again starts from Go to well top.
-        self._nominal = None
+        self._measurement.forget()
         self._refresh()
         self.jog.tell(f"well center of slot {slot} saved: ({offset[0]:+.2f}, "
                       f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
@@ -1241,7 +1236,7 @@ class ManualPage(QWidget):
         else:
             text = "Well center not measured."
         if nominal is not None:
-            text += (f"\nAt the top of {nominal[2]} as the robot has it: jog "
+            text += (f"\nAt the top of {nominal.well} as the robot has it: jog "
                      f"the tip onto the real center, level with the rim, then "
                      f"Set well center.")
         self.centre_state.setText(text)
@@ -1415,7 +1410,7 @@ class ManualPage(QWidget):
             self._refresh()
 
     def _robot_changed(self, _state: str) -> None:
-        self._nominal = None
+        self._measurement.forget()
         self._reload_plates()
 
     # -- cameras ----------------------------------------------------------------------
