@@ -238,3 +238,23 @@ def test_the_depth_says_which_run_uses_the_plate(app, session):
     app.processEvents()
     assert "liquid run" not in page.well_depth.toolTip()
     page.deleteLater()
+
+
+@pytest.mark.parametrize("make", [_manual, _liquid],
+                         ids=["manual control", "liquid handling"])
+def test_a_center_a_run_uses_is_not_replaced_under_it(app, session, make):
+    page = make(app, session)
+    page._go_to_well_top()
+    _settle(app, page.jog)
+    _jog(app, session, page.jog, 0.4, -0.3, -1.5)
+    run = session.robot_lease.claim("picking run", run=True,
+                                    plates={("5", PLATE)})
+    try:
+        app.processEvents()
+        page._refresh()
+        assert not page.set_center_button.isEnabled()
+        page._set_well_center()
+        assert session.profile.deck.well_center(5, PLATE) is None
+    finally:
+        run.release()
+    page.deleteLater()

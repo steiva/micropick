@@ -1181,7 +1181,8 @@ class ManualPage(QWidget):
 
     def _set_well_center(self) -> None:
         nominal, pose = self._shown_nominal(), self.jog.pose
-        if nominal is None or pose is None or self.jog.busy:
+        if (nominal is None or pose is None or self.jog.busy
+                or self._run_using(nominal.slot, nominal.load_name)):
             return
         slot, load_name, well = nominal.slot, nominal.load_name, nominal.well
         offset = self._measurement.offset(pose)
@@ -1231,12 +1232,13 @@ class ManualPage(QWidget):
         center = (self._well_center(data[0], data[2].load_name)
                   if data is not None else None)
         nominal = self._shown_nominal()
+        running = (self._run_using(data[0], data[2].load_name)
+                   if data is not None else None)
         self.go_top_button.setEnabled(idle and has_robot
                                       and self._chosen_well() is not None)
         self.set_center_button.setEnabled(idle and nominal is not None
-                                          and self.jog.pose is not None)
-        running = (self._run_using(data[0], data[2].load_name)
-                   if data is not None else None)
+                                          and self.jog.pose is not None
+                                          and running is None)
         self.forget_center_button.setEnabled(idle and center is not None
                                              and running is None)
         self.forget_center_button.setToolTip(

@@ -1123,7 +1123,8 @@ class LiquidHandlingPage(QWidget):
         nominal = (self._measurement.for_plate(*shown) if shown is not None
                    else None)
         if (nominal is None or pose is None
-                or self._running or self.jog.busy):
+                or self._running or self.jog.busy
+                or self._run_using((nominal.slot, nominal.load_name))):
             return
         slot, load_name, well = nominal.slot, nominal.load_name, nominal.well
         offset = self._measurement.offset(pose)
