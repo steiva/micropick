@@ -109,7 +109,7 @@ class Detection:
 class PatternView:
     """One reading of the crosshair disc, and possibly the tip."""
 
-    centre: np.ndarray                      # central crosshair, pixels
+    center: np.ndarray                      # central crosshair, pixels
     neighbours: np.ndarray                  # the four outer crosshairs
     tip: np.ndarray | None
     mm_per_px: float
@@ -123,7 +123,7 @@ class PatternView:
     def residual_px(self) -> np.ndarray:
         if self.tip is None:
             raise TipCalibrationError("no tip in this view")
-        return self.centre - self.tip
+        return self.center - self.tip
 
 
 class TipDetector:
@@ -159,14 +159,14 @@ class TipDetector:
     # -- assembling a view --------------------------------------------------
 
     def _pattern_from(self, dets: list[Detection], image_shape,
-                      spacing_mm: float, centre_tol_px: float
+                      spacing_mm: float, center_tol_px: float
                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, float, float]:
         """Identify the central crosshair from the shape of the pattern.
 
-        The centre is the crosshair whose four nearest neighbours sit at equal
+        The center is the crosshair whose four nearest neighbours sit at equal
         radii and in opposing directions. Picking it by proximity to the frame
-        centre instead, as the previous version did, fails as soon as the disc
-        is a few millimetres off centre, and silently returns an outer
+        center instead, as the previous version did, fails as soon as the disc
+        is a few millimetres off center, and silently returns an outer
         crosshair when it fails.
         """
         points = np.array([d.xy for d in dets if d.label == self.point_label])
@@ -186,7 +186,7 @@ class TipDetector:
                 continue
             cv = float(np.std(r) / np.mean(r))
             units = (others[near] - candidate) / r[:, None]
-            # opposing neighbours cancel, so a true centre sums to nearly zero
+            # opposing neighbours cancel, so a true center sums to nearly zero
             asymmetry = float(np.linalg.norm(units.sum(axis=0)) / 4)
             score = cv + asymmetry
             if best is None or score < best[0]:
@@ -203,22 +203,22 @@ class TipDetector:
                 f"crosshair was missed"
             )
 
-        centre = points[idx]
-        img_centre = np.array([image_shape[1] / 2, image_shape[0] / 2])
-        if np.linalg.norm(centre - img_centre) > centre_tol_px:
+        center = points[idx]
+        img_center = np.array([image_shape[1] / 2, image_shape[0] / 2])
+        if np.linalg.norm(center - img_center) > center_tol_px:
             raise TipCalibrationError(
-                f"the disc center is {np.linalg.norm(centre - img_centre):.0f} px "
-                f"from the frame center, beyond the {centre_tol_px:.0f} px "
+                f"the disc center is {np.linalg.norm(center - img_center):.0f} px "
+                f"from the frame center, beyond the {center_tol_px:.0f} px "
                 f"tolerance; re-center the disc under the camera"
             )
 
         mm_per_px = float(spacing_mm / np.mean(radii))
         tips = [d for d in dets if d.label == self.tip_label]
         tip = (max(tips, key=lambda d: d.conf).xy if tips else None)
-        return centre, neighbours, tip, mm_per_px, cv
+        return center, neighbours, tip, mm_per_px, cv
 
     def view(self, camera: Camera, *, spacing_mm: float, frames: int = 5,
-             centre_tol_px: float | None = None, need_tip: bool = False,
+             center_tol_px: float | None = None, need_tip: bool = False,
              max_radius_cv: float = 0.05, settle_s: float = 0.0) -> PatternView:
         """Average several frames into one reading.
 
@@ -231,9 +231,9 @@ class TipDetector:
         w, h = camera.resolution
         # Generous by default: identification is by pattern shape, so this only
         # guards against the disc drifting so far that neighbours leave frame.
-        centre_tol_px = centre_tol_px if centre_tol_px is not None else 0.35 * w
+        center_tol_px = center_tol_px if center_tol_px is not None else 0.35 * w
 
-        centres, tips, ratios, cvs, last, last_dets = [], [], [], [], None, []
+        centers, tips, ratios, cvs, last, last_dets = [], [], [], [], None, []
         problems, too_few = [], 0
         for i in range(frames):
             frame = camera.read_after(time.monotonic())
@@ -241,12 +241,12 @@ class TipDetector:
             dets = self.detect(frame)
             try:
                 c, nb, tip, mmpp, cv = self._pattern_from(
-                    dets, frame.shape, spacing_mm, centre_tol_px)
+                    dets, frame.shape, spacing_mm, center_tol_px)
             except TipCalibrationError as exc:
                 problems.append(str(exc))
                 too_few += isinstance(exc, _TooFewCrosshairs)
                 continue
-            centres.append(c)
+            centers.append(c)
             ratios.append(mmpp)
             cvs.append(cv)
             last_dets = dets
@@ -254,16 +254,16 @@ class TipDetector:
             if tip is not None:
                 tips.append(tip)
 
-        if not centres and too_few == frames:
+        if not centers and too_few == frames:
             raise TipCalibrationError(NO_DISC)
-        if not centres:
+        if not centers:
             raise TipCalibrationError(
                 f"no usable reading in {frames} frames. Last problem: "
                 f"{problems[-1] if problems else 'unknown'}"
             )
 
-        centre = np.median(centres, axis=0)
-        spread = float(np.max(np.linalg.norm(np.array(centres) - centre, axis=1)))
+        center = np.median(centers, axis=0)
+        spread = float(np.max(np.linalg.norm(np.array(centers) - center, axis=1)))
         radius_cv = float(np.median(cvs))
         if radius_cv > max_radius_cv:
             raise TipCalibrationError(
@@ -285,9 +285,9 @@ class TipDetector:
                 f"far off"
             )
 
-        return PatternView(centre, last_neighbours, tip,
+        return PatternView(center, last_neighbours, tip,
                            float(np.median(ratios)), spread, radius_cv,
-                           len(centres), last, last_dets)
+                           len(centers), last, last_dets)
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +373,7 @@ def calibrate_pipette_offset(
     # First, before the upper camera is even read and long before the gantry
     # moves. Everything the lower camera measures is in its pixels, so its mode
     # sets the scale of the result: the four outer crosshairs rescale mm/px, but
-    # the detector's centre tolerance is a fraction of the frame width and YOLO
+    # the detector's center tolerance is a fraction of the frame width and YOLO
     # runs at a fixed imgsz either way, so a smaller mode is a quietly coarser
     # calibration rather than a failed one. That is the failure this refuses:
     # the same camera label is legitimately reopened at 2000x1500 for the
@@ -417,13 +417,13 @@ def calibrate_pipette_offset(
     over_view = detector.view(over_cam, spacing_mm=target.spacing_mm,
                               frames=frames)
     gx, gy, gz = xyz(robot)
-    if not pixel_map.covers(*over_view.centre):
+    if not pixel_map.covers(*over_view.center):
         raise TipCalibrationError(
-            f"the crosshair is at {over_view.centre.round(0)}, outside the "
+            f"the crosshair is at {over_view.center.round(0)}, outside the "
             f"calibrated area of the pixel map; center the disc better"
         )
-    target_xy = np.asarray(pixel_map.to_robot(over_view.centre[0],
-                                              over_view.centre[1], (gx, gy)))
+    target_xy = np.asarray(pixel_map.to_robot(over_view.center[0],
+                                              over_view.center[1], (gx, gy)))
     log(f"  crosshair at {target_xy.round(3)} mm, "
         f"spread {over_view.spread_px:.1f} px over {over_view.n_frames} frames")
 

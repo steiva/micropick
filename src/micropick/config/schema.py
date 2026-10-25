@@ -293,19 +293,23 @@ class CameraHomography(BaseModel):
     that a profile written before this change still loads; a matrix without them
     is refused rather than guessed at.
 
-    centre_error_px is the reprojection error of the central crosshair, which is
+    center_error_px is the reprojection error of the central crosshair, which is
     deliberately left out of the fit. Four points determine a homography
     exactly, so their own residual is zero whatever the correspondence; the
-    held-out centre is the only number that can disagree.
+    held-out center is the only number that can disagree.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     matrix: Annotated[list[Vec3], Field(min_length=3, max_length=3)]
     gantry_xy: Vec2
     over_resolution: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None
     under_resolution: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None
-    centre_error_px: float | None = None
+    # accepts "centre_error_px", the key calibration.json was written with
+    # up to 0.4.0
+    center_error_px: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("center_error_px", "centre_error_px"))
     rotation_deg: float | None = None
     det: float | None = None
     reproj_mean_px: float | None = None
@@ -484,7 +488,7 @@ class PickingConfig(BaseModel):
                                        # way, because eight crops is not enough
                                        # to fix the thresholds and only recorded
                                        # features can replace them.
-    bubble_core_r: float = 0.30        # the "centre", in fractions of R
+    bubble_core_r: float = 0.30        # the "center", in fractions of R
     bubble_ring_window: tuple[float, float] = (0.40, 0.85)
                                        # the rim it is compared against
     bubble_max_core_ratio: float = 0.85   # cuboids measured >= 1.00
@@ -605,18 +609,18 @@ class ModuleType(BaseModel):
     height_mm: float
 
 
-class WellCentre(BaseModel):
+class WellCenter(BaseModel):
     """Where the wells of one plate really are, measured on the deck.
 
     The robot's idea of a well comes from the labware definition - the
     catalogue part - and the slot; the plate on the deck sits a fraction of a
     millimetre off it, and a long tip bends. Washing draws beside a cuboid
     near the bottom, where that fraction matters. So the tip is walked onto
-    one well's real centre, level with its rim, and `offset` is that pose
+    one well's real center, level with its rim, and `offset` is that pose
     less the robot's own `move_to_well(well, "top")`.
 
     Its x and y are added to every well command on this plate, so a step's
-    sideways offset is from the real centre (notebook 03's "centre offset").
+    sideways offset is from the real center (notebook 03's "center offset").
     Its z is the measured rim, and with `depth_mm` - the well's depth, as
     the operator knows it, the definition's only a starting value - it gives
     the measured bottom: rim less depth, the level a step can be measured
@@ -665,17 +669,21 @@ def _default_module_types() -> list[ModuleType]:
 class DeckConfig(BaseModel):
     """deck.json: the modules on this installation's deck, the kinds of
     module there are to choose from, the labware loaded most recently, and
-    the measured well centres of the plates on it (`WellCentre`).
+    the measured well centers of the plates on it (`WellCenter`).
 
     All but the modules are optional, so a deck.json from before them reads
-    as the default catalogue, an empty history and no centres."""
+    as the default catalogue, an empty history and no centers."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     modules: list[DeckModule] = Field(default_factory=list)
     module_types: list[ModuleType] = Field(default_factory=_default_module_types)
     recent_labware: list[str] = Field(default_factory=list)
-    well_centres: list[WellCentre] = Field(default_factory=list)
+    # accepts "well_centres", the key a deck.json was written with up to
+    # 0.4.0; written as "well_centers" from then on
+    well_centers: list[WellCenter] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("well_centers", "well_centres"))
 
     def module_type(self, name: str) -> ModuleType | None:
         return next((t for t in self.module_types if t.name == name), None)
@@ -685,9 +693,9 @@ class DeckConfig(BaseModel):
         rest = [n for n in self.recent_labware if n != load_name]
         self.recent_labware = [load_name] + rest[:RECENT_LABWARE - 1]
 
-    def well_centre(self, slot, load_name: str) -> WellCentre | None:
+    def well_center(self, slot, load_name: str) -> WellCenter | None:
         wanted = int(slot)
-        return next((c for c in self.well_centres
+        return next((c for c in self.well_centers
                      if c.slot == wanted and c.load_name == load_name), None)
 
     def module_for(self, slot) -> DeckModule | None:

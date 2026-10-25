@@ -147,7 +147,7 @@ can be clicked in the status bar lights up under the mouse.
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
 
-The next step of the Operation checklist floats at the top centre, under
+The next step of the Operation checklist floats at the top center, under
 the tab row, of every page but Profile and Settings (`widgets.next_step`),
 with a link to its page; it is dragged anywhere in the window with the
 mouse and stays there until the program closes. Closed with its cross, it
@@ -173,16 +173,16 @@ not a page of its own. Start blows the tip out over the program's trash
 does not. The plate map spans both card columns (`CardColumns(wide=...)`),
 names the well under the pointer, and opens in its own window as a
 `PlateMirror` - the same scene, never a copy. A plate's measured well
-center (`WellCentre`) is one per slot and plate type, set on Liquid
+center (`WellCenter`) is one per slot and plate type, set on Liquid
 handling or on Manual control's Well card (Go to well top, jog, Set well
 center); Manual control's Go to well and a picking deposit add its x
 and y, Liquid handling's steps all of it. It is the plate's, wherever it
 was measured, and every page reads it the same way:
-`workflows.well_centre` holds the measurement both pages take
+`workflows.well_center` holds the measurement both pages take
 (`Measurement`, `go_to_top`), the deposit's offset (`deposit_offset`) and
 the plate plan's plate's center (`for_plan`). While a run goes into a plate
 (its lease's `plates`), that plate's center is neither forgotten nor its
-depth changed (`well_centre.run_using`).
+depth changed (`well_center.run_using`).
 
 ### Words on screen
 
@@ -259,7 +259,7 @@ disc position, put a tip on, calibrate, nudge the tip (only while it
 waits); its cameras are the profile's upper and lower ones.
 Camera calibration is the same (`widgets.step_card.StepCard`): place the
 marker (done when it is seen), center it (done within two of its sides of
-the centre), sweep, save the result; the upper camera, no chooser.
+the center), sweep, save the result; the upper camera, no chooser.
 Picking is the same, leading to the run: complete the Operation checklist,
 set the picking position, the shake position, the dish bottom (optional),
 analyze the dish, start picking; the jog panel last. Steps 2-4 are marked
@@ -292,8 +292,11 @@ belongs in docstrings.
 
 Words on screen are spelled American: center, color, gray, analyze,
 neighbor, millimeter, labeled, canceled. Only the strings shown (and the
-log's); code names, docstrings and saved keys (`WellCentre`,
-`well_centres` in deck.json) keep their spelling.
+log's), except for "center": that is spelled American everywhere - code
+names, docstrings, comments and saved keys (`WellCenter`, `well_centers`
+in deck.json). A file written by 0.4.0 or earlier has "centre" keys
+(`well_centres`, `centre_error_px`); they are still read
+(`AliasChoices`) and written back spelled "center".
 
 The Settings page's second column is the loaded profile's, saved into it at
 once: which attached camera is the upper and which the lower

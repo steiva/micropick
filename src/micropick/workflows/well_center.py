@@ -4,8 +4,8 @@ The robot's idea of a well comes from the labware definition and the slot;
 the plate on the deck sits a fraction of a millimetre off it. So the tip is
 taken to one well's top as the robot has it (`go_to_top`), the operator
 jogs it onto the real center level with the rim, and the difference is the
-plate's `config.schema.WellCentre`, saved per slot and plate type by
-`Session.set_well_centre`. Manual control's Well card and Liquid handling
+plate's `config.schema.WellCenter`, saved per slot and plate type by
+`Session.set_well_center`. Manual control's Well card and Liquid handling
 measure it the same way, with this module; every page that goes into that
 plate's wells uses it, wherever it was measured.
 
@@ -58,22 +58,22 @@ def go_to_top(motion: Motion, labware_id: str, well: str, *,
     return xyz(motion.robot)
 
 
-def xy(centre) -> tuple[float, float]:
+def xy(center) -> tuple[float, float]:
     """Where the well's center is, in x and y, from the robot's: the
-    measured `WellCentre`'s, or (0, 0) - the labware definition's own - for
+    measured `WellCenter`'s, or (0, 0) - the labware definition's own - for
     a plate not measured. Never its z: a deposit keeps the robot's
     heights."""
-    if centre is None:
+    if center is None:
         return 0.0, 0.0
-    return float(centre.offset[0]), float(centre.offset[1])
+    return float(center.offset[0]), float(center.offset[1])
 
 
-def deposit_offset(cfg, centre_xy) -> tuple[float, float]:
+def deposit_offset(cfg, center_xy) -> tuple[float, float]:
     """The x and y offset of a deposit from the robot's well center: the
     picking settings' well offset (`cfg.well_offset_x`, `_y`) from the
     well's center as it is now, measured or the definition's (`xy`).
-    `centre_xy` None is the definition's."""
-    cx, cy = (0.0, 0.0) if centre_xy is None else centre_xy
+    `center_xy` None is the definition's."""
+    cx, cy = (0.0, 0.0) if center_xy is None else center_xy
     return (float(cfg.well_offset_x) + float(cx),
             float(cfg.well_offset_y) + float(cy))
 
@@ -95,7 +95,7 @@ def for_plan(profile, routine, run_state):
     plate = plan_plate(routine, run_state)
     if profile is None or plate is None:
         return None
-    return profile.deck.well_centre(*plate)
+    return profile.deck.well_center(*plate)
 
 
 def definition_depth(definition, well: str) -> float | None:

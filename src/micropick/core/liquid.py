@@ -89,7 +89,7 @@ __all__ = ["LEVELS", "MEASURED_BOTTOM", "LEVEL_NAMES", "KINDS", "ACTIONS", "Loca
 LEVELS = ("top", "center", "bottom")
 
 # One more, of this application's: the plate's measured rim less the well
-# depth set for it (`config.schema.WellCentre`). The robot's "bottom" is the
+# depth set for it (`config.schema.WellCenter`). The robot's "bottom" is the
 # labware definition's, which is the catalogue part and not always the plate
 # on the deck; a Z offset from the measured bottom is as good as an absolute
 # Z, for the plate that was measured.

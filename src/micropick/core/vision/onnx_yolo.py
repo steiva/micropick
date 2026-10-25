@@ -101,7 +101,7 @@ class OnnxYolo:
 def letterbox(frame: np.ndarray, size: int, stride: int = 32, *,
               rect: bool = True) -> np.ndarray:
     """ultralytics' LetterBox: fit into size x size keeping the aspect,
-    padding with grey centred; with `rect` only to the next multiple of
+    padding with grey centered; with `rect` only to the next multiple of
     `stride`."""
     h, w = frame.shape[:2]
     r = min(size / h, size / w)

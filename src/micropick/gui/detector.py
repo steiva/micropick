@@ -234,7 +234,7 @@ class DetectorService(QObject):
 
     @staticmethod
     def _mm_per_px(frame, pixel_map, notes: list[str]) -> float | None:
-        """Millimetres per pixel at the dish centre, or None with the reason.
+        """Millimetres per pixel at the dish center, or None with the reason.
 
         Refuses a map fitted at another resolution instead of scaling it. The
         two camera modes on this rig share a field of view and could in

@@ -40,7 +40,7 @@ frames.
 
 No thresholding inside the window. Taking the centroid of an Otsu component put
 the floor on *stationary* cuboids into the hundreds of microns, because the
-component covering the centre jumps between blobs. There is nothing to flicker
+component covering the center jumps between blobs. There is nothing to flicker
 in an intensity-weighted centroid.
 
 A Gaussian weight, not a flat disc. A neighbour clipping the edge of the window
@@ -96,7 +96,7 @@ class Window:
     nn_px: float = float("inf")
 
     @property
-    def centre(self) -> tuple[float, float]:
+    def center(self) -> tuple[float, float]:
         return self.x0 + (self.w - 1) / 2.0, self.y0 + (self.h - 1) / 2.0
 
     @property
@@ -104,15 +104,15 @@ class Window:
         return self.nn_px < max(self.w, self.h)
 
 
-def merge_duplicates(boxes, confs=None, *, centre_frac: float = 0.5):
+def merge_duplicates(boxes, confs=None, *, center_frac: float = 0.5):
     """Drop detections that are the same object found twice. Returns keep indices.
 
     `yolo_iou` is deliberately high so NMS does not fuse touching cuboids, which
-    lets near-identical boxes survive on one object. The test here is centre
+    lets near-identical boxes survive on one object. The test here is center
     distance normalised by diameter rather than IoU, because IoU conflates
     disagreement about position with disagreement about size: two boxes on one
-    cuboid differ mostly in size, while two touching cuboids have centres a full
-    diameter apart. A cuboid is a solid body, so centres closer than a fraction
+    cuboid differ mostly in size, while two touching cuboids have centers a full
+    diameter apart. A cuboid is a solid body, so centers closer than a fraction
     of a diameter are one body seen twice — an absolute, physical criterion.
 
     Worth doing outside floater detection too: a duplicate gives its original a
@@ -141,7 +141,7 @@ def merge_duplicates(boxes, confs=None, *, centre_frac: float = 0.5):
 
     for i in range(n):
         for j in range(i + 1, n):
-            if np.hypot(cx[i] - cx[j], cy[i] - cy[j]) < centre_frac * min(diam[i], diam[j]):
+            if np.hypot(cx[i] - cx[j], cy[i] - cy[j]) < center_frac * min(diam[i], diam[j]):
                 ra, rb = find(i), find(j)
                 if ra != rb:
                     parent[ra] = rb
@@ -149,8 +149,8 @@ def merge_duplicates(boxes, confs=None, *, centre_frac: float = 0.5):
     groups: dict[int, list[int]] = {}
     for k in range(n):
         groups.setdefault(find(k), []).append(k)
-    # the most confident box wins; averaging with a poor box drags the centre,
-    # and the centre is the quantity being measured
+    # the most confident box wins; averaging with a poor box drags the center,
+    # and the center is the quantity being measured
     return np.array(sorted(g[int(np.argmax(confs[g]))] for g in groups.values()))
 
 
@@ -199,7 +199,7 @@ def make_windows(boxes, frame_shape, *, pad_frac: float = 1.2,
 # ---------------------------------------------------------------------------
 
 def gaussian_weight(h: int, w: int, sigma_frac: float = 0.20) -> np.ndarray:
-    """Radial taper for one window, peaking at the centre.
+    """Radial taper for one window, peaking at the center.
 
     `sigma_frac` is in units of the window side. Too wide and neighbours at the
     edge still count; too narrow and the object's own far side is clipped, which
@@ -244,7 +244,7 @@ class MotionAccumulator:
     Windows are fixed at detection time and never follow their object. A window
     that tracked the object would subtract the very motion being measured, and a
     floater leaving its window is the strongest signal available — it has to
-    show up as absence, not as a re-centred crop.
+    show up as absence, not as a re-centered crop.
 
     Frames are not retained. Three floats per window per frame are, so a
     twenty-frame window over two hundred objects costs tens of kilobytes where
@@ -343,7 +343,7 @@ class MotionAccumulator:
             mm = mass[i][np.isfinite(mass[i])]
             rows.append({
                 "obj": i, "box": win.box,
-                "x": win.centre[0], "y": win.centre[1],
+                "x": win.center[0], "y": win.center[1],
                 "win_w": win.w, "win_h": win.h,
                 "nn_px": win.nn_px, "crowded": win.crowded,
                 "n_frames": n_t, "n_present": int(p.sum()),

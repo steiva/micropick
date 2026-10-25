@@ -101,7 +101,7 @@ def test_contour_metrics_on_a_known_square():
     assert m['aspect_ratio'] == pytest.approx(1.0, abs=0.02)
     assert m['circularity'] == pytest.approx(np.pi / 4, abs=0.02)
     assert m['solidity'] == pytest.approx(1.0, abs=0.02)
-    assert m['radial_cv'] < 0.01           # every corner equidistant from centre
+    assert m['radial_cv'] < 0.01           # every corner equidistant from center
 
 
 def test_contour_metrics_rejects_degenerate():
@@ -218,7 +218,7 @@ def test_drop_in_zones_removes_near_and_keeps_far():
 # center_crop
 # ---------------------------------------------------------------------------
 
-def test_center_crop_is_centred_and_square():
+def test_center_crop_is_centered_and_square():
     img = np.zeros((100, 200, 3), dtype=np.uint8)
     crop, x0, y0 = cb.center_crop(img, frac=0.5, ref='width')
     assert crop.shape[0] == crop.shape[1]      # square

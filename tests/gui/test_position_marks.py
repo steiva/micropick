@@ -26,7 +26,7 @@ def _map() -> PixelMap:
         image_size=[W, H], sweep_z=0.0))
 
 
-def _centres(items):
+def _centers(items):
     return [i.center for i in items
             if isinstance(i, overlays.Circle) and not i.fill]
 
@@ -38,10 +38,10 @@ def test_a_position_is_drawn_where_the_tip_would_go_down():
     # to the right of it once the gantry has moved 10 mm the other way.
     items = mark_items({"a": (102.0, 99.0, 30.0)}, _map(), offset,
                        (100.0, 100.0), (W, H))
-    assert _centres(items) == [(450, 350)]
+    assert _centers(items) == [(450, 350)]
     items = mark_items({"a": (102.0, 99.0, 30.0)}, _map(), offset,
                        (90.0, 100.0), (W, H))
-    assert _centres(items) == [(650, 350)]
+    assert _centers(items) == [(650, 350)]
     assert any(isinstance(i, overlays.Text) and i.text == "a" for i in items)
 
 

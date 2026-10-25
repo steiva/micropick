@@ -9,7 +9,7 @@ so they live here, with no Qt, rather than in the widget.
 from __future__ import annotations
 
 __all__ = ["SLOT_PITCH_X", "SLOT_PITCH_Y", "SLOT_WIDTH", "SLOT_HEIGHT",
-           "slot_centre"]
+           "slot_center"]
 
 SLOT_PITCH_X = 132.5
 SLOT_PITCH_Y = 90.5
@@ -17,8 +17,8 @@ SLOT_WIDTH = 127.76
 SLOT_HEIGHT = 85.48
 
 
-def slot_centre(slot) -> tuple[float, float]:
-    """The centre of a slot in the robot's deck frame, in millimetres: slot
+def slot_center(slot) -> tuple[float, float]:
+    """The center of a slot in the robot's deck frame, in millimetres: slot
     1's corner at the origin, x to the right, y to the back."""
     n = int(slot)
     column = (n - 1) % 3

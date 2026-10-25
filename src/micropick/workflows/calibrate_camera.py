@@ -73,8 +73,8 @@ class MarkerTracker:
             return None
         ids = ids.ravel()
         if self.track_id is None:
-            centre = np.array([frame.shape[1] / 2, frame.shape[0] / 2])
-            d = [np.linalg.norm(c.reshape(4, 2).mean(0) - centre) for c in corners]
+            center = np.array([frame.shape[1] / 2, frame.shape[0] / 2])
+            d = [np.linalg.norm(c.reshape(4, 2).mean(0) - center) for c in corners]
             self.track_id = int(ids[int(np.argmin(d))])
         hit = np.where(ids == self.track_id)[0]
         if len(hit) != 1:
@@ -233,15 +233,15 @@ class SweepPlan:
 
 def plan_sweep(probe: ScaleProbe, image_size, *, grid_n: int = 7,
                margin_px: float = 20.0, max_offset_mm: float = 60.0,
-               centre_px: tuple[float, float] | None = None) -> SweepPlan:
+               center_px: tuple[float, float] | None = None) -> SweepPlan:
     """Largest grid that keeps the whole marker inside the frame.
 
-    The limit is the marker's own size: its centre cannot approach an edge
+    The limit is the marker's own size: its center cannot approach an edge
     closer than half its extent plus a margin, or the detector loses the quad.
     Both are known by this point, so the extent is derived rather than guessed.
     """
     w, h = image_size
-    cu, cv = centre_px if centre_px else (w / 2, h / 2)
+    cu, cv = center_px if center_px else (w / 2, h / 2)
     px_per_mm = 1.0 / probe.mm_per_px
     need = probe.marker_px / 2 + margin_px
 
@@ -261,7 +261,7 @@ def plan_sweep(probe: ScaleProbe, image_size, *, grid_n: int = 7,
     gy = np.linspace(-half_y, half_y, grid_n)
     poses = [(ox + dx, oy + dy) for dy in gy for dx in gx]
 
-    # tracked corners reach half a marker further out than its centre does
+    # tracked corners reach half a marker further out than its center does
     span_u = (2 * half_x * px_per_mm + probe.marker_px) / w
     span_v = (2 * half_y * px_per_mm + probe.marker_px) / h
 
@@ -396,7 +396,7 @@ def calibrate_camera(robot: Robot, camera: Camera, detector, *,
     """Probe the scale, plan the sweep, run it, and fit.
 
     The camera must already be at its working configuration: the map is only
-    valid for the focus, zoom and working distance it was fitted at. Centre the
+    valid for the focus, zoom and working distance it was fitted at. Center the
     marker in the frame before calling.
     """
     tracker = MarkerTracker(detector, target_id=target_id, frames=frames_per_pose)

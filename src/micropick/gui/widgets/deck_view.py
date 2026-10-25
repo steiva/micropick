@@ -36,9 +36,9 @@ from PySide6.QtWidgets import (QGraphicsRectItem, QGraphicsScene,
 # The deck definition's millimetres; the drawing is in these units and the
 # view scales it to fit.
 from ...core.deck import (SLOT_HEIGHT, SLOT_PITCH_X, SLOT_PITCH_Y,
-                          SLOT_WIDTH, slot_centre)
+                          SLOT_WIDTH, slot_center)
 
-__all__ = ["DeckView", "slot_centre", "SLOTS", "TRASH_SLOT"]
+__all__ = ["DeckView", "slot_center", "SLOTS", "TRASH_SLOT"]
 
 # One accent, as on the plate map: a deck is its own surface, like the camera
 # viewport, so its ink is fixed rather than taken from the palette.

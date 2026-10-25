@@ -111,17 +111,17 @@ that buys nothing.
 The identical numbers at degrees 1 and 2 are also a useful diagnostic: if they
 ever differ, something other than lens distortion is present in the data.
 
-### Four corners, not one centre
+### Four corners, not one center
 
 Every detected marker corner is its own fixed deck point. Fitting all four
 jointly gives four times the data, and — more importantly — the corners reach
-half a marker further toward the frame edges than the centre can, which is
+half a marker further toward the frame edges than the center can, which is
 where distortion is strongest.
 
 Each corner has an unknown deck position. Those enter the least-squares problem
 as one free constant per track, so the fit stays linear.
 
-Practical effect: with a 6.8 mm marker at ~26 µm/px, centre-only tracking
+Practical effect: with a 6.8 mm marker at ~26 µm/px, center-only tracking
 covered about 85 % × 83 % of the frame; adding the corners took it to 94 % × 95 %.
 
 ### The sweep measures its own extent
@@ -149,7 +149,7 @@ Three checks, all available on real data:
 
 ### Numbers from the first real sweep
 
-25 poses, marker centres only, 2592×1944, field of view ≈ 68 × 51 mm:
+25 poses, marker centers only, 2592×1944, field of view ≈ 68 × 51 mm:
 
 | model | held-out mean / max |
 |---|---|
@@ -159,7 +159,7 @@ Three checks, all available on real data:
 | **degree 3** | **24.2 / 78.6 µm** |
 | degree 4 | 24.5 / 92.9 µm |
 
-Local scale varied from 25.97 µm/px at the centre to 28.76 µm/px at the edge,
+Local scale varied from 25.97 µm/px at the center to 28.76 µm/px at the edge,
 **10.8 %**. That is why `mm_per_px(u, v)` replaced the global
 `one_d_ratio` and `size_conversion_ratio`: a single number misreports object
 sizes near the dish edge by about that much.
@@ -180,8 +180,8 @@ Two things worth knowing:
 
 - The central crosshair is identified by pattern symmetry — the one whose four
   nearest neighbours sit at equal radii in opposing directions — not by
-  proximity to the frame centre. The old rule failed as soon as the disc was a
-  few millimetres off centre, and failed by silently returning an outer
+  proximity to the frame center. The old rule failed as soon as the disc was a
+  few millimetres off center, and failed by silently returning an outer
   crosshair.
 - The lower camera's orientation lives in the profile as a 2×2 matrix,
   defaulting to `[[0,1],[1,0]]`. Its determinant is **−1**: the camera is
@@ -221,7 +221,7 @@ use. That works because these two modes share a field of view; a mode that crops
 the sensor instead scales the axes unequally, which is detected and refused.
 
 **Correspondence comes from the known orientation.** The crosshairs are
-identical, so the four outer ones are matched by angle about the disc centre,
+identical, so the four outer ones are matched by angle about the disc center,
 using the fact that the lower camera is turned ninety degrees from the upper one
 without mirroring: measured as `atan2(dv, du)` with v downwards, that is
 `θ_under = θ_over + 90`. The old code matched through `TipTarget.axes` — a
@@ -230,17 +230,17 @@ reprojection error to catch a bad match. It cannot: five points against eight
 degrees of freedom fit almost anything, so a correspondence off by ninety
 degrees produced a near-zero residual and a box on the wrong cuboid.
 
-**Four points fit, the centre checks.** Four points determine a homography
+**Four points fit, the center checks.** Four points determine a homography
 exactly, so their residual is zero whatever the correspondence and measures
 nothing. The central crosshair is held out and reprojected; its error is the only
 honest number. The matrix is also decomposed and its determinant and rotation
 reported.
 
 **What none of it can prove.** The disc is four-fold symmetric and the fifth
-point sits at its centre of symmetry, so no arithmetic on these five points can
+point sits at its center of symmetry, so no arithmetic on these five points can
 reveal a wrong assumed rotation or a mirror: ask for the wrong rotation and the
 matching pairs each crosshair with a different neighbour, the fit is exact again,
-the held-out centre still lands on the centre, and the decomposition reports back
+the held-out center still lands on the center, and the decomposition reports back
 the rotation that was assumed. That is what symmetry means, not a threshold to be
 tightened. The orientation is therefore a hardware fact in the profile
 (`TipTarget.under_rotation_deg`), and what confirms it is the first clip: the box
@@ -394,7 +394,7 @@ default, where it was measured.
 
 Most of the lower camera's field is empty: the disc and the dish sit in the
 middle. `CameraSpec.crop` says what fraction of it is worth looking at — 0.5 for
-that camera, a centred square of half the width, the same crop the old code used.
+that camera, a centered square of half the width, the same crop the old code used.
 
 It applies where a person looks and nowhere else: the clip recorder, the jog
 window, a preview. `read()` keeps handing out whole sensor frames, so detection,
@@ -408,7 +408,7 @@ a point computed in sensor pixels and drawn on a cropped frame is shifted by the
 crop origin, which `center_crop_box` returns without needing a frame in hand.
 
 **The origin and the crop come from one call, because they were two and they
-disagreed.** `center_crop_box` answers with the centred *square* whatever it is
+disagreed.** `center_crop_box` answers with the centered *square* whatever it is
 asked, so at a crop of 1.0 it returns an origin of (250, 0) for a 2000×1500
 frame — the offset of a square that nobody cut. The session subtracted that
 origin from every ROI point while attaching the cropping transform only when the
@@ -580,7 +580,7 @@ Things that cost time to discover.
   how the wrapper happens to build its dictionary, and a future reordering would
   silently swap axes.
 - **Custom labware must be uploaded into every run**, after each `create_run`.
-- **Marker size limits the sweep.** A marker's centre cannot approach a frame
+- **Marker size limits the sweep.** A marker's center cannot approach a frame
   edge closer than half its extent. An 11 mm marker at 26 µm/px covers 418 px
   and costs about 6 % of frame coverage against a 6.8 mm one.
 
@@ -924,7 +924,7 @@ like.
 
 ### Sections fold, and each page says which
 
-Four pages hold a jog panel and none of them needs all of it. Centring a
+Four pages hold a jog panel and none of them needs all of it. Centering a
 marker is the D-pad; the tip calibration normally drives to a stored pose
 and never jogs; the check page wants the stored poses above everything.
 `theme.factory.Section` is a card whose body folds behind its title, and
@@ -1110,7 +1110,7 @@ goes there.
 
 It keeps the notebook's three pieces. The click **snaps to the nearest
 detection** within 60 px rather than using the cursor's pixel, because
-hitting a pixel with a mouse is not a thing and the detector's box centre is
+hitting a pixel with a mouse is not a thing and the detector's box center is
 sub-pixel. The target is `pixel_to_robot` as the notebook defines it,
 `pmap.to_robot(u, v, gantry)` plus the profile's offset, with the pose read
 next to the frame rather than after it. And after the move the **same
@@ -1238,11 +1238,11 @@ with these blocks: the wells with cuboids as a group, paused after the first
 well to look; an aspirate at each well, from the bottom with a shift aside
 of the cuboid, slow, with the slow lift (small rises with a wait, an
 aspirate option); an auto empty into a waste well. What it needed that a
-program did not have was the plate's real well centre: measured once from
-the Wells card (Go to well top, jog onto the real centre and rim, Set well
-centre) and kept in deck.json per slot and plate type (`WellCentre`), its
+program did not have was the plate's real well center: measured once from
+the Wells card (Go to well top, jog onto the real center and rim, Set well
+center) and kept in deck.json per slot and plate type (`WellCenter`), its
 x and y are added to every well command on that plate, so a step's sideways
-offset is from the real centre - the notebook's centre offset, with the
+offset is from the real center - the notebook's center offset, with the
 shift aside of the cuboid left to the step, as the notebook kept them
 apart. Heights stay the robot's for top, center and bottom: a rough wash
 from the definition's bottom, whatever it is, is still one choice. The

@@ -10,7 +10,7 @@ Two features, both read off the contour `otsu_contour` already computes for
 pixels inside that contour, which the geometry path throws away:
 
   core_ratio = mean(r < 0.3R) / mean(0.4R <= r < 0.85R)
-      A bubble refracts, so it images as a doughnut: the centre is darker than
+      A bubble refracts, so it images as a doughnut: the center is darker than
       the rim (0.5-0.7). A solid scatters off its whole face, giving a flat
       plateau (~1.0).
 
@@ -53,10 +53,10 @@ the thresholded component is an annulus with a hole - precisely the pixels
 contour puts the core back.
 
 The same darkness bends the contour itself. `otsu_contour` picks the component
-under the box's centre pixel, which for a bubble is background, so it always
+under the box's center pixel, which for a bubble is background, so it always
 falls back to the largest component; and a rim only a few pixels wide can be
 broken into arcs by the morphological opening, leaving a crescent whose centroid
-is off-centre. Such an object arrives here with low solidity and high radial_cv
+is off-center. Such an object arrives here with low solidity and high radial_cv
 and is rejected on shape long before its features matter, which is one reason
 `cuboids.label_rejections` keeps the four stage tests as separate columns
 instead of trusting a single label.

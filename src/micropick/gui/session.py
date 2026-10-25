@@ -45,7 +45,7 @@ from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              DeckConfig, DeckModule, ModuleType,
-                             PickingConfig, WellCentre,
+                             PickingConfig, WellCenter,
                              ProfileMeta)
 from ..hardware import labware                      # noqa: E402
 from ..hardware import robot_clock                  # noqa: E402
@@ -920,7 +920,7 @@ class Session(QObject):
         self.profile.deck = DeckConfig(modules=list(modules),
                                        module_types=list(deck.module_types),
                                        recent_labware=list(deck.recent_labware),
-                                       well_centres=list(deck.well_centres))
+                                       well_centers=list(deck.well_centers))
         self.profile.save_deck()
         log.info("deck modules saved to profile %r: %s", self.profile.name,
                  "; ".join(m.describe() for m in modules) or "none")
@@ -939,61 +939,61 @@ class Session(QObject):
         self.profile.deck = DeckConfig(modules=list(deck.modules),
                                        module_types=list(types),
                                        recent_labware=list(deck.recent_labware),
-                                       well_centres=list(deck.well_centres))
+                                       well_centers=list(deck.well_centers))
         self.profile.save_deck()
         log.info("module types in profile %r: %s", self.profile.name,
                  ", ".join(f"{t.name} {t.height_mm:g} mm" for t in types)
                  or "none")
         self.profile_changed.emit(self.profile)
 
-    def set_well_centre(self, slot, load_name: str, offset, well: str,
+    def set_well_center(self, slot, load_name: str, offset, well: str,
                         depth_mm: float | None = None) -> None:
         """Save where the wells of the plate in `slot` really are (see
-        `WellCentre`), replacing any earlier measurement of it. The depth
+        `WellCenter`), replacing any earlier measurement of it. The depth
         set for it before is kept; `depth_mm` is used when there was none."""
         if self.profile is None:
             raise SessionError("no profile to save the well center into")
         deck = self.profile.deck
-        before = deck.well_centre(slot, load_name)
+        before = deck.well_center(slot, load_name)
         if before is not None and before.depth_mm is not None:
             depth_mm = before.depth_mm
-        centre = WellCentre(slot=int(slot), load_name=load_name,
+        center = WellCenter(slot=int(slot), load_name=load_name,
                             offset=[round(float(v), 3) for v in offset],
                             well=well, measured_at=datetime.now(),
                             depth_mm=depth_mm)
-        deck.well_centres = [c for c in deck.well_centres
-                             if (c.slot, c.load_name) != (centre.slot,
+        deck.well_centers = [c for c in deck.well_centers
+                             if (c.slot, c.load_name) != (center.slot,
                                                           load_name)]
-        deck.well_centres.append(centre)
+        deck.well_centers.append(center)
         self.profile.save_deck()
         log.info("well center of %s in slot %s: %s", load_name, slot,
-                 centre.describe())
+                 center.describe())
         self.profile_changed.emit(self.profile)
 
     def set_well_depth(self, slot, load_name: str, depth_mm: float) -> None:
         """The depth of the measured plate's wells, for its measured
         bottom."""
-        centre = (self.profile.deck.well_centre(slot, load_name)
+        center = (self.profile.deck.well_center(slot, load_name)
                   if self.profile is not None else None)
-        if centre is None:
+        if center is None:
             raise SessionError("measure the well center first")
         depth = round(float(depth_mm), 3)
-        if centre.depth_mm == depth:
+        if center.depth_mm == depth:
             return
-        centre.depth_mm = depth
+        center.depth_mm = depth
         self.profile.save_deck()
         log.info("well depth of %s in slot %s: %g mm", load_name, slot, depth)
         self.profile_changed.emit(self.profile)
 
-    def forget_well_centre(self, slot, load_name: str) -> None:
+    def forget_well_center(self, slot, load_name: str) -> None:
         if self.profile is None:
             return
         deck = self.profile.deck
-        kept = [c for c in deck.well_centres
+        kept = [c for c in deck.well_centers
                 if (c.slot, c.load_name) != (int(slot), load_name)]
-        if len(kept) == len(deck.well_centres):
+        if len(kept) == len(deck.well_centers):
             return
-        deck.well_centres = kept
+        deck.well_centers = kept
         self.profile.save_deck()
         log.info("well center of %s in slot %s forgotten", load_name, slot)
         self.profile_changed.emit(self.profile)

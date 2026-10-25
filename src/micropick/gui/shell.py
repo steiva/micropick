@@ -452,7 +452,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(central)
 
-        # The next step of the Operation checklist, at the top centre of
+        # The next step of the Operation checklist, at the top center of
         # the page until it is dragged elsewhere (`widgets.next_step`). Read again on what changes it and
         # on a timer: a position saved on a page has no signal of its own.
         self.hint = NextStepHint(central)
@@ -574,7 +574,7 @@ class MainWindow(QMainWindow):
         central = self.centralWidget()
         if central is None:
             return
-        # Top centre, under the tab row; or where it was dragged to.
+        # Top center, under the tab row; or where it was dragged to.
         self.hint.top_limit = self.strip.height()
         self.hint.place(QPoint((central.width() - self.hint.width()) // 2,
                                self.strip.height() + SPACING))

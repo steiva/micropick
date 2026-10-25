@@ -24,8 +24,8 @@ def _project(pts):
 
 
 class _View:
-    def __init__(self, centre, neighbours):
-        self.centre = np.asarray(centre, float)
+    def __init__(self, center, neighbours):
+        self.center = np.asarray(center, float)
         self.neighbours = np.asarray(neighbours, float)
 
 

@@ -84,11 +84,11 @@ misses' volume went back to the dish carrying the caught cuboids with it,
 and the well got liquid without them. The progress is recorded once the
 cuboids are in the well, not when the check counted them.
 
-The measured well centre
+The measured well center
 ------------------------
 Where the plate's wells were measured on the Liquid handling page
-(`config.schema.WellCentre`, per slot and plate type), its x and y are
-handed in as `well_centre` and added to the well offset of every move into a
+(`config.schema.WellCenter`, per slot and plate type), its x and y are
+handed in as `well_center` and added to the well offset of every move into a
 well, as `workflows.liquid` adds them to its steps: one plate, one idea of
 where its wells are. Its z is not used; the deposit's heights stay the
 robot's well bottom and top.
@@ -140,7 +140,7 @@ from ..hardware.camera import ClipWriter
 from ..hardware.protocols import (Camera, Robot, move_relative, move_to,
                                    require_ok, set_lights, xyz)
 from .motion import Motion
-from .well_centre import deposit_offset
+from .well_center import deposit_offset
 
 __all__ = ["RobotState", "PickEvent", "PickView", "PickingSession",
            "PickingError", "stir"]
@@ -225,7 +225,7 @@ def _clip_view(camera, crop: float | None = None
     Returns (origin, size, transform), and returns all three together because
     the origin subtracted from a point drawn on the clip and the crop applied to
     the frame have to be the same thing. They were computed apart, and
-    `center_crop_box` answers with the centred *square* even at crop 1.0 — for a
+    `center_crop_box` answers with the centered *square* even at crop 1.0 — for a
     2000x1500 frame that is an origin of (250, 0) — so at 1.0 the origin was
     subtracted while no transform was attached, and every ROI box landed a
     quarter of a frame height to the left of its cuboid on a clip that had never
@@ -287,7 +287,7 @@ class PickingSession:
     def __init__(self, robot: Robot, camera: Camera, pixel_map, profile,
                  routine, detector, *, labware_id: str | None = None,
                  under_cam: Camera | None = None, clip_dir=None,
-                 clip_crop: float | None = None, well_centre=None,
+                 clip_crop: float | None = None, well_center=None,
                  logger=None, motion: Motion | None = None):
         self.robot = robot
         # The travel height and the measured top of Z: the GUI's session
@@ -302,10 +302,10 @@ class PickingSession:
         self.logger = logger
 
         self.config = profile.picking
-        # (x, y) of the plate's measured well centre, or None: see "The
-        # measured well centre".
-        self._centre_xy = ((0.0, 0.0) if well_centre is None else
-                           (float(well_centre[0]), float(well_centre[1])))
+        # (x, y) of the plate's measured well center, or None: see "The
+        # measured well center".
+        self._center_xy = ((0.0, 0.0) if well_center is None else
+                           (float(well_center[0]), float(well_center[1])))
 
         offset = profile.calibration.pipette_offset
         if offset is None:
@@ -326,10 +326,10 @@ class PickingSession:
 
         # The vision pipeline still takes scalar mm-per-pixel ratios. With the
         # pixel map the scale varies across the frame, so we take the local
-        # value at the dish centre as the representative one; it is only used
+        # value at the dish center as the representative one; it is only used
         # for object sizing and neighbour spacing, not for targeting.
         #
-        # Taken at the dish centre and nowhere else, the floater detector
+        # Taken at the dish center and nowhere else, the floater detector
         # included: the map is a degree-3 polynomial, so asked outside the
         # calibrated bounds — at pixel (0, 0), say — it extrapolates and answers
         # with a plausible wrong number rather than refusing.
@@ -1075,7 +1075,7 @@ class PickingSession:
 
         frame0 = self._fresh_frame()
         boxes, confs = vision.detect_boxes(self.detector, frame0, cfg)
-        keep = floaters.merge_duplicates(boxes, confs, centre_frac=0.5)
+        keep = floaters.merge_duplicates(boxes, confs, center_frac=0.5)
         wins = floaters.make_windows(boxes[keep], frame0.shape,
                                      pad_frac=cfg.floater_pad_frac)
         acc = floaters.MotionAccumulator(wins, warmup=3,
@@ -1501,7 +1501,7 @@ class PickingSession:
                 raise PickingError(
                     "the routine has a plate destination but no labware_id was "
                     "given to the session")
-            dx, dy = deposit_offset(cfg, self._centre_xy)
+            dx, dy = deposit_offset(cfg, self._center_xy)
             self._gate(pause, stop)
             require_ok(self.robot.move_to_well(
                 self.labware_id, current, well_location="top",

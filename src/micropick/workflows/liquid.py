@@ -17,9 +17,9 @@ saved point, or unknown at the start of a run - since its path starts from
 the last place it knows (`_leave_for_well`). A Move to a well is the
 robot's `move_to_well`, the same way.
 
-Where a plate's well centre was measured (`config.schema.WellCentre`,
-handed in as `Plate.centre`), its x and y are added to every well command's
-offset on that plate, so a step's sideways offset is from the real centre.
+Where a plate's well center was measured (`config.schema.WellCenter`,
+handed in as `Plate.center`), its x and y are added to every well command's
+offset on that plate, so a step's sideways offset is from the real center.
 Heights stay the robot's for top, center and bottom.
 
 The measured bottom (`core.liquid.MEASURED_BOTTOM`) is the measured rim less
@@ -135,8 +135,8 @@ class Overfill(RuntimeError):
 
 @dataclass(frozen=True)
 class Plate:
-    """Labware the run holds, as a program needs it. `centre` is its
-    measured well centre, (x, y, z) from the robot's own well top, or None
+    """Labware the run holds, as a program needs it. `center` is its
+    measured well center, (x, y, z) from the robot's own well top, or None
     where it was not measured; `depth` the depth set for its wells, for the
     measured bottom."""
 
@@ -144,13 +144,13 @@ class Plate:
     labware_id: str
     load_name: str
     ordering: list
-    centre: tuple | None = None
+    center: tuple | None = None
     depth: float | None = None
 
     @property
     def has_bottom(self) -> bool:
-        """Whether its measured bottom is known: a centre and a depth."""
-        return self.centre is not None and self.depth is not None
+        """Whether its measured bottom is known: a center and a depth."""
+        return self.center is not None and self.depth is not None
 
     @property
     def wells(self) -> set[str]:
@@ -475,7 +475,7 @@ def _to_top(robot: Robot, state: LiquidState, plates: dict[str, Plate],
     location, group, well = where
     plate, target = _plate_well(location, group, well, plates)
     x, y, _z = (float(v) for v in location.offset)
-    cx, cy, cz = (float(v) for v in (plate.centre or (0.0, 0.0, 0.0)))
+    cx, cy, cz = (float(v) for v in (plate.center or (0.0, 0.0, 0.0)))
     up = round(max(0.0, cz), 3)
     _say(log, f"straight up to the top of {target}")
     offset = (round(x + cx, 3), round(y + cy, 3), up)
@@ -507,7 +507,7 @@ def _descend(robot: Robot, location: Location, group: Group, well: str,
         raise ValueError(f"slot {plate.slot}: the measured bottom needs the "
                          f"well center and the well depth")
     x, y, z = (float(v) for v in location.offset)
-    cx, cy, cz = (float(v) for v in plate.centre)
+    cx, cy, cz = (float(v) for v in plate.center)
     over = cz + APPROACH_MM
     _say(log, f"tip over {target}, {APPROACH_MM:g} mm above the measured rim")
     require_ok(robot.move_to_well(
@@ -721,7 +721,7 @@ def _well_target(location: Location, group: Group, well: str,
         return None
     plate, target = _plate_well(location, group, well, plates)
     x, y, z = (float(v) for v in location.offset)
-    cx, cy, _cz = plate.centre or (0.0, 0.0, 0.0)
+    cx, cy, _cz = plate.center or (0.0, 0.0, 0.0)
     return (plate.labware_id, target, location.level,
             (round(x + float(cx), 3), round(y + float(cy), 3), round(z, 3)))
 

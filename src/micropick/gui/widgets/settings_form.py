@@ -81,7 +81,7 @@ def _is_pair(annotation) -> tuple[bool, type | None]:
 def _is_window(name: str) -> bool:
     """Whether a pair of numbers is a range rather than a point. By name,
     which is the only thing the schema offers: the type of a window and the
-    type of a centre are the same tuple."""
+    type of a center are the same tuple."""
     return name.endswith(("_window", "_threshold"))
 
 

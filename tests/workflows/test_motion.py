@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from micropick.core.deck import slot_centre
+from micropick.core.deck import slot_center
 from micropick.hardware.mock import MockRobot
 from micropick.hardware.protocols import xyz
 from micropick.workflows.motion import (JOG_BELOW_TOP_MM, UNKNOWN_TIP_LENGTH_MM,
@@ -124,17 +124,17 @@ def test_the_envelope_top_follows_the_tip(tip, length):
 def test_a_deck_module_raises_the_floor_over_its_slot_only():
     module = SimpleNamespace(slots=["3"], name="heater", height_mm=64.0)
     motion = Motion(modules=lambda: [module])
-    x, y = slot_centre("3")
+    x, y = slot_center("3")
     assert "heater in slot 3" in motion.refused((x, y, 50.0))
     assert motion.refused((x, y, 70.0)) == ""
-    x, y = slot_centre("1")
+    x, y = slot_center("1")
     assert motion.refused((x, y, 50.0)) == ""
 
 
 def test_the_envelope_reads_the_modules_when_asked():
     modules = []
     motion = Motion(modules=lambda: modules)
-    x, y = slot_centre("3")
+    x, y = slot_center("3")
     assert motion.refused((x, y, 50.0)) == ""
     modules.append(SimpleNamespace(slots=["3"], name=None, height_mm=64.0))
     assert "module in slot 3" in motion.refused((x, y, 50.0))

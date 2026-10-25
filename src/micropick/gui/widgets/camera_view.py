@@ -39,7 +39,7 @@ where a person looks and nowhere else.
 Zoom is a view property too
 ---------------------------
 The wheel zooms about the cursor, the middle button drags the zoomed picture
-about, and a double click resets. Panning moves the same centre the wheel
+about, and a double click resets. Panning moves the same center the wheel
 does, and `_zoomed` clamps it, so the picture never leaves a gap at its
 edge. Zooming changes nothing but the transform: the frame handed to
 detection is the whole sensor frame as before, and at 4x on a 4000 px frame
@@ -162,7 +162,7 @@ STEP_RED = QColor(255, 80, 70)
 # most software that draws them.
 AXIS_ARROW = 24
 AXIS_PAD = 5
-AXIS_LETTER = 8                  # half the box a letter is centred in
+AXIS_LETTER = 8                  # half the box a letter is centered in
 AXIS_COLOURS = {"X": QColor(255, 105, 95), "Y": QColor(110, 220, 120)}
 
 
@@ -258,9 +258,9 @@ class CameraView(QWidget):
         self._help: list[str] = []
         self._lost: str | None = None             # the camera's `lost`
 
-        # Zoom about a point: the view pixel that sits at the widget's centre.
+        # Zoom about a point: the view pixel that sits at the widget's center.
         self._zoom = 1.0
-        self._centre: tuple[float, float] | None = None
+        self._center: tuple[float, float] | None = None
         self._shown = QRect()                     # where the image lands
         self._pan_from: QPointF | None = None     # middle button held here
 
@@ -448,7 +448,7 @@ class CameraView(QWidget):
         self._fps_at = time.monotonic()
         self._lost = None
         self._zoom = 1.0
-        self._centre = None
+        self._center = None
         self._sync_controls()
         self.update()
         self.camera_changed.emit()
@@ -711,12 +711,12 @@ class CameraView(QWidget):
         scale_new = scale_old * new / self._zoom
         self._zoom = new
         if new == ZOOM_MIN:
-            self._centre = None
+            self._center = None
         else:
-            # The view pixel at the widget centre, with the cursor pinned.
-            centre = self.rect().center()
-            self._centre = (px + (centre.x() - cursor.x()) / scale_new,
-                            py + (centre.y() - cursor.y()) / scale_new)
+            # The view pixel at the widget center, with the cursor pinned.
+            center = self.rect().center()
+            self._center = (px + (center.x() - cursor.x()) / scale_new,
+                            py + (center.y() - cursor.y()) / scale_new)
         self._dirty = True
         self._rebuild()
         self.update()
@@ -739,10 +739,10 @@ class CameraView(QWidget):
         delta = position - self._pan_from
         self._pan_from = position
         scale = self._box.width() / max(1, self._view_size[0])
-        if self._centre is not None and scale > 0:
-            # The picture follows the hand, so the centre moves against it.
-            self._centre = (self._centre[0] - delta.x() / scale,
-                            self._centre[1] - delta.y() / scale)
+        if self._center is not None and scale > 0:
+            # The picture follows the hand, so the center moves against it.
+            self._center = (self._center[0] - delta.x() / scale,
+                            self._center[1] - delta.y() / scale)
             self._dirty = True
             self._rebuild()
             self.update()
@@ -786,7 +786,7 @@ class CameraView(QWidget):
                 self.double_clicked.emit(point.x(), point.y())
         if self.double_click_fits and self._zoom != ZOOM_MIN:
             self._zoom = ZOOM_MIN
-            self._centre = None
+            self._center = None
             self._dirty = True
             self._rebuild()
             self.update()
@@ -925,7 +925,7 @@ class CameraView(QWidget):
         """The part worth looking at, and where it starts on the sensor.
 
         Origin and crop come from one call. They were two once, and disagreed:
-        `center_crop_box` answers with the centred square whatever it is asked,
+        `center_crop_box` answers with the centered square whatever it is asked,
         so at a crop of 1.0 it still returns a non-zero origin, and every box
         drawn was shifted by it — DESIGN section 5.
         """
@@ -1000,17 +1000,17 @@ class CameraView(QWidget):
                            .translate(-x0, -y0))
 
     def _zoomed(self, base: QRect, width: int, height: int) -> QRect:
-        """The fitted box enlarged by the zoom and placed so that `_centre`
-        sits at the widget's centre, then clamped so no edge of the frame
+        """The fitted box enlarged by the zoom and placed so that `_center`
+        sits at the widget's center, then clamped so no edge of the frame
         leaves a gap while the frame is larger than the widget."""
         scale = base.width() / width * self._zoom
         w, h = width * scale, height * scale
-        if self._centre is None:
-            self._centre = (width / 2.0, height / 2.0)
-        cx, cy = self._centre
-        centre = self.rect().center()
-        x = centre.x() - cx * scale
-        y = centre.y() - cy * scale
+        if self._center is None:
+            self._center = (width / 2.0, height / 2.0)
+        cx, cy = self._center
+        center = self.rect().center()
+        x = center.x() - cx * scale
+        y = center.y() - cy * scale
         avail = self.rect()
         if w >= avail.width():
             x = min(avail.x(), max(avail.x() + avail.width() - w, x))
@@ -1021,11 +1021,11 @@ class CameraView(QWidget):
         else:
             y = avail.y() + (avail.height() - h) / 2
         # Write the clamp back, so the next wheel starts from where we are.
-        self._centre = ((centre.x() - x) / scale, (centre.y() - y) / scale)
+        self._center = ((center.x() - x) / scale, (center.y() - y) / scale)
         return QRectF(x, y, w, h).toRect()
 
     def _fit(self, width: int, height: int) -> QRect:
-        """The largest rectangle of the frame's aspect that fits, centred."""
+        """The largest rectangle of the frame's aspect that fits, centered."""
         if width <= 0 or height <= 0:
             return QRect(0, 0, 0, 0)
         available = self.rect()
@@ -1180,14 +1180,14 @@ class CameraView(QWidget):
         peak = max(1, int(bins.counts.max()))
         bar_width = max(1.0, bins.width * scale * 0.92)
         painter.setPen(Qt.PenStyle.NoPen)
-        for centre, count, inside in zip(bins.centres, bins.counts,
+        for center, count, inside in zip(bins.centers, bins.counts,
                                          bins.inside_bins):
             if not count:
                 continue
             bar_height = plot.height() * count / peak
             colour = (QColor(*INSIDE, INSIDE_ALPHA) if inside
                       else QColor(*OUTSIDE, OUTSIDE_ALPHA))
-            painter.fillRect(QRectF(x_of(centre) - bar_width / 2,
+            painter.fillRect(QRectF(x_of(center) - bar_width / 2,
                                     plot.bottom() - bar_height,
                                     bar_width, bar_height), colour)
         painter.setPen(QPen(CAPTION_FG))

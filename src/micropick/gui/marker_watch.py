@@ -68,18 +68,18 @@ class Sighting:
         return self.found and self.dictionary == self.wanted
 
     @property
-    def centre(self) -> np.ndarray | None:
+    def center(self) -> np.ndarray | None:
         if self.corners is None:
             return None
         return self.corners.mean(axis=0)
 
     @property
     def offset_px(self) -> np.ndarray | None:
-        """From the frame's centre, which is what step 1 centres on."""
+        """From the frame's center, which is what step 1 centers on."""
         if self.corners is None or self.frame_shape is None:
             return None
         height, width = self.frame_shape[:2]
-        return self.centre - np.array([width / 2.0, height / 2.0])
+        return self.center - np.array([width / 2.0, height / 2.0])
 
     @property
     def side_px(self) -> float | None:
@@ -149,11 +149,11 @@ class MarkerWatch:
             if ids is None or len(corners) == 0:
                 continue
             ids = [int(i) for i in np.asarray(ids).ravel()]
-            # The one nearest the centre, which is what MarkerTracker adopts
+            # The one nearest the center, which is what MarkerTracker adopts
             # when it is not given an id, so the two agree about which
             # marker is "the" marker.
-            centre = np.array([shape[1] / 2.0, shape[0] / 2.0])
-            distances = [np.linalg.norm(c.reshape(4, 2).mean(0) - centre)
+            center = np.array([shape[1] / 2.0, shape[0] / 2.0])
+            distances = [np.linalg.norm(c.reshape(4, 2).mean(0) - center)
                          for c in corners]
             best = int(np.argmin(distances))
             return Sighting(

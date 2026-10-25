@@ -1,7 +1,7 @@
 """Upper-to-lower camera homography.
 
 Two looks at the crosshair disc, one per camera, are enough: each view carries a
-centre and four neighbours, and five points fit a homography. This runs either
+center and four neighbours, and five points fit a homography. This runs either
 as a by-product of the pipette calibration, which already takes both views, or
 on its own with no pipette and no robot moves.
 
@@ -38,11 +38,11 @@ class HomographyResult:
 
 def homography_from_views(over_view, under_view, rotation_deg, gantry_xy, *,
                           over_resolution, under_resolution,
-                          max_centre_px: float = 15.0
+                          max_center_px: float = 15.0
                           ) -> tuple[CameraHomography, HomographyReport]:
-    """Fit from two `PatternView`-like objects (each with centre and neighbours).
+    """Fit from two `PatternView`-like objects (each with center and neighbours).
 
-    Duck-typed on `.centre` and `.neighbours` so this stays independent of the
+    Duck-typed on `.center` and `.neighbours` so this stays independent of the
     pipette workflow that also produces those views.
 
     The resolutions are those the two views were taken at. They are not optional:
@@ -51,9 +51,9 @@ def homography_from_views(over_view, under_view, rotation_deg, gantry_xy, *,
     box off frame and says nothing.
     """
     H, report = fit_homography(
-        over_view.centre, over_view.neighbours,
-        under_view.centre, under_view.neighbours,
-        float(rotation_deg), max_centre_px=max_centre_px)
+        over_view.center, over_view.neighbours,
+        under_view.center, under_view.neighbours,
+        float(rotation_deg), max_center_px=max_center_px)
     config = Homography(H, gantry_xy, over_resolution,
                         under_resolution).to_config(report)
     return config, report
@@ -61,7 +61,7 @@ def homography_from_views(over_view, under_view, rotation_deg, gantry_xy, *,
 
 def calibrate_homography(robot: Robot, over_cam: Camera, under_cam: Camera,
                          detector, *, target: TipTarget | None = None,
-                         frames: int = 7, max_centre_px: float = 15.0,
+                         frames: int = 7, max_center_px: float = 15.0,
                          log=print) -> HomographyResult:
     """Fit the homography from one disc seen in both cameras. No pipette, no moves.
 
@@ -83,7 +83,7 @@ def calibrate_homography(robot: Robot, over_cam: Camera, under_cam: Camera,
         over_view, under_view, target.under_rotation_deg, (gx, gy),
         over_resolution=over_cam.resolution,
         under_resolution=under_cam.resolution,
-        max_centre_px=max_centre_px)
+        max_center_px=max_center_px)
     log(str(report))
     return HomographyResult(config, report, (float(gx), float(gy)),
                             over_view, under_view)

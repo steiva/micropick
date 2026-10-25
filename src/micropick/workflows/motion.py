@@ -59,7 +59,7 @@ import threading
 
 import numpy as np
 
-from ..core.deck import SLOT_HEIGHT, SLOT_WIDTH, slot_centre
+from ..core.deck import SLOT_HEIGHT, SLOT_WIDTH, slot_center
 from ..hardware.protocols import Robot, move_to, require_ok, xyz
 from .jog import AXES, Limits
 
@@ -113,7 +113,7 @@ def envelope_for(tip, modules) -> Limits:
     floors = []
     for module in modules:
         for slot in module.slots:
-            cx, cy = slot_centre(slot)
+            cx, cy = slot_center(slot)
             half_x = SLOT_WIDTH / 2 + MODULE_MARGIN_MM
             half_y = SLOT_HEIGHT / 2 + MODULE_MARGIN_MM
             name = f"{module.name or 'module'} in slot {slot}"

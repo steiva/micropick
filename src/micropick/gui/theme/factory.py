@@ -351,7 +351,7 @@ class Section(QFrame):
     """A card whose contents fold away behind its title.
 
     For the panels that carry more controls than any one job needs. The jog
-    panel is the case: centring a marker wants the D-pad and nothing else,
+    panel is the case: centering a marker wants the D-pad and nothing else,
     the tip calibration wants neither it nor the saved positions most of the
     time, and the check page wants the positions above all. Rather than
     three panels, or a panel that guesses, each section folds and each page

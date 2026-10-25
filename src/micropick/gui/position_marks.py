@@ -13,10 +13,10 @@ marks draw differently:
 - **A camera pose** - the names in `CAMERA_POSITIONS`, each set on its own
   page and read by a workflow as where the upper camera looks from. A ring
   where the tip would go would sit a pipette offset away from anything that
-  matters. What matters is the centre of the picture the camera takes from
+  matters. What matters is the center of the picture the camera takes from
   there, which is the pose itself with no offset: a square of the ring's
   size, open at the middle of each side - a viewfinder - with a dot in it.
-  Standing at the pose, it is at the picture's centre.
+  Standing at the pose, it is at the picture's center.
 
 Both are the same green; the shape says which is which.
 
@@ -92,17 +92,17 @@ def _tip_items(name, pose, pmap, pipette_offset, gantry_xy, image_size):
     pixel = pmap.to_pixel(x, y, gantry_xy)
     if pixel is None or not _inside(*pixel, width, height):
         return []
-    centre = (int(round(pixel[0])), int(round(pixel[1])))
-    return [overlays.Circle(center=centre, radius=RADIUS_PX, color=MARK,
+    center = (int(round(pixel[0])), int(round(pixel[1])))
+    return [overlays.Circle(center=center, radius=RADIUS_PX, color=MARK,
                             thickness=2),
-            overlays.Circle(center=centre, radius=3, color=MARK,
+            overlays.Circle(center=center, radius=3, color=MARK,
                             thickness=-1, fill=True),
-            _label(name, centre)]
+            _label(name, center)]
 
 
 def _camera_items(name, pose, pmap, gantry_xy, image_size):
     """A square open at the middle of each side, the ring's size, where the
-    centre of the camera's picture would be, and a dot in it."""
+    center of the camera's picture would be, and a dot in it."""
     width, height = image_size
     # The reference pixel is where the pose itself is seen (`to_robot` of it
     # is the gantry), so the pose is the deck point to draw.
@@ -174,7 +174,7 @@ def axis_directions(pmap: PixelMap) -> dict | None:
     """Which way +X and +Y of the deck point in the picture, in pixels per
     millimetre: where a deck point 1 mm along each axis from the one at the
     reference pixel appears. Jogging +X brings what lies that way into the
-    centre, so the arrow is also where the view goes."""
+    center, so the arrow is also where the view goes."""
     ref = np.asarray(pmap.config.ref, dtype=float)
     out = {}
     for name, step in (("X", (1.0, 0.0)), ("Y", (0.0, 1.0))):

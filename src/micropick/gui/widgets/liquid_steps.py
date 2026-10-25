@@ -60,7 +60,7 @@ class LocationEditor(QWidget):
         self._plates: list[PlateChoice] = []
         self._points: list[str] = []
         self._loading = False
-        # The plates with a measured well centre, and the group's plate.
+        # The plates with a measured well center, and the group's plate.
         self._measured: set = set()
         self._group_plate = None
 
@@ -148,7 +148,7 @@ class LocationEditor(QWidget):
         self.set_location(location)
 
     def set_measured(self, measured, group_plate) -> None:
-        """(slot, load name) of the plates with a measured well centre, and
+        """(slot, load name) of the plates with a measured well center, and
         of the plate the group is on: the offset's label says what it is
         measured from."""
         self._measured = set(measured)

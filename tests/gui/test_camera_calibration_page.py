@@ -68,7 +68,7 @@ def _report(holdout=24.0, resid_max=60.0, side=6.772, frac=(0.9, 0.85)):
                      resid_max_um=resid_max, holdout_mean_um=holdout,
                      holdout_max_um=80.0, track_side_mm=side,
                      coverage=(0, 0, 100, 100), coverage_frac=frac,
-                     scale_centre_um=26.0, scale_edge_um=28.8)
+                     scale_center_um=26.0, scale_edge_um=28.8)
 
 
 def test_the_first_real_sweep_is_good():

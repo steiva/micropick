@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from ..workflows import well_centre
+from ..workflows import well_center
 from .detector import STANDIN, DetectorService
 from .widgets.checklist import BLOCKED, NOTE, OK, TODO, Check
 
@@ -202,12 +202,12 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
                                    f"module offset. Load it again.", False)
         else:
             detail = f"In slot {slot}."
-            centre = well_centre.for_plan(session.profile, session.routine,
+            center = well_center.for_plan(session.profile, session.routine,
                                           session.run_state)
-            if centre is not None:
-                x, y, _z = centre.offset
+            if center is not None:
+                x, y, _z = center.offset
                 detail += (f" Measured well center "
-                           f"({centre.well or 'a well'}): {x:+.2f}, "
+                           f"({center.well or 'a well'}): {x:+.2f}, "
                            f"{y:+.2f} mm.")
             out["plate"] = (True, detail, False)
     return out

@@ -29,8 +29,13 @@ the third for fixes.
   the depth are greyed out until the run ends, the run named in the
   tooltip. They no longer wait for other robot work, which they do not
   use.
+- Profiles: deck.json now saves the measured well centers as
+  `well_centers` and calibration.json the homography's held-out error as
+  `center_error_px`. Profiles from 0.4.0 load as they are (the old
+  "centre" keys are read) and are written with the new keys at the next
+  save, so a profile saved by this version does not load in 0.4.0.
 - Internal: Manual control and Liquid handling measure the well center
-  with the same module (`workflows.well_centre`), which the picking run's
+  with the same module (`workflows.well_center`), which the picking run's
   deposits use too.
 - Internal: every move across the deck goes through one module
   (`workflows.motion`), which keeps the travel height and the top of Z
@@ -98,9 +103,9 @@ until it is made again.
 - The Sizes card is replaced by a window opened from the chart button on
   the size histogram over the picture: counts, rejections by reason, a
   histogram per measure (diameter, circularity, aspect ratio, solidity,
-  radial CV, nearest neighbour, confidence, distance from the dish centre)
+  radial CV, nearest neighbour, confidence, distance from the dish center)
   against its picking setting, and a table of medians and ranges.
-- The next-step hint sits at the top centre and can be dragged anywhere.
+- The next-step hint sits at the top center and can be dragged anywhere.
 - Fold arrows are smaller, and opening a section no longer makes the
   other cards flicker.
 - Shorter, plainer texts throughout the interface.
@@ -115,7 +120,7 @@ as they are.
 - A question mark in the status bar brings the next-step hint back after
   its cross closed it, on any page.
 - Camera calibration is numbered steps too: place the calibration marker
-  on the picking plane (ticks itself when the camera sees it), centre it
+  on the picking plane (ticks itself when the camera sees it), center it
   under the crosshair (ticks itself; says how far off it is), sweep, save
   the result. The camera chooser and the long marker description are gone
   (the description is the line's tooltip).
@@ -142,7 +147,7 @@ as they are.
 - Camera calibration: the sweep parameters (marker side, dictionary, grid,
   degree) moved to Settings, where they are saved; the Sweep card says
   which ones it uses, with a link there.
-- Profile page: Robot and Load profile, side by side and centred. The
+- Profile page: Robot and Load profile, side by side and centered. The
   chooser shows each profile's folder after its name; a green check says
   which profile is loaded.
 - Robot: Connect carries on with the robot's session, or starts a new one
@@ -189,7 +194,7 @@ as they are.
   once more straight away, 0.3 mm over the dish bottom at 100 µl/s; missed
   again it is marked stuck (orange on the picture) and left alone until the
   dish is shaken. Settings: Run, "Retry a missed cuboid".
-- Picking: deposits use the well centre measured on the Liquid handling
+- Picking: deposits use the well center measured on the Liquid handling
   page for that plate (x and y, added to the well offset).
 - Picking settings: the arrows step by what each number is (0.1 mm for
   heights and offsets, and so on).
@@ -206,7 +211,7 @@ The first versioned release, and the first Windows build.
 - A checklist before a run: every condition marked done, to do or worth a
   look, with a button to the page where it is done.
 - Dish bottom (Z) calibration on the Picking page: tip over the dish
-  centre, jog down until it touches, Set dish bottom here.
+  center, jog down until it touches, Set dish bottom here.
 - Shake the dish on demand.
 - On a partial miss the caught cuboids go to the well first and the
   missed ones' volume back to the dish after.

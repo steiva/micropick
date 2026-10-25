@@ -19,7 +19,7 @@ a caller to remember. PySide6 6.11 also keeps a reference of its own, which was
 measured rather than assumed; it is undocumented and has moved between
 versions, so this does not lean on it.
 
-A non-contiguous array — which is what a centre crop is, being a slice — is
+A non-contiguous array — which is what a center crop is, being a slice — is
 refused by PySide6 with a plain ValueError rather than accepted and misread, so
 that failure needs no help. It is re-raised here with the fix in the message,
 because the caller is the one that knows whether the copy is affordable.

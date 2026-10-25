@@ -51,7 +51,7 @@ class AppSettings(BaseModel):
     logs_dir: str | None = None
     images_dir: str | None = None
     # The lower camera's mode while a picking run records pickup clips, and
-    # the centre of the frame kept: fewer pixels is more frames a second, and
+    # the center of the frame kept: fewer pixels is more frames a second, and
     # the pickup happens in the middle. Calibrations open the camera in the
     # profile's own mode, whatever this says.
     clip_resolution: tuple[int, int] = (2000, 1500)

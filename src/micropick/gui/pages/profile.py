@@ -1,6 +1,6 @@
 """Connecting the robot and choosing a profile.
 
-Two cards, centred: Robot first, because it is the first thing to do and the
+Two cards, centered: Robot first, because it is the first thing to do and the
 one that needs reading, then Load profile. Under them, across both, the
 Operation checklist (`gui.readiness`): the fixed steps before a picking run,
 so loading a profile shows at once how far the bench is from ready. What a
@@ -69,7 +69,7 @@ TITLE = "Profile"
 log = logging.getLogger(__name__)
 
 # Each card's width, which it grows past only for a button that would
-# not fit; the two sit side by side, centred.
+# not fit; the two sit side by side, centered.
 CARD_WIDTH = 560
 
 # The Load profile card's explanation.
@@ -230,7 +230,7 @@ class ProfilePage(QWidget):
         self._then = None                        # see _run
 
         # Robot and Load profile side by side, the checklist across both
-        # under them; the three as one centred column.
+        # under them; the three as one centered column.
         cards = QHBoxLayout()
         cards.setSpacing(SPACING * 2)
         for box in (self._robot_card(), self._profile_card()):
@@ -247,16 +247,16 @@ class ProfilePage(QWidget):
         holder = QWidget(self)
         holder.setLayout(column)
         holder.setMaximumWidth(2 * CARD_WIDTH + 6 * SPACING)
-        centred = QHBoxLayout()
-        centred.addStretch(1)
-        centred.addWidget(holder, 100)
-        centred.addStretch(1)
+        centered = QHBoxLayout()
+        centered.addStretch(1)
+        centered.addWidget(holder, 100)
+        centered.addStretch(1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 4, SPACING * 2,
                                   SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addLayout(centred)
+        layout.addLayout(centered)
 
         # Full width, selectable, and never truncated: LegacyProfileError's own
         # text says what to do about it, so it is shown as it comes rather than

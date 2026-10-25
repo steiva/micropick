@@ -35,7 +35,7 @@ class _Camera:
 
 def _identity_map(size):
     """A degree-3 map with every coefficient zero: any pixel maps to the
-    gantry pose, so to_robot(centre) is where the robot stands. Enough for
+    gantry pose, so to_robot(center) is where the robot stands. Enough for
     the routine's geometry, and it covers the whole frame."""
     w, h = size
     return PixelMapConfig(degree=3, cu=w / 2, cv=h / 2, s=1000.0,

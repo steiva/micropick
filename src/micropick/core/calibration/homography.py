@@ -9,7 +9,7 @@ Correspondence from the known orientation, not from the residual
 ----------------------------------------------------------------
 The crosshairs are identical and the pattern is four-fold symmetric, so nothing
 in the pictures says which neighbour is which. They are matched by angle about
-the disc centre, using the one fact that is fixed by the module geometry: the
+the disc center, using the one fact that is fixed by the module geometry: the
 lower camera is turned ninety degrees from the upper one and does not mirror.
 West above is north below, north is east, east is south, south is west. Angles
 are measured as atan2(dv, du) with v growing downwards, in which convention that
@@ -26,11 +26,11 @@ near-zero residual and a matrix that put the box on the wrong cuboid.
 
 The limit of what any of this can prove
 ---------------------------------------
-The disc is four-fold symmetric and the fifth point sits at its centre of
+The disc is four-fold symmetric and the fifth point sits at its center of
 symmetry, so **no arithmetic on these five points can reveal a wrong assumed
 rotation, or a mirror.** Ask for the wrong rotation and the matching pairs each
 crosshair with a different neighbour, the four points fit exactly again, the
-held-out centre still lands on the centre, and the decomposition reports back
+held-out center still lands on the center, and the decomposition reports back
 the very rotation that was assumed. This is not a gap to be closed with a better
 threshold; it is what symmetry means. The orientation is therefore a hardware
 fact kept in the profile rather than a fitted quantity, and the thing that
@@ -41,7 +41,7 @@ degenerate arrangement, a disc that moved between the two views, a correspondenc
 handed in from outside, and — the failure that actually happened — a matrix used
 in the pixels of a mode it was not fitted at.
 
-Four points fit, the centre checks
+Four points fit, the center checks
 ----------------------------------
 Four points determine a homography exactly: their residual is zero by
 construction, whatever the correspondence, so it measures nothing. The central
@@ -96,9 +96,9 @@ class HomographyError(RuntimeError):
 
 @dataclass
 class HomographyReport:
-    """What the fit is worth: the held-out centre, and the shape of the matrix."""
+    """What the fit is worth: the held-out center, and the shape of the matrix."""
 
-    centre_error_px: float          # the crosshair left out of the fit
+    center_error_px: float          # the crosshair left out of the fit
     rotation_deg: float             # from the decomposed matrix
     det: float                      # positive means no mirror
     angle_error_deg: float          # worst mismatch in the correspondence
@@ -108,7 +108,7 @@ class HomographyReport:
     warnings: list[str] = field(default_factory=list)
 
     def __str__(self) -> str:
-        text = (f"homography: held-out center {self.centre_error_px:.2f} px, "
+        text = (f"homography: held-out center {self.center_error_px:.2f} px, "
                 f"rotation {self.rotation_deg:+.1f} deg, det {self.det:+.3f}, "
                 f"match within {self.angle_error_deg:.1f} deg")
         for w in self.warnings:
@@ -170,25 +170,25 @@ def _decompose(H: np.ndarray) -> tuple[float, float]:
             float(np.linalg.det(A)))
 
 
-def fit_homography(over_centre, over_neighbours, under_centre, under_neighbours,
-                   rotation_deg: float = 90.0, *, max_centre_px: float = 15.0,
+def fit_homography(over_center, over_neighbours, under_center, under_neighbours,
+                   rotation_deg: float = 90.0, *, max_center_px: float = 15.0,
                    max_angle_err_deg: float = 25.0,
                    rotation_tol_deg: float = 15.0
                    ) -> tuple[np.ndarray, HomographyReport]:
     """Fit the upper-to-lower homography from one disc seen in both cameras.
 
-    over_/under_centre      the central crosshair pixel in each camera.
+    over_/under_center      the central crosshair pixel in each camera.
     over_/under_neighbours  the four surrounding crosshairs, in any order.
     rotation_deg            how the lower view is turned from the upper one, in
                             pixels (`TipTarget.under_rotation_deg`).
 
     Raises HomographyError if fewer than four neighbours are given, if the
     correspondence cannot be made from the given rotation, if the fit is
-    degenerate or mirrored, or if the held-out centre reprojects further than
-    max_centre_px.
+    degenerate or mirrored, or if the held-out center reprojects further than
+    max_center_px.
     """
-    over_c = np.asarray(over_centre, dtype=np.float64).reshape(2)
-    under_c = np.asarray(under_centre, dtype=np.float64).reshape(2)
+    over_c = np.asarray(over_center, dtype=np.float64).reshape(2)
+    under_c = np.asarray(under_center, dtype=np.float64).reshape(2)
     over_n = np.asarray(over_neighbours, dtype=np.float64).reshape(-1, 2)
     under_n = np.asarray(under_neighbours, dtype=np.float64).reshape(-1, 2)
 
@@ -200,7 +200,7 @@ def fit_homography(over_centre, over_neighbours, under_centre, under_neighbours,
     order, angle_err = _match_by_angle(over_n - over_c, under_n - under_c,
                                        rotation_deg, max_angle_err_deg)
 
-    # The centre stays out: four points fit exactly, so only a point that took
+    # The center stays out: four points fit exactly, so only a point that took
     # no part in the fit can disagree with it.
     src = over_n.astype(np.float32)
     dst = under_n[order].astype(np.float32)
@@ -221,7 +221,7 @@ def fit_homography(over_centre, over_neighbours, under_centre, under_neighbours,
     proj = cv2.perspectiveTransform(
         np.vstack([over_c, over_n]).astype(np.float32).reshape(-1, 1, 2),
         H).reshape(-1, 2)
-    centre_error = float(np.linalg.norm(proj[0] - under_c))
+    center_error = float(np.linalg.norm(proj[0] - under_c))
     fitted_max = float(np.linalg.norm(proj[1:] - dst, axis=1).max())
 
     # The decomposed rotation agrees with the assumed one by construction, so
@@ -236,14 +236,14 @@ def fit_homography(over_centre, over_neighbours, under_centre, under_neighbours,
             f"rotation, this means the crosshairs are not related by one")
 
     report = HomographyReport(
-        centre_error_px=centre_error, rotation_deg=rotation, det=det,
+        center_error_px=center_error, rotation_deg=rotation, det=det,
         angle_error_deg=angle_err, n_points=len(src) + 1, order=order,
         reproj_max_px=fitted_max, warnings=warnings)
 
-    if centre_error > max_centre_px:
+    if center_error > max_center_px:
         raise HomographyError(
-            f"the central crosshair reprojects {centre_error:.1f} px away, "
-            f"beyond {max_centre_px:g}. It took no part in the fit, so this is "
+            f"the central crosshair reprojects {center_error:.1f} px away, "
+            f"beyond {max_center_px:g}. It took no part in the fit, so this is "
             f"the real error: a detection or the correspondence is wrong. "
             f"{report}")
     return H, report
@@ -278,7 +278,7 @@ class Homography:
             gantry_xy=[float(v) for v in self.gantry_xy],
             over_resolution=list(self.over_resolution) if self.over_resolution else None,
             under_resolution=list(self.under_resolution) if self.under_resolution else None,
-            centre_error_px=report.centre_error_px if report else None,
+            center_error_px=report.center_error_px if report else None,
             rotation_deg=report.rotation_deg if report else None,
             det=report.det if report else None,
             reproj_max_px=report.reproj_max_px if report else None,

@@ -77,9 +77,9 @@ def paint(painter: QPainter, primitives, transform) -> None:
                          else Qt.BrushStyle.NoBrush)
 
         if isinstance(item, overlays.Circle):
-            centre = transform.map(QPointF(*item.center))
+            center = transform.map(QPointF(*item.center))
             radius = item.radius * scale
-            painter.drawEllipse(centre, radius, radius)
+            painter.drawEllipse(center, radius, radius)
 
         elif isinstance(item, overlays.Rect):
             top_left = transform.map(QPointF(item.x0, item.y0))

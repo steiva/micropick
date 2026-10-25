@@ -74,7 +74,7 @@ def test_rotation_reads_as_the_marker_is_turned(watch, frame):
     assert markers.orientation(turned.corners) != markers.orientation(upright.corners)
 
 
-def test_offset_is_from_the_frame_centre(watch, frame):
+def test_offset_is_from_the_frame_center(watch, frame):
     sighting = watch.look(frame, "DICT_6X6_250")
     height, width = frame.shape[:2]
     expected = sighting.corners.mean(axis=0) - np.array([width / 2, height / 2])

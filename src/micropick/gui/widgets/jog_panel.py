@@ -7,14 +7,14 @@ widget only decides what a click and a key press mean.
 
 A widget rather than a page, because four pages need it. Manual control is
 one; the first step of either calibration is another, where a target has to
-be centred before anything can be measured; and the check page needs it to
+be centered before anything can be measured; and the check page needs it to
 come back to the pose the camera was looking from. Those are the same act,
 and a second D-pad would be a second place for the step list and the soft
 limits to drift.
 
 Two sections of it fold
 -----------------------
-Not every page that needs the panel needs all of it. Centring a marker is
+Not every page that needs the panel needs all of it. Centering a marker is
 the D-pad and nothing else; the tip calibration usually drives to a stored
 position and never jogs at all; the check page wants the stored positions
 above everything. So Move and Positions are `theme.factory.Section`s and
@@ -369,7 +369,7 @@ class JogPanel(QWidget):
         column.addWidget(self._move_card())
         column.addWidget(self._positions_card())
         if machine_controls:
-            # Off during a calibration: homing halfway through centring the
+            # Off during a calibration: homing halfway through centering the
             # marker throws away the pose the whole sweep is planned around.
             column.addWidget(self._machine_card())
         else:

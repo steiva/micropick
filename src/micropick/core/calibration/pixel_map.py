@@ -22,7 +22,7 @@ Fitting with several tracked points
 Each detected marker corner is its own fixed deck point, with its own unknown
 deck position. Fitting them jointly means one shared polynomial constrained by
 four times as much data, and the tracked corners reach closer to the frame edges
-than the marker centre can, which is where distortion is strongest. The unknown
+than the marker center can, which is where distortion is strongest. The unknown
 deck positions enter as one free constant per track and are solved alongside the
 polynomial. This makes the problem linear.
 
@@ -178,7 +178,7 @@ class FitReport:
     track_side_mm: float | None
     coverage: tuple[float, float, float, float]
     coverage_frac: tuple[float, float]
-    scale_centre_um: float
+    scale_center_um: float
     scale_edge_um: float
 
     # Per pose and per track, in micrometres, shape (n_poses, n_tracks). The
@@ -191,7 +191,7 @@ class FitReport:
 
     @property
     def scale_variation_pct(self) -> float:
-        return 100.0 * (self.scale_edge_um / self.scale_centre_um - 1.0)
+        return 100.0 * (self.scale_edge_um / self.scale_center_um - 1.0)
 
     def __str__(self) -> str:
         u0, v0, u1, v1 = self.coverage
@@ -201,7 +201,7 @@ class FitReport:
             f"  held out   mean {self.holdout_mean_um:7.1f}  max {self.holdout_max_um:7.1f} um",
             f"  coverage   u [{u0:.0f}, {u1:.0f}]  v [{v0:.0f}, {v1:.0f}]  "
             f"({self.coverage_frac[0]*100:.0f} % x {self.coverage_frac[1]*100:.0f} % of frame)",
-            f"  scale      center {self.scale_centre_um:.2f}  edge {self.scale_edge_um:.2f} um/px "
+            f"  scale      center {self.scale_center_um:.2f}  edge {self.scale_edge_um:.2f} um/px "
             f"({self.scale_variation_pct:+.1f} %)",
             f"  track side {self.track_side_mm:.4f} mm" if self.track_side_mm else "",
         ]).rstrip()
@@ -309,7 +309,7 @@ def fit_pixel_map(
         holdout_max_um=float(np.nanmax(holdout) * 1000),
         track_side_mm=side, coverage=bounds,
         coverage_frac=((bounds[2] - bounds[0]) / w, (bounds[3] - bounds[1]) / h),
-        scale_centre_um=sc * 1000, scale_edge_um=se * 1000,
+        scale_center_um=sc * 1000, scale_edge_um=se * 1000,
         resid_um=resid * 1000,
     )
     config.holdout_mean_um = report.holdout_mean_um

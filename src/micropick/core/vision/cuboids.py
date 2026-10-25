@@ -84,7 +84,7 @@ def detect_boxes(model, frame: np.ndarray, cfg: PickingConfig):
 def otsu_contour(gray: np.ndarray, box, pad: int = 6, open_k: int = 3):
     """Otsu inside one box -> the contour in frame coordinates, or None.
 
-    The component covering the box centre is taken, so the cuboid in the middle
+    The component covering the box center is taken, so the cuboid in the middle
     wins over a rim or a neighbour touching the box from the side.
     """
     H, W = gray.shape
@@ -153,7 +153,7 @@ def build_cuboid_df(gray: np.ndarray, boxes, confs, roi_mask=None,
                     bubble_min_area_px: int = 20) -> pd.DataFrame:
     """Boxes -> a DataFrame of contour geometry and optics, one row per box.
 
-    `roi_mask` drops objects whose centre falls outside the working zone.
+    `roi_mask` drops objects whose center falls outside the working zone.
     `open_k` is threaded through to `otsu_contour`; in the old code the config
     value existed but never reached the morphology step.
 
@@ -163,7 +163,7 @@ def build_cuboid_df(gray: np.ndarray, boxes, confs, roi_mask=None,
     crops, so a run has to accumulate features for objects that are kept as well
     as ones that are dropped, or there is never any data to replace them with.
 
-    Rows dropped above - no Otsu component, a degenerate contour, a centre
+    Rows dropped above - no Otsu component, a degenerate contour, a center
     outside the ROI - leave no trace here, so a count of reasons adds up to
     `len(df)` and not to `len(boxes)`. Callers that report one should report both.
     """
@@ -198,7 +198,7 @@ def build_cuboid_df(gray: np.ndarray, boxes, confs, roi_mask=None,
 
 def add_derived(df: pd.DataFrame, size_ratio: float, one_d_ratio: float,
                 circle_center) -> pd.DataFrame:
-    """Physical size, nearest-neighbour distance and distance to the dish centre.
+    """Physical size, nearest-neighbour distance and distance to the dish center.
 
     size_ratio and one_d_ratio are passed in rather than read from a global; the
     pixel map that supersedes them is applied by the caller, not here.
@@ -409,7 +409,7 @@ def analyze_mask(var_map: np.ndarray, scale: float = 1.0, min_area: int = 3,
 
 def check_distance_from_center(df: pd.DataFrame, img_shape, r_max: float = 930,
                                scale: float = 1.0) -> pd.DataFrame:
-    """Flag rows whose (x, y) sit further than r_max from the frame centre."""
+    """Flag rows whose (x, y) sit further than r_max from the frame center."""
     H, W = img_shape[:2]
     cx, cy = (W / 2.0) * scale, (H / 2.0) * scale
 
@@ -422,9 +422,9 @@ def check_distance_from_center(df: pd.DataFrame, img_shape, r_max: float = 930,
 def detect_floater_zones(frames, downscale: int = 2, step: int = 1,
                          scale: float | None = None, min_area: int = 3,
                          mad_k: float = 5.0):
-    """A clip -> a list of (x, y) floater centres in video pixels, else empty.
+    """A clip -> a list of (x, y) floater centers in video pixels, else empty.
 
-    The frame shape used for the centre test comes from frames[0]; the old code
+    The frame shape used for the center test comes from frames[0]; the old code
     read an undeclared module-level `frame` here and raised NameError the moment
     a floater passed the earlier filters.
     """
@@ -446,7 +446,7 @@ def detect_floater_zones(frames, downscale: int = 2, step: int = 1,
 
 
 def in_zones(df: pd.DataFrame, zones) -> np.ndarray:
-    """Boolean array: does each row's centre fall inside any floater zone?
+    """Boolean array: does each row's center fall inside any floater zone?
 
     A zone is `(x, y, radius_px)`. The radius belongs to the zone rather than to
     the configuration because a floater earns its own: `floaters.exclusion_zones`
@@ -467,7 +467,7 @@ def in_zones(df: pd.DataFrame, zones) -> np.ndarray:
 
 
 def drop_in_zones(df: pd.DataFrame, zones) -> pd.DataFrame:
-    """Drop rows whose centre lies inside any floater zone.
+    """Drop rows whose center lies inside any floater zone.
 
     The picking session goes through `label_rejections` instead, which records
     the reason on the row rather than removing it. Kept for a caller that wants
@@ -483,7 +483,7 @@ def drop_in_zones(df: pd.DataFrame, zones) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def center_crop_box(shape, frac: float = 0.5, ref: str = 'width'):
-    """Where the centred square crop sits: (x0, y0, side), in full-frame pixels.
+    """Where the centered square crop sits: (x0, y0, side), in full-frame pixels.
 
     Separate from center_crop because the origin is needed without a frame to
     hand: anything drawn on a cropped view has to be shifted by it, and the
@@ -496,7 +496,7 @@ def center_crop_box(shape, frac: float = 0.5, ref: str = 'width'):
 
 
 def center_crop(img: np.ndarray, frac: float = 0.5, ref: str = 'width'):
-    """Centred square crop. Returns (crop, x0, y0) so detections can be mapped
+    """Centered square crop. Returns (crop, x0, y0) so detections can be mapped
     back to full-frame coordinates. Deduplicated from three identical copies."""
     x0, y0, side = center_crop_box(img.shape, frac, ref)
     return img[y0:y0 + side, x0:x0 + side], x0, y0

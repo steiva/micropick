@@ -172,7 +172,7 @@ def test_a_click_survives_zoom_and_crop(app):
     view.clicked.connect(lambda u, v: seen.append((u, v)))
     _wheel(app, view, QPointF(view.width() * 0.4, view.height() * 0.6), 3)
     assert view.zoom > 1.0
-    # A cropped view shows the centred square, so pick a pixel inside it.
+    # A cropped view shows the centered square, so pick a pixel inside it.
     sensor = (400.0, 300.0)
     point = view.transform.map(QPointF(*sensor))
     _click(app, view, point)

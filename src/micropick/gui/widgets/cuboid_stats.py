@@ -10,7 +10,7 @@ outside that one band:
   bubbles, and the rejections by reason (`cuboids.label_rejections`);
 - a histogram per measure - diameter, circularity, aspect ratio, solidity,
   radial CV, nearest neighbour, detector confidence, distance from the
-  dish centre - bars inside the window green;
+  dish center - bars inside the window green;
 - a table: the window, median, 10-90 % range, range, and how many fall
   inside.
 
@@ -198,22 +198,22 @@ class CuboidStats(QWidget):
             return
         span = float(values.max() - values.min())
         if span <= 0:
-            centre = float(values[0])
-            pad = max(abs(centre) * 0.1, 1e-3)
-            edges = np.linspace(centre - pad, centre + pad, BINS + 1)
+            center = float(values[0])
+            pad = max(abs(center) * 0.1, 1e-3)
+            edges = np.linspace(center - pad, center + pad, BINS + 1)
         else:
             edges = np.histogram_bin_edges(values, bins=BINS)
         counts, edges = np.histogram(values, bins=edges)
-        centres = (edges[:-1] + edges[1:]) / 2
+        centers = (edges[:-1] + edges[1:]) / 2
         width = float(edges[1] - edges[0])
-        inside = _inside(centres, low, high)
+        inside = _inside(centers, low, high)
         ink = plot.palette().color(QPalette.ColorRole.Text)
         outside = (ink.red(), ink.green(), ink.blue())
         for mask, colour, alpha in ((~inside, outside, OUTSIDE_ALPHA),
                                     (inside, INSIDE, INSIDE_ALPHA)):
             if mask.any():
                 plot.addItem(pg.BarGraphItem(
-                    x=centres[mask], height=counts[mask], width=width * 0.92,
+                    x=centers[mask], height=counts[mask], width=width * 0.92,
                     brush=pg.mkBrush(*colour, alpha),
                     pen=pg.mkPen(*colour, min(255, alpha + 60))))
         left = min(float(edges[0]), low if low is not None else math.inf)

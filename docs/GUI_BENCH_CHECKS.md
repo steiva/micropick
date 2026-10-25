@@ -104,7 +104,7 @@ static until the session owns them.
 
 - [ ] **The lower camera shows its crop and only its crop.**
   The caption should read `2000×1000  crop 0.5` for a 2000×1500 sensor frame —
-  the centred square, not the whole field. Expected failure: the full sensor
+  the centered square, not the whole field. Expected failure: the full sensor
   frame on screen, which means `crop` was read as a sensor property rather than
   a view one.
 
@@ -237,8 +237,8 @@ static until the session owns them.
 - [ ] **After any interrupted sweep, step 1 is done again before the next.**
   The page says so. The gantry stops at the pose it reached and
   `measure_scale` probes from wherever it stands, so a second attempt without
-  re-centring fails at the starting pose. Confirm the message appears and that
-  re-centring makes the next run work.
+  re-centering fails at the starting pose. Confirm the message appears and that
+  re-centering makes the next run work.
 
 - [ ] **The saved map is the map in use.**
   After saving, reload the profile and jog to a pixel through the new map. The
@@ -876,10 +876,10 @@ Kept for the record of what washing needs when it returns as a program.
   Well off, or over the neighbour: the plate is loaded in the wrong slot, or
   without its module offset (the status bar says which).
 
-- [ ] **Save centre and top here, then Go to the saved centre.**
+- [ ] **Save center and top here, then Go to the saved center.**
   Jog the tip to the middle of the well, level with the rim, and save. The
   saved numbers are small - fractions of a millimetre in X and Y, a few
-  millimetres at most in Z. Go to the saved centre of *another* well: the tip
+  millimetres at most in Z. Go to the saved center of *another* well: the tip
   is on its middle, level with its rim. A Z tens of millimetres off means the
   pose was read before the move finished, or a module offset changed.
 
@@ -965,21 +965,21 @@ Kept for the record of what washing needs when it returns as a program.
   The Where list offers each well of the group, one fixed well, a saved
   point, same place as the step before.
 
-- [ ] **A plate's well centre, measured.**
+- [ ] **A plate's well center, measured.**
   On the Wells card select one well with a cuboid in it (D5), Go to well
   top: the tip stops over D5 where the definition has its top. Jog it onto
-  the real centre, level with the rim, and Set well center: the line under
+  the real center, level with the rim, and Set well center: the line under
   the map says "measured on D5" with the offset, and deck.json has it.
-  Go to center with another well selected lands on that well's real centre
+  Go to center with another well selected lands on that well's real center
   and rim. Well depth appears under the line, filled from the definition;
   set the real one. A step on this plate now says "x, y from the measured
-  centre". Forget drops it; the line says it is not measured.
+  center". Forget drops it; the line says it is not measured.
 
 - [ ] **The measured bottom.**
   A step @ each well, Level "bottom (measured)", Z +2.5 mm: Try this step
-  puts the tip 2.5 mm over the bottom the depth says, at the real centre.
+  puts the tip 2.5 mm over the bottom the depth says, at the real center.
   Level "bottom" with the same Z goes where the definition's bottom is,
-  still at the real centre. With no centre measured, Start lists "the
+  still at the real center. With no center measured, Start lists "the
   measured bottom of slot N is not known".
 
 - [ ] **Auto refill is for a source only.**

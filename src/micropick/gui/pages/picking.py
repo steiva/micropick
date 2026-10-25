@@ -100,7 +100,7 @@ The dish bottom is set here too
 ------------------------------
 `dish_bottom` is the Z every pickup height is measured up from, and this
 platform has no sensor to find it: the tip is brought down onto the dish by
-hand. So the page does the two ends of that. Tip over the dish centre puts
+hand. So the page does the two ends of that. Tip over the dish center puts
 the tip over the middle of the working circle - `circle_center`, a pixel of
 the picture taken at the picking position, through the pixel map and the
 pipette offset - `ABOVE_BOTTOM_MM` over the dish bottom set now; the
@@ -167,7 +167,7 @@ from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
-from ...workflows import well_centre
+from ...workflows import well_center
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
@@ -198,7 +198,7 @@ log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 440
 
-# How high over the stored dish bottom Tip over the dish centre stops: room
+# How high over the stored dish bottom Tip over the dish center stops: room
 # for a dish bottom that was set a little high, and few key presses down.
 ABOVE_BOTTOM_MM = 10.0
 # A new dish bottom this far from the old one is asked about twice as
@@ -362,12 +362,12 @@ class PickingPage(QWidget):
 
         # One above the other: side by side in half the panel, the two
         # names did not fit their buttons.
-        self.over_centre_button = secondary_button("Tip over the dish center",
+        self.over_center_button = secondary_button("Tip over the dish center",
                                                    self)
-        self.over_centre_button.clicked.connect(self._tip_over_centre)
+        self.over_center_button.clicked.connect(self._tip_over_center)
         self.set_bottom_button = secondary_button("Set dish bottom here", self)
         self.set_bottom_button.clicked.connect(self._set_bottom)
-        box.layout().addWidget(self.over_centre_button)
+        box.layout().addWidget(self.over_center_button)
         box.layout().addWidget(self.set_bottom_button)
 
         self.bottom_state = muted_label()
@@ -529,10 +529,10 @@ class PickingPage(QWidget):
 
     # -- the dish bottom (Z calibration) ----------------------------------------
 
-    def _centre_target(self):
-        """(x, y) for the tip over the dish centre, or why there is none.
+    def _center_target(self):
+        """(x, y) for the tip over the dish center, or why there is none.
 
-        The centre is `circle_center`, a pixel of the picture taken at the
+        The center is `circle_center`, a pixel of the picture taken at the
         picking position, so the pixel map turns it into a deck point from
         that pose and the pipette offset puts the tip there."""
         profile = self.session.profile
@@ -552,10 +552,10 @@ class PickingPage(QWidget):
         xy = moves.tip_target(pmap, float(cx), float(cy), observe, offset)
         return (float(xy[0]), float(xy[1])), ""
 
-    def _tip_over_centre(self) -> None:
+    def _tip_over_center(self) -> None:
         if self.session.robot is None or self._running():
             return
-        xy, why = self._centre_target()
+        xy, why = self._center_target()
         if xy is None:
             self.jog.tell(f"not possible: {why}.")
             return
@@ -901,10 +901,10 @@ class PickingPage(QWidget):
                 f"Opened automatically at {w}x{h} (Settings)."))
         return out
 
-    def _well_centre(self):
-        """The plan's plate's measured well center (`well_centre.for_plan`)."""
+    def _well_center(self):
+        """The plan's plate's measured well center (`well_center.for_plan`)."""
         session = self.session
-        return well_centre.for_plan(session.profile, session.routine,
+        return well_center.for_plan(session.profile, session.routine,
                                     session.run_state)
 
     def _confirm_start(self) -> bool:
@@ -952,7 +952,7 @@ class PickingPage(QWidget):
     def _plan_plates(self) -> set:
         """(slot, load name) of the plate the plan delivers into, if it is
         on the deck: its measured center stays while the run uses it."""
-        plate = well_centre.plan_plate(self.session.routine,
+        plate = well_center.plan_plate(self.session.routine,
                                        self.session.run_state)
         return set() if plate is None else {plate}
 
@@ -965,8 +965,8 @@ class PickingPage(QWidget):
         slot = str(routine.destination.slot)
         labware_id = session.run_state.labware[slot].labware_id
         pmap = PixelMap.from_config(profile.pixel_map)
-        centre = self._well_centre()
-        centre_xy = None if centre is None else tuple(centre.offset[:2])
+        center = self._well_center()
+        center_xy = None if center is None else tuple(center.offset[:2])
         # A folder per run, so a run's clips are together and apart from the
         # last one's; the clips in it are named for their target well.
         under_cam = clip_dir = None
@@ -988,7 +988,7 @@ class PickingPage(QWidget):
                                      detector, labware_id=labware_id,
                                      under_cam=under_cam, clip_dir=clip_dir,
                                      clip_crop=clip_crop,
-                                     well_centre=centre_xy,
+                                     well_center=center_xy,
                                      motion=motion)
             self._session = picking
             # The confirmation was the go-ahead; see "Start is the go-ahead".
@@ -1433,13 +1433,13 @@ class PickingPage(QWidget):
                 f"Dish bottom {picking.dish_bottom:.2f} mm; pickups at "
                 f"{picking.pickup_height:.2f} mm "
                 f"(+{picking.pickup_offset:g}).")
-        centre, why = self._centre_target()
-        self.over_centre_button.setEnabled(
-            movable and centre is not None and not running)
-        self.over_centre_button.setToolTip(
+        center, why = self._center_target()
+        self.over_center_button.setEnabled(
+            movable and center is not None and not running)
+        self.over_center_button.setToolTip(
             f"Move the tip over the dish center, {ABOVE_BOTTOM_MM:g} mm "
             f"above the dish bottom."
-            if centre is not None else f"Unavailable: {why}.")
+            if center is not None else f"Unavailable: {why}.")
         self.set_bottom_button.setEnabled(
             movable and profile is not None and not running)
         self.set_bottom_button.setToolTip(

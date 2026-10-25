@@ -39,7 +39,7 @@ STANDIN_NOTE = ("stand-in detector: no crosshair disc was seen. The offset is "
 class StandInTipDetector:
     """Fabricates `PatternView`s from the gantry pose. For --mock only.
 
-    The upper view puts the disc at the frame centre. The lower view puts
+    The upper view puts the disc at the frame center. The lower view puts
     the tip wherever the gantry would have to move to land on a target that
     is the first pose it was asked from, minus the approach shift, plus
     `error`; after the routine applies its correction the residual reads
@@ -58,7 +58,7 @@ class StandInTipDetector:
         self._anchor: np.ndarray | None = None
 
     def detect(self, frame) -> list[Detection]:
-        """The five crosshairs of a disc at the frame's centre, invented.
+        """The five crosshairs of a disc at the frame's center, invented.
 
         The check page asks for points rather than a whole view, and in
         --mock there is no disc to find. These are laid out like a real
@@ -66,18 +66,18 @@ class StandInTipDetector:
         exercised; they are not a measurement and the page says so.
         """
         height, width = frame.shape[:2]
-        centre = np.array([width / 2.0, height / 2.0])
+        center = np.array([width / 2.0, height / 2.0])
         r = min(width, height) / 5.0
         offsets = [(0.0, 0.0), (r, 0.0), (-r, 0.0), (0.0, r), (0.0, -r)]
-        return [Detection("point", centre + np.array(o), 0.9) for o in offsets]
+        return [Detection("point", center + np.array(o), 0.9) for o in offsets]
 
     def view(self, camera, *, spacing_mm: float, frames: int = 5,
              need_tip: bool = False, **_ignored) -> PatternView:
         frame = camera.read_after(time.monotonic())
         h, w = frame.shape[:2]
-        centre = np.array([w / 2.0, h / 2.0])
+        center = np.array([w / 2.0, h / 2.0])
         r = spacing_mm / self.mm_per_px
-        neighbours = centre + np.array([[r, 0.0], [-r, 0.0], [0.0, r], [0.0, -r]])
+        neighbours = center + np.array([[r, 0.0], [-r, 0.0], [0.0, r], [0.0, -r]])
         tip = None
         if need_tip:
             pose = np.array(xyz(self.robot)[:2], dtype=float)
@@ -88,8 +88,8 @@ class StandInTipDetector:
             # taken back through the axes (an involution) and the scale.
             wanted = self._anchor - pose
             residual_px = (self.axes @ wanted) / self.mm_per_px
-            tip = centre - residual_px
-        return PatternView(centre=centre, neighbours=neighbours, tip=tip,
+            tip = center - residual_px
+        return PatternView(center=center, neighbours=neighbours, tip=tip,
                            mm_per_px=self.mm_per_px, spread_px=0.0,
                            radius_cv=0.0, n_frames=frames, frame=frame,
                            detections=[])

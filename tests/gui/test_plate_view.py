@@ -45,8 +45,8 @@ def view(app):
     v.close()
 
 
-def centre(view, well):
-    """The viewport point of a well's centre. Mouse events go to the
+def center(view, well):
+    """The viewport point of a well's center. Mouse events go to the
     viewport, which is where Qt delivers them in a QGraphicsView."""
     item = view._owner._wells[well]                 # a mirror's are its plate's
     return QPointF(view.mapFromScene(item.sceneBoundingRect().center()))
@@ -90,18 +90,18 @@ def header(view, text):
 
 
 def test_a_click_replaces_the_selection(app, view):
-    click(app, view, centre(view, "A1"))
+    click(app, view, center(view, "A1"))
     assert view.selection == {"A1"}
-    click(app, view, centre(view, "B2"))
+    click(app, view, center(view, "B2"))
     assert view.selection == {"B2"}
 
 
 def test_ctrl_click_adds_and_takes_away(app, view):
-    click(app, view, centre(view, "A1"))
-    click(app, view, centre(view, "A2"), CTRL)
-    click(app, view, centre(view, "A3"), CTRL)
+    click(app, view, center(view, "A1"))
+    click(app, view, center(view, "A2"), CTRL)
+    click(app, view, center(view, "A3"), CTRL)
     assert view.selection == {"A1", "A2", "A3"}
-    click(app, view, centre(view, "A2"), CTRL)
+    click(app, view, center(view, "A2"), CTRL)
     assert view.selection == {"A1", "A3"}
 
 
@@ -119,15 +119,15 @@ def test_a_header_takes_a_whole_line(app, view):
 
 def test_a_box_takes_what_is_inside_it(app, view):
     # From outside the grid's top-left to past C3, so no well sits on the
-    # boundary: a marquee takes the wells whose centres are inside it.
-    start = centre(view, "A1")
-    end = centre(view, "C3")
+    # boundary: a marquee takes the wells whose centers are inside it.
+    start = center(view, "A1")
+    end = center(view, "C3")
     start = QPointF(start.x() - 8, start.y() - 8)
     end = QPointF(end.x() + 8, end.y() + 8)
     drag(app, view, start, end)
     assert view.selection == {f"{row}{n}" for row in "ABC" for n in (1, 2, 3)}
     # Shift takes away, the opposite of a plain marquee.
-    inner_end = centre(view, "B2")
+    inner_end = center(view, "B2")
     drag(app, view, start, QPointF(inner_end.x() + 8, inner_end.y() + 8), SHIFT)
     assert view.selection == {"A3", "B3", "C1", "C2", "C3"}
 
@@ -157,7 +157,7 @@ def test_the_count_is_drawn_in_the_well_and_the_name_when_it_is_not_planned(app,
 def test_a_double_click_names_one_well(app, view):
     seen = []
     view.well_activated.connect(seen.append)
-    click(app, view, centre(view, "D4"),
+    click(app, view, center(view, "D4"),
           kind=QMouseEvent.Type.MouseButtonDblClick)
     assert seen == ["D4"]
 
@@ -216,12 +216,12 @@ def header_colour(view, text):
 def test_the_well_under_the_pointer_lights_its_row_and_column(app, view):
     said = []
     view.hovered.connect(said.append)
-    move(app, view, centre(view, "C7"))
+    move(app, view, center(view, "C7"))
     assert said[-1] == "C7"
     assert header_colour(view, "C") == HEADER_HOT
     assert header_colour(view, "7") == HEADER_HOT
     assert header_colour(view, "D") == HEADER
-    move(app, view, centre(view, "D8"))
+    move(app, view, center(view, "D8"))
     assert said[-1] == "D8"
     assert header_colour(view, "C") == HEADER
     assert header_colour(view, "D") == HEADER_HOT
@@ -236,12 +236,12 @@ def test_a_mirror_shows_the_same_plate_and_selects_on_it(app, view):
     app.processEvents()
     assert mirror.scene() is view.scene()
     assert mirror.transform().m11() > view.transform().m11()   # larger
-    click(app, mirror, centre(mirror, "B3"))
+    click(app, mirror, center(mirror, "B3"))
     assert view.selection == {"B3"}
-    click(app, mirror, centre(mirror, "B4"), CTRL)
+    click(app, mirror, center(mirror, "B4"), CTRL)
     assert view.selection == {"B3", "B4"}
     # Past the corner wells, so none sits on the band's edge.
-    start, end = centre(mirror, "E1"), centre(mirror, "F2")
+    start, end = center(mirror, "E1"), center(mirror, "F2")
     drag(app, mirror, QPointF(start.x() - 8, start.y() - 8),
          QPointF(end.x() + 8, end.y() + 8))
     assert view.selection == {"E1", "E2", "F1", "F2"}

@@ -171,7 +171,7 @@ class SettingsPage(QWidget):
 
         # Readable columns, not the window's width: these are a few fields.
         # The computer's on the left, the profile's on the right, the pair
-        # centred.
+        # centered.
         columns = QHBoxLayout()
         columns.setSpacing(SPACING * 2)
         columns.addStretch(1)

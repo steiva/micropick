@@ -380,7 +380,7 @@ class MarkerScene:
     def __init__(self, *, image_size=(2592, 1944), mm_per_px=0.02633,
                  marker_id=1, marker_side_mm=6.8,
                  marker_xy=(181.5, 162.0), k1=-0.055, k2=0.010,
-                 optical_centre=None, tilt=(0.010, 0.007),
+                 optical_center=None, tilt=(0.010, 0.007),
                  noise_px=0.0, blur=True, dictionary=None):
         self.image_size = image_size
         self.mm_per_px = mm_per_px
@@ -392,7 +392,7 @@ class MarkerScene:
         self.noise_px = noise_px
         self.blur = blur
         w, h = image_size
-        self.cx, self.cy = optical_centre or (w / 2 + 30, h / 2 - 25)
+        self.cx, self.cy = optical_center or (w / 2 + 30, h / 2 - 25)
         self.norm = float(np.hypot(w, h) / 2)
 
         self.dictionary = dictionary or cv2.aruco.getPredefinedDictionary(

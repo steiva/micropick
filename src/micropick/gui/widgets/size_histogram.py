@@ -55,7 +55,7 @@ HIST_BINS = 28
 class SizeBins:
     """A detection's diameters, binned, against the size window (µm)."""
 
-    centres: np.ndarray
+    centers: np.ndarray
     counts: np.ndarray
     width: float
     edges: np.ndarray
@@ -69,7 +69,7 @@ class SizeBins:
     @property
     def inside_bins(self) -> np.ndarray:
         """Which bins are inside the window: a bar is in it or it is not."""
-        return (self.centres >= self.low) & (self.centres <= self.high)
+        return (self.centers >= self.low) & (self.centers <= self.high)
 
     @property
     def x_range(self) -> tuple[float, float]:
@@ -103,17 +103,17 @@ def size_bins(detection, window) -> SizeBins | str:
     # A dish with one cuboid, or with several of exactly one size, gives
     # numpy a zero-width range and every bin edge the same number: the
     # bars come out zero wide and the plot looks empty. Give it a span to
-    # divide, centred on the value.
+    # divide, centered on the value.
     span = float(sizes.max() - sizes.min())
     if span <= 0:
-        centre = float(sizes[0])
-        pad = max(1.0, abs(centre) * 0.1)
-        edges = np.linspace(centre - pad, centre + pad, HIST_BINS + 1)
+        center = float(sizes[0])
+        pad = max(1.0, abs(center) * 0.1)
+        edges = np.linspace(center - pad, center + pad, HIST_BINS + 1)
     else:
         edges = np.histogram_bin_edges(sizes, bins=HIST_BINS)
     counts, edges = np.histogram(sizes, bins=edges)
     width = float(edges[1] - edges[0]) if len(edges) > 1 else 1.0
-    return SizeBins(centres=(edges[:-1] + edges[1:]) / 2, counts=counts,
+    return SizeBins(centers=(edges[:-1] + edges[1:]) / 2, counts=counts,
                     width=width, edges=edges, low=low, high=high,
                     total=len(sizes),
                     inside=int(((sizes >= low) & (sizes <= high)).sum()),
@@ -239,7 +239,7 @@ class SizeHistogram(QWidget):
             if not mask.any():
                 continue
             bars = pg.BarGraphItem(
-                x=bins.centres[mask], height=bins.counts[mask],
+                x=bins.centers[mask], height=bins.counts[mask],
                 width=bins.width * 0.92,
                 brush=pg.mkBrush(*colour, alpha),
                 pen=pg.mkPen(*colour, min(255, alpha + 60)))

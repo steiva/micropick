@@ -1,6 +1,6 @@
 """The next step of the Operation checklist, floating over the page.
 
-A small card at the top centre of every page but Profile (which shows the
+A small card at the top center of every page but Profile (which shows the
 whole list), under the tab row: the first step that can be done now, and a
 button to the page where it is done. It is dragged by any part of it but
 its buttons, and stays where it was put, on every page, until the program

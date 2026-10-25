@@ -5,9 +5,9 @@ The picture on the left, and on the right the steps, each a card with a mark
 
 1. Place the calibration marker on the picking plane, where the camera sees
    it. Done when the page sees it, in the dictionary set in Settings.
-2. Centre it under the crosshair, at the height where the picture is sharp.
-   Done when the marker is within CENTRED_SIDES of its own side of the
-   frame's centre. The jog panel sits right under this step.
+2. Center it under the crosshair, at the height where the picture is sharp.
+   Done when the marker is within CENTERED_SIDES of its own side of the
+   frame's center. The jog panel sits right under this step.
 3. Sweep: the parameters (set in Settings), what still stops it, Start.
 4. Save the result: the verdict, the statistics, Save to profile.
 
@@ -30,7 +30,7 @@ the Marker card writes the dictionary the marker was found in to Settings.
 It was a wizard of four steps, as the
 pipette page was, and became one page for the same reason: the order was
 right, but each step hid what the next one needed. The first act is still a
-physical one at the bench - centre the marker and set the working height -
+physical one at the bench - center the marker and set the working height -
 and the panel says so first, because the whole sweep is planned around it:
 `measure_scale` probes from wherever the gantry is standing. What stops the
 sweep is said under Start, and the jog panel is hidden while it runs.
@@ -136,9 +136,9 @@ PANEL_WIDTH = 420
 # here breaks.
 __all__ += ["DICTIONARIES"]
 
-# Step 2 is done when the marker's centre is within this many of its own
-# sides of the frame's centre: under the crosshair as the eye judges it.
-CENTRED_SIDES = 2.0
+# Step 2 is done when the marker's center is within this many of its own
+# sides of the frame's center: under the crosshair as the eye judges it.
+CENTERED_SIDES = 2.0
 
 # The sweep's usual settings: the marker printed for this rig and the grid
 # and degree the first real sweep was judged at (DESIGN section 3). They are
@@ -263,9 +263,9 @@ class CameraCalibration(QWidget):
         self._outcome = ""
 
         self.view = CameraView(self)
-        # No Home and no Retract here: homing halfway through centring the
+        # No Home and no Retract here: homing halfway through centering the
         # marker throws away the pose the sweep is about to be planned around.
-        # Centring the marker is the D-pad; the stored positions are not
+        # Centering the marker is the D-pad; the stored positions are not
         # part of it, so they start folded.
         self.jog = JogPanel(self.session, shortcut_host=self,
                             machine_controls=False, collapsed=("positions",),
@@ -273,7 +273,7 @@ class CameraCalibration(QWidget):
         self.jog.show_position_on(self.view)
 
         self._saved = False                  # the last result, saved
-        panel = CardColumns([self._marker_step(), self._centre_step(),
+        panel = CardColumns([self._marker_step(), self._center_step(),
                              self.jog, self._sweep_card(),
                              self._report_card()], self)
         layout = QHBoxLayout(self)
@@ -321,14 +321,14 @@ class CameraCalibration(QWidget):
         self.place.add(self.use_dictionary_button)
         return self.place.box
 
-    def _centre_step(self) -> QWidget:
-        self.centre = StepCard(self, 2, "Center it under the crosshair")
-        self.centre.add(wrapped(
+    def _center_step(self) -> QWidget:
+        self.center = StepCard(self, 2, "Center it under the crosshair")
+        self.center.add(wrapped(
             "Jog the marker under the camera crosshair, at the height where "
             "the picture is in focus."))
-        self.centre_state = muted_label()
-        self.centre.add(self.centre_state)
-        return self.centre.box
+        self.center_state = muted_label()
+        self.center.add(self.center_state)
+        return self.center.box
 
     def _sweep_card(self) -> QWidget:
         self.sweep = StepCard(self, 3, "Sweep")
@@ -550,14 +550,14 @@ class CameraCalibration(QWidget):
         """Step 1: the marker in the picture, in the sweep's dictionary."""
         return self._sighting is not None and self._sighting.as_asked
 
-    def _centred(self) -> bool:
-        """Step 2: within CENTRED_SIDES of its own side of the centre."""
+    def _centered(self) -> bool:
+        """Step 2: within CENTERED_SIDES of its own side of the center."""
         sighting = self._sighting
         if not self._seen() or sighting.offset_px is None \
                 or not sighting.side_px:
             return False
         return (float(np.linalg.norm(sighting.offset_px))
-                <= CENTRED_SIDES * sighting.side_px)
+                <= CENTERED_SIDES * sighting.side_px)
 
     def _running(self) -> bool:
         return self._worker is not None and self._worker.running
@@ -573,7 +573,7 @@ class CameraCalibration(QWidget):
             out.append("The upper camera is not open yet.")
         elif not self._seen():
             out.append("Step 1: the marker is not seen.")
-        elif not self._centred():
+        elif not self._centered():
             out.append("Step 2: center the marker under the crosshair.")
         return out
 
@@ -648,7 +648,7 @@ class CameraCalibration(QWidget):
 
     def _sweep_marker_id(self) -> int | None:
         """What the watch saw, if it saw anything: the sweep adopts the marker
-        nearest the centre and does not report which id that was."""
+        nearest the center and does not report which id that was."""
         return getattr(self._sighting, "marker_id", None)
 
     def _cancel(self) -> None:
@@ -695,12 +695,12 @@ class CameraCalibration(QWidget):
     def _on_failed(self, reason: str) -> None:
         """A sweep that ended early, cancelled or otherwise.
 
-        It always says to centre the marker again, and that is not politeness. A run
+        It always says to center the marker again, and that is not politeness. A run
         that stops part way leaves the gantry at the pose it reached, and
         `measure_scale` probes from wherever the gantry is standing — so the
         next attempt begins with the marker somewhere near a frame edge or off
         it entirely, and fails with "marker not detected at the starting pose".
-        Recentring is a physical act and the operator is the only one who can
+        Recentering is a physical act and the operator is the only one who can
         do it.
         """
         self._worker = None
@@ -851,18 +851,18 @@ class CameraCalibration(QWidget):
 
     def _show_marks(self, running: bool) -> None:
         """Each step's mark, from what the page sees and what was done."""
-        seen, centred = self._seen(), self._centred()
+        seen, centered = self._seen(), self._centered()
         self.place.set_state(OK if seen else TODO)
-        if centred:
-            self.centre.set_state(OK)
-            self.centre_state.setText("Under the crosshair.")
+        if centered:
+            self.center.set_state(OK)
+            self.center_state.setText("Under the crosshair.")
         elif not seen:
-            self.centre.set_state(BLOCKED, "First: step 1.")
-            self.centre_state.setText("")
+            self.center.set_state(BLOCKED, "First: step 1.")
+            self.center_state.setText("")
         else:
             dx, dy = self._sighting.offset_px
-            self.centre.set_state(TODO)
-            self.centre_state.setText(f"{abs(dx):.0f} px "
+            self.center.set_state(TODO)
+            self.center_state.setText(f"{abs(dx):.0f} px "
                                       f"{'right' if dx > 0 else 'left'}, "
                                       f"{abs(dy):.0f} px "
                                       f"{'down' if dy > 0 else 'up'} of the "
