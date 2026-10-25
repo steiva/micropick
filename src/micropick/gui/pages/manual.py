@@ -75,7 +75,7 @@ pickup by hand. They are refused unless the robot reports a tip on.
 
 A small deck map is the way across the deck: a click on a slot sends the
 camera or the tip, as "A click moves" says, over that slot's center at the
-travel height (`deck_view.slot_centre`, the deck definition's geometry). The
+travel height (`core.deck.slot_centre`, the deck definition's geometry). The
 definition is in the robot's frame, the tip's: the tip goes to the center
 itself, the camera to it less the pipette offset. It obeys Click to move
 like the picture does, and goes through the same queue.
@@ -125,6 +125,7 @@ from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QHBoxLayout, QLabel,
                                QWidget)
 
 from ...core.calibration.pixel_map import PixelMap
+from ...core.deck import slot_centre
 from ...hardware.protocols import xyz
 from ...viz import markers, overlays
 from ...workflows import manual as moves
@@ -139,7 +140,7 @@ from ..theme.factory import (Section, card, combo_box, double_spin_box,
 from ..tip_detector import load_tip_detector
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.deck_view import DeckView, slot_centre
+from ..widgets.deck_view import DeckView
 from ..widgets.feed_row import FeedRow
 from ..position_marks import PositionMarks
 from ..widgets.jog_panel import JogPanel

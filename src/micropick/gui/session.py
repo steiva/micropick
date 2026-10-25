@@ -59,8 +59,7 @@ from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..workflows.jog import Limits                  # noqa: E402
 from ..workflows.manual import unreachable          # noqa: E402
-from .widgets.deck_view import (SLOT_HEIGHT, SLOT_WIDTH,  # noqa: E402
-                                slot_centre)
+from ..core.deck import SLOT_HEIGHT, SLOT_WIDTH, slot_centre  # noqa: E402
 from .detector import DetectorService              # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",

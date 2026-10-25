@@ -33,6 +33,11 @@ from PySide6.QtWidgets import (QGraphicsRectItem, QGraphicsScene,
                                QGraphicsSimpleTextItem, QGraphicsTextItem,
                                QGraphicsView)
 
+# The deck definition's millimetres; the drawing is in these units and the
+# view scales it to fit.
+from ...core.deck import (SLOT_HEIGHT, SLOT_PITCH_X, SLOT_PITCH_Y,
+                          SLOT_WIDTH, slot_centre)
+
 __all__ = ["DeckView", "slot_centre", "SLOTS", "TRASH_SLOT"]
 
 # One accent, as on the plate map: a deck is its own surface, like the camera
@@ -54,14 +59,6 @@ LABEL = QColor(210, 212, 218)
 DIM_LABEL = QColor(140, 142, 150)
 BACKDROP = QColor(24, 24, 26)
 
-# OT-2 deck geometry in millimetres: slot pitch and the slot opening. The
-# numbers are the deck definition's; the drawing is in these units and the view
-# scales it to fit.
-SLOT_PITCH_X = 132.5
-SLOT_PITCH_Y = 90.5
-SLOT_WIDTH = 127.76
-SLOT_HEIGHT = 85.48
-
 TRASH_SLOT = "12"
 SLOTS = tuple(str(n) for n in range(1, 12))       # the loadable ones
 
@@ -71,17 +68,6 @@ def _slot_origin(slot: int) -> tuple[float, float]:
     column = (slot - 1) % 3
     row = (slot - 1) // 3                          # 0 is the front row
     return column * SLOT_PITCH_X, (3 - row) * SLOT_PITCH_Y
-
-
-def slot_centre(slot) -> tuple[float, float]:
-    """The centre of a slot in the robot's deck frame, in millimetres: slot
-    1's corner at the origin, x to the right, y to the back. The deck
-    definition's numbers, the same this view is drawn with."""
-    n = int(slot)
-    column = (n - 1) % 3
-    row = (n - 1) // 3
-    return (column * SLOT_PITCH_X + SLOT_WIDTH / 2,
-            row * SLOT_PITCH_Y + SLOT_HEIGHT / 2)
 
 
 class _Slot(QGraphicsRectItem):
