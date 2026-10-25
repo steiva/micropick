@@ -65,3 +65,42 @@ def test_the_touch_up_follows_the_lower_camera_in_xy_only(app, page):
     assert not any("PgUp" in line for line in jog.help_lines)
     assert not page.jog.isVisible()                    # the disc panel steps aside
     page._abort()
+
+
+def _until(app, condition, timeout_s=10.0):
+    import time
+    end = time.monotonic() + timeout_s
+    while not condition() and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    app.processEvents()
+    return condition()
+
+
+def test_abort_waits_for_a_touch_up_step_still_moving(app, page):
+    import threading
+    from micropick.gui.workers import Worker
+    session = page.session
+    # The calibration as it runs: it holds the robot and waits in the
+    # touch-up for the operator.
+    lease = session.robot_lease.claim("pipette calibration", run=True)
+    worker = Worker(lambda: page._touch_up(None, None, None), lease=lease)
+    page._worker = worker
+    worker.start()
+    assert _until(app, lambda: not page.touch_box.isHidden())
+    # A touch-up step, still moving when Abort is pressed.
+    moving, done = threading.Event(), threading.Event()
+
+    def step(_log):
+        moving.set()
+        done.wait(10)
+
+    assert page.touch_jog.run_job(step)
+    assert moving.wait(5)
+    page._abort()
+    assert session.robot_lease.holder == "pipette calibration"
+    assert worker.running and not page.touch_box.isHidden()
+    done.set()
+    assert _until(app, lambda: not page.touch_jog.busy)
+    page._abort()
+    assert _until(app, lambda: not session.robot_lease.busy)

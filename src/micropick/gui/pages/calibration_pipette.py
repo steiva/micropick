@@ -590,6 +590,11 @@ class PipetteCalibration(QWidget):
             self._abort()
 
     def _abort(self) -> None:
+        # As Done: the step took no lease of its own, and the calibration's
+        # ends with it - the robot would be free while the step still moves.
+        if self.touch_jog.busy:
+            self._append("a jog step is still moving; press Abort after it")
+            return
         self.touch_box.hide()
         self.touch_jog.end_loan()
         self._aborted = True
