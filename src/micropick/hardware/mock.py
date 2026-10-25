@@ -10,6 +10,7 @@ calibration point, which is nearly impossible to chase.
 from __future__ import annotations
 
 import functools
+import json
 import threading
 import time
 
@@ -87,6 +88,15 @@ def frame_index(frame) -> int:
     return b + g * 256 + r * 65536
 
 
+class _Declined:
+    """A command the robot answered and then declined: the body the real
+    wrapper's response carries, enough for `protocols.command_status`."""
+
+    def __init__(self, detail: str):
+        self.text = json.dumps({"data": {"status": "failed", "error": {
+            "errorType": "MotionPlanningFailure", "detail": detail}}})
+
+
 class MockRobot:
     """Stands in for ot2_api.OpentronsAPI, same method names and signatures.
 
@@ -94,10 +104,20 @@ class MockRobot:
     That is deliberate: workflows must read the pose back, and a mock returning
     exactly what was asked would hide the difference until it showed up on the
     bench as an occasional bad calibration point.
+
+    `top_mm`, if given, is the retracted height with the tip that is on, and
+    the mock then keeps to it as the robot does: a retract goes there, and a
+    moveToCoordinates to it (or above), or a relative step that stays at it,
+    is declined with the pose unchanged ("Destination out of bounds in the
+    Z-axis"). Off by default, where a retract goes to 100 and any Z is taken.
     """
 
+    # A target this close to the top counts as at it.
+    TOP_TOL_MM = 0.05
+
     def __init__(self, position=(150.0, 150.0, 100.0), noise_mm=0.01,
-                 speed_mm_s=200.0, backlash_mm=0.0, seed=0):
+                 speed_mm_s=200.0, backlash_mm=0.0, seed=0, top_mm=None):
+        self.top_mm = top_mm
         self._pos = np.array(position, dtype=float)
         self.noise_mm = noise_mm
         self.speed = speed_mm_s
@@ -132,6 +152,10 @@ class MockRobot:
     def move_to_coordinates(self, coordinates, min_z_height=None,
                             force_direct=False, speed=None, verbose=True):
         target = np.asarray(coordinates, dtype=float)
+        if self._at_top(target[2]):
+            self.calls.append(("refused", "move_to_coordinates",
+                               tuple(float(v) for v in target)))
+            return _Declined("Destination out of bounds in the Z-axis")
         step = target - self._pos
         if self.speed:
             time.sleep(float(np.linalg.norm(step)) / self.speed)
@@ -164,7 +188,10 @@ class MockRobot:
         idx = "xyz".index(axis)
         target = self._pos.copy()
         target[idx] += distance
-        self.move_to_coordinates(target, verbose=verbose)
+        return self.move_to_coordinates(target, verbose=verbose)
+
+    def _at_top(self, z: float) -> bool:
+        return self.top_mm is not None and z >= self.top_mm - self.TOP_TOL_MM
 
     def home_robot(self, verbose=True):
         self._pos = np.array([0.0, 0.0, 100.0])
@@ -178,7 +205,7 @@ class MockRobot:
         # The real axis goes to the top of its travel; the Z a caller reads
         # back afterwards is what it takes the top to be.
         if axis == "leftZ":
-            self._pos[2] = 100.0
+            self._pos[2] = 100.0 if self.top_mm is None else self.top_mm
         self.calls.append(("retract_axis", axis))
 
     def move_to_well(self, labware_id, well_name, well_location="top",
