@@ -144,7 +144,7 @@ def test_a_second_stop_holds_the_robot_and_keeps_its_session(app, window,
     robot.hold.clear()
 
 
-def test_closing_during_a_run_asks_and_does_not_retract_into_it(
+def test_closing_during_a_run_asks_and_stays_open_until_it_has_stopped(
         app, window, monkeypatch):
     from PySide6.QtGui import QCloseEvent
     from micropick.gui import shell
@@ -152,24 +152,32 @@ def test_closing_during_a_run_asks_and_does_not_retract_into_it(
     monkeypatch.setattr(shell, "CLOSE_WAIT_S", 0.2)
     stops = []
     window.session.stop_requested.connect(lambda: stops.append(1))
-    lease = window.session.robot_lease.claim("picking run", run=True)
+    lease = window.session.robot_lease.claim("pipette calibration", run=True)
+    robot = window.session.robot
     try:
         monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: NO)
         event = QCloseEvent()
         window.closeEvent(event)
         assert not event.isAccepted()
         assert window.session.robot is not None and stops == []
-        # Yes: the run is told to stop; it does not let go in time here, so
-        # the axis is left where it is rather than retracted into the run.
+        # Yes: the run is told to stop, but does not in time - the pipette
+        # calibration hears Stop only in its touch-up. The window stays,
+        # the robot session with it, and nothing is sent into the run.
         monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: YES)
-        before = window.session.robot.calls.count(("retract_axis", "leftZ"))
-        robot = window.session.robot
-        window.closeEvent(QCloseEvent())
+        before = robot.calls.count(("retract_axis", "leftZ"))
+        event = QCloseEvent()
+        window.closeEvent(event)
         assert stops == [1]
+        assert not event.isAccepted()
+        assert window.session.robot is robot
         assert robot.calls.count(("retract_axis", "leftZ")) == before
-        assert window.session.robot is None
+        assert "still" in window.status.currentMessage()
     finally:
         lease.release()
+    # Stopped: now it closes, and parks the axis.
+    window.closeEvent(QCloseEvent())
+    assert window.session.robot is None
+    assert robot.calls.count(("retract_axis", "leftZ")) == before + 1
 
 
 def test_closing_after_a_short_job_parks_the_axis(app, window):

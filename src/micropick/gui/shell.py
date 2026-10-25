@@ -590,8 +590,11 @@ class MainWindow(QMainWindow):
 
         While a run has the robot, closing asks first, and on yes stops it.
         A short job - a step, a Go to, Home - is waited for. Either way the
-        axis is parked only once the robot is free: a retract sent into a
-        move still going is the overlap the robot's lease is for."""
+        window closes only once the robot is free: closing under a worker
+        still moving it would take the robot session and the cameras from
+        under it (the pipette calibration hears Stop only in its touch-up),
+        and a retract sent into a move still going is the overlap the
+        robot's lease is for."""
         lease = self.session.robot_lease
         if lease.holding_run:
             answer = QMessageBox.question(
@@ -610,9 +613,13 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
                 time.sleep(0.02)
         if lease.busy:
-            _log.warning("closing while %s still has the robot: the Z axis "
-                         "is not parked", lease.holder)
-        self.session.shutdown(retract=not lease.busy)
+            _log.warning("not closing: %s still has the robot", lease.holder)
+            self.status.showMessage(
+                f"Not closed: the {lease.holder} is still stopping. Close "
+                f"again once it has.", 10_000)
+            event.ignore()
+            return
+        self.session.shutdown()
         super().closeEvent(event)
 
     # -- display -------------------------------------------------------------

@@ -1444,10 +1444,9 @@ class Session(QObject):
 
     # -- teardown ------------------------------------------------------------
 
-    def shutdown(self, *, retract: bool = True) -> None:
-        """Leave nothing running. Called from the window's closeEvent.
-        `retract=False` when the robot is still busy: a retract sent into a
-        move that is going on is the overlap the robot's lease is for.
+    def shutdown(self) -> None:
+        """Leave nothing running. Called from the window's closeEvent, once
+        the robot is free (`MainWindow.closeEvent`).
 
         Cameras first: each holds a grab thread, and a thread still calling
         read() while the interpreter tears down is the one way this exits
@@ -1458,7 +1457,7 @@ class Session(QObject):
                 self.close_camera(label)
             except Exception as exc:                 # noqa: BLE001
                 log.warning("could not close camera %r: %s", label, exc)
-        if self.robot is not None and retract:
+        if self.robot is not None:
             self._retract()
         self._api = self.robot = None
         self.motion.set_robot(None)
