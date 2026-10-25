@@ -318,3 +318,32 @@ def test_it_fits_the_workflows_without_an_adapter():
     # step spells its cancellation differently, which is why cancel_arg exists.
     step = inspect.signature(PickingSession.step).parameters
     assert "stop" in step and CANCEL_ARG not in step
+
+
+def test_the_lease_is_released_when_the_job_finishes_or_fails(app):
+    from micropick.hardware.robot_lease import RobotLease
+    lease = RobotLease()
+    seen = []
+
+    def job():
+        seen.append(lease.holder)
+        return 1
+
+    run(Worker(job, lease=lease.claim("jog")))
+    assert seen == ["jog"] and not lease.busy
+
+    def broken():
+        raise RuntimeError("no")
+
+    run(Worker(broken, lease=lease.claim("Home")))
+    assert not lease.busy
+
+
+def test_the_robot_is_free_by_the_time_finished_arrives(app):
+    from micropick.hardware.robot_lease import RobotLease
+    lease = RobotLease()
+    busy_at_finish = []
+    worker = Worker(lambda: None, lease=lease.claim("jog"))
+    worker.finished.connect(lambda *_: busy_at_finish.append(lease.busy))
+    run(worker)
+    assert busy_at_finish == [False]

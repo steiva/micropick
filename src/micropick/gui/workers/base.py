@@ -140,7 +140,7 @@ class Worker(QObject):
 
     def __init__(self, fn: Callable[..., Any], *args,
                  progress_arg=AUTO, cancel_arg=AUTO, message_arg=AUTO,
-                 what: str | None = None,
+                 what: str | None = None, lease=None,
                  parent: QObject | None = None, **kwargs):
         """`*_arg` name the parameters to inject.
 
@@ -154,6 +154,11 @@ class Worker(QObject):
         `what` is the job in a few words, for the activity indicator
         ("calibrating the pipette"); it is not passed to the callable.
 
+        `lease` is the robot's (`hardware.robot_lease`), claimed by the
+        caller for this job: it is released as the job ends - finished,
+        failed or canceled - on the worker's thread, before `finished` or
+        `failed` is emitted, so whatever those start finds the robot free.
+
         A name is never guessed onto a `**kwargs` signature. Forwarding `log`
         into a callable that does not understand it produces a failure a long
         way from here, and inspection cannot tell the two cases apart.
@@ -162,6 +167,7 @@ class Worker(QObject):
         # False for a job that never talks to the robot; see any_running.
         self.robot = True
         self._fn = fn
+        self.lease = lease
         self._args = args
         self._kwargs = dict(kwargs)
         self._names = {"progress": (progress_arg, PROGRESS_ARG),
@@ -238,9 +244,15 @@ class Worker(QObject):
             # The exception itself, for a slot that has to tell one kind from
             # another (a cancel from a failure) without reading the words.
             self.error = exc
+            self._release()
             self.failed.emit(describe_error(exc))
         else:
+            self._release()
             self.finished.emit(result)
+
+    def _release(self) -> None:
+        if self.lease is not None:
+            self.lease.release()
 
     def start(self) -> QThread:
         if self._thread is not None:
