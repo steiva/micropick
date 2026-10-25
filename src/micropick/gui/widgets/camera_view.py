@@ -567,7 +567,6 @@ class CameraView(QWidget):
 
         from ..workers import Worker
         worker = Worker(write, what="saving the picture")
-        worker.robot = False                 # a file, not the robot
         self._snapshot_worker = worker
         worker.finished.connect(self._snapshot_done)
         worker.failed.connect(self._snapshot_failed)

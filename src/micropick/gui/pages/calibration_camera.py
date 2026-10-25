@@ -467,7 +467,6 @@ class CameraCalibration(QWidget):
         watch, wanted = self._watch, self._parameters()["dictionary"]
         worker = Worker(watch.look, frame, wanted,
                         what="looking for the marker")
-        worker.robot = False                 # a picture, not the robot
         self._watch_worker = worker
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and these touch the view.

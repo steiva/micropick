@@ -300,11 +300,15 @@ class StatusBar(QStatusBar):
         self.show_lights(None)
         self.show_home(False)
 
-    def show_home(self, connected: bool, busy: bool = False) -> None:
-        self.home.setEnabled(connected and not busy)
-        self.home.setToolTip(
-            "Home all axes."
-            if connected else "Home robot position: not connected")
+    def show_home(self, connected: bool, holder: str | None = None) -> None:
+        """`holder`: what has the robot now (`Session.robot_lease`)."""
+        self.home.setEnabled(connected and holder is None)
+        if not connected:
+            self.home.setToolTip("Home robot position: not connected")
+        elif holder is not None:
+            self.home.setToolTip(f"Robot busy: {holder}.")
+        else:
+            self.home.setToolTip("Home all axes.")
 
     def show_profile(self, name: str | None) -> None:
         self._profile.setText(f"profile: {name or 'none'}")
@@ -475,6 +479,7 @@ class MainWindow(QMainWindow):
         self._lights_worker: Worker | None = None
         self.status.home.clicked.connect(self._home_robot)
         self.session.robot_state_changed.connect(self._show_home)
+        self.session.robot_busy_changed.connect(self._show_home)
         self._home_worker: Worker | None = None
         # Stop: the button and Esc, window-wide. The pages that bound Esc to
         # their own stop leave it to this one: two shortcuts on one key in
@@ -617,7 +622,6 @@ class MainWindow(QMainWindow):
             return
         worker = Worker(self.session.open_camera, label,
                         what=f"opening camera {label!r}")
-        worker.robot = False                 # a camera, not the robot
         worker.label = label
         self._feed_workers[label] = worker
         # Bound methods, not lambdas: Qt queues them onto this thread, and
@@ -700,18 +704,14 @@ class MainWindow(QMainWindow):
     # -- home ----------------------------------------------------------------
 
     def _show_home(self, _state=None) -> None:
-        busy = self._home_worker is not None and self._home_worker.running
-        self.status.show_home(self.session.robot is not None, busy)
+        self.status.show_home(self.session.robot is not None,
+                              self.session.robot_lease.holder)
 
     def _robot_busy(self) -> bool:
-        """Anything that may be talking to the robot: a jog panel's job on
-        any page, or any worker - a picking run, a sweep, a labware load.
-        Coarse on purpose, but not about what never talks to it: a camera
-        opening, a look for the marker or a picture being saved are marked
-        `robot = False`, and counting them kept the tip panel refusing
-        while the Camera calibration page merely watched its marker."""
-        return (any(panel.busy for panel in self.findChildren(JogPanel))
-                or any_running(robot_only=True))
+        """Something has the robot (`Session.robot_lease`): a jog step, a
+        run, a labware load, on any page."""
+        return (self.session.robot_lease.busy
+                or any(panel.busy for panel in self.findChildren(JogPanel)))
 
     # -- stop ----------------------------------------------------------------
 
@@ -796,7 +796,12 @@ class MainWindow(QMainWindow):
                   if panel.isVisible()]
         if panels and panels[0].run_job(lambda _log: home_robot(robot)):
             return
-        worker = Worker(home_robot, robot, what="homing the robot")
+        lease = self.session.robot_lease.claim("Home")
+        if lease is None:
+            self.status.showMessage("Robot busy.", 6000)
+            return
+        worker = Worker(home_robot, robot, what="homing the robot",
+                        lease=lease)
         self._home_worker = worker
         worker.finished.connect(self._home_done)
         worker.failed.connect(self._home_failed)
@@ -858,7 +863,11 @@ class MainWindow(QMainWindow):
                   if panel.isVisible()]
         if panels and panels[0].run_job(lambda _log: fn(), what=what):
             return
-        worker = Worker(fn, what=what)
+        lease = self.session.robot_lease.claim(what)
+        if lease is None:
+            self.status.showMessage("Robot busy.", 6000)
+            return
+        worker = Worker(fn, what=what, lease=lease)
         self._tip_worker = worker
         worker.finished.connect(self._tip_done)
         worker.failed.connect(self._tip_failed)

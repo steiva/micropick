@@ -57,6 +57,7 @@ from ..hardware.mock import (MarkerScene, MockRobot,  # noqa: E402
 from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
+from ..hardware.robot_lease import RobotLease       # noqa: E402
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
 
@@ -334,6 +335,9 @@ class Session(QObject):
     page_requested = Signal(str)
     # A memo point was added, changed or removed; see `memo_points`.
     memo_points_changed = Signal()
+    # What now holds the robot (`robot_lease`), in a few words, or None.
+    # Emitted from whichever thread claimed or released it.
+    robot_busy_changed = Signal(object)
 
     def __init__(self, options, parent: QObject | None = None):
         super().__init__(parent)
@@ -354,6 +358,9 @@ class Session(QObject):
         # session's life; it is told the robot, the tip and the deck
         # modules as they change.
         self.motion = Motion(modules=self._deck_modules, tip=self.tip)
+        # One job at a time that moves the robot or changes its session
+        # (`hardware.robot_lease`): claimed before it, on every page.
+        self.robot_lease = RobotLease(on_change=self.robot_busy_changed.emit)
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}

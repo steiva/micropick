@@ -843,7 +843,6 @@ class PickingPage(QWidget):
                         device=self.session.settings.inference_device,
                         imgsz=self.session.profile.picking.yolo_imgsz,
                         what="loading the detector")
-        worker.robot = False                 # weights, not the robot
         self._run(worker, self._loaded)
 
     def _loaded(self, _description) -> None:
