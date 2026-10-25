@@ -142,3 +142,40 @@ def test_a_second_stop_holds_the_robot_and_keeps_its_session(app, window,
     with pytest.raises(RobotHeld):
         robot.move_relative("x", 0.1)
     robot.hold.clear()
+
+
+def test_closing_during_a_run_asks_and_does_not_retract_into_it(
+        app, window, monkeypatch):
+    from PySide6.QtGui import QCloseEvent
+    from micropick.gui import shell
+    _connect(app, window)
+    monkeypatch.setattr(shell, "CLOSE_WAIT_S", 0.2)
+    stops = []
+    window.session.stop_requested.connect(lambda: stops.append(1))
+    lease = window.session.robot_lease.claim("picking run", run=True)
+    try:
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: NO)
+        event = QCloseEvent()
+        window.closeEvent(event)
+        assert not event.isAccepted()
+        assert window.session.robot is not None and stops == []
+        # Yes: the run is told to stop; it does not let go in time here, so
+        # the axis is left where it is rather than retracted into the run.
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: YES)
+        before = window.session.robot.calls.count(("retract_axis", "leftZ"))
+        robot = window.session.robot
+        window.closeEvent(QCloseEvent())
+        assert stops == [1]
+        assert robot.calls.count(("retract_axis", "leftZ")) == before
+        assert window.session.robot is None
+    finally:
+        lease.release()
+
+
+def test_closing_after_a_short_job_parks_the_axis(app, window):
+    from PySide6.QtGui import QCloseEvent
+    _connect(app, window)
+    robot = window.session.robot
+    before = robot.calls.count(("retract_axis", "leftZ"))
+    window.closeEvent(QCloseEvent())
+    assert robot.calls.count(("retract_axis", "leftZ")) == before + 1

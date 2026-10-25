@@ -928,6 +928,25 @@ class PickingPage(QWidget):
         if problems:
             self.run_state.setText("\n".join("• " + p for p in problems))
             return
+        # The robot for the whole run, pauses and waits included: nothing
+        # else moves it until the run ends (`Session.robot_lease`). Claimed
+        # before anything is prepared, and given back if that fails before
+        # the run's worker has it.
+        lease = self.session.robot_lease.claim("picking run", run=True)
+        if lease is None:
+            self.run_state.setText("Robot busy.")
+            return
+        try:
+            self._launch(lease)
+        except BaseException:
+            worker = self._run_worker
+            if not (worker is not None and worker.lease is lease
+                    and worker.running):
+                lease.release()
+            raise
+
+    def _launch(self, lease) -> None:
+        """The run on its own worker, holding `lease`."""
         session = self.session
         profile, robot = session.profile, session.robot
         routine, camera = session.routine, self._camera()
@@ -978,12 +997,6 @@ class PickingPage(QWidget):
 
         self._run_message = ""
         self._filled = False
-        # The robot for the whole run, pauses and waits included: nothing
-        # else moves it until the run ends (`Session.robot_lease`).
-        lease = session.robot_lease.claim("picking run", run=True)
-        if lease is None:
-            self.run_state.setText("Robot busy.")
-            return
         self.done.clear()
         self.run_state.setText("starting…")
         self._run_worker = Worker(job, what="picking run", lease=lease)
