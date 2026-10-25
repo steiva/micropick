@@ -129,6 +129,7 @@ from ...core.deck import slot_centre
 from ...hardware.protocols import xyz
 from ...viz import markers, overlays
 from ...workflows import manual as moves
+from ...workflows.motion import WELL_LEVELS
 from .. import keys
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
@@ -478,7 +479,7 @@ class ManualPage(QWidget):
         self.well_choice.setInsertPolicy(self.well_choice.InsertPolicy.NoInsert)
         self.well_choice.currentTextChanged.connect(lambda _t: self._refresh())
         self.well_level = combo_box(self)
-        self.well_level.addItems(moves.WELL_LEVELS)
+        self.well_level.addItems(WELL_LEVELS)
         self.well_offset = _number_box(self, 0.0, WELL_OFFSET_RANGE, " mm")
         self.well_offset.setToolTip(
             "Z from the chosen level (+ up). X and Y: the profile's well "

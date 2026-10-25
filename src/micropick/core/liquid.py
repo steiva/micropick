@@ -84,7 +84,7 @@ __all__ = ["LEVELS", "MEASURED_BOTTOM", "LEVEL_NAMES", "KINDS", "ACTIONS", "Loca
            "needed_after", "aspirate_volume", "refills", "empties_now",
            "TIP_UL"]
 
-# The robot's own well origins; the same as workflows.manual.WELL_LEVELS,
+# The robot's own well origins; the same as workflows.motion.WELL_LEVELS,
 # restated because core does not import workflows.
 LEVELS = ("top", "center", "bottom")
 
