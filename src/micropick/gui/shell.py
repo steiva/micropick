@@ -177,6 +177,8 @@ class MainWindow(QMainWindow):
         self._task_step: str | None = None
         self._page = "home"
         self._need: tasks.Need | None = None
+        # What the footer was last given (`_refresh`).
+        self._navigation: dict | None = None
 
         self.home.task_chosen.connect(self.open_task)
         self.home.setup_requested.connect(self.open_setup_item)
@@ -364,8 +366,12 @@ class MainWindow(QMainWindow):
             self.open_home()
             return
         if self.task is not None:
-            step = next((s for s in tasks.steps(self.task)
-                         if STEP_PAGES[s] == name), None)
+            # The step shown when it is that page (Picking is two steps),
+            # else the first that is.
+            step = (self._task_step
+                    if STEP_PAGES.get(self._task_step) == name else
+                    next((s for s in tasks.steps(self.task)
+                          if STEP_PAGES[s] == name), None))
             if step is not None:
                 self.show_step(step)
                 return
@@ -375,16 +381,14 @@ class MainWindow(QMainWindow):
             path = [self._titles[name]]
             if self.task is not None and name != "settings":
                 path.insert(0, tasks.TASKS[self.task][0])
-        if name == "settings":
-            self.task = None
         self._show(name, path, in_task=False)
 
     def _crumb(self, index: int) -> None:
-        """A crumb between Home and the last: the task, or Settings."""
-        if self.task is not None and index == 0:
-            self.show_step(self._task_step)
-        else:
+        """A crumb between Home and the last: Settings, or the task."""
+        if self.top.path[index] == self._titles["settings"]:
             self.show_page("settings")
+        elif self.task is not None:
+            self.show_step(self._task_step)
 
     # -- steps ----------------------------------------------------------------
 

@@ -187,3 +187,17 @@ def test_no_profile_is_named_or_chosen(app, window):
     assert not [box for box in window.findChildren(QComboBox)
                 if "profile" in box.objectName().lower()
                 or type(box).__name__ == "_ProfileChooser"]
+
+
+def test_a_page_asked_for_from_a_step_keeps_the_task(app, window):
+    window.home.tiles["auto"].clicked.emit()
+    window.step_bar.clicked.emit(4)                # Picking
+    window.session.page_requested.emit("picking")
+    assert window.step == "picking"                # not Dish bottom
+    window.session.page_requested.emit("settings")
+    assert window.top.path == ["Settings"]
+    window.settings_page.log_button.click()
+    window.top.crumb_clicked.emit(0)               # Settings, not the task
+    assert window.current_page() is window.settings_page
+    window.session.page_requested.emit("labware")
+    assert window.step == "deck" and window.top.path == ["Auto pick"]
