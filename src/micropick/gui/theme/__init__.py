@@ -1,29 +1,19 @@
-"""One look, applied in one place.
+"""One look, applied in one place: a fixed dark theme from `tokens`.
 
-`qdarktheme` supplies the base stylesheet and follows the operating system's
-light/dark setting; `micropick.qss` is layered on top through `additional_qss`
-rather than by concatenating stylesheets, because "auto" re-applies the base on
-every OS theme change and a stylesheet set separately would be dropped the
-first time that happened.
+`qdarktheme` supplies the base stylesheet for every stock widget, set up
+"dark" with its colors replaced by ours (`custom_colors`), so a plain
+QComboBox or QScrollBar already sits in the palette. `micropick.qss` is
+layered on top through `additional_qss` and styles our own widgets by
+object name. It names colors as `@token`, filled from `tokens.COLORS` by
+`stylesheet()`: the tokens are the single source, the qss has no hex.
 
-**`micropick.qss` contains no colours, and this is not a style preference.**
-Two facts about `qdarktheme` 2.x make anything else wrong:
+The theme does not follow the operating system (REDESIGN §2, §10). The
+earlier rule - no colors in our qss, everything from qdarktheme so both
+OS themes worked - is gone with that: there is one palette, and ours.
 
-* `setup_theme` installs `load_palette(..., for_stylesheet=True)`, which is a
-  placeholder palette — its `Window` and `Base` are the same grey in the light
-  and the dark theme, and only `Text` differs. Every colour qdarktheme actually
-  shows is a literal in the generated stylesheet. So `palette(base)` in our qss
-  resolves against numbers that mean nothing, and it renders a dark card on a
-  light background: unreadable in exactly the mode it was supposed to save.
-* `additional_qss` is appended *after* the template is expanded
-  (`stylesheet += additional_qss`), so qdarktheme's own colour placeholders do
-  not reach it either.
-
-What is left is to describe our widgets in terms qdarktheme already colours —
-`QPushButton:default` for the accented button, a `Panel`-shaped `QFrame` for a
-card surface — and to keep our file to geometry. Nothing then has to be kept in
-step with the theme, because nothing here knows what colour it is. See
-`factory.py`, which is where those terms are attached.
+The fonts are bundled (`theme/fonts`, both OFL) and registered before the
+first widget, so a lab computer without Inter shows the same text as the
+design.
 """
 
 from __future__ import annotations
@@ -36,22 +26,23 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
-__all__ = ["SPACING", "RADIUS", "FONT_FAMILIES", "FONT_SIZE_PT",
-           "configure_hidpi", "apply_theme", "stylesheet", "accent"]
+from .tokens import (COLORS, MONO_FALLBACKS, MONO_FONT, SIZES, UI_FALLBACKS,
+                     UI_FONT)
+
+__all__ = ["SPACING", "RADIUS", "COLORS", "SIZES", "configure_hidpi",
+           "apply_theme", "stylesheet", "accent", "load_fonts", "ui_font",
+           "mono_font", "color"]
 
 # The base step. Every margin and gap in the application is a multiple of it,
 # so a layout is described by a small integer rather than by a pixel count
 # somebody chose once.
 SPACING = 8
-RADIUS = 8
-
-# In preference order. The first family the system actually has wins; if none
-# of them is installed the system UI font is used, which is why the list does
-# not need a generic entry.
-FONT_FAMILIES = ("Segoe UI Variable Text", "Segoe UI", "Inter")
-FONT_SIZE_PT = 10
+RADIUS = SIZES["radius"]
 
 _QSS = Path(__file__).with_name("micropick.qss")
+_FONTS = Path(__file__).with_name("fonts")
+_CHEVRON = Path(__file__).with_name("chevron-down.svg")
+_TOKEN = re.compile(r"@([a-z][a-z0-9-]*)")
 
 
 def configure_hidpi() -> None:
@@ -69,49 +60,87 @@ def configure_hidpi() -> None:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
-def _ui_font() -> QFont:
-    """The first available family, at the size the whole application uses.
+def load_fonts() -> None:
+    """Register the bundled fonts. Safe to call more than once."""
+    for path in sorted(_FONTS.glob("*.ttf")):
+        QFontDatabase.addApplicationFont(str(path))
 
-    Qt substitutes silently for a family it does not have, which is usually
-    fine and occasionally gives a serif face on a machine with a thin font set.
-    Asking the database first means the fallback is one this module chose.
-    """
+
+def _family(preferred: tuple[str, ...]) -> str | None:
     available = set(QFontDatabase.families())
-    for family in FONT_FAMILIES:
-        if family in available:
-            return QFont(family, FONT_SIZE_PT)
-    font = QFontDatabase.systemFont(QFontDatabase.SystemFont.GeneralFont)
-    font.setPointSize(FONT_SIZE_PT)
+    return next((f for f in preferred if f in available), None)
+
+
+def ui_font(px: int = SIZES["body"], weight: int = 400) -> QFont:
+    """The UI face at a pixel size. Pixels, as the design is drawn in them."""
+    font = QFont()
+    family = _family((UI_FONT, *UI_FALLBACKS))
+    if family:
+        font.setFamily(family)
+    font.setPixelSize(px)
+    font.setWeight(QFont.Weight(weight))
     return font
 
 
+def mono_font(px: int = SIZES["body"], weight: int = 400) -> QFont:
+    """Numbers: coordinates, Z, volumes, well names."""
+    font = QFont()
+    family = _family((MONO_FONT, *MONO_FALLBACKS))
+    if family:
+        font.setFamily(family)
+    else:
+        font.setStyleHint(QFont.StyleHint.Monospace)
+    font.setPixelSize(px)
+    font.setWeight(QFont.Weight(weight))
+    return font
+
+
+def color(name: str) -> str:
+    """A token's hex, for a stylesheet built in code."""
+    return COLORS[name]
+
+
 def stylesheet() -> str:
-    return _QSS.read_text(encoding="utf-8")
+    """`micropick.qss` with its `@token` names replaced by their colors."""
+    text = _QSS.read_text(encoding="utf-8")
+    # The one file a stylesheet points at: a Select's arrow (§3), drawn
+    # because the native one touched the border.
+    values = {**COLORS, "chevron": '"%s"' % _CHEVRON.as_posix()}
+    return _TOKEN.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 
-def apply_theme(app: QApplication, *, theme: str = "auto") -> None:
-    """Base theme, our geometry on top, and the UI font."""
-    qdarktheme.setup_theme(theme, corner_shape="rounded",
+# qdarktheme's own keys, mapped onto the tokens. Its derived shades (hover,
+# pressed, selection) are computed from these bases.
+_BASE_COLORS = {
+    "background": COLORS["bg"],
+    "background>panel": COLORS["card"],
+    "background>popup": COLORS["raised"],
+    "background>list": COLORS["bar"],
+    "background>table": COLORS["bar"],
+    "background>textarea": COLORS["bar"],
+    "background>title": COLORS["bar"],
+    "border": COLORS["control-border"],
+    "foreground": COLORS["text"],
+    "primary": COLORS["accent"],
+    "input.background": COLORS["bar"],
+    "statusBar.background": COLORS["bar"],
+    "toolbar.background": COLORS["bar"],
+    "tableSectionHeader.background": COLORS["card"],
+    "treeSectionHeader.background": COLORS["card"],
+    "list.hoverBackground": COLORS["hover"],
+    "popupItem.selectionBackground": COLORS["selected-bg"],
+}
+
+
+def apply_theme(app: QApplication) -> None:
+    """Fonts, the base theme in our colors, our stylesheet on top."""
+    load_fonts()
+    qdarktheme.setup_theme("dark", corner_shape="rounded",
+                           custom_colors=_BASE_COLORS,
                            additional_qss=stylesheet())
-    app.setFont(_ui_font())
-
-
-# qdarktheme's dark primary, for when no stylesheet has been applied yet.
-_ACCENT_FALLBACK = "#8ab4f7"
-_BUTTON_INK = re.compile(
-    r"(?:^|})\s*QPushButton\s*\{[^}]*?(?<![-\w])color:\s*"
-    r"(rgba?\([^)]*\)|#[0-9a-fA-F]{3,8})")
+    app.setFont(ui_font())
 
 
 def accent() -> str:
-    """The accent colour qdarktheme is showing now - the outlined buttons'
-    text and the default button's fill - as a stylesheet colour.
-
-    Read from the stylesheet in force, not named here: it is the light or
-    the dark theme's primary according to what the operating system chose,
-    and both change when it does. A widget that uses it reads it again on a
-    style change."""
-    app = QApplication.instance()
-    sheet = app.styleSheet() if app is not None else ""
-    match = _BUTTON_INK.search(sheet)
-    return match.group(1) if match else _ACCENT_FALLBACK
+    """The accent color: the primary button's fill, the current step."""
+    return COLORS["accent"]

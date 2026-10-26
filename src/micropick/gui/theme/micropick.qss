@@ -1,105 +1,373 @@
-/* Layered on top of qdarktheme, not instead of it.
+/* Layered on top of qdarktheme (set up "dark" in our colors).
  *
- * NO COLOURS IN THIS FILE. qdarktheme paints with literals in its own
- * stylesheet and installs a placeholder palette, so both palette(...) roles and
- * its own template placeholders are dead here — see the note in __init__.py,
- * which has the two reasons. Our widgets are described in terms qdarktheme
- * already colours (QPushButton:default, QFrame[frameShape=Panel]) and this file
- * adjusts nothing but geometry. Nothing here needs to follow the OS theme,
- * because nothing here knows what colour it is.
+ * Colors are written as @token and filled from theme/tokens.py by
+ * theme.stylesheet(); no hex here. Sizes follow tokens.SIZES by hand (Qt
+ * stylesheets have no variables): buttons 36 px, compact 28, inputs 32,
+ * radius 8, cards 12.
  *
- * The numbers are theme.SPACING (8) and theme.RADIUS (8) and their multiples.
- * Qt stylesheets have no variables, so those are kept in step by hand; they
- * live in one file each.
+ * Selectors are by object name, so a page's plain widgets keep
+ * qdarktheme's look and only what the factory named is ours.
  */
 
-QPushButton#primary,
-QPushButton#secondary {
-    border-radius: 8px;
-    padding: 8px 16px;
-    min-height: 16px;
+QWidget { font-size: 14px; }
+
+QToolTip {
+    background: @raised;
+    color: @text;
+    border: 1px solid @control-border;
+    padding: 4px 8px;
 }
 
-/* Colour, hover, pressed and disabled all come from qdarktheme's
- * QPushButton:default rules, which primary_button() opts into. */
-QPushButton#primary { font-weight: 600; }
+/* ---- Buttons ------------------------------------------------------- */
+
+QPushButton#primary,
+QPushButton#secondary,
+QPushButton#quiet,
+QPushButton#danger,
+QPushButton#dangerText {
+    border-radius: 8px;
+    padding: 0 16px;
+    min-height: 34px;
+    max-height: 34px;
+    font-weight: 600;
+}
+
+QPushButton#primary {
+    background: @accent;
+    border: 1px solid @accent;
+    color: @on-accent;
+}
+QPushButton#primary:hover { background: @accent-hover; border-color: @accent-hover; }
+QPushButton#primary:pressed { background: @accent; }
+QPushButton#primary:disabled {
+    background: @selected-bg;
+    border-color: @selected-bg;
+    color: @faint;
+}
+
+QPushButton#secondary,
+QPushButton#dangerText {
+    background: transparent;
+    border: 1px solid @control-border;
+    color: @text;
+}
+QPushButton#secondary:hover,
+QPushButton#dangerText:hover { background: @hover; }
+QPushButton#secondary:checked {
+    background: @text;
+    border-color: @text;
+    color: @on-accent;
+}
+QPushButton#secondary:disabled,
+QPushButton#dangerText:disabled { color: @faint; border-color: @line; }
+QPushButton#dangerText { color: @danger-text; }
+
+/* A text button with no border: "Save anyway", "Put back". */
+QPushButton#quiet {
+    background: transparent;
+    border: 1px solid transparent;
+    color: @text-2;
+    font-weight: 500;
+}
+QPushButton#quiet:hover { background: @hover; color: @text; }
+QPushButton#quiet:disabled { color: @faint; }
+
+QPushButton#danger {
+    background: @danger;
+    border: 1px solid @danger;
+    color: #FFFFFF;
+}
+QPushButton#danger:hover { background: @danger-hover; border-color: @danger-hover; }
+
+/* The yellow of Resume while paused. */
+QPushButton#secondary[tone="warn"] {
+    background: @warn-bg;
+    border-color: @warn;
+    color: @warn-text;
+}
+
+QPushButton[compact="true"] {
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0 10px;
+    font-size: 13px;
+}
+
+/* Icon and word on a bar (Light, Lock, Park, Settings). Filled while on. */
+QToolButton#barButton {
+    border: none;
+    border-radius: 8px;
+    padding: 0 12px;
+    min-height: 36px;
+    max-height: 36px;
+    color: @text-2;
+    background: transparent;
+    font-weight: 500;
+}
+QToolButton#barButton:hover { background: @hover; color: @text; }
+QToolButton#barButton:checked {
+    background: @text;
+    color: @on-accent;
+    font-weight: 600;
+}
+QToolButton#barButton[busy="true"] { background: @accent-bg; color: @accent; }
+QToolButton#barButton:disabled { color: @faint; }
+
+QPushButton#crumb {
+    border: none;
+    border-radius: 8px;
+    padding: 0 8px;
+    min-height: 36px;
+    max-height: 36px;
+    background: transparent;
+    color: @text-2;
+    font-weight: 600;
+    font-size: 15px;
+}
+QPushButton#crumb:hover { background: @hover; color: @text; }
+QLabel#crumbHere { color: @text; font-weight: 600; font-size: 15px; }
+
+QPushButton#stopButton {
+    background: @danger;
+    border: none;
+    border-radius: 8px;
+    padding: 0 16px;
+    min-height: 36px;
+    max-height: 36px;
+    color: #FFFFFF;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+QPushButton#stopButton:hover { background: @danger-hover; }
+
+/* ---- Bars ---------------------------------------------------------- */
+
+QFrame#topBar {
+    background: @bar;
+    border: none;
+    border-bottom: 1px solid @line;
+    border-radius: 0;
+}
+QFrame#barDivider { background: @control-border; border: none; }
+
+QFrame#stepBar {
+    background: @steps-bg;
+    border: none;
+    border-bottom: 1px solid @line;
+    border-radius: 0;
+}
+QPushButton#stepChip {
+    border: none;
+    border-radius: 8px;
+    padding: 0 12px 0 8px;
+    min-height: 34px;
+    max-height: 34px;
+    background: transparent;
+    color: @text-2;
+    font-weight: 500;
+    text-align: left;
+}
+QPushButton#stepChip:hover { background: @hover; color: @text; }
+QPushButton#stepChip[current="true"] { background: @selected-bg; color: @text; font-weight: 600; }
+QFrame#stepLine { background: @control-border; border: none; }
+
+QFrame#footer {
+    background: @bar;
+    border: none;
+    border-top: 1px solid @line;
+    border-radius: 0;
+}
+QLabel#statusTag {
+    border-radius: 6px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+QLabel#statusSentence { font-size: 15px; font-weight: 500; color: @text; }
+
+QLabel#statusPill {
+    border-radius: 16px;
+    padding: 0 14px;
+    min-height: 32px;
+    max-height: 32px;
+    font-weight: 600;
+}
+
+/* ---- Surfaces ------------------------------------------------------ */
 
 QFrame#card {
-    border-radius: 8px;
+    background: @card;
+    border: 1px solid @card-border;
+    border-radius: 12px;
     padding: 0;
 }
+QFrame#raisedCard {
+    background: @raised;
+    border: 1px solid @control-border;
+    border-radius: 12px;
+}
+QFrame#innerBox {
+    background: @bar;
+    border: 1px solid @line;
+    border-radius: 8px;
+}
+QFrame#panel {
+    background: @bg;
+    border: none;
+    border-left: 1px solid @line;
+    border-radius: 0;
+}
 
-/* No blanket rule for the card's children. `QFrame#card > QWidget` outranks
- * `QPushButton:default` on specificity, so clearing their background and border
- * "for tidiness" erased the accent fill on every primary button inside a card
- * and the outline on every secondary one. qdarktheme already makes labels
- * transparent (QLabel:!window), which was the only thing that rule fixed. */
+/* No blanket rule for the card's children: `QFrame#card > QWidget` would
+ * outrank the button rules above on specificity and erase their fill. */
 
-/* qdarktheme lights every widget of the status bar under the mouse, as if
- * it were a button. Text and the boxes that only hold things are not: they
- * stay as they are, and only what can be clicked lights up. */
+QToolButton#foldHeader {
+    border: none;
+    background: transparent;
+    color: @text;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: left;
+    padding: 0;
+}
+QLabel#foldSummary { color: @text-2; }
+
+QFrame#banner[tone="info"] {
+    background: @accent-bg;
+    border: none;
+    border-radius: 10px;
+}
+QFrame#banner[tone="info"] QLabel { color: @info-text; }
+QFrame#banner[tone="warn"] {
+    background: @warn-bg;
+    border: none;
+    border-radius: 10px;
+}
+QFrame#banner[tone="warn"] QLabel { color: @warn-text; }
+QFrame#banner[tone="ok"] {
+    background: @ok-bg;
+    border: none;
+    border-radius: 10px;
+}
+QFrame#banner[tone="ok"] QLabel { color: @ok; }
+
+QLabel#toast {
+    background: @ok-bg;
+    color: @ok;
+    border: 1px solid @ok;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-weight: 600;
+}
+
+QFrame#sheet {
+    background: @bg;
+    border: 1px solid @control-border;
+    border-radius: 14px;
+}
+QFrame#sheetHeader {
+    background: @bar;
+    border: none;
+    border-bottom: 1px solid @line;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+}
+QFrame#dialog {
+    background: @raised;
+    border: 1px solid @control-border;
+    border-radius: 14px;
+}
+
+/* ---- Text ---------------------------------------------------------- */
+
+QLabel#caption {
+    color: @muted;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+}
+QLabel#heading1 { font-size: 26px; font-weight: 600; }
+QLabel#heading2 { font-size: 20px; font-weight: 600; }
+QLabel#heading3 { font-size: 16px; font-weight: 600; }
+QLabel#muted { color: @text-3; }
+QLabel#faint { color: @muted; }
+QLabel#okText { color: @ok; font-weight: 600; }
+QLabel#warnText { color: @warn-text; }
+
+/* ---- Inputs -------------------------------------------------------- */
+
+QComboBox#select {
+    background: @bar;
+    border: 1px solid @control-border;
+    border-radius: 8px;
+    min-height: 30px;
+    padding: 0 32px 0 10px;
+    color: @text;
+}
+QComboBox#select:hover { border-color: @faint; }
+QComboBox#select::drop-down {
+    border: none;
+    width: 28px;
+    subcontrol-position: center right;
+}
+QComboBox#select::down-arrow { image: url(@chevron); width: 14px; height: 14px; }
+
+QSpinBox, QDoubleSpinBox, QLineEdit {
+    min-height: 28px;
+    border-radius: 8px;
+}
+
+QFrame#segmented {
+    background: @bar;
+    border: 1px solid @control-border;
+    border-radius: 8px;
+}
+QPushButton#segment {
+    border: none;
+    border-radius: 6px;
+    padding: 0 12px;
+    min-height: 28px;
+    max-height: 28px;
+    background: transparent;
+    color: @text-2;
+    font-weight: 500;
+}
+QPushButton#segment:hover { color: @text; }
+QPushButton#segment:checked { background: @hover; color: @text; font-weight: 600; }
+
+/* ---- Older pages, until each is laid out anew ----------------------- */
+
 QStatusBar QLabel:hover,
 QStatusBar QProgressBar:hover,
 QStatusBar QWidget#statusInfo:hover {
     background: transparent;
 }
 
-/* A plain container inside a card - a part of it that folds away - named so
- * it shows the card through it rather than the window's background. By name
- * only, for the reason above. */
-QWidget#plain {
-    background: transparent;
-}
+QWidget#plain { background: transparent; }
 
-/* The page tabs, browser style. The strip is a Panel frame and takes
- * qdarktheme's raised surface; a tab that is not chosen is transparent over
- * it, and the chosen one keeps qdarktheme's QWidget background - the
- * window's - so it opens into the page under it. Square below, round above.
- * No colour is named: `transparent` is the absence of one. */
 QFrame#tabStrip {
     border: none;
     border-radius: 0;
     padding: 0;
 }
-
 QWidget#navTab {
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
 }
+QWidget#navTab[selected="false"] { background: transparent; }
+QWidget#navTab QLabel { padding: 8px 18px; font-size: 14px; }
 
-QWidget#navTab[selected="false"] {
-    background: transparent;
-}
-
-QWidget#navTab QLabel {
-    padding: 8px 18px;
-    font-size: 11pt;
-}
-
-QLabel#heading1 { font-size: 16pt; font-weight: 600; }
-QLabel#heading2 { font-size: 12pt; font-weight: 600; }
-QLabel#heading3 { font-size: 10pt; font-weight: 600; }
-
-/* A scrolling side column is a layout device, not a surface: no frame, and
- * the page's own background shows through it. */
 QScrollArea#column, QScrollArea#column > QWidget > QWidget {
     background: transparent;
     border: none;
 }
 
-/* A Section's title is a button so the whole row folds it; it should read
- * as the heading it replaces. Colour still comes from qdarktheme's
- * QToolButton rules. */
 QToolButton#sectionToggle {
-    font-size: 12pt;
+    font-size: 15px;
     font-weight: 600;
     padding: 2px 0;
     border: none;
     background: transparent;
 }
-
-/* Checkable, because the check is what the arrow draws - but an expanded
- * section is not a pressed button, and qdarktheme fills a checked one. */
-QToolButton#sectionToggle:checked {
-    background: transparent;
-}
+QToolButton#sectionToggle:checked { background: transparent; }
