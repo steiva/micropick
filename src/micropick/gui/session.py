@@ -63,11 +63,13 @@ from .detector import DetectorService              # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
            "MemoPoint",
-           "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
+           "DEFAULT_PROFILE_NAME", "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
 
 log = logging.getLogger(__name__)
 
 MOCK_PROFILE_NAME = "mock"
+# The profile made at the first start, when there is none to load.
+DEFAULT_PROFILE_NAME = "default"
 
 # Labware that holds no destination. A tip rack has wells and an ordering
 # like a plate, and delivering a cuboid into one is a mistake nothing
@@ -567,6 +569,8 @@ class Session(QObject):
         else:
             profile = store.load_profile(name)
         self.profile = profile
+        if not self.uses_mock_profile():
+            store.remember_last_profile(profile.name)
         # A manager per profile: the labels and the device names it resolves
         # belong to the installation, not to the application.
         self.cameras = CameraManager.from_profile(profile)
@@ -579,6 +583,17 @@ class Session(QObject):
             # What counts as a deck problem is the new profile's to say.
             self.labware_changed.emit(self.run_state)
         return profile
+
+    def load_last_profile(self) -> store.Profile:
+        """The start of every day: the profile loaded last, or a profile
+        `default` made here when there is none. Profiles are never chosen
+        on screen (REDESIGN §12.8); the robot setup is what they hold."""
+        name = store.last_profile()
+        if name is None:
+            name = DEFAULT_PROFILE_NAME
+            store.create_profile(name)
+            log.info("no profile yet: created %r", name)
+        return self.load_profile(name)
 
     def _load_mock_profile(self) -> store.Profile:
         """A real profile on disk, created once and kept.

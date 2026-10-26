@@ -37,7 +37,8 @@ from .schema import (SCHEMA_VERSION, Calibration, CameraSpec, DeckConfig,
 
 __all__ = ["Profile", "ProfileError", "LegacyProfileError",
            "list_profiles", "create_profile", "copy_profile", "delete_profile",
-           "load_profile", "profile_dir"]
+           "last_profile", "load_profile", "profile_dir",
+           "remember_last_profile"]
 
 META_FILE = "profile.json"
 CALIBRATION_FILE = "calibration.json"
@@ -82,6 +83,32 @@ def list_profiles() -> list[str]:
         return []
     return sorted(d.name for d in root.iterdir()
                   if d.is_dir() and (d / META_FILE).is_file())
+
+
+# Which profile was loaded last, by name: a dot file under the profiles
+# root, so `list_profiles` never takes it for a profile.
+LAST_FILE = ".last-profile"
+
+
+def remember_last_profile(name: str) -> None:
+    _write_atomic(paths.profiles_dir(create=True) / LAST_FILE, name + "\n")
+
+
+def last_profile() -> str | None:
+    """The profile loaded last, if it is still there; else the one written
+    to most recently (a profile from before this record was kept); else
+    None."""
+    names = list_profiles()
+    record = paths.profiles_dir() / LAST_FILE
+    if record.is_file():
+        name = record.read_text(encoding="utf-8").strip()
+        if name in names:
+            return name
+
+    def written(name: str) -> float:
+        return max(f.stat().st_mtime for f in profile_dir(name).iterdir())
+
+    return max(names, key=written, default=None)
 
 
 # ---------------------------------------------------------------------------
