@@ -27,12 +27,17 @@ from ..workflows import well_center
 from .detector import STANDIN, DetectorService
 from .widgets.checklist import BLOCKED, NOTE, OK, TODO, Check
 
-__all__ = ["DISH_POSITION", "SHAKE_POSITION", "STALE_DAYS", "STEPS",
+__all__ = ["CALIBRATION_POSITION", "DISH_POSITION", "SHAKE_POSITION",
+           "STALE_DAYS", "STEPS",
            "readiness_checks", "step", "tip_calibration_status"]
 
 # The profile position the dish is looked at from, beside tip_calib. The
 # name is the workflow's: PickingSession reads profile.where("observe").
 DISH_POSITION = "observe"
+
+# The calibration position: where the upper camera looks at the crosshair
+# disc and the tip calibration starts (GLOSSARY).
+CALIBRATION_POSITION = "tip_calib"
 
 # The other pose the workflow drives to by name, when the dish has to be
 # stirred to separate crowded cuboids. Checked before a run starts rather

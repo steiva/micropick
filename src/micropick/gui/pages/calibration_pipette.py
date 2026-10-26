@@ -81,7 +81,7 @@ from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
-from ..readiness import tip_calibration_status
+from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (Section, double_spin_box, muted_label,
@@ -106,7 +106,7 @@ PANEL_WIDTH = 420
 
 # The profile position the disc is taught under. The notebook's name, kept:
 # a profile taught from the notebook works here and the other way round.
-POSITION_NAME = "tip_calib"
+POSITION_NAME = CALIBRATION_POSITION
 
 # The jog step for the touch-up, as the notebook sets it.
 TOUCH_UP_STEP_MM = 0.05

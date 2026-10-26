@@ -338,6 +338,8 @@ class Session(QObject):
     # What now holds the robot (`robot_lease`), in a few words, or None.
     # Emitted from whichever thread claimed or released it.
     robot_busy_changed = Signal(object)
+    # A step was confirmed or its confirmation dropped; see `confirm`.
+    confirmations_changed = Signal()
 
     def __init__(self, options, parent: QObject | None = None):
         super().__init__(parent)
@@ -372,6 +374,9 @@ class Session(QObject):
         # "points" layer of every page draws them, and gone at the next
         # start - a profile's positions are what is kept.
         self.memo_points: list[MemoPoint] = []
+        # What the operator confirmed in this robot session (`confirm`):
+        # key -> the robot session it was confirmed in.
+        self._confirmed: dict[str, str | None] = {}
         # This computer's settings (config.app_settings): the robot's address
         # and where outputs go. Applied at once, so every writer asks paths
         # for the right folder from the first file.
@@ -379,6 +384,32 @@ class Session(QObject):
         app_settings.apply(self.settings)
         if self.settings_note:
             log.error("%s", self.settings_note)
+
+    # -- confirmations ---------------------------------------------------------
+    #
+    # A step that is done because the operator said so - the deck checked
+    # against the real one, the dish bottom's last value taken, a plate's
+    # drawing used instead of measuring it - holds for the robot session it
+    # was said in (REDESIGN §4). The robot remembers its deck across a
+    # restart of this application, not across its own: what it holds is not
+    # what the operator checked. Kept in memory only.
+
+    def _robot_session_id(self) -> str | None:
+        state = self.run_state
+        return state.run_id if state is not None else None
+
+    def confirm(self, key: str) -> None:
+        """Ignored with no robot session: there is nothing for it to hold
+        for."""
+        run_id = self._robot_session_id()
+        if run_id is None:
+            return
+        self._confirmed[key] = run_id
+        self.confirmations_changed.emit()
+
+    def is_confirmed(self, key: str) -> bool:
+        run_id = self._robot_session_id()
+        return run_id is not None and self._confirmed.get(key) == run_id
 
     # -- memo points ---------------------------------------------------------
 
@@ -1224,6 +1255,12 @@ class Session(QObject):
         return self.run_state
 
     def _ready(self, origin: str) -> None:
+        if origin == "new" and self._confirmed:
+            # A new robot session: nothing confirmed in the last one holds.
+            # Said here as well as by the id `is_confirmed` compares, for a
+            # robot that hands out an id again (the mock keeps one).
+            self._confirmed.clear()
+            self.confirmations_changed.emit()
         self.robot = self._api
         self.motion.set_robot(self.robot)
         self.run_origin = origin
