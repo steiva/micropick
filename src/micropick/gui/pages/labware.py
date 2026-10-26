@@ -787,7 +787,7 @@ class LabwarePage(QWidget):
         nothing started, while the robot is busy."""
         lease = self.session.robot_lease.claim(what)
         if lease is None:
-            self._say("Robot busy.")
+            self._say(self.session.robot_lease.refusal)
             return False
         worker.lease = lease
         self._worker = worker

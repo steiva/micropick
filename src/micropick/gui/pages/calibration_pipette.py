@@ -345,7 +345,7 @@ class PipetteCalibration(QWidget):
         what = f"going to {POSITION_NAME} {stored}"
         lease = self.session.robot_lease.claim(what)
         if lease is None:
-            self.position_note.setText("Robot busy.")
+            self.position_note.setText(self.session.robot_lease.refusal)
             return
 
         def job():
@@ -532,7 +532,7 @@ class PipetteCalibration(QWidget):
         # the touch-up's panel is lent it (`_begin_touch_up`).
         lease = session.robot_lease.claim("pipette calibration", run=True)
         if lease is None:
-            self._append("not started: Robot busy.")
+            self._append(f"not started: {session.robot_lease.refusal}")
             return
         worker = Worker(job, what="calibrating the pipette", lease=lease)
         self._worker = worker

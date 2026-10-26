@@ -223,6 +223,12 @@ picking position**.
   released once no job using the robot runs. Never stop the robot session
   for this: the server's only immediate stop ends the session, and with it
   the labware, the tip and the run's place.
+- **Lock** in the top bar (`Session.set_locked`): until Unlock, the API
+  wrapper refuses every command that moves (the same hold as the second
+  Stop; letting go of one keeps the other) and every lease claim is
+  refused, saying `RobotLease.refusal` ("Robot locked."). The lights still
+  switch; Park is grayed. The page is under `overlays.LockOverlay` and
+  disabled. Refused, and Lock grayed, while a run has the robot.
 - A page that runs robot work listens to `stop_requested`.
 - What has to be done before a picking run is the **Operation checklist**
   (`gui.readiness.STEPS`, shown with `widgets.checklist`): fixed steps in

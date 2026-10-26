@@ -510,7 +510,7 @@ class PickingPage(QWidget):
             return f"at {DISH_POSITION!r}"
 
         if not self.jog.run_job(job):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _teach_dish(self) -> None:
         if (self.session.robot is None or self.session.profile is None
@@ -525,7 +525,7 @@ class PickingPage(QWidget):
                     f"{where[1]:.1f}, {where[2]:.1f})")
 
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     # -- the dish bottom (Z calibration) ----------------------------------------
 
@@ -572,7 +572,7 @@ class PickingPage(QWidget):
                     f"dish center: jog it down until it touches")
 
         if not self.jog.run_job(job, what="tip over the dish center"):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _set_bottom(self) -> None:
         """Read Z where the tip is, then ask before it is saved."""
@@ -583,7 +583,7 @@ class PickingPage(QWidget):
         if not self.jog.run_job(lambda _log: float(xyz(robot)[2]),
                                 moves=False, what="reading Z",
                                 then=self._confirm_bottom):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _confirm_bottom(self, z: float) -> str:
         picking = self.session.profile.picking
@@ -633,7 +633,7 @@ class PickingPage(QWidget):
             return f"at {SHAKE_POSITION!r}"
 
         if not self.jog.run_job(job):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _shake(self) -> None:
         """What the run does when too few cuboids are isolated, on demand:
@@ -659,7 +659,7 @@ class PickingPage(QWidget):
             return f"shaken; back at {DISH_POSITION!r}"
 
         if not self.jog.run_job(job):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _can_shake_in_run(self) -> bool:
         """A run paused or waiting, with no shake of it outstanding."""
@@ -702,7 +702,7 @@ class PickingPage(QWidget):
                     f"{where[1]:.1f}, {where[2]:.1f})")
 
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     # -- looking at it --------------------------------------------------------
 
@@ -938,7 +938,7 @@ class PickingPage(QWidget):
         lease = self.session.robot_lease.claim("picking run", run=True,
                                                plates=self._plan_plates())
         if lease is None:
-            self.run_state.setText("Robot busy.")
+            self.run_state.setText(self.session.robot_lease.refusal)
             return
         try:
             self._launch(lease)

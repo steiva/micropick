@@ -11,7 +11,9 @@ session, and a picking, liquid or calibration run for its whole length,
 pauses included.
 
 A claim that finds the robot taken is refused, never queued: a move that
-waited would run later from a pose nobody is looking at. Reads - the pose,
+waited would run later from a pose nobody is looking at. So is every claim
+while the robot is locked (`set_locked`: the operator's hands are at the
+deck); `refusal` says which it was. Reads - the pose,
 the tip record, the lights - and the lights switch take no lease.
 
 The lease is released by whoever holds it, once: `gui.workers.Worker` does
@@ -64,7 +66,22 @@ class RobotLease:
     def __init__(self, on_change=None):
         self._lock = threading.Lock()
         self._held: Lease | None = None
+        self._locked = False
         self._on_change = on_change
+
+    def set_locked(self, locked: bool) -> None:
+        """Locked, every claim is refused; what holds the robot keeps it
+        (the robot wrapper refuses its moves)."""
+        self._locked = bool(locked)
+
+    @property
+    def locked(self) -> bool:
+        return self._locked
+
+    @property
+    def refusal(self) -> str:
+        """What a refused claim says on screen."""
+        return "Robot locked." if self._locked else "Robot busy."
 
     def claim(self, what: str, *, run: bool = False,
               plates=()) -> Lease | None:
@@ -72,6 +89,9 @@ class RobotLease:
         `run`: a run that holds it for minutes, not a short job; `plates`,
         the (slot, load name) of the plates it goes into."""
         with self._lock:
+            if self._locked:
+                log.info("robot locked: %s refused", what)
+                return None
             if self._held is not None:
                 log.info("robot busy with %s: %s refused", self._held.what,
                          what)

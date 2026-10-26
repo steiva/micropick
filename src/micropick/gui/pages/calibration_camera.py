@@ -592,7 +592,7 @@ class CameraCalibration(QWidget):
         # The robot for the whole sweep (`Session.robot_lease`).
         lease = self.session.robot_lease.claim("camera calibration sweep", run=True)
         if lease is None:
-            self.verdict.setText("Robot busy.")
+            self.verdict.setText(self.session.robot_lease.refusal)
             return
 
         self.run_log.clear()

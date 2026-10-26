@@ -304,7 +304,7 @@ class HomePage(QWidget):
         what = "new robot session, then home"
         lease = self.session.robot_lease.claim(what)
         if lease is None:
-            self.show_error("Robot busy.")
+            self.show_error(self.session.robot_lease.refusal)
             return
         worker = Worker(self.session.new_run, name, what=what, lease=lease)
         # Bound methods, not lambdas: Qt queues them onto this thread.

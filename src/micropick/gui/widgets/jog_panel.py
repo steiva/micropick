@@ -866,7 +866,7 @@ class JogPanel(QWidget):
             lease = self.session.robot_lease.claim(what, run=run,
                                                    plates=plates)
             if lease is None:
-                self.tell("Robot busy.")
+                self.tell(self.session.robot_lease.refusal)
                 return False
             worker.lease = lease
         self._worker = worker

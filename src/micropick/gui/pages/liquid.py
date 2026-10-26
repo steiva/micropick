@@ -1116,7 +1116,7 @@ class LiquidHandlingPage(QWidget):
 
         log.info("liquid handling: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job, then=reached):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _set_well_center(self) -> None:
         shown, pose = self._shown_plate(), self.jog.pose
@@ -1177,7 +1177,7 @@ class LiquidHandlingPage(QWidget):
             return f"at the measured center and rim of {well}."
 
         if not self.jog.run_job(job):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _run_using(self, shown) -> str | None:
         """The run going into the shown plate now, if any
@@ -1236,7 +1236,7 @@ class LiquidHandlingPage(QWidget):
         log.info("liquid handling: trying step %d of %s for %s", index + 1,
                  group.name, well)
         if not self.jog.run_job(job):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     # -- checks -------------------------------------------------------------------
 
@@ -1379,7 +1379,7 @@ class LiquidHandlingPage(QWidget):
                 for slot in liquid.slots_used(program) if slot in plates}
         if not self.jog.run_job(job, what="liquid run", run=True,
                                 plates=used):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
             return
         self._running = True
         self.done.clear()

@@ -343,6 +343,8 @@ class Session(QObject):
     # What now holds the robot (`robot_lease`), in a few words, or None.
     # Emitted from whichever thread claimed or released it.
     robot_busy_changed = Signal(object)
+    # Lock was turned on or off (`set_locked`); carries the new state.
+    lock_changed = Signal(bool)
     # A step was confirmed or its confirmation dropped; see `confirm`.
     confirmations_changed = Signal()
 
@@ -380,6 +382,9 @@ class Session(QObject):
         # One job at a time that moves the robot or changes its session
         # (`hardware.robot_lease`): claimed before it, on every page.
         self.robot_lease = RobotLease(on_change=self.robot_busy_changed.emit)
+        # The second Stop's hold (`hold_robot`); the lock (`set_locked`) is
+        # the other reason the robot wrapper refuses moves.
+        self._stop_hold = False
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
@@ -740,6 +745,7 @@ class Session(QObject):
                     port=None if host and ":" in host
                     else self.settings.robot_port)
                 log.info("connecting to the robot at %s", self._api.BASE_URL)
+            self._apply_hold()
         return self._api
 
     # -- the connection monitor ----------------------------------------------
@@ -1380,17 +1386,59 @@ class Session(QObject):
         `release_robot` lets commands through again."""
         if self._api is None:
             return
-        self._api.hold.set()
+        self._stop_hold = True
+        self._apply_hold()
         log.warning("robot held: no command until the jobs using it stop")
 
     def release_robot(self) -> None:
-        if self._api is not None and self._api.hold.is_set():
-            self._api.hold.clear()
-            log.info("robot released")
+        """Let go of the second Stop's hold; a lock stays."""
+        if not self._stop_hold:
+            return
+        self._stop_hold = False
+        self._apply_hold()
+        log.info("robot released")
 
     @property
     def robot_held(self) -> bool:
         return self._api is not None and self._api.hold.is_set()
+
+    # -- lock ------------------------------------------------------------------
+
+    @property
+    def locked(self) -> bool:
+        return self.robot_lease.locked
+
+    def set_locked(self, on: bool) -> bool:
+        """Lock: nothing moves the robot until it is turned off, so the
+        operator can work at the deck with their hands. The robot wrapper
+        refuses every command that moves (as for the second Stop) and every
+        claim of the lease is refused; the lights still switch. Enforced
+        here, not only by the window's overlay. Refused (False) while a run
+        has the robot: a run cut off mid-move by a lock is a run stopped
+        nowhere safe, and Stop is the way to end one. A short job in
+        progress finishes its command and has the rest refused."""
+        on = bool(on)
+        if on == self.locked:
+            return True
+        if on and self.robot_lease.holding_run:
+            log.info("lock refused: %s has the robot",
+                     self.robot_lease.holder)
+            return False
+        self.robot_lease.set_locked(on)
+        self._apply_hold()
+        log.warning("robot %s", "locked" if on else "unlocked")
+        self.lock_changed.emit(on)
+        return True
+
+    def _apply_hold(self) -> None:
+        """The wrapper's hold, from the lock and the second Stop together:
+        letting go of one leaves the other."""
+        if self._api is None:
+            return
+        if self.locked or self._stop_hold:
+            self._api.hold.set()
+        else:
+            self._api.hold.clear()
 
     def refresh_lights(self) -> None:
         """Read the lights again after something switched them behind the

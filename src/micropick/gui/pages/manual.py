@@ -600,7 +600,7 @@ class ManualPage(QWidget):
 
         # Nothing moves: what is detected on the picture still stands.
         if not self.jog.run_job(job, moves=False):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     # -- what the picture can be used for -------------------------------------
 
@@ -1177,7 +1177,7 @@ class ManualPage(QWidget):
 
         log.info("manual control: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job, then=reached):
-            self.jog.tell("Robot busy.")
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _set_well_center(self) -> None:
         nominal, pose = self._shown_nominal(), self.jog.pose

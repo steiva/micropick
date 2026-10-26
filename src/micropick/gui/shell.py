@@ -49,7 +49,7 @@ from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
 from .widgets.footer import Footer
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
-from .widgets.overlays import DimCover
+from .widgets.overlays import DimCover, LockOverlay
 from .widgets.step_bar import StepBar
 from .widgets.toast import Toast
 from .widgets.top_bar import TopBar
@@ -128,9 +128,6 @@ class MainWindow(QMainWindow):
         session = self.session
 
         self.top = TopBar()
-        # Lock comes with the session's lock state; until then it is not
-        # offered.
-        self.top.lock.hide()
         self.step_bar = StepBar()
         self.banner = Banner(tone="warn")
         self.footer = Footer()
@@ -153,6 +150,8 @@ class MainWindow(QMainWindow):
         inner.setContentsMargins(0, 0, 0, 0)
         inner.addWidget(self.stack)
         self.dim = DimCover(holder)
+        # Over the page, under the top bar: Light and Unlock stay at hand.
+        self.lock_overlay = LockOverlay(holder)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -196,6 +195,10 @@ class MainWindow(QMainWindow):
         self.top.light_toggled.connect(self._toggle_lights)
         self.top.park_clicked.connect(self._park)
         self.top.stop_clicked.connect(self._stop)
+        self.top.lock_toggled.connect(self._set_locked)
+        self.lock_overlay.unlock_clicked.connect(
+            lambda: self._set_locked(False))
+        session.lock_changed.connect(self._show_lock)
         session.page_requested.connect(self.show_page)
 
         for signal in (session.profile_changed, session.robot_state_changed,
@@ -402,6 +405,7 @@ class MainWindow(QMainWindow):
         """The marks, the banner and the footer, from the session now."""
         self._show_park()
         self.top.set_stop_visible(self.session.robot_lease.holding_run)
+        self._show_lock_button()
         if self.task is None or self.step is None:
             return
         steps = tasks.steps(self.task)
@@ -425,6 +429,7 @@ class MainWindow(QMainWindow):
             self.dim.hide()
         elif not self.dim.isVisible():
             self.dim.open()
+            self.lock_overlay.raise_over()
         confirmable = (self.step in CONFIRMED_BY_NEXT and need is None
                        and not (self.step == "deck"
                                 and self.session.deck_problems()))
@@ -478,10 +483,33 @@ class MainWindow(QMainWindow):
     def _show_park(self) -> None:
         connected = self.session.robot is not None
         holder = self.session.robot_lease.holder
+        locked = self.session.locked
         self.top.set_park_enabled(
-            connected and holder is None,
+            connected and holder is None and not locked,
             "Robot not connected." if not connected else
+            "Robot locked." if locked else
             f"Robot busy: {holder}." if holder is not None else "")
+
+    def _show_lock_button(self) -> None:
+        run = self.session.robot_lease.holding_run
+        holder = self.session.robot_lease.holder
+        self.top.set_lock(self.session.locked, allowed=not run,
+                          reason=f"Robot busy: {holder}." if run else "")
+
+    def _set_locked(self, on: bool) -> None:
+        """Lock or Unlock. The session refuses a lock while a run has the
+        robot; the button then goes back to what the session says."""
+        if not self.session.set_locked(on):
+            self.say(f"Robot busy: {self.session.robot_lease.holder}.")
+        self._show_lock(self.session.locked)
+
+    def _show_lock(self, locked: bool) -> None:
+        """The overlay over the page, and the page's keys and clicks off
+        under it: the session refuses the moves, the page need not try."""
+        self.lock_overlay.set_locked(locked)
+        self.stack.setEnabled(not locked)
+        self._show_lock_button()
+        self._show_park()
 
     def _toggle_lights(self, _checked: bool) -> None:
         """The click flips the lights from the state the robot reports, not
@@ -539,7 +567,7 @@ class MainWindow(QMainWindow):
             return
         lease = self.session.robot_lease.claim("Park")
         if lease is None:
-            self.say("Robot busy.")
+            self.say(self.session.robot_lease.refusal)
             return
         worker = Worker(home_robot, robot, what="parking the robot",
                         lease=lease)
