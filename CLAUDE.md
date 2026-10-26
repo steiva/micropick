@@ -101,8 +101,8 @@ none. A run - picking, liquid, the camera sweep, the pipette calibration -
 holds it from Start to its end, pauses and needs operator included; the
 pipette calibration lends it to the touch-up's panel (`JogPanel.lend`).
 While anything holds it, every jog panel and every button that would move
-the robot is greyed out, the holder named in the tooltip. Disconnect and a
-new robot session are refused while it is held; closing the window during
+the robot is greyed out, the holder named in the tooltip. Home the robot
+(a new robot session) is refused while it is held; closing the window during
 a run asks and stops it, and the window closes (and parks Z) only once the
 robot is free - else it stays open and says the run is still stopping.
 
@@ -196,9 +196,13 @@ depth changed (`well_center.run_using`).
 ### Words on screen
 
 UI strings only; code names stay. The OT-2's HTTP run is a **robot session**
-("Connect" carries on with the robot's session or starts one, "Start new
-robot session", "Disconnect robot session", status bar "session <name>
-(continued)"). A session is shown by the name it was
+(carried on with by itself; "Home the robot" starts a new one).
+There is no Connect: the connection monitor (`gui.robot_monitor`) looks
+at the robot every few seconds from the start, carries on with a session
+it can (that moves nothing), and leaves a robot with none on "Robot needs
+to home" until the operator confirms Home the robot - a hand may be in
+the robot. A changed run id is the robot restarted: labware, the tip and
+what was confirmed are forgotten (`Session.robot_seen`). A session is shown by the name it was
 given when created here (`config.robot_sessions`, default date, time and
 profile), else by when the robot started it - never by its id. "run" on
 screen means a picking or liquid run. The pipette

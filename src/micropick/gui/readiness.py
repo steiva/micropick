@@ -133,9 +133,10 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
                       (False, "", False))
     if robot is not None:
         out["robot"] = (True, f"Robot session: {session.robot_state}.", False)
-    elif session.has_connection:
-        out["robot"] = (False, "Robot found; no robot session chosen.",
-                        False)
+    elif session.needs_home:
+        out["robot"] = (False, "Robot needs to home.", False)
+    elif session.robot_answers:
+        out["robot"] = (False, "Continuing the robot's session.", False)
     else:
         out["robot"] = (False, "Robot not connected.", False)
     if profile is None:

@@ -68,9 +68,20 @@ def test_the_address_is_fixed_while_connected(app, session):
     page = SettingsPage(session)
     assert page.host.isEnabled()
     session.probe_robot()
+    assert page.host.isEnabled()                # looked for, not connected
+    session.new_run()
     assert not page.host.isEnabled()
-    assert "Disconnect" in page.robot_state.text()
+    assert "Connected to" in page.robot_state.text()
     page.deleteLater()
+
+
+def test_a_new_address_is_looked_at_next_while_not_connected(app, session):
+    from micropick.config.app_settings import AppSettings
+    session.look_at_robot()
+    assert session.has_connection
+    session.set_settings(AppSettings(robot_host="10.0.0.7"))
+    assert not session.has_connection           # the next look makes it anew
+    assert session.robot_address == "10.0.0.7:31950"
 
 
 def test_the_gear_opens_the_settings_page_and_its_log(app, tmp_path, monkeypatch):

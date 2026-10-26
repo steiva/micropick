@@ -2,9 +2,11 @@
 
 Three cards, top to bottom, in one centered column:
 
-1. **Robot**: whether it is connected, as a headline. Until the app
-   connects by itself (the connection monitor), Connect is here, with
-   Start new robot session for a robot that has no session to carry on.
+1. **Robot**: whether it is connected, as a headline. The app connects
+   by itself (`gui.robot_monitor`); there is no Connect. A robot with no
+   session to carry on with says "Robot needs to home", with Home the
+   robot. Until the robot is connected, the cards below are dimmed under
+   one line.
 2. **Robot setup**: "Setup is done", or "Complete the setup · N steps
    left: …" with Complete setup, which opens the first item missing.
 3. **What are we doing today?**: the three task tiles, words only.
@@ -12,10 +14,11 @@ Three cards, top to bottom, in one centered column:
 No profile name and no chooser: the last profile is loaded by itself
 (`Session.load_last_profile`).
 
-Bringing the robot up is one button, as it was on the Profile page. A
-session the robot holds and can carry on with is carried on with - its
-pipette, its labware, its offsets; any other state has only one way on, a
-new robot session, which homes and so asks first.
+A session the robot holds and can carry on with is carried on with by the
+monitor - its pipette, its labware, its offsets - and that moves nothing.
+Any other state has only one way on, a new robot session, which homes: so
+it is a button, and the button asks first. A hand may be in the robot, and
+nothing moves until the operator says so.
 """
 
 from __future__ import annotations
@@ -31,8 +34,9 @@ from ..session import Session
 from ..tasks import SETUP, SETUP_TITLES, TASKS
 from ..theme import COLORS
 from ..theme.factory import (caption, card, muted_label, primary_button,
-                             quiet_button, secondary_button)
+                             quiet_button)
 from ..theme.icons import pixmap
+from ..widgets.overlays import DimCover
 from ..workers import Worker
 
 __all__ = ["HomePage", "TaskTile", "TILE_TEXT"]
@@ -112,13 +116,21 @@ class HomePage(QWidget):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        self._then = None                        # see _run
 
         column = QVBoxLayout()
         column.setSpacing(16)
         column.addWidget(self._robot_card())
-        column.addWidget(self._setup_card())
-        column.addWidget(self._tasks_card())
+        # Until the robot is connected: one line, and the rest dimmed.
+        self.waiting = muted_label("Waiting for the robot.", self)
+        column.addWidget(self.waiting)
+        self.below = QWidget(self)
+        below = QVBoxLayout(self.below)
+        below.setContentsMargins(0, 0, 0, 0)
+        below.setSpacing(16)
+        below.addWidget(self._setup_card())
+        below.addWidget(self._tasks_card())
+        self.below_dim = DimCover(self.below)
+        column.addWidget(self.below)
         column.addStretch(1)
         holder = QWidget(self)
         holder.setLayout(column)
@@ -155,17 +167,12 @@ class HomePage(QWidget):
         self.error.hide()
         text.addWidget(self.error)
         row.addLayout(text, 1)
-        self.connect_button = primary_button("Connect", box)
-        self.connect_button.clicked.connect(self._connect_or_disconnect)
-        self.new_run_button = secondary_button("Start new robot session", box)
-        self.new_run_button.setToolTip(
+        self.home_button = primary_button("Home the robot", box)
+        self.home_button.setToolTip(
             "Start a new robot session with an empty deck. The robot homes "
             "first.")
-        self.new_run_button.clicked.connect(self._new_run)
-        buttons = QHBoxLayout()
-        buttons.addWidget(self.new_run_button)
-        buttons.addWidget(self.connect_button)
-        row.addLayout(buttons)
+        self.home_button.clicked.connect(self._new_run)
+        row.addWidget(self.home_button, 0, Qt.AlignmentFlag.AlignTop)
         box.layout().addLayout(row)
         return box
 
@@ -221,27 +228,39 @@ class HomePage(QWidget):
     def refresh(self) -> None:
         session = self.session
         busy = self._worker is not None and self._worker.running
-        connected = session.has_connection
-        _set_mark(self.robot_mark, session.robot is not None)
-        if session.robot is not None:
+        ready = (session.robot is not None
+                 and session.robot_answers is not False)
+        _set_mark(self.robot_mark, ready)
+        if ready:
             self.robot_title.setText("Robot connected")
             self.robot_text.setText("Ready to work.")
-        elif connected and not busy:
-            # The home was declined, or a session could not be carried on.
+        elif busy:
             self.robot_title.setText("Robot not connected")
-            self.robot_text.setText("Start a new robot session.")
+            self.robot_text.setText("Homing.")
+        elif session.needs_home:
+            self.robot_title.setText("Robot needs to home")
+            self.robot_text.setText(
+                "The robot was restarted. Labware and the tip are unknown."
+                if session.restarted else
+                "The robot's session could not be continued."
+                if session.adopt_refused is not None else
+                "The robot has no robot session to carry on with.")
+        elif session.robot_answers and session.robot is None:
+            self.robot_title.setText("Robot not connected")
+            self.robot_text.setText("Continuing the robot's session.")
         else:
             self.robot_title.setText("Robot not connected")
             self.robot_text.setText(
-                "Please turn the robot on. When its button light stops "
-                "blinking, Connect.")
-        self.connect_button.setText("Disconnect robot session" if connected
-                                    else "Connect")
-        robot_free = not session.robot_lease.busy
-        self.connect_button.setEnabled(not busy
-                                       and (robot_free or not connected))
-        self.new_run_button.setVisible(connected)
-        self.new_run_button.setEnabled(connected and not busy and robot_free)
+                "Looking for the robot. Is it switched on?")
+        self.home_button.setVisible(session.needs_home)
+        self.home_button.setEnabled(not busy
+                                    and not session.robot_lease.busy)
+        self.waiting.setVisible(not ready)
+        self.below.setEnabled(ready)
+        if ready:
+            self.below_dim.hide()
+        elif not self.below_dim.isVisible():
+            self.below_dim.open()
 
         missing = self.missing_setup()
         _set_mark(self.setup_mark, not missing)
@@ -273,86 +292,46 @@ class HomePage(QWidget):
         if missing:
             self.setup_requested.emit(missing[0])
 
-    def _connect_or_disconnect(self) -> None:
-        if self.session.has_connection:
-            # Its retract would go into whatever has the robot now.
-            if self.session.robot_lease.busy:
-                self.show_error("Robot busy.")
-                return
-            self.show_error("")
-            self.session.disconnect_robot()
-            return
-        self.show_error("")
-        self._run(Worker(self.session.probe_robot), "probing the robot",
-                  then=self._probed)
-
-    def _probed(self) -> None:
-        state = self.session.run_state
-        if state is None:
-            return
-        if state.reusable:
-            self._run(Worker(self.session.adopt_run),
-                      f"continuing robot session {state.label}",
-                      robot_work=True)
-        else:
-            self._new_run()
-
     def _new_run(self) -> None:
-        """Ends in a home, so it asks: the gantry travels to its limits on
-        every axis, and a hand in the deck is the failure this dialog is
-        for."""
-        state = self.session.run_state
-        detail = ("The robot will home its axes. Stand clear and keep your "
-                  "hands out of the robot.")
-        if state is not None and state.reusable:
-            detail += (f"\n\nThe current robot session {state.label} will "
-                       f"be left behind, with its labware and offsets.")
-        profile = self.session.profile
-        dialog = QInputDialog(self)
-        dialog.setWindowTitle("New robot session")
-        dialog.setLabelText(detail + "\n\nName of the new session:")
-        dialog.setTextValue(robot_sessions.default_name(
-            profile.name if profile is not None else None))
-        dialog.setOkButtonText("Start")
+        """Home the robot: a new robot session, which ends in a home, so it
+        asks. The gantry travels to its limits on every axis, and a hand in
+        the deck is the failure this dialog is for; Cancel moves nothing."""
+        dialog = self.home_dialog()
         if dialog.exec() != QInputDialog.DialogCode.Accepted:
             return
         name = dialog.textValue().strip() or None
         self.show_error("")
-        self._run(Worker(self.session.new_run, name),
-                  "new robot session, then home", robot_work=True)
-
-    def _run(self, worker: Worker, what: str, then=None,
-             robot_work: bool = False) -> None:
-        """`then` is called once it finished well. `robot_work`: it sends
-        the robot session commands, so it claims the robot's lease first;
-        a probe only asks."""
-        if self._worker is not None and self._worker.running:
+        what = "new robot session, then home"
+        lease = self.session.robot_lease.claim(what)
+        if lease is None:
+            self.show_error("Robot busy.")
             return
-        if robot_work:
-            lease = self.session.robot_lease.claim(what)
-            if lease is None:
-                self.show_error("Robot busy.")
-                return
-            worker.lease = lease
-        self._worker = worker
-        self._then = then
-        worker.what = worker.what or what
+        worker = Worker(self.session.new_run, name, what=what, lease=lease)
         # Bound methods, not lambdas: Qt queues them onto this thread.
         worker.finished.connect(self._worker_done)
         worker.failed.connect(self._worker_failed)
+        self._worker = worker
         log.info("%s", what)
         worker.start()
         self.refresh()
 
+    def home_dialog(self) -> QInputDialog:
+        """The question Home the robot asks, with the new session's name."""
+        profile = self.session.profile
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Home the robot")
+        dialog.setLabelText("Keep hands out of the robot. The gantry will "
+                            "move.\n\nName of the robot session:")
+        dialog.setTextValue(robot_sessions.default_name(
+            profile.name if profile is not None else None))
+        dialog.setOkButtonText("Home")
+        return dialog
+
     def _worker_done(self, _result=None) -> None:
         self._worker = None
-        then, self._then = self._then, None
         self.refresh()
-        if then is not None:
-            then()
 
     def _worker_failed(self, reason: str) -> None:
         self._worker = None
-        self._then = None
         self.show_error(reason)
         self.refresh()

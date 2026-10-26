@@ -132,17 +132,20 @@ def test_robot_and_deck_waits_for_a_run(app, session):
     page.deleteLater()
 
 
-def test_disconnect_is_refused_while_the_robot_is_busy(app, session):
+def test_home_the_robot_is_refused_while_the_robot_is_busy(app, session):
+    session._api.power_off()
+    session._api.power_on()
+    session.robot_seen(session.look_at_robot())
+    assert session.needs_home
     page = HomePage(session)
     lease = session.robot_lease.claim("picking run", run=True)
     try:
-        assert not page.connect_button.isEnabled()
-        page.connect_button.click()
-        assert session.robot is not None
+        assert page.home_button.isVisibleTo(page)
+        assert not page.home_button.isEnabled()
     finally:
         lease.release()
-    page.connect_button.click()
-    assert session.robot is None
+    app.processEvents()
+    assert page.home_button.isEnabled()
     page.deleteLater()
 
 

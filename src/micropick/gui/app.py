@@ -73,4 +73,5 @@ def run(options: Options) -> int:
     app = create_app()
     window = MainWindow(options)
     window.showMaximized()
+    window.monitor.start()
     return app.exec()

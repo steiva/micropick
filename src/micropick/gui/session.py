@@ -89,6 +89,9 @@ MOCK = "mock"
 # not a run, and the only thing to do with it is start a new one.
 REUSABLE_STATUSES = ("idle", "running", "paused")
 
+# How long the connection monitor waits for the robot's answer.
+LOOK_TIMEOUT_S = 3.0
+
 
 @dataclass
 class RunState:
@@ -355,6 +358,18 @@ class Session(QObject):
         self.robot = None
         self.run_state: RunState | None = None
         self.run_origin: str | None = None       # "reused" or "new"
+        # What the connection monitor last saw (`robot_seen`): None until it
+        # has looked. `restarted`: the robot's session changed under this
+        # one - it was switched off and on - until a new one is made.
+        self.robot_answers: bool | None = None
+        self.restarted = False
+        # The robot session whose carrying on failed (`adopt_failed`): not
+        # tried again; Home the robot is the way on.
+        self.adopt_refused: str | None = None
+        # Counts every change of the robot session this one holds: a look
+        # begun before one and answered after it saw the robot as it was
+        # (`RobotMonitor`), and is dropped.
+        self.run_generation = 0
         self.routine = None                      # see routine_changed
         self.tip = Tip.unknown()                 # see tip_changed
         # Every move across the deck: the travel height, the measured top
@@ -493,8 +508,8 @@ class Session(QObject):
 
     @property
     def has_connection(self) -> bool:
-        """Probed or connected: the robot client exists, so its address is
-        fixed until Disconnect."""
+        """The robot client exists: made by the first look at the robot,
+        answered or not. Whether the robot answers is `robot_answers`."""
         return self._api is not None
 
     @property
@@ -502,8 +517,11 @@ class Session(QObject):
         return getattr(self.options, "robot_host", None)
 
     def set_settings(self, settings) -> None:
-        """Save the application's settings and apply them. The robot's
-        address is used at the next Connect."""
+        """Save the application's settings and apply them. A new robot
+        address, while the robot is not connected, is where the next look
+        goes: the client made for the old one is let go (it holds no robot
+        session, so nothing is retracted)."""
+        address = self.robot_address
         app_settings.save_settings(settings)
         app_settings.apply(settings)
         if settings.inference_device != self.settings.inference_device:
@@ -512,6 +530,13 @@ class Session(QObject):
             self.detector.forget()
         self.settings, self.settings_note = settings, ""
         log.info("settings saved to %s", app_settings.settings_path())
+        if (self.robot_address != address and self._api is not None
+                and self.robot is None):
+            self._api = self.run_state = self.robot_answers = None
+            # A look at the old address still out is dropped.
+            self.run_generation += 1
+            log.info("the robot is looked for at %s", self.robot_address)
+            self.robot_state_changed.emit(self.robot_state)
         self.settings_changed.emit(settings)
 
     @property
@@ -688,6 +713,23 @@ class Session(QObject):
         effect of looking, and looking must not commit to anything.
         """
         if self._api is None:
+            self._sync_clock(self._client())
+        state = _run_state(self._api)
+        self.run_state = state
+        log.info("robot probed: %s", state.describe())
+        self.robot_state_changed.emit(self.robot_state)
+        return state
+
+    def _sync_clock(self, api) -> None:
+        """Before a run is made: a session created from now on is stamped
+        right (`hardware.robot_clock`). Never raises."""
+        if not self.mock:
+            log.info("%s", robot_clock.sync_clock(api))
+
+    def _client(self):
+        """The robot client, made the first time. Costs no network. GUI
+        thread: a look is handed the client (`look_at_robot`)."""
+        if self._api is None:
             if self.mock:
                 self._api = MockRobot()
             else:
@@ -698,14 +740,108 @@ class Session(QObject):
                     port=None if host and ":" in host
                     else self.settings.robot_port)
                 log.info("connecting to the robot at %s", self._api.BASE_URL)
-                # Before the run is read: a session created from now on is
-                # stamped right (`hardware.robot_clock`). Never raises.
-                log.info("%s", robot_clock.sync_clock(self._api))
-        state = _run_state(self._api)
-        self.run_state = state
-        log.info("robot probed: %s", state.describe())
+        return self._api
+
+    # -- the connection monitor ----------------------------------------------
+    #
+    # The robot is looked at every few seconds (`gui.robot_monitor`): the
+    # read on a worker (`look_at_robot`), what it changes on the GUI thread
+    # (`robot_seen`). Looking moves nothing, and neither does carrying on
+    # with the robot's session. A new session homes, and a hand may be in
+    # the robot, so that one waits for the operator (`needs_home`).
+
+    def look_at_robot(self, api=None) -> RunState | None:
+        """What the robot is doing, or None if it does not answer.
+        Blocking, for a worker, with `api` from `_client` (None: made here,
+        on the calling thread); changes nothing on the session."""
+        if api is None:
+            api = self._client()
+        try:
+            if not self.mock:
+                # Answers at once or not at all: a run list asked of a robot
+                # switched off waits for as long as the network does.
+                api.health(timeout=LOOK_TIMEOUT_S)
+                if self.robot_answers is not True:
+                    # Back, or here for the first time: its clock may have
+                    # been reset.
+                    self._sync_clock(api)
+            return _run_state(api)
+        except (OSError, ValueError) as exc:
+            # OSError: requests' errors are, as is the mock's switched off.
+            # ValueError: a robot still starting answers with no JSON.
+            log.debug("the robot does not answer: %s", exc)
+            return None
+
+    def robot_seen(self, state: RunState | None) -> bool:
+        """Take what `look_at_robot` saw. GUI thread. True: the robot's
+        session is to be carried on with now (`adopt_run`, under the
+        robot's lease)."""
+        if state is None:
+            if self.robot_answers is not False:
+                self.robot_answers = False
+                log.warning("the robot does not answer")
+                self.robot_state_changed.emit(self.robot_state)
+            return False
+        answered, self.robot_answers = self.robot_answers, True
+        if answered is not True:
+            log.info("the robot answers: %s", state.describe())
+        changed = answered is not True
+        if self.robot is not None:
+            held = self.run_state.run_id if self.run_state else None
+            # A session that cannot take commands any more is let go only
+            # while nothing uses the robot: a status passing by under a run
+            # is the run's to meet. Another id is a restart either way.
+            if state.run_id != held or (not state.reusable
+                                        and not self.robot_lease.busy):
+                self._lose_run(state, restarted=state.run_id != held)
+                changed = False                 # said by _lose_run
+        elif (self.run_state is None or state.run_id != self.run_state.run_id
+              or state.status != self.run_state.status):
+            self.run_state = state
+            changed = True
+        if changed:
+            self.robot_state_changed.emit(self.robot_state)
+        return (self.robot is None and state.reusable
+                and state.run_id != self.adopt_refused)
+
+    def adopt_failed(self, run_id: str | None) -> None:
+        """Carrying on with `run_id` failed: it is not tried again, and
+        the robot needs to home (`needs_home`)."""
+        self.adopt_refused = run_id
         self.robot_state_changed.emit(self.robot_state)
-        return state
+
+    @property
+    def needs_home(self) -> bool:
+        """The robot answers and has no session to carry on with: only a
+        new one, which homes, gets it working - on the operator's word."""
+        state = self.run_state
+        return (self.robot is None and self.robot_answers is True
+                and state is not None
+                and (not state.reusable
+                     or state.run_id == self.adopt_refused))
+
+    def _lose_run(self, state: RunState, restarted: bool) -> None:
+        """The robot's session is not this one's any more: switched off and
+        on (`restarted`), or ended from elsewhere. What it held - labware,
+        the tip, what the operator confirmed - is not known now."""
+        if restarted:
+            log.warning("the robot was restarted: its session %s is gone; "
+                        "labware and the tip are unknown",
+                        self._robot_session_id())
+        else:
+            log.warning("the robot's session can no longer be used: %s",
+                        state.describe())
+        self.restarted = self.restarted or restarted
+        self.run_generation += 1
+        self.robot = None
+        self.motion.set_robot(None)
+        self.run_state, self.run_origin = state, None
+        self._forget_tip()
+        if self._confirmed:
+            self._confirmed.clear()
+            self.confirmations_changed.emit()
+        self.labware_changed.emit(state)
+        self.robot_state_changed.emit(self.robot_state)
 
     def adopt_run(self):
         """Carry on with the run the robot already has. Blocking; moves nothing.
@@ -749,8 +885,10 @@ class Session(QObject):
         seen to take longer with each run created, and a number in the log is
         how that stops being an impression.
         """
-        self._require_probe()
+        state = self._require_probe()
         if self.mock:
+            if not state.exists:                # switched off and on
+                self._api.create_run()
             self._api.home_robot()
             self.run_state = _run_state(self._api)
             log.info("mock homed")
@@ -1279,6 +1417,8 @@ class Session(QObject):
         self.robot = self._api
         self.motion.set_robot(self.robot)
         self.run_origin = origin
+        self.restarted = False
+        self.run_generation += 1
         # Before anything is loaded through this session: the offset attaches
         # to labware at load time, so a module registered later is a module
         # the plates already on the deck know nothing about.
@@ -1294,8 +1434,8 @@ class Session(QObject):
 
     def connect_robot(self):
         """The whole sequence with the default decision made: carry on with a
-        reusable run, otherwise start one. For callers with no operator to ask,
-        such as a test; the profile page asks."""
+        reusable run, otherwise start one - which homes. For callers with no
+        operator to ask, such as a test; the window asks (Home the robot)."""
         state = self.probe_robot()
         return self.adopt_run() if state.reusable else self.new_run()
 

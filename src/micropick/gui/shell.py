@@ -44,6 +44,7 @@ from .. import paths
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, home, labware,
                     liquid, log, manual, picking, routine, settings)
+from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
 from .widgets.footer import Footer
@@ -180,6 +181,9 @@ class MainWindow(QMainWindow):
         # What the footer was last given (`_refresh`).
         self._navigation: dict | None = None
 
+        # Looks at the robot every few seconds; started by `app.run`.
+        self.monitor = RobotMonitor(session, self)
+        self.monitor.failed.connect(self.home.show_error)
         self.home.task_chosen.connect(self.open_task)
         self.home.setup_requested.connect(self.open_setup_item)
         self.step_bar.clicked.connect(
@@ -242,7 +246,8 @@ class MainWindow(QMainWindow):
 
     def _start(self) -> None:
         """Load the profile: the one the command line named, the mock's,
-        or the last one used. Connecting the robot stays a deliberate act."""
+        or the last one used. The robot is connected by the monitor
+        (`RobotMonitor`), once `app.run` starts it."""
         name = self.options.profile or (MOCK_PROFILE_NAME
                                         if self.options.mock else None)
         try:
@@ -300,6 +305,7 @@ class MainWindow(QMainWindow):
                      f"Close again once it has.")
             event.ignore()
             return
+        self.monitor.stop()
         self.session.shutdown()
         super().closeEvent(event)
 

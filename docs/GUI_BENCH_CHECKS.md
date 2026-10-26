@@ -1062,10 +1062,10 @@ robot on.
   items on a bench that was set up - the wrong profile, or `default` was
   made beside the real one.
 
-- [ ] **Connect on Home carries on with the robot's session.**
-  Until the app connects by itself, Connect is on Home's Robot card, and
-  Start new robot session beside it once connected. With the robot on and
-  never powered off: Connect, and the deck and tip are what they were.
+- [ ] **Home carries on with the robot's session by itself.**
+  (Since phase 3: no Connect.) With the robot on and never powered off,
+  start the program: "Robot connected" within a few seconds, and the deck
+  and tip are what they were.
 
 - [ ] **Auto pick opens on Deck, and Next checks it.**
   Next on Deck is the deck checked against the real one, for this robot
@@ -1094,3 +1094,36 @@ robot on.
 
 - [ ] **The log is under Settings.**
   ⚙ Settings, Log at the bottom left: Home › Settings › Log.
+
+## Redesign, phase 3 — auto-connect and the connection monitor
+
+Start the program normally (no `--mock`) on the bench machine.
+
+- [ ] **Nothing moves at start.**
+  Robot on, with a robot session left on it: start the program with a
+  hand near (not in) the deck. Home says "Robot connected" within a few
+  seconds and the gantry does not move. Expected failure if wrong: the
+  robot homes at start.
+
+- [ ] **Robot off: Home looks for it.**
+  Switch the robot off. Within ten seconds Home says "Robot not
+  connected", "Looking for the robot. Is it switched on?", and the setup
+  and task cards are dimmed under "Waiting for the robot.". No Connect,
+  Disconnect or Start new robot session button anywhere.
+
+- [ ] **Robot on again: it asks to home, and only then moves.**
+  Switch it on; once its light stops blinking Home says "Robot needs to
+  home", "The robot was restarted. Labware and the tip are unknown." The
+  gantry does not move. Home the robot: the dialog says "Keep hands out of
+  the robot. The gantry will move."; Cancel - nothing moves. Home the
+  robot again, Home: the robot homes, then "Robot connected". In Auto
+  pick, Deck is no longer ✓ and the tip is unknown until read again.
+
+- [ ] **A cable blip loses nothing.**
+  Unplug the robot's cable for ten seconds and plug it back in: "Robot not
+  connected", then "Robot connected" again, and Deck is still ✓.
+
+- [ ] **A new address while looking.**
+  With the robot off, ⚙ Settings: change the address, Save. The log says
+  "the robot is looked for at <address>"; set it back, Save, switch the
+  robot on, and it is found.

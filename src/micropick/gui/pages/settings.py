@@ -10,8 +10,9 @@ another address over Wi-Fi.
 The robot's address is typed as a person would - an IP, a name, host:port,
 even a whole URL - and Test connection asks the robot at it who it is
 (`OpentronsAPI.health`) before anything is saved, so a wrong address is
-found here and not as a Connect that hangs. It cannot be changed while the
-robot is connected; a new one is used at the next Connect.
+found here and not as a robot that is never found. It cannot be changed
+while the robot is connected; saved while it is not, the connection
+monitor looks for it there from its next look.
 
 The folders: Outputs (plate plans, liquid programs, presets, clips), Logs
 (run logs) and Images (pictures saved from a camera view). Empty is the
@@ -690,10 +691,7 @@ class SettingsPage(QWidget):
                                             f"cannot be made: {exc}")
                     return
         self.session.set_settings(settings)
-        self.save_state.setText(
-            f"Saved in {settings_path()}."
-            + (" The address applies at the next Connect."
-               if self.session.robot is None else ""))
+        self.save_state.setText(f"Saved in {settings_path()}.")
 
     def _browse(self, key: str) -> None:
         line = self.folders[key]
@@ -1022,15 +1020,14 @@ class SettingsPage(QWidget):
     # -- display -------------------------------------------------------------
 
     def _refresh(self) -> None:
-        connected = self.session.has_connection
+        connected = self.session.robot is not None
         testing = self._worker is not None and self._worker.running
         for widget in (self.host, self.port):
             widget.setEnabled(not connected)
         self.test_button.setEnabled(not testing)
         if connected and not testing:
             self.robot_state.setText(
-                f"Connected to {self.session.robot_address}. Disconnect to "
-                f"change the address.")
+                f"Connected to {self.session.robot_address}.")
         elif not self.robot_state.text():
-            self.robot_state.setText(f"Connect goes to "
+            self.robot_state.setText(f"Looking for the robot at "
                                      f"{self.session.robot_address}.")

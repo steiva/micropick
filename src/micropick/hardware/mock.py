@@ -148,6 +148,35 @@ class MockRobot:
         # (labware_id, well) of the tip on the pipette, or None. Refusals
         # mirror the engine's: no picking up over a tip, no dropping without.
         self.tip: tuple[str, str] | None = None
+        # The robot's power, for the connection monitor: switched off it
+        # answers nothing; switched on again it has no current run.
+        self.powered = True
+        self._run_id: str | None = "mock-run"
+        self._runs = 1
+
+    def power_off(self) -> None:
+        self.powered = False
+
+    def power_on(self) -> None:
+        """Back from a power cycle: no current run, nothing loaded, no tip.
+        The client's own table of slot offsets is this computer's and
+        stays."""
+        self.powered = True
+        self._run_id = None
+        self._forget_run()
+
+    def create_run(self, verbose=False):
+        self._runs += 1
+        self._run_id = f"mock-run-{self._runs}"
+        self._forget_run()
+        self.calls.append(("create_run",))
+
+    def _forget_run(self) -> None:
+        self._run_labware, self._run_offsets = [], []
+        self.labware_dct = {str(i): None for i in range(1, 12)}
+        self.tip = None
+        if hasattr(self, "_created_at"):
+            del self._created_at
 
     def move_to_coordinates(self, coordinates, min_z_height=None,
                             force_direct=False, speed=None, verbose=True):
@@ -322,15 +351,18 @@ class MockRobot:
         self.calls.append(("move_labware", labware_id, new_location))
 
     def get_all_runs(self):
+        if not self.powered:
+            raise ConnectionError("the mock robot is switched off")
         if not hasattr(self, "_created_at"):
             from datetime import datetime, timezone
             self._created_at = datetime.now(timezone.utc).isoformat()
-        payload = {"data": [{"id": "mock-run", "current": True, "status": "idle",
-                             "createdAt": self._created_at,
-                             "pipettes": [{"id": "mock-pip"}],
-                             "labware": self._run_labware,
-                             "labwareOffsets": self._run_offsets}],
-                   "meta": {"totalLength": 1}}
+        runs = [] if self._run_id is None else [
+            {"id": self._run_id, "current": True, "status": "idle",
+             "createdAt": self._created_at,
+             "pipettes": [{"id": "mock-pip"}],
+             "labware": self._run_labware,
+             "labwareOffsets": self._run_offsets}]
+        payload = {"data": runs, "meta": {"totalLength": len(runs)}}
         return type("_Resp", (), {"text": __import__("json").dumps(payload)})()
 
 

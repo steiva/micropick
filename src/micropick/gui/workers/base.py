@@ -81,7 +81,8 @@ def any_running() -> bool:
     """Whether any worker's thread is still running, on any page: whether a
     Stop has anything to stop. Whether the robot is in use is its lease's
     (`Session.robot_lease`), not this."""
-    return any(worker.running for worker in list(_RUNNING))
+    return any(worker.running for worker in list(_RUNNING)
+               if not worker.background)
 
 
 NO_ROBOT_ANSWER = ("The robot did not answer. Check that it is switched on "
@@ -122,7 +123,8 @@ def activity() -> list["Worker"]:
     """The workers running now, the longest-running first: what the status
     bar's activity indicator shows. Each says `what` it is doing, since
     when (`started_at`, monotonic) and the last line it logged."""
-    running = [worker for worker in list(_RUNNING) if worker.running]
+    running = [worker for worker in list(_RUNNING)
+               if worker.running and not worker.background]
     return sorted(running, key=lambda worker: worker.started_at or 0.0)
 
 
@@ -138,6 +140,7 @@ class Worker(QObject):
     def __init__(self, fn: Callable[..., Any], *args,
                  progress_arg=AUTO, cancel_arg=AUTO, message_arg=AUTO,
                  what: str | None = None, lease=None,
+                 background: bool = False,
                  parent: QObject | None = None, **kwargs):
         """`*_arg` name the parameters to inject.
 
@@ -151,6 +154,11 @@ class Worker(QObject):
         `what` is the job in a few words, for the activity indicator
         ("calibrating the pipette"); it is not passed to the callable.
 
+        `background`: not work anyone waits for - the connection
+        monitor's look at the robot (`gui.robot_monitor`). Stop and the
+        activity indicator do not count it (`any_running`, `activity`):
+        it moves nothing and busies nothing.
+
         `lease` is the robot's (`hardware.robot_lease`), claimed by the
         caller for this job: it is released as the job ends - finished,
         failed or canceled - on the worker's thread, before `finished` or
@@ -163,6 +171,7 @@ class Worker(QObject):
         super().__init__(parent)
         self._fn = fn
         self.lease = lease
+        self.background = background
         self._args = args
         self._kwargs = dict(kwargs)
         self._names = {"progress": (progress_arg, PROGRESS_ARG),
