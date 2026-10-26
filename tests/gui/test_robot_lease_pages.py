@@ -178,8 +178,10 @@ def test_after_a_failed_move_the_pose_is_read_without_taking_the_robot(
         raise RuntimeError("Destination out of bounds")
 
     assert panel.run_job(refused, what="moving the robot")
-    _settled(app, panel)
-    assert _until(app, lambda: panel.pose is not None)
+    # Not `_settled`: the failed move's thread ends before its failure is
+    # handled, and handling it starts the read. The move cleared the pose,
+    # so a pose again, with nothing in flight, is the read done.
+    assert _until(app, lambda: panel.pose is not None and not panel.busy)
     # The move's claim and its release, and nothing for the read after it.
     assert holders == ["moving the robot", None]
     assert any("out of bounds" in line for line in panel.position_lines)
