@@ -185,6 +185,11 @@ class SettingsPage(QWidget):
         # in view however far the left column is scrolled, which is where a
         # change was made. What was saved, or why not, beside them.
         bar = QHBoxLayout()
+        # The log has no tab any more; it is reached from here.
+        self.log_button = secondary_button("Log", self)
+        self.log_button.clicked.connect(
+            lambda: session.page_requested.emit("log"))
+        bar.addWidget(self.log_button)
         self.save_state = _label()
         self.save_state.setAlignment(Qt.AlignmentFlag.AlignRight
                                      | Qt.AlignmentFlag.AlignVCenter)

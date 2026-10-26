@@ -1047,3 +1047,50 @@ machine (1920x1080, Windows).
 - [ ] **Sizes read well from a meter away at 1920x1080.**
   Buttons are 36 px, compact ones 28 px (REDESIGN §12.6). Expected failure
   if wrong: buttons too small to hit on the first try, or labels cut.
+
+---
+
+## Redesign, phase 2 — the shell: Home, tasks as steps
+
+Start the program normally (no `--mock`) on the bench machine, with the
+robot on.
+
+- [ ] **The bench's profile is loaded without being asked for.**
+  The first start after this change takes the profile written to most
+  recently; later starts the one loaded last (`profiles/.last-profile`).
+  Expected failure if wrong: Home says "Complete the setup" with all four
+  items on a bench that was set up - the wrong profile, or `default` was
+  made beside the real one.
+
+- [ ] **Connect on Home carries on with the robot's session.**
+  Until the app connects by itself, Connect is on Home's Robot card, and
+  Start new robot session beside it once connected. With the robot on and
+  never powered off: Connect, and the deck and tip are what they were.
+
+- [ ] **Auto pick opens on Deck, and Next checks it.**
+  Next on Deck is the deck checked against the real one, for this robot
+  session; Tip then shows ✓ on Deck. Start a new robot session: Deck is
+  no longer ✓.
+
+- [ ] **A dimmed step takes no keys.**
+  Open Tip before the camera is calibrated: the page is dimmed under
+  "Calibrate the camera first." Press the arrow keys and PgUp: the robot
+  does not move. Expected failure if wrong: the jog keys still drive the
+  robot under the banner.
+
+- [ ] **The banner's button goes to the thing to do, and the crumb back.**
+  "Go to Camera calibration" opens it as Home › Auto pick › Camera
+  calibration; a click on Auto pick comes back to Tip.
+
+- [ ] **Auto pick, then Manual pick, opens on Work.**
+  With the deck checked, the tip calibrated and the dish bottom taken
+  (Next on Dish bottom, until it has Save and Use it), Home › Manual pick
+  shows Deck, Tip and Dish bottom ✓ and the Work page.
+
+- [ ] **Esc still stops, Park parks, Light switches the lights.**
+  Esc during a jog stops it; a second Esc within 10 s holds the robot.
+  STOP shows in the top bar during a picking run only. Park asks, then
+  homes all axes. Light follows the rail lights.
+
+- [ ] **The log is under Settings.**
+  ⚙ Settings, Log at the bottom left: Home › Settings › Log.

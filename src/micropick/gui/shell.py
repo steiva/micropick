@@ -1,28 +1,31 @@
-"""The window everything else sits in.
+"""The window everything else sits in (REDESIGN §4).
 
-A row of tabs along the top and a stack under it, assembled by hand rather
-than from a structural framework: the navigation is a handful of fixed entries
-and a framework would decide the window's shape, the page lifecycle and the
-theme along with it. Those are exactly the three things this application
-needs to keep.
+The TopBar across the top, and under it one stack of screens: Home, and
+the pages that are a task's steps or a Robot setup item. While a step is
+shown, the StepBar is over it and the Footer (Back, Next) under it; Home,
+Settings and a setup item have neither.
 
-The tabs are in two groups. On the left, the pages a session goes through in
-order — profile, labware, calibration, plate plan, picking. On the right edge,
-the three that are used whenever they are needed rather than in sequence:
-liquid handling, manual control and the log. A column down the side used to hold them all and
-cost the pages 200 px of width for seven words.
+A **task** is a fixed order of steps (`gui.tasks`); the existing pages are
+the steps' content, `STEP_PAGES` says which. One page can be several
+steps - Picking is the Dish bottom step and the Picking step, Liquid
+handling is all three of Liquid's own - and Deck, Tip and Dish bottom are
+the same page and the same state in every task.
 
-The chosen tab opens into its page, as a browser's does. The strip the tabs
-sit on is qdarktheme's raised surface (a `Panel` frame, like a card); the
-chosen tab has the window's own background, from qdarktheme's QWidget rule,
-so it reads as the top of the page below it and the page needs no title of
-its own. No colour is named here, for the reason `theme/__init__` gives.
+Whether a step is done, and the first need it has not got, are read from
+the session each time (`tasks.step_state`): nothing records a visit. A
+step whose need is not met is shown dimmed and disabled, under one banner
+naming that need with a button that goes there: an earlier step, Home for
+the robot, or the page a Robot setup item is set on (`SETUP_PAGES`) - the
+breadcrumb then reads `Home › <task> › <item>`, and its crumb goes back.
 
-`PAGES` is the only place the order and the names exist. The tab and the
-stacked widget are built from the same row in one pass, so the entry an
-operator clicks and the page that appears cannot come apart — the mistake
-`workflows/jog` fixed by generating its help from its layout, in a different
-shape.
+A task opens on its first step not done, so one switched to after another
+starts past what they share. Next is enabled on a step that is done or
+optional; Deck is confirmed by its Next (`Session.confirm`), and so, until
+Dish bottom has its own Save and Use it, is Dish bottom.
+
+The window as before: Esc and STOP stop (two presses hold), closing waits
+for the robot to be free, Park is what Home robot position was, Light
+switches the rail lights.
 """
 
 from __future__ import annotations
@@ -31,28 +34,24 @@ import logging
 import time
 from typing import TYPE_CHECKING
 
-import qtawesome as qta
-from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
-                               QMainWindow,
-                               QMessageBox, QStackedWidget, QStatusBar,
-                               QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from .. import _version as version
 from .. import paths
-from ..config.labware import resolve_definition, row_first
-from . import log_bridge
-from .pages import (calibration_camera, calibration_pipette, labware, liquid,
-                    log, manual, picking, profile, routine, settings)
-from .session import MOCK_PROFILE_NAME, Session, Tip
-from .theme import SPACING, accent
-from .widgets.feed_window import FeedWindow
-from .widgets.activity import ActivityIndicator
+from . import log_bridge, tasks
+from .pages import (calibration_camera, calibration_pipette, home, labware,
+                    liquid, log, manual, picking, routine, settings)
+from .session import MOCK_PROFILE_NAME, Session
+from .widgets.banner import Banner
+from .widgets.footer import Footer
 from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
-from .widgets.next_step import NextStepHint
-from .widgets.tip_button import Rack, TipButton, TipSource
-from .readiness import readiness_checks
+from .widgets.overlays import DimCover
+from .widgets.step_bar import StepBar
+from .widgets.toast import Toast
+from .widgets.top_bar import TopBar
 from .report import save_report_asking
 from .workers import Worker, any_running
 
@@ -60,61 +59,48 @@ if TYPE_CHECKING:                       # app imports this module; annotations
     from .app import Options            # are strings, so the cycle is only a
                                         # type-checker's problem
 
-__all__ = ["MainWindow", "StatusBar", "PAGES"]
+__all__ = ["MainWindow", "PAGES", "SETUP_PAGES", "STEP_PAGES"]
 
 _log = logging.getLogger(__name__)
 
-# Which end of the tab row a page sits at. The sequence, on the left, is the
-# order a day's work goes in; the pages aside, on the right, are tools used
-# when they are needed, and their titles are in the accent colour to say
-# so (`theme.accent`, the one the buttons are in).
-SEQUENCE, ASIDE = "sequence", "aside"
-
-# (attribute name, title on the tab, page class, group). The attribute is how
-# the rest of the application reaches a page; the title is what is on screen.
+# (attribute name, title in the breadcrumb, page class). The attribute is
+# how the rest of the application reaches a page.
 PAGES = (
-    ("profile", profile.TITLE, profile.ProfilePage, SEQUENCE),
-    ("labware", labware.TITLE, labware.LabwarePage, SEQUENCE),
-    # The tip is calibrated after each pipette change, so it is a step;
-    # the camera only on a new system or after it was moved, so it is
-    # aside - and the Operation checklist says when it was never done.
+    ("labware", labware.TITLE, labware.LabwarePage),
     ("tip_calibration", calibration_pipette.TITLE,
-     calibration_pipette.PipetteCalibration, SEQUENCE),
-    # Plate plan before Picking: the plan is what a run picks into, and an
-    # operator who meets the pages in order meets them in the order the
-    # work happens.
-    ("routine", routine.TITLE, routine.RoutinePage, SEQUENCE),
-    ("picking", picking.TITLE, picking.PickingPage, SEQUENCE),
+     calibration_pipette.PipetteCalibration),
+    ("routine", routine.TITLE, routine.RoutinePage),
+    ("picking", picking.TITLE, picking.PickingPage),
     ("camera_calibration", calibration_camera.TITLE,
-     calibration_camera.CameraCalibration, ASIDE),
-    # Beside Manual control: moving liquid is a tool used when it is needed,
-    # before picking or days after it, not a stage of the session.
-    ("liquid", liquid.TITLE, liquid.LiquidHandlingPage, ASIDE),
-    ("manual", manual.TITLE, manual.ManualPage, ASIDE),
-    ("log", log.TITLE, log.LogPage, ASIDE),
+     calibration_camera.CameraCalibration),
+    ("liquid", liquid.TITLE, liquid.LiquidHandlingPage),
+    ("manual", manual.TITLE, manual.ManualPage),
+    ("settings", settings.TITLE, settings.SettingsPage),
+    ("log", log.TITLE, log.LogPage),
 )
 
-ASIDE_TIP = "Tool, used as needed."
+# The page each step shows.
+STEP_PAGES = {
+    "deck": "labware", "tip": "tip_calibration", "plan": "routine",
+    "dish_bottom": "picking", "picking": "picking", "work": "manual",
+    "well_center": "liquid", "liquid_plan": "liquid", "run": "liquid",
+}
 
-# How often the next-step hint reads the checklist again.
-HINT_EVERY_MS = 1500
+# The page each Robot setup item is set on, until Robot setup has its own.
+SETUP_PAGES = {
+    "camera_calibration": "camera_calibration",
+    "calibration_position": "tip_calibration",
+    "dish_position": "picking",
+    "shake_position": "picking",
+}
 
-# The gear at the end of the tab row, larger than the status bar's icons.
-GEAR_PX = 26
+# Steps their own Next confirms for the robot session.
+CONFIRMED_BY_NEXT = ("deck", "dish_bottom")
 
-# The colour a tip is shown in. A tip on the pipette is the first reason
-# the robot crashes into something, and the indicator that says so has to be
-# seen from across the room, on every page, in either theme - which is what
-# the palette cannot promise and a fixed amber can.
-TIP_ON = "#f0a030"
-ICON_PX = 18
+# How often the steps' marks are read again: a position saved on a page has
+# no signal of its own.
+REFRESH_EVERY_MS = 1500
 
-# The Stop button: a fixed red for the same reason as TIP_ON.
-STOP_TEXT = "Stop"
-STOP_NOW_TEXT = "Stop NOW"
-STOP_STYLE = ("QToolButton { background: #c62828; color: white; "
-              "font-weight: bold; border-radius: 4px; padding: 2px 10px; }"
-              "QToolButton:pressed { background: #8e0000; }")
 # After a first Stop, how long a second one holds the robot.
 STOP_AGAIN_S = 10
 # How often a held robot is looked at to be let go.
@@ -128,367 +114,101 @@ HELD_DETAIL = (
     "the tip are kept.")
 
 
-class NavTab(QWidget):
-    """One page's tab: a title that is clicked.
-
-    A plain widget with a styled background rather than a QToolButton,
-    because qdarktheme pins every tool button's background to transparent
-    and the chosen tab has to carry the window's. `selected` is a dynamic
-    property for the stylesheet to match on.
-    """
-
-    clicked = Signal()
-
-    def __init__(self, title: str, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setObjectName("navTab")
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        # The mouse chooses pages; the keyboard drives the robot.
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.label = QLabel(title, self)
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(self.label)
-        self.setProperty("selected", False)
-
-    def text(self) -> str:
-        return self.label.text()
-
-    def set_aside(self) -> None:
-        """A page aside: its title in the accent colour, and why on hover."""
-        self._aside = True
-        self.setToolTip(ASIDE_TIP)
-        self._ink()
-
-    def _ink(self) -> None:
-        if getattr(self, "_aside", False):
-            self.label.setStyleSheet(f"color: {accent()};")
-
-    def changeEvent(self, event) -> None:
-        # The operating system switched light and dark: qdarktheme applied
-        # the other stylesheet, and the accent with it.
-        if event.type() == QEvent.Type.StyleChange:
-            self._ink()
-        super().changeEvent(event)
-
-    def isChecked(self) -> bool:
-        return bool(self.property("selected"))
-
-    def setChecked(self, on: bool) -> None:
-        if self.isChecked() == bool(on):
-            return
-        self.setProperty("selected", bool(on))
-        # A dynamic property is not watched: the style is reapplied by hand.
-        for widget in (self, self.label):
-            widget.style().unpolish(widget)
-            widget.style().polish(widget)
-        self.update()
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-
-class StatusBar(QStatusBar):
-    """Profile, robot, cameras, the tip, Home and the lights, permanently
-    visible.
-
-    Permanent widgets rather than `showMessage`: a transient message is
-    replaced by the next one, and these answer "what is this application
-    currently attached to", which is never a transient question.
-
-    The tip indicator shows the robot's record, not this application's: it
-    is set from `Session.tip_changed`, which is re-read from the run's command
-    log after connect and after every tip command. Three states, and the
-    third is not the second: no tip, a tip on, and *could not tell*.
-
-    Home robot position is here so it is one click from every page, not
-    only from the pages with a jog panel. Like the lights button it is not
-    connected here; the window decides when the robot may be homed.
-    """
-
-    # A click on a camera button; carries the label.
-    camera_clicked = Signal(str)
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(parent)
-        self._profile = QLabel()
-        self._robot = QLabel()
-
-        # One button per camera of the profile, a window with its feed on
-        # click and hidden on the next. From here rather than from a page,
-        # because a camera is looked at - and its focus tuned - from
-        # anywhere.
-        self._cameras = QWidget()
-        self._cameras.setObjectName("statusInfo")
-        self._camera_row = QHBoxLayout(self._cameras)
-        self._camera_row.setContentsMargins(SPACING, 0, SPACING, 0)
-        self._camera_row.setSpacing(SPACING // 2)
-        self._camera_buttons: dict[str, QToolButton] = {}
-        self._open_cameras: list[str] = []
-
-        # The deck hazard: labware in a module slot without the module's
-        # offset, which is a crash on the first well move. Hidden until
-        # there is one; then amber, on every page, until it is fixed.
-        self._deck_icon = QLabel()
-        self._deck = QLabel()
-        self._deck_box = QWidget()
-        self._deck_box.setObjectName("statusInfo")
-        deck_row = QHBoxLayout(self._deck_box)
-        deck_row.setContentsMargins(SPACING, 0, SPACING, 0)
-        deck_row.setSpacing(SPACING // 2)
-        deck_row.addWidget(self._deck_icon)
-        deck_row.addWidget(self._deck)
-        self._deck_box.hide()
-
-        # The tip: what the robot reports, and a panel with the basic acts
-        # on a click. Not connected here; the window runs what it asks for.
-        self.tip = TipButton()
-        tip = self.tip
-
-        # Stop, on every page: red and labelled, so it is found without
-        # looking for it. What it does is the window's (`MainWindow._stop`).
-        self.stop = QToolButton()
-        self.stop.setText(STOP_TEXT)
-        self.stop.setIcon(qta.icon("mdi6.stop-circle", color="white"))
-        self.stop.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.stop.setStyleSheet(STOP_STYLE)
-        self.stop.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.stop.setToolTip(
-            "Stop (Esc). Once: after the current move. Twice: immediately; "
-            "the robot session must be restarted.")
-
-        self.home = QToolButton()
-        self.home.setAutoRaise(True)
-        self.home.setText("Home robot position")
-        self.home.setIcon(qta.icon("mdi6.home-outline"))
-        self.home.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        # The keys belong to the robot's axes; a focused button would take
-        # Space.
-        self.home.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        # Checkable, so the bulb's own state is the robot's last answer and a
-        # click asks for the other one. Not connected to anything here: the
-        # window wires it to the session through a worker.
-        self.lights = QToolButton()
-        self.lights.setCheckable(True)
-        self.lights.setAutoRaise(True)
-        self.lights.setToolTip("Rail lights")
-
-        # What is running, on the left; see `widgets.activity`.
-        self.activity = ActivityIndicator()
-        self.activity.setObjectName("statusInfo")
-        self.addWidget(self.activity, 1)
-
-        # The question mark: the next-step hint back, after its cross.
-        # Not connected here, as Home is not.
-        self.help = QToolButton()
-        self.help.setAutoRaise(True)
-        self.help.setIcon(qta.icon("mdi6.help-circle-outline"))
-        self.help.setToolTip("Show the next-step hint.")
-        self.help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        # Stop last, at the right-hand end: the corner the eye and the
-        # mouse find without looking.
-        for widget in (self._profile, self._robot, self._cameras,
-                       self._deck_box, tip, self.home, self.lights,
-                       self.help, self.stop):
-            self.addPermanentWidget(widget)
-        self.show_profile(None)
-        self.show_robot("not connected")
-        self.show_cameras([])
-        self.show_tip(None)
-        self.show_lights(None)
-        self.show_home(False)
-
-    def show_home(self, connected: bool, holder: str | None = None) -> None:
-        """`holder`: what has the robot now (`Session.robot_lease`)."""
-        self.home.setEnabled(connected and holder is None)
-        if not connected:
-            self.home.setToolTip("Home robot position: not connected")
-        elif holder is not None:
-            self.home.setToolTip(f"Robot busy: {holder}.")
-        else:
-            self.home.setToolTip("Home all axes.")
-
-    def show_profile(self, name: str | None) -> None:
-        self._profile.setText(f"profile: {name or 'none'}")
-
-    def show_robot(self, state: str) -> None:
-        self._robot.setText(f"robot: {state}")
-
-    def set_camera_labels(self, labels: list[str]) -> None:
-        """The profile's cameras, one button each. Called on profile change."""
-        for button in self._camera_buttons.values():
-            self._camera_row.removeWidget(button)
-            button.deleteLater()
-        self._camera_buttons = {}
-        for label in labels:
-            button = QToolButton()
-            button.setAutoRaise(True)
-            button.setText(label)
-            button.setToolButtonStyle(
-                Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-            button.clicked.connect(lambda _c=False, name=label:
-                                   self.camera_clicked.emit(name))
-            self._camera_row.addWidget(button)
-            self._camera_buttons[label] = button
-        self.show_cameras(self._open_cameras)
-
-    def show_cameras(self, open_labels: list[str]) -> None:
-        """Which of them are open: the icon says, the click opens either way."""
-        self._open_cameras = list(open_labels)
-        for label, button in self._camera_buttons.items():
-            is_open = label in open_labels
-            button.setIcon(qta.icon("mdi6.camera", color=TIP_ON) if is_open
-                           else qta.icon("mdi6.camera-outline"))
-            button.setToolTip(f"{label}: open. Show or hide its window."
-                              if is_open
-                              else f"{label}: closed. Open in a window.")
-
-    def show_deck_problems(self, problems: list) -> None:
-        """Slots holding labware without their module's offset; [] hides."""
-        if not problems:
-            self._deck_box.hide()
-            return
-        slots = ", ".join(p.slot for p in problems)
-        self._deck_icon.setPixmap(
-            qta.icon("mdi6.alert", color=TIP_ON).pixmap(ICON_PX, ICON_PX))
-        self._deck.setText(f"<b style='color:{TIP_ON}'>DECK: slot{'s' if len(problems) > 1 else ''} "
-                           f"{slots} without module offset</b>")
-        hint = ("\n".join(p.describe() for p in problems)
-                + "\nFix it on the Robot & Deck page before any well move.")
-        self._deck_icon.setToolTip(hint)
-        self._deck.setToolTip(hint)
-        self._deck_box.show()
-
-    def show_tip(self, tip: Tip | None) -> None:
-        """None: no run, so there is nothing to say. Otherwise the record."""
-        self.tip.show_tip(tip)
-
-    def show_lights(self, on: bool | None) -> None:
-        """None: not connected, or not readable; the button is then off."""
-        self.lights.setEnabled(on is not None)
-        self.lights.blockSignals(True)
-        self.lights.setChecked(bool(on))
-        self.lights.blockSignals(False)
-        if on is None:
-            self.lights.setIcon(qta.icon("mdi6.lightbulb-outline"))
-            self.lights.setToolTip("Rail lights: not connected")
-        elif on:
-            self.lights.setIcon(qta.icon("mdi6.lightbulb-on", color=TIP_ON))
-            self.lights.setToolTip("Rail lights: on")
-        else:
-            self.lights.setIcon(qta.icon("mdi6.lightbulb-off-outline"))
-            self.lights.setToolTip("Rail lights: off")
-
-
 class MainWindow(QMainWindow):
     def __init__(self, options: Options, parent: QWidget | None = None):
         super().__init__(parent)
         self.options = options
         # The version in the title: on a screenshot, which build it was.
         self.setWindowTitle(f"micropick {version.describe()}")
+        self.setMinimumSize(1280, 800)
         self.resize(1400, 900)
 
-        self.stack = QStackedWidget()
-        self.tabs: dict[str, NavTab] = {}
-
         self.session = Session(options, parent=self)
+        session = self.session
 
-        # The strip: a Panel frame, so qdarktheme gives it the raised
-        # surface; the tabs sit on its bottom edge and the page starts
-        # directly under it.
-        self.strip = QFrame()
-        self.strip.setObjectName("tabStrip")
-        self.strip.setFrameShape(QFrame.Shape.Panel)
-        tab_row = QHBoxLayout(self.strip)
-        tab_row.setContentsMargins(SPACING, SPACING, SPACING, 0)
-        tab_row.setSpacing(2)
-        aside: list[NavTab] = []
-        self.pages: dict[str, QWidget] = {}
-        for name, title, page_class, group in PAGES:
-            page = page_class(self.session)
+        self.top = TopBar()
+        # Lock comes with the session's lock state; until then it is not
+        # offered.
+        self.top.lock.hide()
+        self.step_bar = StepBar()
+        self.banner = Banner(tone="warn")
+        self.footer = Footer()
+
+        self.stack = QStackedWidget()
+        self.home = home.HomePage(session)
+        self.stack.addWidget(self.home)
+        self.pages: dict[str, QWidget] = {"home": self.home}
+        self._titles: dict[str, str] = {}
+        for name, title, page_class in PAGES:
+            page = page_class(session)
             self.pages[name] = page
+            self._titles[name] = title
             setattr(self, f"{name}_page", page)
             self.stack.addWidget(page)
-            tab = NavTab(title)
-            tab.clicked.connect(lambda name=name: self.show_page(name))
-            self.tabs[name] = tab
-            if group == ASIDE:
-                tab.set_aside()
-                aside.append(tab)
-            else:
-                tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)
-        tab_row.addStretch(1)
-        for tab in aside:
-            tab_row.addWidget(tab, 0, Qt.AlignmentFlag.AlignBottom)
-        # The gear: this computer's settings, a page with no tab, at the
-        # end of the tabs where a window's settings usually are.
-        self.gear = QToolButton()
-        self.gear.setObjectName("gear")
-        self.gear.setAutoRaise(True)
-        self.gear.setIcon(qta.icon("mdi6.cog-outline"))
-        self.gear.setIconSize(QSize(GEAR_PX, GEAR_PX))
-        self.gear.setToolTip("Settings")
-        self.gear.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.gear.setCursor(Qt.CursorShape.PointingHandCursor)
-        tab_row.addSpacing(SPACING)
-        tab_row.addWidget(self.gear, 0, Qt.AlignmentFlag.AlignVCenter)
-        # Settings: in the stack, opened by the gear, with no tab.
-        self.settings_page = settings.SettingsPage(self.session)
-        self.pages["settings"] = self.settings_page
-        self.stack.addWidget(self.settings_page)
-
-        self.show_page(PAGES[0][0])
+        # The stack in a holder, so the cover of a dimmed step lies over
+        # the page and not over the banner that says why.
+        holder = QWidget()
+        inner = QVBoxLayout(holder)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.addWidget(self.stack)
+        self.dim = DimCover(holder)
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.strip)
-        layout.addWidget(self.stack, 1)
+        layout.addWidget(self.top)
+        layout.addWidget(self.step_bar)
+        # The banner with its margins, hidden whole when there is no need.
+        self._banner_row = QWidget()
+        banner_row = QVBoxLayout(self._banner_row)
+        banner_row.setContentsMargins(16, 12, 16, 0)
+        banner_row.addWidget(self.banner)
+        layout.addWidget(self._banner_row)
+        layout.addWidget(holder, 1)
+        layout.addWidget(self.footer)
         self.setCentralWidget(central)
+        self.toast = Toast(self)
 
-        # The next step of the Operation checklist, at the top center of
-        # the page until it is dragged elsewhere (`widgets.next_step`). Read again on what changes it and
-        # on a timer: a position saved on a page has no signal of its own.
-        self.hint = NextStepHint(central)
-        self.hint.go.connect(self.show_page)
-        # A page the hint was asked for on with the question mark, where it
-        # is not shown by itself (Profile, Settings); until the page changes.
-        self._hint_asked_on: str | None = None
-        self._hint_timer = QTimer(self)
-        self._hint_timer.setInterval(HINT_EVERY_MS)
-        self._hint_timer.timeout.connect(self._show_hint)
-        self._hint_timer.start()
+        # Where the window is: a task and its step, and the page shown.
+        self.task: str | None = None
+        self.step: str | None = None
+        # The task's step to go back to from a page out of the steps.
+        self._task_step: str | None = None
+        self._page = "home"
+        self._need: tasks.Need | None = None
 
-        self.status = StatusBar()
-        self.setStatusBar(self.status)
+        self.home.task_chosen.connect(self.open_task)
+        self.home.setup_requested.connect(self.open_setup_item)
+        self.step_bar.clicked.connect(
+            lambda i: self.show_step(tasks.steps(self.task)[i]))
+        self.footer.back_clicked.connect(self._back)
+        self.footer.next_clicked.connect(self._next)
+        self.top.home_clicked.connect(self.open_home)
+        self.top.crumb_clicked.connect(self._crumb)
+        self.top.settings_clicked.connect(lambda: self.show_page("settings"))
+        self.top.light_toggled.connect(self._toggle_lights)
+        self.top.park_clicked.connect(self._park)
+        self.top.stop_clicked.connect(self._stop)
+        session.page_requested.connect(self.show_page)
 
-        self.session.profile_changed.connect(self._on_profile_changed)
-        self.session.robot_state_changed.connect(self._show_robot)
-        self.session.settings_changed.connect(self._show_robot)
-        self.session.camera_opened.connect(self._show_cameras)
-        self.session.camera_closed.connect(self._show_cameras)
-        self.session.tip_changed.connect(self._show_tip)
-        self.session.labware_changed.connect(self._show_deck_problems)
-        self.session.profile_changed.connect(self._show_deck_problems)
-        self.session.robot_state_changed.connect(self._show_deck_problems)
-        self.session.lights_changed.connect(self.status.show_lights)
-        self.status.lights.clicked.connect(self._toggle_lights)
+        for signal in (session.profile_changed, session.robot_state_changed,
+                       session.labware_changed, session.tip_changed,
+                       session.routine_changed, session.settings_changed,
+                       session.confirmations_changed,
+                       session.robot_busy_changed):
+            signal.connect(self._refresh)
+        session.lights_changed.connect(self.top.set_light)
         self._lights_worker: Worker | None = None
-        self.status.home.clicked.connect(self._home_robot)
-        self.session.robot_state_changed.connect(self._show_home)
-        self.session.robot_busy_changed.connect(self._show_home)
-        self._home_worker: Worker | None = None
-        # Stop: the button and Esc, window-wide. The pages that bound Esc to
-        # their own stop leave it to this one: two shortcuts on one key in
-        # one window cancel each other out and neither fires.
-        self.status.stop.clicked.connect(self._stop)
-        self.session.page_requested.connect(self.show_page)
+        self._park_worker: Worker | None = None
+        self._timer = QTimer(self)
+        self._timer.setInterval(REFRESH_EVERY_MS)
+        self._timer.timeout.connect(self._refresh)
+        self._timer.start()
+
+        # Stop: the top bar's STOP and Esc, window-wide. No page binds Esc
+        # itself: two shortcuts on one key in one window cancel each other
+        # out and neither fires.
         self._stop_key = QShortcut(QKeySequence("Esc"), self)
         self._stop_key.setContext(Qt.ShortcutContext.WindowShortcut)
         self._stop_key.activated.connect(self._stop)
@@ -503,28 +223,6 @@ class MainWindow(QMainWindow):
         self._release_timer = QTimer(self)
         self._release_timer.setInterval(RELEASE_POLL_MS)
         self._release_timer.timeout.connect(self._release_when_idle)
-        self.status.camera_clicked.connect(self._show_feed)
-        # The tip panel: what it shows is read when it opens, and what it
-        # asks for runs as Home does (`_tip_command`).
-        self._tip_worker: Worker | None = None
-        self._rack_definitions: dict = {}
-        self.status.tip.source = self._tip_source
-        self.status.help.clicked.connect(self._reopen_hint)
-        session = self.session
-        self.status.tip.drop_in_place.connect(
-            lambda: self._tip_command(session.drop_tip_in_place,
-                                      "dropping the tip in place"))
-        self.status.tip.drop_in_trash.connect(
-            lambda: self._tip_command(session.drop_tip_in_trash,
-                                      "dropping the tip in the trash"))
-        self.status.tip.pick_up.connect(
-            lambda slot, well: self._tip_command(
-                lambda: session.pick_up_tip(slot, well),
-                f"picking up a tip from slot {slot} {well}"))
-        self._feeds: dict[str, FeedWindow] = {}
-        self._feed_workers: dict[str, Worker] = {}
-        self._show_robot()
-        self.gear.clicked.connect(lambda: self.show_page("settings"))
 
         # Installed before anything is loaded, so a failure during start-up
         # lands in the log rather than nowhere. Queued across threads by Qt,
@@ -535,63 +233,32 @@ class MainWindow(QMainWindow):
         # asks what happened (`gui.report`).
         self.log_file = log_bridge.install_file(paths.logs_dir())
 
+        self.open_home()
         self._start()
 
     # -- lifecycle -----------------------------------------------------------
 
     def _start(self) -> None:
-        """Load whatever the command line named. Nothing else runs by itself.
-
-        Connecting the robot and opening cameras stay deliberate acts even in
-        mock mode: an application that reaches for hardware because it was
-        launched is one that does it at the wrong moment eventually.
-        """
+        """Load the profile: the one the command line named, the mock's,
+        or the last one used. Connecting the robot stays a deliberate act."""
         name = self.options.profile or (MOCK_PROFILE_NAME
                                         if self.options.mock else None)
-        if name is None:
-            return
-        index = self.profile_page.chooser.findText(name)
-        if index < 0:
-            _log.error("no profile %r to load at start-up", name)
-            return
-        self.profile_page.chooser.setCurrentIndex(index)
-        self.profile_page.load_selected()
-
-    def _show_hint(self) -> None:
-        """The hint for the page on screen, in its place. Not on Profile,
-        which shows the whole list, nor on Settings, a page of its own."""
-        page = getattr(self, "_page", None)
-        self.hint.show_checks(readiness_checks(self.session), page,
-                              allowed=page not in ("profile", "settings")
-                              or page == self._hint_asked_on)
-        self._place_hint()
-
-    def _reopen_hint(self) -> None:
-        """The question mark: the hint again, on whatever page this is."""
-        self.hint.reopen()
-        self._hint_asked_on = getattr(self, "_page", None)
-        self._show_hint()
-
-    def _place_hint(self) -> None:
-        central = self.centralWidget()
-        if central is None:
-            return
-        # Top center, under the tab row; or where it was dragged to.
-        self.hint.top_limit = self.strip.height()
-        self.hint.place(QPoint((central.width() - self.hint.width()) // 2,
-                               self.strip.height() + SPACING))
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        if hasattr(self, "hint"):
-            self._place_hint()
+        try:
+            if name is None:
+                self.session.load_last_profile()
+            else:
+                self.session.load_profile(name)
+        except Exception as exc:                     # noqa: BLE001
+            # Shown in full: a legacy profile's message is the instructions.
+            _log.error("could not load the profile: %s", exc)
+            self.home.show_error(str(exc))
 
     def closeEvent(self, event) -> None:
         """Nothing is left running: cameras hold grab threads, and the robot
         holds an axis that should be parked before the window disappears.
 
         While a run has the robot, closing asks first, and on yes stops it.
-        A short job - a step, a Go to, Home - is waited for. Either way the
+        A short job - a step, a Go to, Park - is waited for. Either way the
         window closes only once the robot is free: closing under a worker
         still moving it would take the robot session and the cameras from
         under it (the pipette calibration hears Stop only in its touch-up),
@@ -627,99 +294,184 @@ class MainWindow(QMainWindow):
                 time.sleep(0.02)
         if lease.busy:
             _log.warning("not closing: %s still has the robot", lease.holder)
-            self.status.showMessage(
-                f"Not closed: the {lease.holder} is still stopping. Close "
-                f"again once it has.", 10_000)
+            self.say(f"Not closed: the {lease.holder} is still stopping. "
+                     f"Close again once it has.")
             event.ignore()
             return
         self.session.shutdown()
         super().closeEvent(event)
 
-    # -- display -------------------------------------------------------------
+    def say(self, text: str) -> None:
+        """The answer to an action, as a toast."""
+        self.toast.show_text(text)
 
-    def _on_profile_changed(self, profile) -> None:
-        self.status.show_profile(profile.name if profile is not None else None)
-        self.status.set_camera_labels(
-            sorted(profile.cameras) if profile is not None else [])
+    # -- where the window is --------------------------------------------------
 
-    def _show_cameras(self, label: str) -> None:
-        self.status.show_cameras(self.session.open_cameras)
-        # A camera that was closed - for one, when Settings gave its role
-        # to another device - has no feed to show.
-        camera = self.session.camera(label)
-        window = self._feeds.get(label)
-        if window is not None:
-            if camera is None:
-                window.hide()
-            window.view.set_camera(camera)
+    def current_page(self) -> QWidget:
+        return self.stack.currentWidget()
 
-    # -- feed windows --------------------------------------------------------
+    def _show(self, name: str, path: list[str], *, in_task: bool) -> None:
+        page = self.pages[name]
+        # A page dimmed as one step is not dimmed as anything else.
+        page.setEnabled(True)
+        self.dim.hide()
+        self.stack.setCurrentWidget(page)
+        self._page = name
+        self.top.set_path(path)
+        for widget in (self.step_bar, self.footer):
+            widget.setVisible(in_task)
+        if not in_task:
+            self.step = None
+            self._banner_row.hide()
+            self._need = None
 
-    def _show_feed(self, label: str) -> None:
-        """The feed in its window; the camera opened first if it is not.
-        A window already on screen is hidden instead: the button toggles."""
-        window = self._feeds.get(label)
-        if window is not None and window.shown:
-            window.hide()
+    def open_home(self) -> None:
+        self.task = None
+        self._show("home", [], in_task=False)
+        self.home.refresh()
+
+    def open_task(self, task: str) -> None:
+        """On its first step not done; the last when all are."""
+        self.task = task
+        self.step_bar.set_steps([tasks.title(s) for s in tasks.steps(task)])
+        steps = tasks.steps(task)
+        first = next((s for s in steps
+                      if not tasks.step_state(self.session, task, s).done),
+                     steps[-1])
+        self.show_step(first)
+
+    def show_step(self, step: str) -> None:
+        self._show(STEP_PAGES[step], [tasks.TASKS[self.task][0]],
+                   in_task=True)
+        self.step = self._task_step = step
+        self._need = None
+        self._navigation = None
+        self._refresh()
+
+    def open_setup_item(self, item: str) -> None:
+        """The page a Robot setup item is set on, out of the steps; its
+        crumb back is the task's when one is open."""
+        path = [tasks.SETUP_TITLES[item]]
+        if self.task is not None:
+            path.insert(0, tasks.TASKS[self.task][0])
+        self._show(SETUP_PAGES[item], path, in_task=False)
+
+    def show_page(self, name: str) -> None:
+        """A page asked for by name (`Session.page_requested`): a step of
+        the open task when it is one, Home for the profile and the
+        checklist that were there, else the page on its own."""
+        if name in ("home", "profile"):
+            self.open_home()
             return
-        camera = self.session.camera(label)
-        if camera is not None:
-            self._feed(label).show_camera(camera)
+        if self.task is not None:
+            step = next((s for s in tasks.steps(self.task)
+                         if STEP_PAGES[s] == name), None)
+            if step is not None:
+                self.show_step(step)
+                return
+        if name == "log":
+            path = [self._titles["settings"], self._titles["log"]]
+        else:
+            path = [self._titles[name]]
+            if self.task is not None and name != "settings":
+                path.insert(0, tasks.TASKS[self.task][0])
+        if name == "settings":
+            self.task = None
+        self._show(name, path, in_task=False)
+
+    def _crumb(self, index: int) -> None:
+        """A crumb between Home and the last: the task, or Settings."""
+        if self.task is not None and index == 0:
+            self.show_step(self._task_step)
+        else:
+            self.show_page("settings")
+
+    # -- steps ----------------------------------------------------------------
+
+    def _refresh(self, _arg=None) -> None:
+        """The marks, the banner and the footer, from the session now."""
+        self._show_park()
+        self.top.set_stop_visible(self.session.robot_lease.holding_run)
+        if self.task is None or self.step is None:
             return
-        if label in self._feed_workers and self._feed_workers[label].running:
-            return
-        worker = Worker(self.session.open_camera, label,
-                        what=f"opening camera {label!r}")
-        worker.label = label
-        self._feed_workers[label] = worker
-        # Bound methods, not lambdas: Qt queues them onto this thread, and
-        # a lambda would build the window on the worker's.
-        worker.finished.connect(self._feed_opened)
-        worker.failed.connect(self._feed_failed)
-        _log.info("opening camera %r for its feed window", label)
-        worker.start()
+        steps = tasks.steps(self.task)
+        states = [tasks.step_state(self.session, self.task, s)
+                  for s in steps]
+        index = steps.index(self.step)
+        self.step_bar.set_state(index, [s.done for s in states])
+        state = states[index]
+        need = state.need
+        if need != self._need:
+            self._need = need
+            self.banner.clear_actions()
+            if need is not None:
+                self.banner.set_text(need.text)
+                go = self.banner.add_action(self._need_button(need))
+                go.clicked.connect(lambda _=False, n=need: self.go_to(n))
+        self._banner_row.setVisible(need is not None)
+        page = self.pages[STEP_PAGES[self.step]]
+        page.setEnabled(need is None)
+        if need is None:
+            self.dim.hide()
+        elif not self.dim.isVisible():
+            self.dim.open()
+        confirmable = (self.step in CONFIRMED_BY_NEXT and need is None
+                       and not (self.step == "deck"
+                                and self.session.deck_problems()))
+        # Only on a change: it takes the buttons out and puts them back.
+        navigation = dict(next=index < len(steps) - 1,
+                          next_enabled=state.done or state.optional
+                          or confirmable)
+        if navigation != self._navigation:
+            self._navigation = navigation
+            self.footer.set_navigation(**navigation)
 
-    def _feed_opened(self, camera) -> None:
-        label = self.sender().label
-        self._feed_workers.pop(label, None)
-        self._feed(label).show_camera(camera)
+    def _need_button(self, need: tasks.Need) -> str:
+        if need.kind == "robot":
+            return "Go to Home"
+        if need.kind == "step":
+            return f"Go to {tasks.title(need.key)}"
+        return f"Go to {tasks.SETUP_TITLES[need.key]}"
 
-    def _feed_failed(self, reason: str) -> None:
-        label = self.sender().label
-        self._feed_workers.pop(label, None)
-        _log.error("could not open camera %r: %s", label, reason)
+    def go_to(self, need: tasks.Need) -> None:
+        """Where the banner's button goes: the thing to do first."""
+        if need.kind == "robot":
+            self.open_home()
+        elif need.kind == "step":
+            self.show_step(need.key)
+        else:
+            self.open_setup_item(need.key)
 
-    def _feed(self, label: str) -> FeedWindow:
-        window = self._feeds.get(label)
-        if window is None:
-            window = FeedWindow(
-                label, self,
-                save_controls=self.session.save_camera_controls,
-                close_camera=self._close_camera)
-            self._feeds[label] = window
-        return window
+    def _back(self) -> None:
+        steps = tasks.steps(self.task)
+        index = steps.index(self.step)
+        if index == 0:
+            self.open_home()
+        else:
+            self.show_step(steps[index - 1])
 
-    def _close_camera(self, label: str) -> str | None:
-        """The feed window's Close camera. Refused while a run or any robot
-        work goes on: a picking run reads both cameras. Returns why not."""
-        if self._robot_busy():
-            return "Robot busy."
-        self.session.close_camera(label)
-        return None
+    def _next(self) -> None:
+        steps = tasks.steps(self.task)
+        if self.step in CONFIRMED_BY_NEXT:
+            self.session.confirm(self.step)
+        index = steps.index(self.step)
+        if index < len(steps) - 1:
+            self.show_step(steps[index + 1])
 
-    def _show_robot(self, _arg=None) -> None:
-        """The robot's state, and where Connect goes while it is not
-        connected: the address is the first thing to check when it fails."""
-        state = self.session.robot_state
-        if not self.session.mock and self.session.robot is None:
-            state += f" ({self.session.robot_address})"
-        self.status.show_robot(state)
+    # -- the top bar's tools --------------------------------------------------
 
-    def _show_deck_problems(self, _arg=None) -> None:
-        self.status.show_deck_problems(self.session.deck_problems())
+    def _robot_busy(self) -> bool:
+        """Something has the robot (`Session.robot_lease`): a jog step, a
+        run, a labware load, on any page."""
+        return self.session.robot_lease.busy
 
-    def _show_tip(self, tip) -> None:
-        self.status.show_tip(tip if self.session.robot is not None else None)
+    def _show_park(self) -> None:
+        connected = self.session.robot is not None
+        holder = self.session.robot_lease.holder
+        self.top.set_park_enabled(
+            connected and holder is None,
+            "Robot not connected." if not connected else
+            f"Robot busy: {holder}." if holder is not None else "")
 
     def _toggle_lights(self, _checked: bool) -> None:
         """The click flips the lights from the state the robot reports, not
@@ -728,11 +480,11 @@ class MainWindow(QMainWindow):
         first click. The robot's answer, through lights_changed, is what the
         button settles on."""
         if self._lights_worker is not None and self._lights_worker.running:
-            self.status.show_lights(self.session.lights)
+            self.top.set_light(self.session.lights)
             return
         if self.session.robot is None:
+            self.top.set_light(None)
             return
-        self.status.lights.setEnabled(False)
         worker = Worker(self.session.toggle_lights,
                         what="switching the lights")
         self._lights_worker = worker
@@ -742,25 +494,70 @@ class MainWindow(QMainWindow):
 
     def _lights_done(self, _result=None) -> None:
         self._lights_worker = None
-        self.status.show_lights(self.session.lights)
+        self.top.set_light(self.session.lights)
 
     def _lights_failed(self, reason: str) -> None:
         self._lights_worker = None
         _log.error("lights: %s", reason)
-        self.status.show_lights(self.session.lights)
+        self.top.set_light(self.session.lights)
 
-    # -- home ----------------------------------------------------------------
+    def _park(self) -> None:
+        """Park: all axes home, the head to the back right. Through the
+        shown page's jog panel when it has one, so the keys and the panel's
+        buttons are held while it moves, as for every other command on such
+        a page; on its own worker otherwise."""
+        robot = self.session.robot
+        if robot is None:
+            return
+        if self._robot_busy():
+            self.say("Robot busy.")
+            return
+        answer = QMessageBox.question(
+            self, HOME_TITLE, HOME_DETAIL,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        # `==`, not `is`: see JogPanel._confirm.
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if self._robot_busy():                       # changed while asking
+            self.say("Robot busy.")
+            return
+        panels = [panel for panel in
+                  self.current_page().findChildren(JogPanel)
+                  if panel.isVisible()]
+        if panels and panels[0].run_job(lambda _log: home_robot(robot)):
+            return
+        lease = self.session.robot_lease.claim("Park")
+        if lease is None:
+            self.say("Robot busy.")
+            return
+        worker = Worker(home_robot, robot, what="parking the robot",
+                        lease=lease)
+        self._park_worker = worker
+        worker.finished.connect(self._park_done)
+        worker.failed.connect(self._park_failed)
+        _log.info("parking from the top bar")
+        self.top.set_parking(True)
+        worker.start()
+        self._show_park()
 
-    def _show_home(self, _state=None) -> None:
-        self.status.show_home(self.session.robot is not None,
-                              self.session.robot_lease.holder)
+    def _park_done(self, _result=None) -> None:
+        self._park_worker = None
+        self.top.set_parking(False)
+        self._show_park()
+        self.say("Parked.")
+        # The panels on other pages still show the pose from before.
+        for panel in self.findChildren(JogPanel):
+            panel.refresh_position()
 
-    def _robot_busy(self) -> bool:
-        """Something has the robot (`Session.robot_lease`): a jog step, a
-        run, a labware load, on any page."""
-        return self.session.robot_lease.busy
+    def _park_failed(self, reason: str) -> None:
+        self._park_worker = None
+        self.top.set_parking(False)
+        self._show_park()
+        _log.error("park: %s", reason)
+        self.say(f"Park failed: {reason}")
 
-    # -- stop ----------------------------------------------------------------
+    # -- stop -----------------------------------------------------------------
 
     def _stop(self) -> None:
         """First press: every page stops at its next safe point. A second
@@ -773,19 +570,15 @@ class MainWindow(QMainWindow):
             return
         self.session.request_stop()
         if not any_running():
-            self.status.showMessage("Stop: nothing is moving.", 4000)
+            self.say("Stop: nothing is moving.")
             return
         self._stop_again_until = now + STOP_AGAIN_S
-        self.status.stop.setText(STOP_NOW_TEXT)
         self._stop_reset.start(STOP_AGAIN_S * 1000)
-        self.status.showMessage(
-            "Stopping after the current move. Press Stop again to hold the "
-            "robot.",
-            STOP_AGAIN_S * 1000)
+        self.say("Stopping after the current move. Press Stop again to "
+                 "hold the robot.")
 
     def _disarm_stop(self) -> None:
         self._stop_again_until = 0.0
-        self.status.stop.setText(STOP_TEXT)
 
     def _hold(self) -> None:
         self._stop_reset.stop()
@@ -795,7 +588,6 @@ class MainWindow(QMainWindow):
         self.session.request_stop()
         self.session.hold_robot()
         self._release_timer.start()
-        self.status.showMessage("Robot held.")
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Warning)
         box.setWindowTitle("Robot held")
@@ -815,128 +607,4 @@ class MainWindow(QMainWindow):
             return
         self._release_timer.stop()
         self.session.release_robot()
-        self.status.showMessage("Robot released.", 4000)
-
-    def _home_robot(self) -> None:
-        """Home from the status bar. Through the shown page's jog panel when
-        it has one, so the keys and the panel's buttons are held while it
-        moves, as for every other command on such a page; on its own worker
-        otherwise."""
-        robot = self.session.robot
-        if robot is None:
-            return
-        if self._robot_busy():
-            self.status.showMessage("Robot busy.", 6000)
-            return
-        answer = QMessageBox.question(
-            self, HOME_TITLE, HOME_DETAIL,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        # `==`, not `is`: see JogPanel._confirm.
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        if self._robot_busy():                       # changed while asking
-            self.status.showMessage("Robot busy.", 6000)
-            return
-        panels = [panel for panel in
-                  self.stack.currentWidget().findChildren(JogPanel)
-                  if panel.isVisible()]
-        if panels and panels[0].run_job(lambda _log: home_robot(robot)):
-            return
-        lease = self.session.robot_lease.claim("Home")
-        if lease is None:
-            self.status.showMessage("Robot busy.", 6000)
-            return
-        worker = Worker(home_robot, robot, what="homing the robot",
-                        lease=lease)
-        self._home_worker = worker
-        worker.finished.connect(self._home_done)
-        worker.failed.connect(self._home_failed)
-        _log.info("homing from the status bar")
-        worker.start()
-        self._show_home()
-
-    def _home_done(self, _result=None) -> None:
-        self._home_worker = None
-        self._show_home()
-        self.status.showMessage("Homed.", 4000)
-        # The panels on other pages still show the pose from before.
-        for panel in self.findChildren(JogPanel):
-            panel.refresh_position()
-
-    def _home_failed(self, reason: str) -> None:
-        self._home_worker = None
-        self._show_home()
-        _log.error("home: %s", reason)
-        self.status.showMessage(f"Home failed: {reason}", 8000)
-
-    # -- the tip, from the status bar ------------------------------------------
-
-    def _tip_source(self) -> TipSource:
-        """What the tip panel offers: the record, the racks in the robot
-        session with their wells in the order they are taken, and whether
-        the robot is busy."""
-        session = self.session
-        if session.robot is None:
-            return TipSource(None)
-        racks = []
-        state = session.run_state
-        held = state.labware if state is not None else {}
-        for slot, entry in sorted(held.items(), key=lambda kv: kv[0]):
-            definition = self._rack_definitions.get(entry.load_name)
-            if definition is None:
-                try:
-                    definition = resolve_definition(entry.load_name)
-                except Exception:                    # noqa: BLE001
-                    continue
-                self._rack_definitions[entry.load_name] = definition
-            if definition.is_tiprack:
-                racks.append(Rack(str(slot), definition.display_name,
-                                  sorted(definition.wells, key=row_first)))
-        return TipSource(session.tip, racks, self._robot_busy())
-
-    def _tip_command(self, fn, what: str) -> None:
-        """A tip act from the status bar, run as Home is: refused while the
-        robot is busy, through the shown page's jog panel when it has one,
-        on its own worker otherwise. The tip record is re-read by the
-        session after each act, which updates the button."""
-        if self.session.robot is None:
-            return
-        if self._robot_busy():
-            self.status.showMessage("Robot busy.", 6000)
-            return
-        panels = [panel for panel in
-                  self.stack.currentWidget().findChildren(JogPanel)
-                  if panel.isVisible()]
-        if panels and panels[0].run_job(lambda _log: fn(), what=what):
-            return
-        lease = self.session.robot_lease.claim(what)
-        if lease is None:
-            self.status.showMessage("Robot busy.", 6000)
-            return
-        worker = Worker(fn, what=what, lease=lease)
-        self._tip_worker = worker
-        worker.finished.connect(self._tip_done)
-        worker.failed.connect(self._tip_failed)
-        _log.info("%s, from the status bar", what)
-        worker.start()
-
-    def _tip_done(self, _result=None) -> None:
-        self._tip_worker = None
-        for panel in self.findChildren(JogPanel):
-            panel.refresh_position()
-
-    def _tip_failed(self, reason: str) -> None:
-        self._tip_worker = None
-        _log.error("tip: %s", reason)
-        self.status.showMessage(f"Tip: {reason}", 8000)
-
-    def show_page(self, name: str) -> None:
-        """Bring a page to the front by name, keeping the tabs in step."""
-        for other, tab in self.tabs.items():
-            tab.setChecked(other == name)
-        self.stack.setCurrentWidget(self.pages[name])
-        self._page = name
-        self._hint_asked_on = None
-        if hasattr(self, "hint"):
-            self._show_hint()
+        self.say("Robot released.")

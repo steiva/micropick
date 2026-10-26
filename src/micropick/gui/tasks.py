@@ -38,8 +38,8 @@ from dataclasses import dataclass
 from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
-__all__ = ["TASKS", "SETUP", "OPTIONAL", "Need", "StepState",
-           "skipped_plate", "step_state", "steps", "title"]
+__all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
+           "StepState", "skipped_plate", "step_state", "steps", "title"]
 
 # task -> (its name on screen, its steps in order)
 TASKS = {
@@ -91,6 +91,14 @@ SETUP = {
                       lambda p: DISH_POSITION in p.positions),
     "shake_position": ("Set the shake position first.",
                        lambda p: SHAKE_POSITION in p.positions),
+}
+
+# Each Robot setup item's name on screen.
+SETUP_TITLES = {
+    "camera_calibration": "Camera calibration",
+    "calibration_position": "Calibration position",
+    "dish_position": "Position over the dish",
+    "shake_position": "Shake position",
 }
 
 # What a step says it needs from an earlier one.

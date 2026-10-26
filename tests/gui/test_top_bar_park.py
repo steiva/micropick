@@ -1,5 +1,6 @@
-"""Home robot position from the status bar: asks, refuses while busy, and
-homes through the shown page's jog panel or on its own."""
+"""Park from the top bar (what Home robot position was): asks, refuses
+while busy, and homes through the shown page's jog panel or on its own.
+Stop, its hold, and closing the window."""
 
 import os
 import time
@@ -48,26 +49,26 @@ def _connect(app, window):
     window.session.probe_robot()
     window.session.new_run()
     _settle(app, window)
-    assert window.status.home.isEnabled()
+    assert window.top.park.isEnabled()
 
 
 def test_off_until_connected(app, window):
-    assert not window.status.home.isEnabled()
+    assert not window.top.park.isEnabled()
     _connect(app, window)
 
 
-@pytest.mark.parametrize("page", ["profile", "manual"])
+@pytest.mark.parametrize("page", ["home", "manual"])
 def test_asks_then_homes_from_any_page(app, window, monkeypatch, page):
     _connect(app, window)
     window.show()
     window.show_page(page)
     before = len(_homes(window))
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: NO)
-    window.status.home.click()
+    window.top.park.click()
     _settle(app, window)
     assert len(_homes(window)) == before
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: YES)
-    window.status.home.click()
+    window.top.park.click()
     _settle(app, window)
     assert len(_homes(window)) == before + 1
     window.hide()
@@ -81,27 +82,12 @@ def test_refused_while_a_jog_panel_is_busy(app, window, monkeypatch):
     # What a jog step holds while it moves, on whichever page.
     lease = window.session.robot_lease.claim("moving the robot")
     try:
-        window._home_robot()
+        window._park()
         assert asked == []
-        assert "busy" in window.status.currentMessage()
-        assert not window.status.home.isEnabled()
+        assert "busy" in window.toast.text()
+        assert not window.top.park.isEnabled()
     finally:
         lease.release()
-
-
-def test_a_camera_is_closed_from_its_window_unless_the_robot_is_busy(window):
-    session = window.session
-    label = session.lower_camera_label
-    session.connect_robot()           # the mock scene needs the gantry
-    session.open_camera(label)
-    feed = window._feed(label)
-    window._robot_busy = lambda: True
-    assert window._close_camera(label) == "Robot busy."
-    assert session.camera(label) is not None
-    window._robot_busy = lambda: False
-    feed.close_button.click()
-    assert session.camera(label) is None
-    assert not feed.isVisible()
 
 
 def test_a_second_stop_holds_the_robot_and_keeps_its_session(app, window,
@@ -171,7 +157,7 @@ def test_closing_during_a_run_asks_and_stays_open_until_it_has_stopped(
         assert not event.isAccepted()
         assert window.session.robot is robot
         assert robot.calls.count(("retract_axis", "leftZ")) == before
-        assert "still" in window.status.currentMessage()
+        assert "still" in window.toast.text()
     finally:
         lease.release()
     # Stopped: now it closes, and parks the axis.

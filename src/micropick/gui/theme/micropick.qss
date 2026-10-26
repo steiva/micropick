@@ -207,6 +207,15 @@ QFrame#raisedCard {
     border: 1px solid @control-border;
     border-radius: 12px;
 }
+/* Home's task tiles: the whole tile is the button. */
+QFrame#taskTile {
+    background: @raised;
+    border: 1px solid @control-border;
+    border-radius: 16px;
+}
+QFrame#taskTile:hover { background: @hover; border-color: @accent; }
+QLabel#tileTitle { font-size: 21px; font-weight: 600; }
+QLabel#homeTitle { font-size: 22px; font-weight: 600; }
 QFrame#innerBox {
     background: @bar;
     border: 1px solid @line;

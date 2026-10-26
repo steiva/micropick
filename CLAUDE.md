@@ -53,12 +53,28 @@ boxes over the picture, never into the frame and never as a separate panel.
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture gets the width its frame shape needs (4:3 for the upper camera),
 the panel the rest, within 1-2x its designed width. Pages carry no title;
-the tab along the top is the title. Tabs on the left are the steps of a
-day's work in order (Profile, Robot & Deck, Tip calibration, Plate plan,
-Picking); tabs on the right are tools used when needed (Camera
-calibration, Liquid handling, Manual control, Log), titled in the accent
-colour (`theme.accent`, read from qdarktheme). The gear (Settings) ends
-the tab row; Stop is the right-hand end of the status bar.
+the TopBar's breadcrumb is the title.
+
+### The shell: Home, tasks as steps (REDESIGN §4)
+
+There are no tabs, no status bar, no floating next step and no Profile
+page (removed in redesign phase 2; do not bring them back). The window is
+`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park - what
+Home robot position was - STOP while a run has the robot, Settings) over
+one stack: Home (`pages.home`: the robot, the Robot setup, three task
+tiles) and the existing pages, reused as the content of a **task**'s
+**steps** (`gui.tasks`; `shell.STEP_PAGES` maps step to page). While a
+step is shown, `StepBar` is over it and `Footer` (Back, Next) under it.
+A step's done mark and first unmet need come from `tasks.step_state` each
+time, never from a visit; a step whose need is not met is dimmed
+(`overlays.DimCover`) and disabled - so its keys do nothing - under one
+banner naming that need with a button there. A task opens on its first
+step not done. Next is enabled when the step is done or optional; Deck is
+confirmed by its own Next. A Robot setup item needed by a step opens its
+page as `Home › <task> › <item>` (`shell.SETUP_PAGES`) until Robot setup
+has its own sheets. The last profile is loaded at start
+(`Session.load_last_profile`, `default` made if none); profiles are never
+chosen on screen. The Log is reached from Settings.
 
 The keys a page binds and what the mouse does are listed in a box at the
 picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
@@ -68,9 +84,11 @@ uses (never taken from it: the robot would move while a digit is
 corrected); the box then says so (`jog_panel.TYPING_HELP`), and Enter in
 the field or a click on the picture or the page gives them back.
 
-A camera's focus is tuned only in its own window (the status bar camera
-button, which toggles it): `CameraView.enable_focus_tools` - slider, typed
-number, default 960, save to profile - is off on the pages.
+A camera's focus is tuned only in its own window
+(`widgets.feed_window.FeedWindow`; its status bar button went with the
+status bar, and it comes back in Robot setup's camera sheets):
+`CameraView.enable_focus_tools` - slider, typed number, default 960, save
+to profile - is off on the pages.
 
 ### Manual control drives the robot from the picture
 
@@ -136,23 +154,13 @@ robot refuses. Never an overlap computed here: the robot's differs from
 the installed pipette definition's. A jog panel reads the pose again when
 the tip changes and when it is shown.
 
-Home robot position in the status bar is reachable from every page: it is
-refused while the robot's lease is held, and goes through the shown page's
-`JogPanel.run_job` when that page has one, else claims the lease for a
-worker of its own.
-The status bar's tip button (`widgets.tip_button`) opens a panel growing
-up out of it - drop in place, drop in trash, pick up from a rack's well -
-and its acts run by the same rule (`MainWindow._tip_command`). Only what
-can be clicked in the status bar lights up under the mouse.
+Park in the top bar (all axes home, the head to the back right) is
+reachable from every screen: it is refused while the robot's lease is
+held, and goes through the shown page's `JogPanel.run_job` when that page
+has one, else claims the lease for a worker of its own.
 "The robot is busy" (`MainWindow._robot_busy`) is the robot's lease being
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
-
-The next step of the Operation checklist floats at the top center, under
-the tab row, of every page but Profile and Settings (`widgets.next_step`),
-with a link to its page; it is dragged anywhere in the window with the
-mouse and stays there until the program closes. Closed with its cross, it
-stays closed until the next step changes.
 
 A section that folds (`theme.factory.Section`, the labware page's Deck
 modules) has an arrow as tall as a capital letter (`fold_arrow`), and
@@ -202,8 +210,8 @@ picking position**.
 
 ### For biologists: stop, guard, say what to do
 
-- **Stop** is the status bar's red button and Esc, window-wide; no page
-  binds Esc itself (two shortcuts on one key cancel out). First press:
+- **Stop** is Esc, window-wide, and the top bar's STOP while a run has
+  the robot; no page binds Esc itself (two shortcuts on one key cancel out). First press:
   `Session.stop_requested`, every page stops at its next safe point. Second
   press within 10 s while work runs: `Session.hold_robot` - the API
   wrapper refuses every command that moves (`RobotHeld`), the one in
@@ -218,8 +226,9 @@ picking position**.
   profile", never "no profile loaded") whose words never change - only
   its mark (done / to do / note / blocked, dimmed while a step it needs is
   not done). What is particular to now goes in the tooltip. A button goes
-  to the page where it is done (`Session.page_requested`). The Profile page
-  shows it in full; the Picking page's step 1 lists what is left of it on
+  to the page where it is done (`Session.page_requested`). It has no page
+  of its own any more (the task steps and their banners lead); the
+  Picking page's step 1 lists what is left of it on
   other pages and the page's own set-up while not ready (detector, upper
   camera, clips camera - all opened by themselves); the Start card lists
   nothing, it names the steps that stop it. Anything to do or blocked
@@ -236,7 +245,7 @@ picking position**.
 
 The robot's address and the output folders (Outputs, Logs, Images) are
 `config.app_settings`: `settings.json` beside `profiles/`, edited on the
-Settings page behind the gear at the end of the tab row (a page with no tab).
+Settings page behind the gear at the end of the top bar.
 `paths` applies the folders as overrides, so writers keep asking `paths`.
 The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
 `--robot-host` overrides it for one start. Nothing hard-codes an address.
@@ -304,8 +313,7 @@ once: which attached camera is the upper and which the lower
 (`Session.assign_camera_devices`, the specs' `device_name`; choosing the
 other's device swaps them; a profile without a camera for a role gets one
 from `Session.add_camera`, the bench's spec on the chosen device), the
-machine learning models, the calibration summary. The Profile page is
-Robot and Load profile, and under them the checklist before a run.
+machine learning models, the calibration summary.
 
 ## Agent skills
 

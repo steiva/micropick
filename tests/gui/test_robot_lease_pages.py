@@ -21,7 +21,7 @@ from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages.labware import LabwarePage              # noqa: E402
 from micropick.gui.pages.picking import PickingPage              # noqa: E402
-from micropick.gui.pages.profile import ProfilePage              # noqa: E402
+from micropick.gui.pages.home import HomePage                    # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.jog_panel import JogPanel             # noqa: E402
 
@@ -133,15 +133,15 @@ def test_robot_and_deck_waits_for_a_run(app, session):
 
 
 def test_disconnect_is_refused_while_the_robot_is_busy(app, session):
-    page = ProfilePage(session)
+    page = HomePage(session)
     lease = session.robot_lease.claim("picking run", run=True)
     try:
-        page._connect_or_disconnect()
+        assert not page.connect_button.isEnabled()
+        page.connect_button.click()
         assert session.robot is not None
-        assert "Robot busy." in page.error.text()
     finally:
         lease.release()
-    page._connect_or_disconnect()
+    page.connect_button.click()
     assert session.robot is None
     page.deleteLater()
 

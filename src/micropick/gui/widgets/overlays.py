@@ -31,7 +31,7 @@ from ..theme.factory import (danger_text_button, heading, muted_label,
                              primary_button, secondary_button)
 from ..theme.icons import icon, pixmap
 
-__all__ = ["ConfirmDialog", "LockOverlay", "SheetWindow"]
+__all__ = ["ConfirmDialog", "DimCover", "LockOverlay", "SheetWindow"]
 
 SHEET_MARGIN = 24
 
@@ -62,6 +62,15 @@ class _Cover(QWidget):
         self.setGeometry(self.parentWidget().rect())
         self.show()
         self.raise_()
+
+
+class DimCover(_Cover):
+    """A step whose needs are not met, shown dimmed (REDESIGN §4): what is
+    under it is seen and takes no click. The shell disables the page too,
+    so its keys do nothing either."""
+
+    def __init__(self, host: QWidget):
+        super().__init__(host, 0.6)
 
 
 class SheetWindow(_Cover):

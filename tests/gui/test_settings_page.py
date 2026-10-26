@@ -73,13 +73,18 @@ def test_the_address_is_fixed_while_connected(app, session):
     page.deleteLater()
 
 
-def test_the_gear_opens_the_settings_page(app, tmp_path, monkeypatch):
+def test_the_gear_opens_the_settings_page_and_its_log(app, tmp_path, monkeypatch):
     monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
     from micropick.gui.shell import MainWindow
     window = MainWindow(Options(mock=True))
-    window.gear.click()
-    assert window.stack.currentWidget() is window.settings_page
-    assert not any(tab.isChecked() for tab in window.tabs.values())
+    window.top.settings.click()
+    assert window.current_page() is window.settings_page
+    assert window.top.path == ["Settings"]
+    window.settings_page.log_button.click()
+    assert window.current_page() is window.log_page
+    assert window.top.path == ["Settings", "Log"]
+    window.top.crumb_clicked.emit(0)
+    assert window.current_page() is window.settings_page
     window.session.shutdown()
     window.deleteLater()
 
