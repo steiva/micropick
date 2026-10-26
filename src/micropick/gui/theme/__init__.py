@@ -29,9 +29,9 @@ from PySide6.QtWidgets import QApplication
 from .tokens import (COLORS, MONO_FALLBACKS, MONO_FONT, SIZES, UI_FALLBACKS,
                      UI_FONT)
 
-__all__ = ["SPACING", "RADIUS", "COLORS", "SIZES", "configure_hidpi",
-           "apply_theme", "stylesheet", "accent", "load_fonts", "ui_font",
-           "mono_font", "color"]
+__all__ = ["COLORS", "RADIUS", "SIZES", "SPACING", "accent", "apply_theme",
+           "color", "configure_hidpi", "load_fonts", "mono_font", "stylesheet",
+           "ui_font"]
 
 # The base step. Every margin and gap in the application is a multiple of it,
 # so a layout is described by a small integer rather than by a pixel count
@@ -105,7 +105,7 @@ def stylesheet() -> str:
     text = _QSS.read_text(encoding="utf-8")
     # The one file a stylesheet points at: a Select's arrow (§3), drawn
     # because the native one touched the border.
-    values = {**COLORS, "chevron": '"%s"' % _CHEVRON.as_posix()}
+    values = {**COLORS, "chevron": f'"{_CHEVRON.as_posix()}"'}
     return _TOKEN.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 

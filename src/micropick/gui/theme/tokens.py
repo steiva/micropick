@@ -13,8 +13,8 @@ a light variant would have had to keep on another background.
 
 from __future__ import annotations
 
-__all__ = ["COLORS", "GROUP_COLORS", "SIZES", "UI_FONT", "MONO_FONT",
-           "UI_FALLBACKS", "MONO_FALLBACKS"]
+__all__ = ["COLORS", "GROUP_COLORS", "MONO_FALLBACKS", "MONO_FONT", "SIZES",
+           "UI_FALLBACKS", "UI_FONT"]
 
 COLORS: dict[str, str] = {
     # Surfaces, darkest first.

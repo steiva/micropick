@@ -1017,3 +1017,33 @@ Kept for the record of what washing needs when it returns as a program.
   Center, color, analyze on every page (Picking's "Analyze the dish",
   Liquid handling's "Set well center", Camera calibration's "Center it
   under the crosshair").
+
+---
+
+## Redesign, phase 1 — theme and components
+
+Look at them with `python -m micropick.gui.gallery --mock` on the bench
+machine (1920x1080, Windows).
+
+- [ ] **The text is Inter and the numbers JetBrains Mono.**
+  Both are bundled in `gui/theme/fonts` and registered at start. Expected
+  failure if wrong: Segoe UI everywhere and Consolas in the X / Y / Z line
+  of the tip gauge - the files were not found (a build that left
+  `theme/fonts` out, see `packaging`).
+
+- [ ] **The window is dark whatever Windows is set to.**
+  Switch Windows to light mode and start again. Expected failure if wrong:
+  light cards or white inputs - something still follows the OS theme.
+
+- [ ] **A Select shows its drawn chevron, clear of the border.**
+  The arrow is an SVG file the stylesheet points at by its full path.
+  Expected failure if wrong: no arrow at all - the path had a space or a
+  backslash Qt did not read (an install under `Program Files`).
+
+- [ ] **The jog pad's keycaps name the keys of this keyboard.**
+  Turn Keys on: ← ↑ → ↓, PgUp, PgDn, and the step keys under the pad.
+  Rebind Z up in Settings, open the gallery again: the new key is shown.
+
+- [ ] **Sizes read well from a meter away at 1920x1080.**
+  Buttons are 36 px, compact ones 28 px (REDESIGN §12.6). Expected failure
+  if wrong: buttons too small to hit on the first try, or labels cut.

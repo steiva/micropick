@@ -23,9 +23,11 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
 
 from . import SPACING
 
-__all__ = ["primary_button", "secondary_button", "card", "heading",
-           "muted_label", "combo_box", "spin_box", "double_spin_box",
-           "scroll_column", "Section", "fold_arrow"]
+__all__ = ["primary_button", "secondary_button", "quiet_button",
+           "danger_button", "danger_text_button", "compact", "card",
+           "heading", "caption", "muted_label", "combo_box", "select",
+           "spin_box", "double_spin_box", "scroll_column", "Section",
+           "fold_arrow"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -47,6 +49,36 @@ def secondary_button(text: str, parent: QWidget | None = None) -> QPushButton:
     """Everything else. Outlined, from qdarktheme's plain QPushButton rule."""
     button = QPushButton(text, parent)
     button.setObjectName("secondary")
+    return button
+
+
+def quiet_button(text: str, parent: QWidget | None = None) -> QPushButton:
+    """A text button with no border: the choice beside the primary one
+    that is not the next thing to do ("Save anyway", "Put back")."""
+    button = QPushButton(text, parent)
+    button.setObjectName("quiet")
+    return button
+
+
+def danger_button(text: str, parent: QWidget | None = None) -> QPushButton:
+    """Red, filled. Only Stop run (REDESIGN §1.4)."""
+    button = QPushButton(text, parent)
+    button.setObjectName("danger")
+    return button
+
+
+def danger_text_button(text: str,
+                       parent: QWidget | None = None) -> QPushButton:
+    """Outlined, red text: a destructive choice (Reset, Delete step), never
+    the primary one of its dialog."""
+    button = QPushButton(text, parent)
+    button.setObjectName("dangerText")
+    return button
+
+
+def compact(button: QPushButton) -> QPushButton:
+    """The 28 px variant, for a control inside a card's row."""
+    button.setProperty("compact", True)
     return button
 
 
@@ -88,18 +120,19 @@ def heading(text: str, level: int = 1, parent: QWidget | None = None) -> QLabel:
     return label
 
 
-def muted_label(text: str = "", parent: QWidget | None = None) -> QLabel:
-    """Secondary text - a path, a detail under a choice - in a quieter ink.
+def caption(text: str, parent: QWidget | None = None) -> QLabel:
+    """A CAPS caption over a group ("WHAT ARE WE DOING TODAY?")."""
+    label = QLabel(text.upper(), parent)
+    label.setObjectName("caption")
+    return label
 
-    Disabled, because that is the dimmer text colour qdarktheme already has
-    in both themes; a colour of our own would be the wrong one in one of
-    them. A tooltip belongs on an enabled widget beside it: a disabled
-    widget's is not to be relied on.
-    """
+
+def muted_label(text: str = "", parent: QWidget | None = None) -> QLabel:
+    """Secondary text - a path, a detail under a choice - in a quieter ink
+    (the `text-3` token)."""
     label = QLabel(text, parent)
     label.setObjectName("muted")
     label.setWordWrap(True)
-    label.setEnabled(False)
     return label
 
 
@@ -166,6 +199,14 @@ class _WheelSafeDoubleSpinBox(QDoubleSpinBox):
 
     def wheelEvent(self, event) -> None:
         event.ignore()
+
+
+def select(parent: QWidget | None = None) -> QComboBox:
+    """A combo box with the drawn chevron (REDESIGN §3, Select), wheel-safe
+    like `combo_box`."""
+    box = _WheelSafeComboBox(parent)
+    box.setObjectName("select")
+    return box
 
 
 def spin_box(parent: QWidget | None = None) -> QSpinBox:
