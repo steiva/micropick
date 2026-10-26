@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Auto pick, plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+a.crumb:hover{background:#1E2228;color:#E8EAED}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.st:hover{background:#1A1D22;color:#E8EAED}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box}
+.line{width:28px;height:1px;background:#2E333B}
+.tool{height:40px;padding:0 14px;border-radius:10px;border:1px solid #2E333B;background:transparent;color:#C9CED6;font:500 14px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.tool:hover{background:#1E2228;color:#E8EAED}
+.w{width:100%;height:100%;border-radius:3px;padding:0;border:none;cursor:pointer}
+.lbl{border:none;background:transparent;color:#8A919B;font:500 10px 'JetBrains Mono',monospace;cursor:pointer;border-radius:4px;padding:0}
+.lbl:hover{background:#262B33;color:#E8EAED}
+.choice{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;border:1px solid #2E333B;background:transparent;color:#E8EAED;text-align:left;font-family:inherit;cursor:pointer}
+.choice:hover{background:#1E2228}
+.tpl{display:flex;align-items:center;gap:12px;width:100%;padding:12px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#E8EAED;text-align:left;font-family:inherit;cursor:pointer}
+.tpl:hover{background:#1E2228}
+.mono{font-family:'JetBrains Mono',monospace}
+input.field{height:44px;box-sizing:border-box;border-radius:10px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 14px;font:500 15px 'Inter',sans-serif;width:100%}
+select.plate{height:44px;border-radius:10px;border:1px solid #2E333B;background:#171A1F;color:#E8EAED;padding:0 14px;font:600 16px 'Inter',sans-serif;min-width:360px}
+.stepper{display:inline-flex;align-items:center;border:1px solid #2E333B;border-radius:10px;overflow:hidden}
+.stepper button{width:44px;height:44px;border:none;background:transparent;color:#E8EAED;font:600 18px 'Inter',sans-serif;cursor:pointer}
+.stepper button:hover{background:#1E2228}
+.toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:5}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="Main.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Auto pick</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <a class="st" href="AutoDeck.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</a>
+    <span class="line"></span>
+    <a class="st" href="AutoTip.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</a>
+    <span class="line"></span>
+    <a class="st" href="AutoPlan.dc.html" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">3</span>Plan</a>
+    <span class="line"></span>
+    <a class="st" href="AutoBottom.dc.html"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">4</span>Dish bottom</a>
+    <span class="line"></span>
+    <a class="st" href="AutoPicking.dc.html"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">5</span>Picking</a>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0">
+    <section style="flex:1; min-width:0; padding:20px 28px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+        <!-- Plate chooser: a dropdown that opens the deck, so the plate is picked where it stands -->
+        <div style="position:relative">
+          <button type="button" onClick="{{toggleDeck}}" aria-expanded="{{deckOpen}}" style="height:44px; display:inline-flex; align-items:center; gap:10px; padding:0 14px; border-radius:10px; border:1px solid {{dropBd}}; background:#171A1F; color:#E8EAED; font:600 16px 'Inter',sans-serif; cursor:pointer">
+            <span style="color:#8DB8FF">Slot 5</span>Corning 384 well plate<span style="color:#8A919B; font-weight:500">112 µl</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <sc-if value="{{deckOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; top:52px; left:0; z-index:6; width:340px; padding:14px; border-radius:14px; background:#1B1E24; border:1px solid #2E333B; box-shadow:0 16px 40px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:10px">
+              <div class="cap">Plates on the deck</div>
+              <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px">
+                <sc-for list="{{miniDeck}}" as="m" hint-placeholder-count="12">
+                  <button type="button" onClick="{{m.pick}}" style="height:52px; border-radius:8px; border:{{m.bd}}; background:{{m.bg}}; color:{{m.fg}}; font:600 11px 'Inter',sans-serif; cursor:{{m.cursor}}; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; padding:6px 8px; text-align:left"><span style="letter-spacing:.08em; color:#8A919B">{{m.n}}</span><span>{{m.name}}</span></button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="flex:1"></div>
+        <button class="tool" type="button" onClick="{{undo}}" style="opacity:{{undoOpacity}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"></path><path d="M4 9h11a5 5 0 0 1 0 10h-3"></path></svg>Undo
+        </button>
+        <button class="tool" type="button" onClick="{{redo}}" style="opacity:{{redoOpacity}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"></path><path d="M20 9H9a5 5 0 0 0 0 10h3"></path></svg>Redo
+        </button>
+        <button class="tool" type="button" onClick="{{selectAll}}">Select all</button>
+        <button class="tool" type="button" onClick="{{clear}}">Clear</button>
+      </div>
+
+      <div style="flex:1; min-height:0; display:grid; grid-template-columns:18px minmax(0, 1fr); grid-template-rows:20px minmax(0, 1fr); gap:3px; padding:16px; border-radius:16px; background:#14171B; border:1px solid #22262C; box-sizing:border-box; opacity:{{gridOpacity}}">
+        <span></span>
+        <div style="display:grid; grid-template-columns:repeat(24, minmax(0, 1fr)); gap:3px">
+          <sc-for list="{{cols}}" as="c" hint-placeholder-count="24"><button class="lbl" type="button" onClick="{{c.pick}}" aria-label="Column {{c.n}}">{{c.n}}</button></sc-for>
+        </div>
+        <div style="display:grid; grid-template-rows:repeat(16, minmax(0, 1fr)); gap:3px">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="16"><button class="lbl" type="button" onClick="{{r.pick}}" aria-label="Row {{r.n}}">{{r.n}}</button></sc-for>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(24, minmax(0, 1fr)); grid-template-rows:repeat(16, minmax(0, 1fr)); gap:3px">
+          <sc-for list="{{wells}}" as="w" hint-placeholder-count="384">
+            <button class="w" type="button" aria-label="{{w.id}}" onClick="{{w.pick}}" style="background:{{w.bg}}"></button>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <aside style="width:400px; flex:none; padding:24px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:22px; overflow:auto">
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <div class="cap">Start from</div>
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px">
+          <button class="choice" type="button" onClick="{{pickTemplate}}" style="border-color:{{tplBd}}; background:{{tplBg}}">
+            <span style="font-size:16px; font-weight:600">A template</span><span style="font-size:13px; color:#B3B9C2">Saved earlier</span>
+          </button>
+          <button class="choice" type="button" onClick="{{pickNew}}" style="border-color:{{newBd}}; background:{{newBg}}">
+            <span style="font-size:16px; font-weight:600">New plan</span><span style="font-size:13px; color:#B3B9C2">Choose wells</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Templates: names the user gave them; the list scrolls inside its own box, not the whole panel -->
+      <sc-if value="{{isTemplate}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:-8px">
+          <div style="display:flex; align-items:center; justify-content:space-between">
+            <span class="cap">Saved templates</span>
+            <button type="button" style="border:none; background:transparent; color:#8DB8FF; font:600 13px 'Inter',sans-serif; cursor:pointer; padding:0">Open from file…</button>
+          </div>
+          <div style="max-height:176px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; padding:4px; border-radius:12px; border:1px solid #23272E; background:#14171B">
+            <sc-for list="{{templates}}" as="t" hint-placeholder-count="4">
+              <button class="tpl" type="button" onClick="{{t.pick}}" style="background:{{t.bg}}; padding:10px 12px">
+                <span style="flex:1; display:flex; flex-direction:column; gap:2px"><span style="font-size:15px; font-weight:600">{{t.name}}</span><span style="font-size:13px; color:#B3B9C2">{{t.meta}}</span></span>
+                <sc-if value="{{t.on}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3DD68C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></sc-if>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{needWells}}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex; gap:10px; padding:12px 14px; border-radius:12px; background:#17233A; color:#C9DCFF; font-size:15px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none; margin-top:2px"><path d="M19 12H5"></path><path d="m11 6-6 6 6 6"></path></svg>Choose the wells on the plate.
+        </div>
+      </sc-if>
+
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <div class="cap">Cuboids per well</div>
+        <div class="stepper">
+          <button type="button" onClick="{{less}}" aria-label="Fewer">−</button>
+          <span class="mono" style="width:56px; text-align:center; font-size:17px">{{per}}</span>
+          <button type="button" onClick="{{more}}" aria-label="More">+</button>
+        </div>
+      </div>
+
+      <!-- The order the robot fills the chosen wells in -->
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <div class="cap">Fill order</div>
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px">
+          <sc-for list="{{orders}}" as="o" hint-placeholder-count="2">
+            <button class="choice" type="button" onClick="{{o.pick}}" style="border-color:{{o.bd}}; background:{{o.bg}}; flex-direction:row; align-items:center; gap:12px">
+              <svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="{{o.stroke}}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{o.path}}"></path></svg>
+              <span style="font-size:15px; font-weight:600">{{o.label}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="margin-top:auto; display:flex; flex-direction:column; gap:12px; padding:16px; border-radius:14px; background:#171A1F; border:1px solid #23272E">
+        <sc-if value="{{hasWells}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:baseline; gap:8px">
+            <span class="mono" style="font-size:28px; font-weight:500">{{count}}</span><span style="font-size:15px; color:#B3B9C2">wells × {{per}} cuboid</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{noWells}}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:15px; color:#8A919B">No wells chosen yet.</div>
+        </sc-if>
+        <sc-if value="{{used}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; align-items:center; gap:8px; color:#3DD68C; font-weight:600; font-size:15px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>Plan ready
+          </div>
+        </sc-if>
+        <sc-if value="{{notUsed}}" hint-placeholder-val="{{ true }}">
+          <button class="btn btn-p" type="button" onClick="{{use}}" style="opacity:{{useOpacity}}">Use this plan</button>
+        </sc-if>
+        <sc-if value="{{naming}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; gap:8px">
+            <label for="tname" style="position:absolute; width:1px; height:1px; overflow:hidden">Template name</label>
+            <input class="field" id="tname" type="text" placeholder="Name, e.g. First two rows">
+            <button class="btn" type="button" onClick="{{saveTpl}}">Save</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{showSaveAs}}" hint-placeholder-val="{{ true }}">
+          <button class="btn" type="button" onClick="{{startNaming}}" style="opacity:{{useOpacity}}">Save as template</button>
+        </sc-if>
+        <sc-if value="{{showSaveChanges}}" hint-placeholder-val="{{ false }}">
+          <button class="btn" type="button" onClick="{{saveChanges}}">Save changes to “{{tplName}}”</button>
+        </sc-if>
+      </div>
+    </aside>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <a class="btn" href="AutoTip.dc.html">Back</a>
+    <a class="btn btn-p" href="AutoBottom.dc.html" style="opacity:{{nextOpacity}}">Next
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'new', sel: {}, hist: [], fut: [], per: 1, order: 'rows', used: false, tpl: null, dirty: false, naming: false, flash: '', deck: false };
+  }
+  renderVals() {
+    const ROWS = 'ABCDEFGHIJKLMNOP'.split('');
+    const COLS = []; for (let c = 1; c <= 24; c++) COLS.push(c);
+    const sel = this.state.sel;
+    const isNew = this.state.mode === 'new';
+    const set = (next) => this.setState({ sel: next, hist: this.state.hist.concat([sel]), fut: [], used: false, dirty: true, flash: '' });
+    const DECK = { '5': 'Corning 384', '8': 'Petri dish', '9': 'Crosshair disc', '10': 'VWR tips', '12': 'Trash' };
+    const miniDeck = ['10', '11', '12', '7', '8', '9', '4', '5', '6', '1', '2', '3'].map((n) => {
+      const plate = n === '5';
+      return { n: 'SLOT ' + n, name: DECK[n] || '', bg: plate ? '#221E35' : '#16191D', fg: plate ? '#E8EAED' : '#5B626C', bd: plate ? '2px solid #A99BFA' : '1px solid #22262C', cursor: plate ? 'pointer' : 'default', pick: () => { if (plate) this.setState({ deck: false }); } };
+    });
+    const toggleIds = (ids) => {
+      if (!isNew) return;
+      const next = Object.assign({}, sel);
+      const allOn = ids.every((id) => next[id]);
+      ids.forEach((id) => { if (allOn) delete next[id]; else next[id] = true; });
+      set(next);
+    };
+    const wells = [];
+    ROWS.forEach((r) => COLS.forEach((c) => {
+      const id = r + c, on = !!sel[id];
+      wells.push({ id: id, bg: on ? (this.state.used ? '#A99BFA' : '#8B7EE0') : '#22262C', pick: () => toggleIds([id]) });
+    }));
+    const rows = ROWS.map((r) => ({ n: r, pick: () => toggleIds(COLS.map((c) => r + c)) }));
+    const cols = COLS.map((c) => ({ n: c, pick: () => toggleIds(ROWS.map((r) => r + c)) }));
+    const tplDefs = [
+      ['Rainbow sort, row A', '24 wells · saved Oct 20', COLS.map((c) => 'A' + c)],
+      ['Drug screen, 2 rows', '48 wells · saved Oct 14', COLS.map((c) => 'A' + c).concat(COLS.map((c) => 'B' + c))],
+      ['Ghent pilot', '96 wells · saved Oct 2', [].concat.apply([], 'ACEGIKMO'.split('').map((r) => COLS.filter((c) => c % 2 === 1).map((c) => r + c)))],
+      ['Wash test', '12 wells · saved Sep 28', COLS.filter((c) => c <= 12).map((c) => 'C' + c)]
+    ];
+    const templates = tplDefs.map((t, i) => ({
+      name: t[0], meta: t[1], on: this.state.tpl === i, bg: this.state.tpl === i ? '#1A2130' : 'transparent',
+      pick: () => { const next = {}; t[2].forEach((id) => { next[id] = true; }); this.setState({ sel: next, tpl: i, used: false, dirty: false }); }
+    }));
+    const ORD = [['rows', 'Row by row', 'M4 7h22l-3-3 M26 7l-3 3 M4 17h22 M26 17l-3-3 M26 17l-3 3 M4 27h22 M26 27l-3-3 M26 27l-3 3'],
+                 ['cols', 'Column by column', 'M7 4v22 M7 26l-3-3 M7 26l3-3 M17 4v22 M17 26l-3-3 M17 26l3-3 M27 4v22 M27 26l-3-3 M27 26l3-3']];
+    const orders = ORD.map((o) => {
+      const on = this.state.order === o[0];
+      return { label: o[1], path: o[2], bd: on ? '#6CA6FF' : '#2E333B', bg: on ? '#1A2130' : 'transparent', stroke: on ? '#8DB8FF' : '#8A919B', pick: () => this.setState({ order: o[0], used: false }) };
+    });
+    const count = Object.keys(sel).length;
+    const onBd = '#6CA6FF', onBg = '#1A2130';
+    return {
+      rows: rows, cols: cols, wells: wells, templates: templates, orders: orders,
+      isNew: isNew, isTemplate: !isNew,
+      tplBd: isNew ? '#2E333B' : onBd, tplBg: isNew ? 'transparent' : onBg,
+      newBd: isNew ? onBd : '#2E333B', newBg: isNew ? onBg : 'transparent',
+      gridOpacity: isNew ? 1 : 0.85,
+      pickTemplate: () => this.setState({ mode: 'tpl', used: false }),
+      pickNew: () => this.setState({ mode: 'new', used: false, tpl: null, sel: {}, dirty: false }),
+      needWells: isNew && Object.keys(sel).length === 0,
+      showSaveAs: !this.state.naming && (isNew || this.state.tpl === null),
+      showSaveChanges: !isNew && this.state.tpl !== null && this.state.dirty,
+      tplName: this.state.tpl !== null ? tplDefs[this.state.tpl][0] : '',
+      saveChanges: () => this.setState({ dirty: false, flash: 'Template saved.' }),
+      undo: () => { const h = this.state.hist; if (h.length) this.setState({ sel: h[h.length - 1], hist: h.slice(0, -1), fut: this.state.fut.concat([sel]), used: false }); },
+      undoOpacity: this.state.hist.length ? 1 : 0.4,
+      redo: () => { const f = this.state.fut; if (f.length) this.setState({ sel: f[f.length - 1], fut: f.slice(0, -1), hist: this.state.hist.concat([sel]), used: false }); },
+      redoOpacity: this.state.fut.length ? 1 : 0.4,
+      miniDeck: miniDeck, deckOpen: this.state.deck, toggleDeck: () => this.setState({ deck: !this.state.deck }),
+      dropBd: this.state.deck ? '#6CA6FF' : '#2E333B',
+      hasWells: Object.keys(sel).length > 0, noWells: Object.keys(sel).length === 0,
+      selectAll: () => { const next = {}; ROWS.forEach((r) => COLS.forEach((c) => { next[r + c] = true; })); set(next); },
+      clear: () => set({}),
+      per: this.state.per,
+      less: () => this.setState({ per: Math.max(1, this.state.per - 1), used: false }),
+      more: () => this.setState({ per: Math.min(5, this.state.per + 1), used: false }),
+      count: count, used: this.state.used, notUsed: !this.state.used,
+      useOpacity: count ? 1 : 0.4,
+      use: () => { if (count) this.setState({ used: true, flash: 'Plan ready: ' + count + ' wells.' }); },
+      naming: this.state.naming, notNaming: !this.state.naming,
+      startNaming: () => { if (count) this.setState({ naming: true }); },
+      saveTpl: () => this.setState({ naming: false, flash: 'Saved as a template.' }),
+      hasToast: !!this.state.flash, toast: this.state.flash,
+      nextOpacity: this.state.used ? 1 : 0.4
+    };
+  }
+}
+</script>
+</body>
+</html>

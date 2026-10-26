@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Liquid, well center</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+a.crumb:hover{background:#1E2228;color:#E8EAED}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.st:hover{background:#1A1D22;color:#E8EAED}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box}
+.line{width:28px;height:1px;background:#2E333B}
+.sd{width:22px;height:22px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.prow{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;box-sizing:border-box;border-radius:12px;border:1px solid #23272E;background:#171A1F;color:#E8EAED;font-family:inherit;text-align:left;cursor:pointer}
+.prow:hover{background:#1C2026}
+.pad{position:absolute;right:16px;bottom:16px;display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:14px;background:rgba(10,12,14,.84);font:600 13px 'Inter',sans-serif}
+.jog{width:52px;height:52px;border-radius:10px;border:none;background:#22262D;color:#E8EAED;display:flex;align-items:center;justify-content:center;cursor:pointer;font:600 13px 'Inter',sans-serif}
+.jog:hover{background:#2C313A}
+.car{display:flex;align-items:center;gap:4px}
+.car .arr{width:28px;height:30px;border:none;border-radius:7px;background:transparent;color:#C9CED6;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.car .opt{width:64px;height:30px;border:none;border-radius:7px;font:600 13px 'Inter',sans-serif;cursor:pointer}
+.sel{position:relative;display:inline-block}
+.sel select{height:40px;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 34px 0 12px;font:500 14px 'Inter',sans-serif;appearance:none;-webkit-appearance:none}
+.sel svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none}
+input.num-in{width:84px;height:40px;box-sizing:border-box;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 10px;font:500 14px 'JetBrains Mono',monospace;text-align:right}
+.mono{font-family:'JetBrains Mono',monospace}
+.toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:5}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="Main.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Liquid</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button" style="min-width:118px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <a class="st" href="AutoDeck.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</a>
+    <span class="line"></span>
+    <a class="st" href="AutoTip.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</a>
+    <span class="line"></span>
+    <a class="st" href="LiquidCenter.dc.html" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">3</span>Well center</a>
+    <span class="line"></span>
+    <a class="st" href="Liquid.dc.html"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">4</span>Plan</a>
+    <span class="line"></span>
+    <a class="st" href="Liquid.dc.html"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">5</span>Run</a>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0">
+    <section style="flex:1; min-width:0; padding:20px; box-sizing:border-box">
+      <div style="position:relative; width:100%; height:100%; border-radius:14px; overflow:hidden; background:#050607; border:1px solid #22262C">
+        <svg viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice" style="position:absolute; inset:0; width:100%; height:100%" role="img" aria-label="Camera over a well">
+          <rect width="800" height="600" fill="#191b1f"></rect>
+          <g transform="translate({{dx}} 0)">
+            <circle cx="400" cy="300" r="170" fill="#0c0d10" stroke="#3a3f46" stroke-width="10"></circle>
+            <circle cx="40" cy="300" r="170" fill="#0c0d10" stroke="#3a3f46" stroke-width="10"></circle>
+            <circle cx="760" cy="300" r="170" fill="#0c0d10" stroke="#3a3f46" stroke-width="10"></circle>
+          </g>
+          <g stroke="#6CA6FF" stroke-width="1.5"><line x1="400" y1="270" x2="400" y2="330"></line><line x1="370" y1="300" x2="430" y2="300"></line></g>
+        </svg>
+        <div style="position:absolute; left:16px; top:16px; padding:8px 12px; border-radius:8px; background:rgba(10,12,14,.8); font:500 13px 'JetBrains Mono',monospace">X 118.4  Y 74.2  Z {{z}}</div>
+        <div class="pad">
+          <div style="display:flex; align-items:center; gap:10px"><span style="letter-spacing:.09em; color:#C9CED6; font-size:12px; flex:1">MOVE THE ROBOT</span></div>
+          <div class="car" role="group" aria-label="Step size">
+            <span style="color:#8A919B; font-size:12px; margin-right:4px">Step</span>
+            <button class="arr" type="button" aria-label="Smaller step"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button>
+            <button class="opt" type="button" style="background:transparent; color:#C9CED6">0.05 mm</button>
+            <button class="opt" type="button" style="background:#E8EAED; color:#0F1114">0.1 mm</button>
+            <button class="opt" type="button" style="background:transparent; color:#C9CED6">0.2 mm</button>
+            <button class="arr" type="button" aria-label="Bigger step"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button>
+          </div>
+          <div style="display:flex; gap:16px; align-items:center; justify-content:center">
+            <div style="display:grid; grid-template-columns:repeat(3, 52px); grid-template-rows:repeat(3, 52px); gap:4px">
+              <span></span><button class="jog" type="button" aria-label="Move back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg></button><span></span>
+              <button class="jog" type="button" aria-label="Move left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button>
+              <span style="display:flex; align-items:center; justify-content:center; color:#8A919B">XY</span>
+              <button class="jog" type="button" aria-label="Move right"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button>
+              <span></span><button class="jog" type="button" aria-label="Move forward"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><span></span>
+            </div>
+            <div style="display:grid; grid-template-rows:repeat(3, 52px); gap:4px">
+              <button class="jog" type="button" style="width:64px">Up</button>
+              <span style="display:flex; align-items:center; justify-content:center; color:#8A919B">Z</span>
+              <button class="jog" type="button" style="width:64px">Down</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside style="width:440px; flex:none; padding:20px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:14px; overflow:auto">
+      <div style="display:flex; flex-direction:column; gap:4px">
+        <h1 style="margin:0; font-size:22px; font-weight:600">Well center and depth</h1>
+        <div style="font-size:14px; color:#B3B9C2; line-height:1.45">Measure every plate you will use. A plate you skip still works, with the depth from its drawing.</div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:8px">
+        <sc-for list="{{plates}}" as="p" hint-placeholder-count="2">
+          <button class="prow" type="button" onClick="{{p.pick}}" style="border-color:{{p.bd}}; background:{{p.bg}}">
+            <span class="sd" style="background:{{p.markBg}}; color:{{p.markFg}}; border:{{p.markBd}}">{{p.mark}}</span>
+            <span style="flex:1; display:flex; flex-direction:column; gap:2px"><span style="font-size:15px; font-weight:600">{{p.name}}</span><span style="font-size:13px; color:{{p.stateColor}}">{{p.state}}</span></span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:4px; padding-top:4px">
+        <div class="cap">{{selName}}</div>
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+          <div style="display:flex; gap:12px; padding:10px 0; opacity:{{s.opacity}}">
+            <span class="sd" style="background:{{s.bg}}; color:{{s.fg}}">{{s.mark}}</span>
+            <div style="flex:1; display:flex; flex-direction:column; gap:10px">
+              <div style="font-size:15px; font-weight:600">{{s.title}}</div>
+              <sc-if value="{{s.open}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; flex-direction:column; gap:10px">
+                  <div style="font-size:14px; color:#B3B9C2; line-height:1.45">{{s.text}}</div>
+                  <sc-if value="{{s.isWell}}" hint-placeholder-val="{{ false }}">
+                    <span class="sel"><select aria-label="Well"><option>A1</option><option>H12</option><option>D6</option></select><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+                  </sc-if>
+                  <sc-if value="{{s.isDepth}}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex; align-items:center; gap:8px; font-size:14px; color:#B3B9C2"><input class="num-in" type="text" value="10.67" aria-label="Well depth"><span>mm, from the plate's drawing</span></div>
+                  </sc-if>
+                  <div><button class="btn btn-p" type="button" onClick="{{next}}">{{s.action}}</button></div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+        <div style="padding-top:6px"><button class="btn" type="button" onClick="{{skip}}" style="border:none; color:#B3B9C2; padding:0 4px">Skip this plate, use the drawing</button></div>
+      </div>
+    </aside>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <a class="btn" href="AutoTip.dc.html">Back</a>
+    <a class="btn btn-p" href="Liquid.dc.html">Next
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'p384', s: 0, status: { p96: 'measured', p384: 'todo' }, flash: '' };
+  }
+  renderVals() {
+    const st = this.state;
+    const NAMES = { p96: 'Corning 96 · slot 2', p384: 'Corning 384 · slot 5' };
+    const plates = Object.keys(NAMES).map((k) => {
+      const v = st.status[k], on = st.sel === k;
+      const ok = v === 'measured', skipped = v === 'skipped';
+      return {
+        name: NAMES[k],
+        state: ok ? 'Measured today' : (skipped ? 'Not measured: using the drawing' : 'Not measured yet'),
+        stateColor: ok ? '#3DD68C' : (skipped ? '#F5B841' : '#B3B9C2'),
+        mark: (ok || skipped) ? '✓' : '',
+        markBg: (ok || skipped) ? '#16261E' : 'transparent', markFg: '#3DD68C', markBd: (ok || skipped) ? 'none' : '2px solid #4A515B',
+        bd: on ? '#6CA6FF' : '#23272E', bg: on ? '#1A2130' : '#171A1F',
+        pick: () => this.setState({ sel: k, s: 0 })
+      };
+    });
+    const defs = [
+      ['Tip to a well', 'Choose a well. The tip goes over it.', 'Move the tip', 'well'],
+      ['Center the tip', 'Use the arrows until the tip is in the middle of the well.', 'It is centered', ''],
+      ['Lower to the top of the well', 'Lower the tip until its end is level with the top of the plate.', 'It is level', ''],
+      ['Well depth', 'The robot finds the bottom from the top and the depth.', 'Save', 'depth']
+    ];
+    const steps = defs.map((d, i) => ({
+      title: d[0], text: d[1], action: d[2], isWell: d[3] === 'well', isDepth: d[3] === 'depth',
+      open: i === st.s,
+      mark: i < st.s ? '✓' : String(i + 1),
+      bg: i < st.s ? '#16261E' : (i === st.s ? '#6CA6FF' : '#1E2228'),
+      fg: i < st.s ? '#3DD68C' : (i === st.s ? '#0B1220' : '#8A919B'),
+      opacity: i > st.s ? 0.45 : 1
+    }));
+    const setStatus = (v, msg) => { const s = Object.assign({}, st.status); s[st.sel] = v; this.setState({ status: s, s: 0, flash: msg }); };
+    return {
+      plates: plates, steps: steps, selName: NAMES[st.sel],
+      dx: st.s >= 2 ? 0 : 40, z: st.s >= 3 ? '14.35' : '30.00',
+      next: () => { if (st.s < 3) this.setState({ s: st.s + 1, flash: '' }); else setStatus('measured', 'Well center and depth saved.'); },
+      skip: () => setStatus('skipped', 'Using the plate drawing for ' + NAMES[st.sel] + '.'),
+      hasToast: !!st.flash, toast: st.flash
+    };
+  }
+}
+</script>
+</body>
+</html>

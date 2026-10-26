@@ -41,3 +41,44 @@ _Avoid_: locked, queued
 **Robot session**:
 The OT-2's HTTP run, holding the loaded labware, the offsets and the tip record.
 _Avoid_: run (a run is a picking or liquid run)
+
+## Setting up
+
+**Robot setup**:
+What is set once for this robot and its cameras and kept between days: which camera is the upper and which the lower, the camera calibration, the platforms, and the stored positions.
+_Avoid_: profile (the profile is how it is stored, never shown)
+
+**Calibration position**:
+The stored position the upper camera looks at the crosshair disc on the calibration module from. The tip calibration starts by going there.
+_Avoid_: disc position, tip_calib (on screen)
+
+**Reset setup**:
+Clearing the robot setup to start it again, after the user confirms. The deck and the picking settings are kept.
+
+**Lock**:
+A state the operator turns on to work at the deck with their hands: nothing moves the robot until it is turned off. It cannot be turned on during a run.
+_Avoid_: hold (a hold is Stop's second press, ended by the robot becoming free)
+
+## A day's work
+
+**Task**:
+One of the three kinds of work started from Home: Auto pick, Manual pick, Liquid. A task is a fixed order of steps.
+_Avoid_: mode, workflow
+
+**Step**:
+One screen of a task. A step is done when the state it sets up holds now, never because it was visited. Deck, Tip and Dish bottom are the same steps, with the same state, in every task that has them.
+
+**Plate plan**:
+Which wells of a plate get cuboids, how many each, and in what order.
+_Avoid_: routine (on screen), program
+
+**Liquid plan**:
+Groups of wells and the steps each well gets, run in order.
+_Avoid_: program (on screen), protocol
+
+**Template**:
+A plate plan or a liquid plan saved under a name the user gave it, as a file that can be shared.
+_Avoid_: preset
+
+**Skipped plate**:
+A plate whose well center the user chose not to measure in this robot session; its drawing is used instead.

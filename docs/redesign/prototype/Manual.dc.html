@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Manual pick</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+a.crumb:hover{background:#1E2228;color:#E8EAED}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.st:hover{background:#1A1D22;color:#E8EAED}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box}
+.line{width:28px;height:1px;background:#2E333B}
+.over{padding:8px 12px;border-radius:8px;background:rgba(10,12,14,.8);font-size:13px;font-weight:600}
+.oseg{display:flex;padding:3px;border-radius:10px;background:rgba(10,12,14,.84);gap:2px}
+.oseg button{height:34px;padding:0 12px;border:none;border-radius:8px;font:600 13px 'Inter',sans-serif;cursor:pointer}
+.tog{height:40px;padding:0 14px;border-radius:10px;border:1px solid #2E333B;font:600 14px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.card{display:flex;flex-direction:column;border-radius:16px;background:#171A1F;border:1px solid #23272E;overflow:hidden}
+.head{display:flex;align-items:center;gap:10px;height:54px;padding:0 16px;border:none;background:transparent;color:#E8EAED;font:600 17px 'Inter',sans-serif;cursor:pointer;text-align:left;width:100%}
+.head:hover{background:#1C2026}
+.body{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
+.seg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:3px;border-radius:10px;background:#111317;border:1px solid #23272E;gap:3px}
+.seg button{height:36px;border:none;border-radius:8px;font:600 13px 'Inter',sans-serif;cursor:pointer}
+.sw{display:flex;align-items:center;gap:10px;min-height:36px;padding:0;border:none;background:transparent;color:#C9CED6;font:500 14px 'Inter',sans-serif;cursor:pointer;text-align:left}
+.knob{width:34px;height:20px;border-radius:999px;position:relative;flex:none}
+.knob span{position:absolute;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.sel{position:relative;display:block;flex:1}
+.sel select{height:40px;width:100%;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 34px 0 12px;font:500 14px 'Inter',sans-serif;appearance:none;-webkit-appearance:none}
+.sel svg{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none}
+.frow{display:flex;align-items:center;gap:10px;font-size:14px}
+.frow label{flex:1;color:#B3B9C2}
+input.num-in{width:80px;height:36px;box-sizing:border-box;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 10px;font:500 14px 'JetBrains Mono',monospace;text-align:right}
+.unit{width:36px;color:#8A919B;font-size:13px}
+.pt{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 10px;border-radius:9px;font-size:14px}
+.pt:hover{background:#1E2228}
+.x{width:30px;height:30px;border:none;border-radius:7px;background:transparent;color:#8A919B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.x:hover{background:#2A2E35;color:#E8EAED}
+.mono{font-family:'JetBrains Mono',monospace}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:8}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="Main.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Manual pick</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button" style="min-width:118px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <a class="st" href="AutoDeck.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</a>
+    <span class="line"></span>
+    <a class="st" href="AutoTip.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</a>
+    <span class="line"></span>
+    <a class="st" href="AutoBottom.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Dish bottom</a>
+    <span class="line"></span>
+    <a class="st" href="Manual.dc.html" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">4</span>Work</a>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0">
+    <section style="flex:1; min-width:0; padding:16px 20px; box-sizing:border-box">
+      <div onClick="{{clickPicture}}" style="position:relative; width:100%; height:100%; border-radius:14px; overflow:hidden; background:#050607; border:1px solid #22262C; cursor:crosshair">
+        <svg viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice" style="position:absolute; inset:0; width:100%; height:100%" role="img" aria-label="Camera picture of the dish">
+          <rect width="800" height="600" fill="#0b0c0e"></rect>
+          <circle cx="400" cy="300" r="250" fill="#14161a" stroke="#30343a" stroke-width="5"></circle>
+          <sc-for list="{{cuboids}}" as="c" hint-placeholder-count="6">
+            <g transform="translate({{c.x}} {{c.y}}) rotate({{c.r}})">
+              <rect x="-11" y="-11" width="22" height="22" rx="2" fill="#d6ccb6"></rect>
+              <rect x="-18" y="-18" width="36" height="36" rx="4" fill="none" stroke="#3DD68C" stroke-width="2" opacity="{{c.o}}"></rect>
+            </g>
+          </sc-for>
+          <circle cx="300" cy="380" r="16" fill="#0b0c0e" stroke="#3a3f46" stroke-width="2"></circle>
+          <circle cx="520" cy="200" r="10" fill="#0b0c0e" stroke="#3a3f46" stroke-width="2"></circle>
+          <g fill="none" stroke-width="2" opacity="{{histOpacity}}"><circle cx="470" cy="330" r="22" stroke="#A99BFA" stroke-opacity=".9"></circle><circle cx="350" cy="250" r="22" stroke="#A99BFA" stroke-opacity=".35"></circle><circle cx="430" cy="420" r="22" stroke="#A99BFA" stroke-opacity=".35"></circle></g>
+          <g opacity="{{pointsOpacity}}" fill="#4FC9E0" font-family="Inter, sans-serif" font-size="14" font-weight="700">
+            <sc-for list="{{points}}" as="p" hint-placeholder-count="3">
+              <circle cx="{{p.cx}}" cy="{{p.cy}}" r="7"></circle><text x="{{p.tx}}" y="{{p.ty}}">{{p.name}}</text>
+            </sc-for>
+          </g>
+          <g opacity="{{spotOpacity}}" stroke="#6CA6FF" stroke-width="2" fill="none"><circle cx="470" cy="330" r="26"></circle><line x1="470" y1="296" x2="470" y2="308"></line><line x1="470" y1="352" x2="470" y2="364"></line><line x1="436" y1="330" x2="448" y2="330"></line><line x1="492" y1="330" x2="504" y2="330"></line></g>
+          <g stroke="#ffffff" stroke-opacity=".5" stroke-width="1.5"><line x1="400" y1="280" x2="400" y2="320"></line><line x1="380" y1="300" x2="420" y2="300"></line></g>
+        </svg>
+
+        <!-- What is in the tip, drawn, and where the robot is -->
+        <div style="position:absolute; left:16px; top:16px; display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:12px; background:rgba(10,12,14,.84)">
+          <svg width="22" height="52" viewBox="0 0 22 52" role="img" aria-label="Tip, {{tipUl}} µl inside">
+            <path d="M3 2h16l-5 46h-6z" fill="none" stroke="#C9CED6" stroke-width="2" stroke-linejoin="round"></path>
+            <path d="M6 30h10l-2 18h-6z" fill="#6CA6FF" opacity="{{fillO}}"></path>
+          </svg>
+          <div style="display:flex; flex-direction:column; gap:2px">
+            <span class="cap">In the tip</span>
+            <span class="mono" style="font-size:18px">{{tipUl}} µl</span>
+            <span class="mono" style="font-size:11px; color:#8A919B">X 245.1  Y 132.4  Z 68.9</span>
+          </div>
+        </div>
+
+        <div style="position:absolute; right:16px; top:16px; display:flex; align-items:center; gap:8px">
+          <span style="font-size:12px; font-weight:600; color:#C9CED6; padding:6px 8px; border-radius:6px; background:rgba(10,12,14,.84)">A click moves the</span>
+          <div class="oseg" role="group" aria-label="What a click moves">
+            <button type="button" onClick="{{moveCam}}" style="background:{{camBg}}; color:{{camFg}}">Camera</button>
+            <button type="button" onClick="{{moveTip}}" style="background:{{tipBg}}; color:{{tipFg}}">Tip</button>
+          </div>
+          <button class="over" type="button" style="border:none; color:#E8EAED; cursor:pointer; height:40px">{{centerLabel}}</button>
+        </div>
+
+        <div style="position:absolute; left:16px; bottom:16px; display:flex; gap:6px">
+          <span class="over" style="font-weight:500; color:#C9CED6"><b style="color:#E8EAED">Left click</b> move</span>
+          <span class="over" style="font-weight:500; color:#C9CED6"><b style="color:#E8EAED">Right click</b> mark a point</span>
+          <span class="over" style="font-weight:500; color:#C9CED6"><b style="color:#E8EAED">Wheel</b> zoom</span>
+        </div>
+      </div>
+    </section>
+
+    <aside style="width:440px; flex:none; padding:16px 20px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:12px; overflow:auto">
+      <!-- Same place as on Auto pick: dish tools at the top -->
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px">
+        <button class="tog" type="button" onClick="{{analyze}}" style="background:transparent; color:#E8EAED"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>Analyze the dish</button>
+        <button class="tog" type="button" onClick="{{toggleHistory}}" aria-pressed="{{history}}" style="background:{{histBg}}; color:{{histFg}}; border-color:{{histBd}}">Show past picks</button>
+      </div>
+
+      <!-- Look at: choose a slot on the mini deck, the camera goes there -->
+      <div style="position:relative; display:flex; align-items:center; gap:10px">
+        <span class="cap" style="width:58px">Look at</span>
+        <button type="button" onClick="{{toggleDeck}}" style="flex:1; height:42px; display:flex; align-items:center; gap:10px; padding:0 12px; border-radius:10px; border:1px solid {{dropBd}}; background:#171A1F; color:#E8EAED; font:600 14px 'Inter',sans-serif; cursor:pointer; text-align:left">
+          <span style="color:#8DB8FF">Slot {{slot}}</span><span style="flex:1">{{slotName}}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+        </button>
+        <sc-if value="{{deckOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute; top:50px; left:0; right:0; z-index:6; padding:12px; border-radius:14px; background:#1B1E24; border:1px solid #2E333B; box-shadow:0 16px 40px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:8px">
+            <div class="cap">Move the camera to</div>
+            <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px">
+              <sc-for list="{{miniDeck}}" as="m" hint-placeholder-count="12">
+                <button type="button" onClick="{{m.pick}}" style="height:52px; border-radius:8px; border:{{m.bd}}; background:{{m.bg}}; color:{{m.fg}}; font:600 11px 'Inter',sans-serif; cursor:pointer; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; padding:6px 8px; text-align:left"><span style="letter-spacing:.08em; color:#8A919B">{{m.n}}</span><span>{{m.name}}</span></button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- ASPIRATE -->
+      <section class="card" style="border-color:{{aspBd}}">
+        <button class="head" type="button" onClick="{{openAsp}}" aria-expanded="{{aspOpen}}">
+          <span style="flex:1">Aspirate</span>
+          <sc-if value="{{aspClosed}}" hint-placeholder-val="{{ false }}"><span style="font-size:13px; font-weight:500; color:#8A919B">{{aspSummary}}</span></sc-if>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{aspRot}}deg)"><path d="m9 6 6 6-6 6"></path></svg>
+        </button>
+        <sc-if value="{{aspOpen}}" hint-placeholder-val="{{ true }}">
+          <div class="body">
+            <!-- Settings: set once, folded to one line -->
+            <div style="display:flex; flex-direction:column; gap:8px; padding:10px 12px; border-radius:10px; background:#14171B; border:1px solid #22262C">
+              <button type="button" onClick="{{toggleSet}}" style="display:flex; align-items:center; gap:8px; border:none; background:transparent; padding:0; color:#C9CED6; font:500 13px 'Inter',sans-serif; cursor:pointer; text-align:left">
+                <span style="flex:1">0.5 mm above the bottom · 15 µl · 50 µl/s</span><span style="color:#8DB8FF; font-weight:600">{{setLabel}}</span>
+              </button>
+              <sc-if value="{{setOpen}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; flex-direction:column; gap:8px; padding-top:4px">
+                  <div class="frow"><label for="h">Height above the bottom</label><input class="num-in" id="h" type="text" value="0.5"><span class="unit">mm</span></div>
+                  <div class="frow"><label for="v">Volume</label><input class="num-in" id="v" type="text" value="15"><span class="unit">µl</span></div>
+                  <div class="frow"><label for="f">Speed</label><input class="num-in" id="f" type="text" value="50"><span class="unit">µl/s</span></div>
+                </div>
+              </sc-if>
+            </div>
+            <div class="cap">From</div>
+            <div class="seg">
+              <sc-for list="{{aspWhere}}" as="d" hint-placeholder-count="3"><button type="button" onClick="{{d.pick}}" style="background:{{d.bg}}; color:{{d.fg}}">{{d.label}}</button></sc-for>
+            </div>
+            <sc-if value="{{aHand}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:4px">
+                <button class="sw" type="button" onClick="{{toggleSnap}}"><span class="knob" style="background:{{snapBg}}"><span style="left:{{snapX}}px"></span></span>Snap to found cuboids</button>
+                <button class="sw" type="button" onClick="{{toggleAuto}}"><span class="knob" style="background:{{autoBg}}"><span style="left:{{autoX}}px"></span></span>Aspirate as soon as I click</button>
+                <div style="font-size:14px; color:{{handHintColor}}; padding-top:4px">{{handHint}}</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{aWell}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; gap:8px">
+                <span class="sel"><select aria-label="Plate"><option>Corning 384 · slot 5</option></select><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+                <span class="sel" style="flex:none; width:96px"><select aria-label="Well"><option>A1</option><option>A2</option></select><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+              </div>
+            </sc-if>
+            <sc-if value="{{aPoint}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:2px">
+                <sc-for list="{{points}}" as="p" hint-placeholder-count="3">
+                  <div class="pt"><span style="width:10px; height:10px; border-radius:50%; background:#4FC9E0"></span><span style="font-weight:600; width:34px">{{p.name}}</span><span class="mono" style="flex:1; font-size:13px; color:#B3B9C2">Z {{p.z}}</span><button class="x" type="button" onClick="{{p.del}}" aria-label="Delete point {{p.name}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+                </sc-for>
+                <div style="font-size:13px; color:#8A919B; padding:4px 0 0 10px">Right-click the picture to add a point.</div>
+              </div>
+            </sc-if>
+            <button class="btn btn-p" type="button" onClick="{{aspirate}}" style="opacity:{{aspBtnOpacity}}">Aspirate</button>
+          </div>
+        </sc-if>
+      </section>
+
+      <!-- DISPENSE: under Aspirate, the same structure -->
+      <section class="card" style="border-color:{{dispBd}}">
+        <button class="head" type="button" onClick="{{openDisp}}" aria-expanded="{{dispOpen}}">
+          <span style="flex:1">Dispense</span>
+          <sc-if value="{{dispClosed}}" hint-placeholder-val="{{ true }}"><span style="font-size:13px; font-weight:500; color:#8A919B">{{dispSummary}}</span></sc-if>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{dispRot}}deg)"><path d="m9 6 6 6-6 6"></path></svg>
+        </button>
+        <sc-if value="{{dispOpen}}" hint-placeholder-val="{{ false }}">
+          <div class="body">
+            <div style="display:flex; align-items:center; gap:10px">
+              <span class="cap" style="flex:1">How much</span>
+              <div class="seg" style="grid-template-columns:repeat(2, minmax(0, 1fr)); width:180px">
+                <button type="button" onClick="{{amtAll}}" style="background:{{allBg}}; color:{{allFg}}">All</button>
+                <button type="button" onClick="{{amtPart}}" style="background:{{partBg}}; color:{{partFg}}">Part</button>
+              </div>
+              <sc-if value="{{amtIsPart}}" hint-placeholder-val="{{ false }}"><input class="num-in" type="text" value="5" aria-label="Volume to dispense" style="width:64px"><span class="unit" style="width:auto">µl</span></sc-if>
+            </div>
+            <div class="cap">Where</div>
+            <div class="seg">
+              <sc-for list="{{dispWhere}}" as="d" hint-placeholder-count="3"><button type="button" onClick="{{d.pick}}" style="background:{{d.bg}}; color:{{d.fg}}">{{d.label}}</button></sc-for>
+            </div>
+            <sc-if value="{{dWell}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:8px">
+                <div style="display:flex; gap:8px">
+                  <span class="sel"><select aria-label="Plate"><option>Corning 384 · slot 5</option></select><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+                  <span class="sel" style="flex:none; width:96px"><select aria-label="Well"><option>{{well}}</option><option>A18</option></select><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(24, minmax(0, 1fr)); gap:2px; padding:8px; border-radius:10px; background:#14171B; border:1px solid #22262C">
+                  <sc-for list="{{plate}}" as="w" hint-placeholder-count="384">
+                    <button type="button" aria-label="{{w.id}}" onClick="{{w.pick}}" style="aspect-ratio:1; border:none; padding:0; border-radius:2px; background:{{w.bg}}; box-shadow:{{w.ring}}; cursor:pointer"></button>
+                  </sc-for>
+                </div>
+                <div style="display:flex; gap:14px; font-size:12px; color:#B3B9C2">
+                  <span style="display:flex; align-items:center; gap:6px"><span style="width:9px; height:9px; border-radius:2px; background:#A99BFA"></span>Filled</span>
+                  <span style="display:flex; align-items:center; gap:6px"><span style="width:9px; height:9px; border-radius:2px; background:#3A3360"></span>Planned, still empty</span>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{dPoint}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:2px">
+                <sc-for list="{{points}}" as="p" hint-placeholder-count="3">
+                  <div class="pt"><span style="width:10px; height:10px; border-radius:50%; background:#4FC9E0"></span><span style="font-weight:600; width:34px">{{p.name}}</span><span class="mono" style="flex:1; font-size:13px; color:#B3B9C2">Z {{p.z}}</span><button class="x" type="button" onClick="{{p.del}}" aria-label="Delete point {{p.name}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{dHere}}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:14px; color:#B3B9C2">Where the tip is now.</div>
+            </sc-if>
+            <button class="btn btn-p" type="button" onClick="{{dispense}}" style="opacity:{{dispBtnOpacity}}">{{dispLabel}}</button>
+          </div>
+        </sc-if>
+      </section>
+    </aside>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { snap: true, auto: false, history: true, move: 'camera', holding: false, spot: false,
+      asp: 'hand', disp: 'well', open: null, set: false, amt: 'all', well: 'A7', slot: '8', deck: false,
+      pts: ['M1', 'M2', 'M3'], flash: '' };
+  }
+  renderVals() {
+    const st = this.state;
+    const h = st.holding;
+    const pos = [[470, 330, 15], [350, 250, 40], [430, 420, 70], [520, 300, 5], [330, 330, 55], [470, 230, 25]];
+    const cuboids = pos.map((p) => ({ x: p[0], y: p[1], r: p[2], o: st.snap ? 1 : 0 }));
+    const sw = (on) => ({ bg: on ? '#6CA6FF' : '#3A4049', x: on ? 16 : 2 });
+    const S = sw(st.snap), A = sw(st.auto);
+    const segBtn = (cur, key, set) => ({ bg: cur === key ? '#2A303A' : 'transparent', fg: cur === key ? '#E8EAED' : '#B3B9C2', pick: () => this.setState(set) });
+    const aspWhere = [['well', 'In a well'], ['point', 'At a point'], ['hand', 'By hand']].map((d) => Object.assign({ label: d[1] }, segBtn(st.asp, d[0], { asp: d[0] })));
+    const dispWhere = [['well', 'In a well'], ['point', 'At a point'], ['here', 'Here']].map((d) => Object.assign({ label: d[1] }, segBtn(st.disp, d[0], { disp: d[0] })));
+    const PXY = { M1: [210, 190], M2: [180, 300], M3: [210, 410] };
+    const points = st.pts.map((n) => ({ name: n, z: '62.40', cx: PXY[n][0], cy: PXY[n][1], tx: PXY[n][0] + 12, ty: PXY[n][1] - 4,
+      del: () => this.setState({ pts: st.pts.filter((x) => x !== n) }) }));
+    const plate = [];
+    'ABCDEFGHIJKLMNOP'.split('').forEach((r) => { for (let c = 1; c <= 24; c++) {
+      const id = r + c;
+      let bg = '#22262C';
+      if (r === 'A') bg = (c === 7 || c === 18) ? '#3A3360' : '#A99BFA';
+      plate.push({ id: id, bg: bg, ring: id === st.well ? '0 0 0 2px #6CA6FF' : 'none', pick: () => this.setState({ well: id }) });
+    }});
+    const DECK = { '5': 'Corning 384', '8': 'Petri dish', '9': 'Calibration module', '10': 'VWR tips', '12': 'Trash' };
+    const miniDeck = ['10', '11', '12', '7', '8', '9', '4', '5', '6', '1', '2', '3'].map((n) => {
+      const on = n === st.slot;
+      return { n: 'SLOT ' + n, name: DECK[n] || '', bg: on ? '#1A2130' : '#16191D', fg: DECK[n] ? '#E8EAED' : '#5B626C', bd: on ? '2px solid #6CA6FF' : '1px solid #22262C',
+        pick: () => this.setState({ slot: n, deck: false, flash: 'Camera moved to slot ' + n + '.' }) };
+    });
+    // Which card is open: the one the work needs next, unless the user opened the other
+    const open = st.open ?? (h ? 'disp' : 'asp');
+    const aspReady = st.asp === 'hand' ? st.spot : (st.asp === 'point' ? st.pts.length > 0 : true);
+    const dispTarget = st.disp === 'well' ? st.well : (st.disp === 'point' ? (st.pts[0] || '') : 'here');
+    const C = segBtn(st.move, 'camera', {}), T = segBtn(st.move, 'tip', {});
+    const on = '#3A4049';
+    return {
+      cuboids: cuboids, points: points, plate: plate, miniDeck: miniDeck,
+      pointsOpacity: (st.asp === 'point' || st.disp === 'point') ? 1 : 0,
+      spotOpacity: st.spot && st.asp === 'hand' ? 1 : 0,
+      clickPicture: () => { if (st.asp === 'hand' && !h) this.setState({ spot: true, flash: '' }); },
+      snapBg: S.bg, snapX: S.x, toggleSnap: () => this.setState({ snap: !st.snap }),
+      autoBg: A.bg, autoX: A.x, toggleAuto: () => this.setState({ auto: !st.auto }),
+      handHint: st.spot ? 'Cuboid selected. Press Aspirate.' : 'Click the spot to aspirate from on the picture.',
+      handHintColor: st.spot ? '#3DD68C' : '#B3B9C2',
+      analyze: () => this.setState({ flash: '6 cuboids found.' }),
+      history: st.history, toggleHistory: () => this.setState({ history: !st.history }),
+      histBg: st.history ? '#E8EAED' : 'transparent', histFg: st.history ? '#0F1114' : '#C9CED6', histBd: st.history ? '#E8EAED' : '#2E333B',
+      histOpacity: st.history ? 1 : 0,
+      camBg: st.move === 'camera' ? '#E8EAED' : 'transparent', camFg: st.move === 'camera' ? '#0F1114' : '#C9CED6',
+      tipBg: st.move === 'tip' ? '#E8EAED' : 'transparent', tipFg: st.move === 'tip' ? '#0F1114' : '#C9CED6',
+      moveCam: () => this.setState({ move: 'camera' }), moveTip: () => this.setState({ move: 'tip' }),
+      centerLabel: st.move === 'camera' ? 'Camera back to center' : 'Tip back to center',
+      tipUl: h ? '15' : '0', fillO: h ? 0.9 : 0,
+      slot: st.slot, slotName: DECK[st.slot] || 'Empty', deckOpen: st.deck, toggleDeck: () => this.setState({ deck: !st.deck }), dropBd: st.deck ? '#6CA6FF' : '#2E333B',
+      aspOpen: open === 'asp', aspClosed: open !== 'asp', aspRot: open === 'asp' ? 90 : 0,
+      dispOpen: open === 'disp', dispClosed: open !== 'disp', dispRot: open === 'disp' ? 90 : 0,
+      openAsp: () => this.setState({ open: 'asp' }), openDisp: () => this.setState({ open: 'disp' }),
+      aspBd: open === 'asp' ? '#6CA6FF' : '#23272E', dispBd: open === 'disp' ? '#6CA6FF' : '#23272E',
+      aspSummary: h ? '15 µl in the tip' : '',
+      dispSummary: h ? '' : 'The tip is empty',
+      setOpen: st.set, setLabel: st.set ? 'Done' : 'Change', toggleSet: () => this.setState({ set: !st.set }),
+      aspWhere: aspWhere, dispWhere: dispWhere,
+      aHand: st.asp === 'hand', aWell: st.asp === 'well', aPoint: st.asp === 'point',
+      aspBtnOpacity: aspReady ? 1 : 0.4,
+      aspirate: () => { if (aspReady) this.setState({ holding: true, spot: false, open: null }); },
+      amtIsPart: st.amt === 'part',
+      allBg: st.amt === 'all' ? '#2A303A' : 'transparent', allFg: st.amt === 'all' ? '#E8EAED' : '#B3B9C2',
+      partBg: st.amt === 'part' ? '#2A303A' : 'transparent', partFg: st.amt === 'part' ? '#E8EAED' : '#B3B9C2',
+      amtAll: () => this.setState({ amt: 'all' }), amtPart: () => this.setState({ amt: 'part' }),
+      dWell: st.disp === 'well', dPoint: st.disp === 'point', dHere: st.disp === 'here',
+      well: st.well,
+      dispLabel: st.disp === 'here' ? 'Dispense here' : 'Go to ' + dispTarget + ' and dispense',
+      dispBtnOpacity: h ? 1 : 0.4,
+      dispense: () => { if (h) this.setState({ holding: st.amt === 'part', open: null, flash: st.disp === 'here' ? 'Dispensed.' : 'Dispensed in ' + dispTarget + '.' }); },
+      hasToast: !!st.flash, toast: st.flash
+    };
+  }
+}
+</script>
+</body>
+</html>

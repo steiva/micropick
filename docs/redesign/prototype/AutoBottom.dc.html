@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Auto pick, dish bottom</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+a.crumb:hover{background:#1E2228;color:#E8EAED}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.st:hover{background:#1A1D22;color:#E8EAED}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box}
+.line{width:28px;height:1px;background:#2E333B}
+.sd{width:24px;height:24px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.zbtn{width:180px;height:72px;border-radius:14px;border:1px solid #2E333B;background:#1B1E24;color:#E8EAED;font:600 18px 'Inter',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px}
+.zbtn:hover{background:#242830}
+.car{display:flex;align-items:center;gap:4px}
+.car .arr{width:36px;height:40px;border:none;border-radius:9px;background:transparent;color:#C9CED6;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.car .arr:hover{background:#22262D}
+.car .opt{width:84px;height:40px;border:none;border-radius:9px;font:600 15px 'Inter',sans-serif;cursor:pointer}
+.mono{font-family:'JetBrains Mono',monospace}
+.toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:5}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="Main.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Auto pick</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button" style="min-width:118px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <a class="st" href="AutoDeck.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</a>
+    <span class="line"></span>
+    <a class="st" href="AutoTip.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</a>
+    <span class="line"></span>
+    <a class="st" href="AutoPlan.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Plan</a>
+    <span class="line"></span>
+    <a class="st" href="AutoBottom.dc.html" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">4</span>Dish bottom</a>
+    <span class="line"></span>
+    <a class="st" href="AutoPicking.dc.html"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">5</span>Picking</a>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0">
+    <!-- No camera here: you watch the tip with your eyes. The screen shows the one number that matters, and the controls. -->
+    <section style="flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:36px; padding:24px; opacity:{{padOpacity}}">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:6px">
+        <span class="cap">Tip height</span>
+        <span class="mono" style="font-size:72px; font-weight:500; letter-spacing:-0.02em">Z {{z}}</span>
+        <span style="font-size:15px; color:#8A919B">mm</span>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:12px">
+        <button class="zbtn" type="button" onClick="{{up}}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg>Up
+        </button>
+        <div class="car" role="group" aria-label="Step size">
+          <button class="arr" type="button" onClick="{{smaller}}" aria-label="Smaller step"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button>
+          <sc-for list="{{sizes}}" as="z" hint-placeholder-count="3">
+            <button class="opt" type="button" onClick="{{z.pick}}" style="background:{{z.bg}}; color:{{z.fg}}">{{z.label}}</button>
+          </sc-for>
+          <button class="arr" type="button" onClick="{{bigger}}" aria-label="Bigger step"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button>
+        </div>
+        <button class="zbtn" type="button" onClick="{{down}}">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>Down
+        </button>
+      </div>
+    </section>
+
+    <aside style="width:440px; flex:none; padding:20px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:14px; overflow:auto">
+      <h1 style="margin:0; font-size:22px; font-weight:600">Find the dish bottom</h1>
+
+      <div style="display:flex; align-items:center; gap:12px; padding:14px; border-radius:12px; background:#171A1F; border:1px solid #23272E">
+        <div style="flex:1; display:flex; flex-direction:column; gap:2px">
+          <span style="font-size:15px; font-weight:600">Last time: <span class="mono">Z 66.40</span> mm</span>
+          <span style="font-size:13px; color:#8A919B">3 days ago</span>
+        </div>
+        <button class="btn" type="button" onClick="{{useLast}}" style="height:38px; padding:0 14px; font-size:14px">Use it</button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:4px">
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+          <div style="display:flex; gap:12px; padding:10px 0; opacity:{{s.opacity}}">
+            <span class="sd" style="background:{{s.bg}}; color:{{s.fg}}">{{s.mark}}</span>
+            <div style="flex:1; display:flex; flex-direction:column; gap:12px">
+              <div style="font-size:16px; font-weight:600">{{s.title}}</div>
+              <sc-if value="{{s.open}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; flex-direction:column; gap:12px">
+                  <sc-if value="{{s.hasText}}" hint-placeholder-val="{{ true }}"><div style="font-size:14px; color:#B3B9C2; line-height:1.5">{{s.text}}</div></sc-if>
+                  <div><button class="btn btn-p" type="button" onClick="{{next}}">{{s.action}}</button></div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{saved}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; gap:10px; padding:14px; border-radius:12px; background:#16261E; color:#3DD68C; font-weight:600; font-size:15px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>Dish bottom: <span class="mono">Z {{savedZ}}</span> mm
+        </div>
+      </sc-if>
+    </aside>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <a class="btn" href="AutoPlan.dc.html">Back</a>
+    <a class="btn btn-p" href="AutoPicking.dc.html" style="opacity:{{nextOpacity}}">Next
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { s: 0, z: 120.00, step: 6, saved: null, flash: '' };
+  }
+  renderVals() {
+    const st = this.state;
+    const defs = [
+      ['Tip over the dish center', 'The tip goes to the middle of the dish and stops a little above the bottom.', 'Move the tip'],
+      ['Lower until it touches', 'Go down until the dish bottom bends a little. Then go up one step, make the step smaller and lower again.', 'Done'],
+      ['Save', '', 'Save dish bottom']
+    ];
+    const done = (i) => i < st.s || st.saved !== null;
+    const steps = defs.map((d, i) => ({
+      title: d[0], text: d[1], hasText: !!d[1], action: d[2], open: st.saved === null && i === st.s,
+      mark: done(i) ? '✓' : String(i + 1),
+      bg: done(i) ? '#16261E' : (i === st.s ? '#6CA6FF' : '#1E2228'),
+      fg: done(i) ? '#3DD68C' : (i === st.s ? '#0B1220' : '#8A919B'),
+      opacity: st.saved === null && i > st.s ? 0.45 : 1
+    }));
+    const SIZES = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10];
+    const k = st.step;
+    const start = Math.max(0, Math.min(SIZES.length - 3, k - 1));
+    const sizes = SIZES.slice(start, start + 3).map((v, j) => {
+      const idx = start + j, on = idx === k;
+      return { label: v + ' mm', bg: on ? '#E8EAED' : 'transparent', fg: on ? '#0F1114' : '#C9CED6', pick: () => this.setState({ step: idx }) };
+    });
+    const active = st.s === 1 && st.saved === null;
+    return {
+      steps: steps, sizes: sizes,
+      z: st.z.toFixed(2),
+      padOpacity: active ? 1 : 0.45,
+      smaller: () => this.setState({ step: Math.max(0, k - 1) }),
+      bigger: () => this.setState({ step: Math.min(SIZES.length - 1, k + 1) }),
+      up: () => { if (active) this.setState({ z: +(st.z + SIZES[k]).toFixed(2) }); },
+      down: () => { if (active) this.setState({ z: +(st.z - SIZES[k]).toFixed(2) }); },
+      next: () => {
+        if (st.s === 0) this.setState({ s: 1, z: 76.40 });
+        else if (st.s === 1) this.setState({ s: 2 });
+        else this.setState({ saved: st.z.toFixed(2), flash: 'Dish bottom saved.' });
+      },
+      useLast: () => this.setState({ saved: '66.40', flash: 'Using the last dish bottom.' }),
+      saved: st.saved !== null, savedZ: st.saved,
+      hasToast: !!st.flash, toast: st.flash,
+      nextOpacity: st.saved !== null ? 1 : 0.4
+    };
+  }
+}
+</script>
+</body>
+</html>

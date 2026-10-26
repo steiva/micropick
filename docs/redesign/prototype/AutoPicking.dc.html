@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Auto pick, picking</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+a.crumb:hover{background:#1E2228;color:#E8EAED}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.btn-stop{background:#D93A41;border-color:#D93A41;color:#fff}
+.btn-stop:hover{background:#E5484F;color:#fff}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.st:hover{background:#1A1D22;color:#E8EAED}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box}
+.line{width:28px;height:1px;background:#2E333B}
+.act{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;padding:0 12px;box-sizing:border-box;border-radius:10px;border:1px solid #2E333B;background:transparent;color:#E8EAED;font:600 14px 'Inter',sans-serif;cursor:pointer}
+.act:hover{background:#1E2228}
+.fold{display:flex;flex-direction:column;border-radius:14px;background:#171A1F;border:1px solid #23272E;overflow:hidden}
+.fold>button{display:flex;align-items:center;gap:10px;height:52px;padding:0 16px;border:none;background:transparent;color:#E8EAED;font:600 15px 'Inter',sans-serif;cursor:pointer;text-align:left}
+.fold>button:hover{background:#1C2026}
+.over{padding:8px 12px;border-radius:8px;background:rgba(10,12,14,.78);font-size:13px;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace}
+.lock{position:absolute;inset:64px 0 0 0;background:rgba(15,17,20,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;z-index:10}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="Main.dc.html"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Auto pick</span>
+    <div style="flex:1"></div>
+    <sc-if value="{{s.showPill}}" hint-placeholder-val="{{ true }}">
+      <span style="display:flex; align-items:center; gap:10px; padding:8px 16px; border-radius:999px; background:{{s.pillBg}}; color:{{s.color}}; font-weight:600; font-size:15px; margin-right:12px"><span style="width:10px; height:10px; border-radius:50%; background:{{s.color}}"></span>{{s.pill}}</span>
+    </sc-if>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button" onClick="{{toggleLock}}" style="background:{{lockBg}}; color:{{lockFg}}; font-weight:{{lockW}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" fill="{{lockFill}}"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button" style="min-width:118px"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <a class="st" href="AutoDeck.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</a>
+    <span class="line"></span>
+    <a class="st" href="AutoTip.dc.html"><span class="num" style="background:{{tipDotBg}}; color:{{tipDotFg}}; border:{{tipDotBd}}">{{tipDot}}</span>Tip</a>
+    <span class="line"></span>
+    <a class="st" href="AutoPlan.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Plan</a>
+    <span class="line"></span>
+    <a class="st" href="AutoBottom.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Dish bottom</a>
+    <span class="line"></span>
+    <a class="st" href="AutoPicking.dc.html" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">5</span>Picking</a>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0; opacity:{{bodyOpacity}}">
+    <section style="flex:1; min-width:0; padding:16px 20px; box-sizing:border-box">
+      <div style="position:relative; width:100%; height:100%; border-radius:14px; overflow:hidden; background:#050607; border:1px solid #22262C">
+        <svg viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice" style="position:absolute; inset:0; width:100%; height:100%" role="img" aria-label="Dish with the cuboids outlined">
+          <rect width="800" height="600" fill="#0a0b0d"></rect>
+          <circle cx="400" cy="300" r="268" fill="#16181b" stroke="#2a2d32" stroke-width="6"></circle>
+          <sc-for list="{{cuboids}}" as="c" hint-placeholder-count="20">
+            <g transform="translate({{c.x}} {{c.y}}) rotate({{c.r}})">
+              <rect x="-9" y="-9" width="18" height="18" rx="2" fill="#cfc6b2"></rect>
+              <rect x="-15" y="-15" width="30" height="30" rx="4" fill="none" stroke="{{c.stroke}}" stroke-width="{{c.sw}}"></rect>
+            </g>
+          </sc-for>
+        </svg>
+        <div style="position:absolute; left:16px; top:16px" class="over"><span style="color:#3DD68C">{{found}} cuboids found</span></div>
+        <!-- On the picture, because it is about the picture. Only while paused: during a run the robot needs its tip over the dish. -->
+        <div style="position:absolute; right:16px; top:16px; display:flex; align-items:center; gap:8px">
+          <sc-if value="{{camLocked}}" hint-placeholder-val="{{ true }}"><span class="over" style="font-weight:500; color:#B3B9C2">Pause to move the camera</span></sc-if>
+          <button class="over" type="button" style="border:none; color:#E8EAED; cursor:pointer; height:40px; opacity:{{camOpacity}}">Camera to dish center</button>
+        </div>
+      </div>
+    </section>
+
+    <aside style="width:440px; flex:none; padding:20px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:12px; overflow:hidden">
+      <!-- In the order of the work: look at the dish, check sizes, then watch the plate fill -->
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px">
+        <button class="act" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>Analyze the dish</button>
+        <button class="act" type="button"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 12c2-3 4-3 6 0s4 3 6 0 4-3 4-3"></path></svg>Shake the dish</button>
+      </div>
+
+      <div class="fold">
+        <button type="button" onClick="{{openSizes}}" aria-expanded="{{sizesOpen}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{sizesRot}}deg)"><path d="m9 6 6 6-6 6"></path></svg>
+          <span style="flex:1">Cuboid sizes</span><span class="mono" style="font-size:13px; color:#B3B9C2; font-weight:500">250–500 µm</span>
+        </button>
+        <sc-if value="{{sizesOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; flex-direction:column; gap:10px; padding:4px 16px 16px">
+            <div style="position:relative; height:84px; display:flex; align-items:flex-end; gap:3px">
+              <sc-for list="{{hist}}" as="h" hint-placeholder-count="16"><span style="flex:1; height:{{h.h}}%; border-radius:2px 2px 0 0; background:{{h.c}}"></span></sc-for>
+              <span style="position:absolute; left:18.5%; top:-4px; bottom:0; width:3px; border-radius:2px; background:#E8EAED; cursor:ew-resize" aria-hidden="true"></span>
+              <span style="position:absolute; left:74.5%; top:-4px; bottom:0; width:3px; border-radius:2px; background:#E8EAED; cursor:ew-resize" aria-hidden="true"></span>
+            </div>
+            <div style="font-size:12px; color:#8A919B">Drag the white lines to change which sizes are picked.</div>
+            <div style="display:flex; justify-content:space-between; font-size:13px; color:#B3B9C2; padding-top:8px; border-top:1px solid #23272E">
+              <span>0.5 mm above the bottom · 15 µl</span>
+              <button type="button" style="border:none; background:transparent; color:#8DB8FF; font:600 13px 'Inter',sans-serif; cursor:pointer; padding:0">More settings</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div class="fold">
+        <button type="button" onClick="{{openPlate}}" aria-expanded="{{plateOpen}}">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{plateRot}}deg)"><path d="m9 6 6 6-6 6"></path></svg>
+          <span style="flex:1">Plate · slot 5</span><span style="font-size:13px; color:#B3B9C2; font-weight:500"><span class="mono" style="color:#E8EAED">{{filled}}</span> of 24 wells</span>
+        </button>
+        <sc-if value="{{plateOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-direction:column; gap:10px; padding:4px 16px 16px">
+            <div style="display:grid; grid-template-columns:repeat(24, minmax(0, 1fr)); gap:2px; padding:10px; border-radius:12px; background:#14171B; border:1px solid #22262C">
+              <sc-for list="{{plate}}" as="w" hint-placeholder-count="384">
+                <span style="aspect-ratio:1; border-radius:2px; background:{{w.bg}}; box-shadow:{{w.ring}}"></span>
+              </sc-for>
+            </div>
+            <div style="display:flex; gap:16px; font-size:13px; color:#B3B9C2">
+              <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:2px; background:#A99BFA"></span>Filled</span>
+              <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:2px; background:#3A3360"></span>Planned</span>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{s.isDone}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; flex-direction:column; gap:10px; padding:16px; border-radius:14px; background:#171A1F; border:1px solid #23272E">
+          <div style="font-size:15px; font-weight:600">2 wells were not filled</div>
+          <div style="font-size:14px; color:#B3B9C2">A7 and A18. Fill them by hand, without setting up again.</div>
+          <div><a class="btn btn-p" href="Manual.dc.html">Finish by hand</a></div>
+        </div>
+      </sc-if>
+    </aside>
+  </div>
+
+  <sc-if value="{{s.blink}}" hint-placeholder-val="{{ false }}">
+    <div style="flex:none; display:flex; align-items:center; gap:12px; padding:10px 24px; background:#211C10; color:#E9D29A; font-size:14px; border-top:1px solid #22262C">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>
+      The robot is slowly blinking its light to get your attention. Nothing is broken. Any click stops it.
+    </div>
+  </sc-if>
+
+  <!-- Status lives in the bottom bar, next to the buttons that change it -->
+  <footer style="height:72px; flex:none; display:flex; align-items:center; gap:14px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <span style="font-size:12px; font-weight:700; letter-spacing:.1em; color:{{s.color}}; padding:6px 10px; border-radius:8px; background:{{s.pillBg}}">{{s.label}}</span>
+    <span style="flex:1; font-size:16px; font-weight:500">{{s.title}}</span>
+    <sc-if value="{{s.hasLink}}" hint-placeholder-val="{{ false }}"><a class="btn" href="AutoTip.dc.html">Go to Tip</a></sc-if>
+    <sc-if value="{{s.canStart}}" hint-placeholder-val="{{ true }}">
+      <a class="btn" href="AutoBottom.dc.html">Back</a>
+      <button class="btn btn-p" type="button" onClick="{{start}}" style="opacity:{{startOpacity}}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5v14l12-7z"></path></svg>Start picking
+      </button>
+    </sc-if>
+    <sc-if value="{{s.canPause}}" hint-placeholder-val="{{ false }}">
+      <button class="btn" type="button" onClick="{{pause}}" style="min-width:140px; border-color:{{pauseBd}}; color:{{pauseFg}}">{{pauseLabel}}</button>
+      <button class="btn btn-stop" type="button" onClick="{{stopRun}}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>Stop run
+      </button>
+    </sc-if>
+  </footer>
+
+  <sc-if value="{{locked}}" hint-placeholder-val="{{ false }}">
+    <div class="lock">
+      <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#E8EAED" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" fill="#E8EAED"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+      <div style="font-size:28px; font-weight:600">Robot locked</div>
+      <div style="font-size:16px; color:#B3B9C2">Nothing will move. Work with your hands safely.</div>
+      <button class="btn btn-p" type="button" onClick="{{toggleLock}}">Unlock</button>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"situation":{"editor":"enum","options":["ready","running","paused","waiting","done","no tip"],"default":"running"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sit: null, locked: false, open: null };
+  }
+  renderVals() {
+    const sit = this.state.sit ?? (this.props.situation ?? 'running');
+    const S = {
+      'ready':   { label: 'READY', title: 'Dish and plate in place, lids off? Then start.', color: '#3DD68C', pillBg: '#16261E', canStart: true, filled: 0 },
+      'running': { label: 'PICKING', title: 'Well A13 of 24 · taking a cuboid', color: '#6CA6FF', pillBg: '#17233A', pill: 'Picking', showPill: true, canPause: true, filled: 12 },
+      'paused':  { label: 'PAUSED', title: 'You can work by hand. Resume when ready.', color: '#F5B841', pillBg: '#2A2213', pill: 'Paused', showPill: true, canPause: true, filled: 12 },
+      'waiting': { label: 'WAITING FOR YOU', title: 'No cuboids found after 2 shakes. Add cuboids, or finish by hand.', color: '#F5B841', pillBg: '#2A2213', pill: 'Waiting for you', showPill: true, canPause: true, blink: true, filled: 20 },
+      'done':    { label: 'DONE', title: '22 of 24 wells filled.', color: '#3DD68C', pillBg: '#16261E', isDone: true, filled: 22 },
+      'no tip':  { label: 'NOT READY', title: 'Put a tip on first.', color: '#C9CED6', pillBg: '#1E2228', canStart: true, hasLink: true, filled: 0, gated: true }
+    };
+    const s = Object.assign({ canStart: false, canPause: false, blink: false, isDone: false, hasLink: false, gated: false, showPill: false, pill: '' }, S[sit]);
+    const plate = [];
+    'ABCDEFGHIJKLMNOP'.split('').forEach((r) => { for (let c = 1; c <= 24; c++) {
+      let bg = '#22262C', ring = 'none';
+      if (r === 'A') {
+        if (sit === 'done') bg = (c === 7 || c === 18) ? '#3A3360' : '#A99BFA';
+        else bg = c <= s.filled ? '#A99BFA' : '#3A3360';
+        if (sit === 'running' && c === 13) ring = '0 0 0 2px #6CA6FF';
+      }
+      plate.push({ bg: bg, ring: ring });
+    }});
+    const cuboids = [];
+    let seed = 7;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const n = sit === 'waiting' ? 0 : 22;
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 220;
+      cuboids.push({ x: Math.round(400 + Math.cos(a) * d), y: Math.round(300 + Math.sin(a) * d), r: Math.round(rnd() * 90), stroke: '#3DD68C', sw: 2 });
+    }
+    if (sit === 'running') cuboids.push({ x: 452, y: 236, r: 20, stroke: '#6CA6FF', sw: 3 });
+    const hist = [8, 14, 22, 38, 60, 82, 96, 88, 70, 52, 34, 22, 14, 9, 5, 3].map((h, i) => ({ h: h, c: i >= 3 && i <= 11 ? '#6CA6FF' : '#2E333B' }));
+    const paused = sit === 'paused' || sit === 'waiting';
+    const running = sit === 'running';
+    const open = this.state.open ?? ((sit === 'ready' || sit === 'no tip') ? 'sizes' : 'plate');
+    const L = this.state.locked;
+    return {
+      s: s, plate: plate, cuboids: cuboids, hist: hist,
+      found: cuboids.length, filled: s.filled,
+      sizesOpen: open === 'sizes', plateOpen: open === 'plate',
+      sizesRot: open === 'sizes' ? 90 : 0, plateRot: open === 'plate' ? 90 : 0,
+      openSizes: () => this.setState({ open: open === 'sizes' ? 'none' : 'sizes' }),
+      openPlate: () => this.setState({ open: open === 'plate' ? 'none' : 'plate' }),
+      camLocked: running, camOpacity: running ? 0.4 : 1,
+      bodyOpacity: s.gated ? 0.35 : 1,
+      startOpacity: s.gated ? 0.4 : 1,
+      tipDot: s.gated ? '2' : '✓',
+      tipDotBg: s.gated ? 'transparent' : '#16261E', tipDotFg: s.gated ? '#F5B841' : '#3DD68C', tipDotBd: s.gated ? '1.5px solid #F5B841' : 'none',
+      start: () => { if (!s.gated) this.setState({ sit: 'running' }); },
+      pause: () => this.setState({ sit: paused ? 'running' : 'paused' }),
+      pauseLabel: paused ? 'Resume' : 'Pause',
+      pauseBd: paused ? '#F5B841' : '#2E333B', pauseFg: paused ? '#F5B841' : '#E8EAED',
+      stopRun: () => this.setState({ sit: 'ready' }),
+      locked: L, toggleLock: () => this.setState({ locked: !L }),
+      lockBg: L ? '#E8EAED' : 'transparent', lockFg: L ? '#0F1114' : '#C9CED6', lockW: L ? 700 : 500, lockFill: L ? 'currentColor' : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>
