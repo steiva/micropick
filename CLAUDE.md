@@ -60,7 +60,8 @@ the TopBar's breadcrumb is the title.
 There are no tabs, no status bar, no floating next step and no Profile
 page (removed in redesign phase 2; do not bring them back). The window is
 `widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park - what
-Home robot position was - STOP while a run has the robot, Settings) over
+Home robot position was - STOP and the StatusPill while a run has the
+robot, Settings) over
 one stack: Home (`pages.home`: the robot, the Robot setup, three task
 tiles) and the existing pages, reused as the content of a **task**'s
 **steps** (`gui.tasks`; `shell.STEP_PAGES` maps step to page). While a
@@ -75,6 +76,14 @@ page as `Home › <task> › <item>` (`shell.SETUP_PAGES`) until Robot setup
 has its own sheets. The last profile is loaded at start
 (`Session.load_last_profile`, `default` made if none); profiles are never
 chosen on screen. The Log is reached from Settings.
+
+A run is seen from every screen (`MainWindow._show_run`): the pill says
+what it does (`shell.RUNS`, by the lease's holder; "Paused" and "Waiting
+for you" from its page's `run_activity`, re-read on
+`Session.run_activity_changed`), and a click on it goes back to the task
+and step the run was started from. Home's tiles are dimmed under "The
+robot is busy. Go back to <task> to stop or finish it." A new run names
+its holder in `RUNS` and gives its page a `run_activity`.
 
 The keys a page binds and what the mouse does are listed in a box at the
 picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`

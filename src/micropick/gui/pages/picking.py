@@ -1032,6 +1032,12 @@ class PickingPage(QWidget):
         return (self._running()
                 and self._state_text == RobotState.NEEDS_OPERATOR.value)
 
+    def run_activity(self) -> str | None:
+        """For the top bar's pill: "waiting", "paused", or None."""
+        if self._waiting():
+            return "waiting"
+        return "paused" if self._running() and self._pause.is_set() else None
+
     def _resume_run(self) -> None:
         """The retry out of needs_operator, once the dish has been fixed."""
         if self._session is not None and self._waiting():
@@ -1405,6 +1411,7 @@ class PickingPage(QWidget):
         return stopping
 
     def _refresh(self) -> None:
+        self.session.run_activity_changed.emit()
         busy = self._busy()
         connected = self.session.robot is not None
         # Nothing here may move the robot while anything holds it, this

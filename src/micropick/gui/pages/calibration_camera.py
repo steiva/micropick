@@ -823,6 +823,10 @@ class CameraCalibration(QWidget):
     def _on_robot_busy(self, _holder) -> None:
         self._refresh()
 
+    def run_activity(self) -> str | None:
+        """For the top bar's pill: the sweep neither pauses nor waits."""
+        return None
+
     def _refresh(self) -> None:
         running = self._running()
         # Hidden while the sweep runs: its keys are given up, and nothing but

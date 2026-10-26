@@ -668,7 +668,12 @@ class PipetteCalibration(QWidget):
     def _on_robot_busy(self, _holder) -> None:
         self._refresh()
 
+    def run_activity(self) -> str | None:
+        """For the top bar's pill: "waiting" during the touch-up."""
+        return "waiting" if not self.touch_box.isHidden() else None
+
     def _refresh(self) -> None:
+        self.session.run_activity_changed.emit()
         busy = self._busy()
         waiting = not self.touch_box.isHidden()
         session = self.session

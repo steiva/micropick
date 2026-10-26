@@ -9,7 +9,9 @@ Three cards, top to bottom, in one centered column:
    one line.
 2. **Robot setup**: "Setup is done", or "Complete the setup · N steps
    left: …" with Complete setup, which opens the first item missing.
-3. **What are we doing today?**: the three task tiles, words only.
+3. **What are we doing today?**: the three task tiles, words only;
+   dimmed while a run has the robot, under a line naming where the run
+   is (`show_run`, told by the shell).
 
 No profile name and no chooser: the last profile is loaded by itself
 (`Session.load_last_profile`).
@@ -205,16 +207,23 @@ class HomePage(QWidget):
         box = card(self)
         box.layout().setSpacing(16)
         box.layout().addWidget(caption("What are we doing today?", box))
-        grid = QGridLayout()
+        # During a run: one line, and the tiles dimmed under it.
+        self.run_note = muted_label("", box)
+        self.run_note.hide()
+        box.layout().addWidget(self.run_note)
+        self.tile_row = QWidget(box)
+        grid = QGridLayout(self.tile_row)
+        grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(16)
         self.tiles: dict[str, TaskTile] = {}
         for i, (task, (title, _steps)) in enumerate(TASKS.items()):
-            tile = TaskTile(title, TILE_TEXT[task], box)
+            tile = TaskTile(title, TILE_TEXT[task], self.tile_row)
             tile.clicked.connect(lambda t=task: self.task_chosen.emit(t))
             grid.addWidget(tile, 0, i)
             grid.setColumnStretch(i, 1)
             self.tiles[task] = tile
-        box.layout().addLayout(grid)
+        self.tiles_dim = DimCover(self.tile_row)
+        box.layout().addWidget(self.tile_row)
         return box
 
     # -- display -------------------------------------------------------
@@ -280,6 +289,20 @@ class HomePage(QWidget):
         # of its own.
         super().showEvent(event)
         self.refresh()
+
+    def show_run(self, place: str | None) -> None:
+        """While a run has the robot, the tiles are dimmed under a line
+        naming where it is (`place`, "Auto pick"); None: no run."""
+        running = place is not None
+        if running:
+            self.run_note.setText(f"The robot is busy. Go back to {place} "
+                                  f"to stop or finish it.")
+        self.run_note.setVisible(running)
+        self.tile_row.setEnabled(not running)
+        if not running:
+            self.tiles_dim.hide()
+        elif not self.tiles_dim.isVisible():
+            self.tiles_dim.open()
 
     def show_error(self, text: str) -> None:
         self.error.setText(text)

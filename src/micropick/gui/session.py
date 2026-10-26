@@ -343,6 +343,9 @@ class Session(QObject):
     # What now holds the robot (`robot_lease`), in a few words, or None.
     # Emitted from whichever thread claimed or released it.
     robot_busy_changed = Signal(object)
+    # A run's page may have paused, waited or carried on: the top bar's
+    # pill asks it again (`run_activity` on the run's page).
+    run_activity_changed = Signal()
     # Lock was turned on or off (`set_locked`); carries the new state.
     lock_changed = Signal(bool)
     # A step was confirmed or its confirmation dropped; see `confirm`.

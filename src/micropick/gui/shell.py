@@ -26,6 +26,12 @@ Dish bottom has its own Save and Use it, is Dish bottom.
 The window as before: Esc and STOP stop (two presses hold), closing waits
 for the robot to be free, Park is what Home robot position was, Light
 switches the rail lights.
+
+A run is seen from every screen: while one has the robot, the top bar's
+pill says what it is doing (`RUNS`; "Paused" and "Waiting for you" from
+its page's `run_activity`) and STOP shows; Home's tiles are dimmed. Where
+the run was started - the task and step, or the page - is kept, and a
+click on the pill goes back there.
 """
 
 from __future__ import annotations
@@ -93,6 +99,22 @@ SETUP_PAGES = {
     "calibration_position": "tip_calibration",
     "dish_position": "picking",
     "shake_position": "picking",
+}
+
+# The runs, by what their lease says it holds the robot for: the page the
+# run is on, and what the top bar's pill says while it goes on.
+RUNS = {
+    "picking run": ("picking", "Picking"),
+    "liquid run": ("liquid", "Handling liquid"),
+    "camera calibration sweep": ("camera_calibration",
+                                 "Calibrating the camera"),
+    "pipette calibration": ("tip_calibration", "Calibrating the tip"),
+}
+
+# The pill for a run's page's `run_activity`: its text and tone.
+RUN_ACTIVITY = {
+    "paused": ("Paused", "paused"),
+    "waiting": ("Waiting for you", "waiting"),
 }
 
 # Steps their own Next confirms for the robot session.
@@ -179,6 +201,10 @@ class MainWindow(QMainWindow):
         self._need: tasks.Need | None = None
         # What the footer was last given (`_refresh`).
         self._navigation: dict | None = None
+        # The run that has the robot and where it was started: (its
+        # lease's holder, the task, the step), the last two None when it
+        # was started out of a task's steps.
+        self._run: tuple[str, str | None, str | None] | None = None
 
         # Looks at the robot every few seconds; started by `app.run`.
         self.monitor = RobotMonitor(session, self)
@@ -196,6 +222,8 @@ class MainWindow(QMainWindow):
         self.top.park_clicked.connect(self._park)
         self.top.stop_clicked.connect(self._stop)
         self.top.lock_toggled.connect(self._set_locked)
+        self.top.status_clicked.connect(self.go_to_run)
+        session.run_activity_changed.connect(self._show_run)
         self.lock_overlay.unlock_clicked.connect(
             lambda: self._set_locked(False))
         session.lock_changed.connect(self._show_lock)
@@ -341,10 +369,13 @@ class MainWindow(QMainWindow):
         self._show("home", [], in_task=False)
         self.home.refresh()
 
-    def open_task(self, task: str) -> None:
-        """On its first step not done; the last when all are."""
+    def _set_task(self, task: str) -> None:
         self.task = task
         self.step_bar.set_steps([tasks.title(s) for s in tasks.steps(task)])
+
+    def open_task(self, task: str) -> None:
+        """On its first step not done; the last when all are."""
+        self._set_task(task)
         steps = tasks.steps(task)
         first = next((s for s in steps
                       if not tasks.step_state(self.session, task, s).done),
@@ -404,7 +435,7 @@ class MainWindow(QMainWindow):
     def _refresh(self, _arg=None) -> None:
         """The marks, the banner and the footer, from the session now."""
         self._show_park()
-        self.top.set_stop_visible(self.session.robot_lease.holding_run)
+        self._show_run()
         self._show_lock_button()
         if self.task is None or self.step is None:
             return
@@ -472,6 +503,46 @@ class MainWindow(QMainWindow):
         index = steps.index(self.step)
         if index < len(steps) - 1:
             self.show_step(steps[index + 1])
+
+    # -- a run, seen from every screen ---------------------------------------
+
+    def _show_run(self, _arg=None) -> None:
+        """The pill, STOP and Home's tiles, from the robot's lease now."""
+        lease = self.session.robot_lease
+        holder = lease.holder if lease.holding_run else None
+        if holder is None:
+            self._run = None
+        elif self._run is None or self._run[0] != holder:
+            self._run = (holder, self.task, self.step)
+        self.top.set_stop_visible(holder is not None)
+        if holder is None:
+            self.top.set_status(None)
+            self.home.show_run(None)
+            return
+        page, text = RUNS.get(holder, (None, "Running"))
+        activity = (self.pages[page].run_activity()
+                    if page is not None else None)
+        self.top.set_status(*RUN_ACTIVITY.get(activity, (text, "busy")))
+        _holder, task, _step = self._run
+        self.home.show_run(
+            tasks.TASKS[task][0] if task is not None else
+            self._titles[page] if page is not None else "the run")
+
+    def go_to_run(self) -> None:
+        """The pill's click: back to where the run was started."""
+        if self._run is None:
+            return
+        holder, task, step = self._run
+        page = RUNS.get(holder, (None, ""))[0]
+        if task is not None and self.task != task:
+            self._set_task(task)
+        if task is not None and step is not None:
+            self.show_step(step)
+        elif page in SETUP_PAGES.values() and page not in STEP_PAGES.values():
+            self.open_setup_item(next(item for item, p in SETUP_PAGES.items()
+                                      if p == page))
+        elif page is not None:
+            self.show_page(page)
 
     # -- the top bar's tools --------------------------------------------------
 

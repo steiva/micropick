@@ -1521,7 +1521,17 @@ class LiquidHandlingPage(QWidget):
     def _on_robot_busy(self, _holder) -> None:
         self._refresh()
 
+    def run_activity(self) -> str | None:
+        """For the top bar's pill: "waiting" at a check the program
+        pauses for, "paused", or None."""
+        if not self._running:
+            return None
+        if self._checking is not None:
+            return "waiting"
+        return "paused" if self._pause.is_set() else None
+
     def _refresh(self) -> None:
+        self.session.run_activity_changed.emit()
         running, busy = self._running, self.jog.busy
         # Robot work waits for the robot to be free, on any page
         # (`Session.robot_lease`); marking the tip empty does not.
