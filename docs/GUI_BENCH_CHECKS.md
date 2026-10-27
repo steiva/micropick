@@ -8,6 +8,16 @@ One entry per check. Each says which commit introduced the need for it and what
 failure to expect if something is wrong, so a check that goes badly points at
 something rather than just at "the GUI".
 
+The entries before "Redesign, phase 1" were written for the old window:
+tabs, a status bar, the Profile page, Manual control. The checks still
+stand; where they are done moved. The pages are now steps of a task from
+Home (Robot & Deck is the Deck step, Tip calibration the Tip step, Plate
+plan the Plan step, Manual control Manual pick's Work), the profile's
+settings are Robot setup's rows and the Settings sheet's second column,
+the status bar's light is Light in the top bar, its tip button the Tip
+step, and a camera's own window opens from Focus in Robot setup's camera
+sheet.
+
 ---
 
 ## Commit 1 — package skeleton, entry point, theme
@@ -1701,3 +1711,36 @@ tip box and a 384 plate at hand.
 - [ ] **To the end.**
   A run to its last well: DONE, "All N wells done.", Run gets its ✓ in the
   step bar.
+
+
+## Redesign — Finish by hand (#20)
+
+On the bench's profile, with a plan of a few wells and a dish with fewer
+cuboids than the plan needs.
+
+- [ ] **Wells a run left empty are named.**
+  Let the run end short (or Stop run): under the plate card "N wells were
+  not filled" and the wells, with Finish by hand.
+
+- [ ] **Finish by hand.**
+  Finish by hand: `Home › Manual pick`, Work, Dispense open on In a well,
+  the first empty well chosen on the plan's plate, the other empty ones
+  shown. The tip, the dish bottom and the plan are the ones the run had:
+  no step of Manual pick asks for them again.
+
+
+## Redesign — cleanup and Focus in the camera sheets (#24)
+
+On the bench's profile, both cameras attached.
+
+- [ ] **Focus opens the camera's own window.**
+  Robot setup, Lower camera: Focus opens a window with the lower camera's
+  picture and the focus row (slider, number, default, save to profile).
+  Move the slider: the picture sharpens and blurs live. Save to profile:
+  "saved to the profile: focus …". Close the program and start it again:
+  the lower camera opens at that focus.
+
+- [ ] **Focus only for a chosen camera.**
+  In the Upper camera sheet, choose a device the profile does not have
+  (after Reset setup, say): Focus is gray. Cancel closes the focus window
+  with the sheet.

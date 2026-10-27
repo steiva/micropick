@@ -10,6 +10,35 @@ the third for fixes.
 
 ## Unreleased
 
+- A new window (the redesign, `docs/redesign/REDESIGN.md`). The tabs, the
+  status bar, the floating next step and the Profile page are gone. The
+  app opens on Home: the robot (it connects by itself; no Connect), the
+  Robot setup and three tasks - Auto pick, Manual pick, Liquid - each a
+  fixed row of steps (Deck, Tip, Plan, Dish bottom, Picking; Work; Well
+  center, Plan, Run) with Back and Next under them. A step is done
+  because what it sets up holds now, never because it was visited; a step
+  that cannot be done yet is dimmed under one line naming what it needs,
+  with a button there.
+- A top bar on every screen: where you are (`Home › Auto pick`), Light,
+  Lock, Park, Settings, and while a run has the robot a pill saying what
+  it does and a red STOP. A click on the pill goes back to the run.
+- Robot setup is one page: the cameras, camera calibration, platforms and
+  the three positions, each set in a sheet of its own. Profiles are no
+  longer chosen: the last one is loaded, and Reset setup clears the setup
+  after asking (the old one is zipped beside it).
+- A camera's focus is set in the camera's own window, from Focus in
+  Robot setup's camera sheet.
+- The picking run's footer says READY / PICKING / PAUSED / WAITING FOR
+  YOU / DONE / NOT READY and one sentence; while it waits for you the
+  window flashes in the taskbar. Wells a run left empty can be finished
+  by hand on Manual pick's Work.
+- Manual pick's Work: a click moves the camera or the tip, a right click
+  marks a point; Aspirate and Dispense say what they will do.
+- Liquid: a plan is groups of wells with their steps, saved as templates;
+  a plate's well center is measured (or skipped) on its own step; Run
+  shows the plate with progress.
+- The same plate choice, jog pad, fold cards and templates on every page,
+  and side panels that do not scroll.
 - A picking run that finds no cuboids now shakes the dish as many times as
   "Shakes before asking" says, and says how many it did: with 3 it shook
   twice and said "after 3 shakes".

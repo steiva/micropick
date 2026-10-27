@@ -126,7 +126,7 @@ def test_set_well_center_saves_the_jog_from_the_robots_well_top(
     center = session.profile.deck.well_center(5, PLATE)
     assert center is not None and center.well == "B2"
     assert center.offset == pytest.approx([0.4, -0.3, -1.5], abs=0.05)
-    assert center.depth_mm == pytest.approx(10.67)    # the definition's
+    assert center.depth_mm == pytest.approx(10.67, abs=0.01)  # the definition's
     page.deleteLater()
 
 

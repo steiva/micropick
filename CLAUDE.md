@@ -159,12 +159,12 @@ the pad then says so (`jog_panel.TYPING_HELP`), and Enter in the field or
 a click on the picture or the page gives them back.
 
 A camera's focus is tuned only in its own window
-(`widgets.feed_window.FeedWindow`; its status bar button went with the
-status bar, and it comes back in Robot setup's camera sheets):
-`CameraView.enable_focus_tools` - slider, typed number, default 960, save
-to profile - is off on the pages.
+(`widgets.feed_window.FeedWindow`), opened by Focus in Robot setup's
+camera sheet for a camera the profile has (a device only previewed has
+none) and hidden with the sheet: `CameraView.enable_focus_tools` -
+slider, typed number, default 960, save to profile - is off on the pages.
 
-### Manual control drives the robot from the picture
+### Manual pick drives the robot from the picture
 
 One job at a time moves the robot or changes its robot session, across
 every page: it claims the robot's lease first (`Session.robot_lease`,
@@ -260,7 +260,7 @@ has one, else claims the lease for a worker of its own.
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
 
-A section that folds (`theme.factory.Section`, Manual control's Sizes)
+A section that folds (`theme.factory.Section`, Manual pick's Sizes)
 has an arrow as tall as a capital letter (`fold_arrow`), and
 folding lays its scroll column out at once (`_ScrollColumn.fit_now`), so
 the cards around it do not flicker.
@@ -445,10 +445,10 @@ keeps Save and Revert at its bottom right, outside the scrolling columns.
 A key line on the pad, like an item of the mouse row, is "keys   what it
 does", split at its first three spaces.
 
-The keys that move the robot (and Manual control's aspirate, dispense) are
+The keys that move the robot (and Manual pick's aspirate, dispense) are
 `gui.keys` actions with today's keys as defaults, rebound on the Settings
 page's Keys card (`AppSettings.keys`, only the changed ones stored). The
-jog panel and Manual control bind from it, rebind on save, and the pad
+jog panel and Manual pick's Work bind from it, rebind on save, and the pad
 names the keys as bound. A new robot key is an action there, never a
 hard-coded QShortcut.
 

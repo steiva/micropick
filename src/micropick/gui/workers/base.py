@@ -45,13 +45,12 @@ from __future__ import annotations
 
 import inspect
 import threading
-import time
 import traceback
 from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 
-__all__ = ["Worker", "any_running", "activity", "describe_error"]
+__all__ = ["Worker", "any_running", "describe_error"]
 
 # The names the workflows in this repository use: `calibrate_camera` and
 # `run_sweep` declare exactly these. They are a convention, so they are applied
@@ -119,15 +118,6 @@ def describe_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
 
 
-def activity() -> list["Worker"]:
-    """The workers running now, the longest-running first: what the status
-    bar's activity indicator shows. Each says `what` it is doing, since
-    when (`started_at`, monotonic) and the last line it logged."""
-    running = [worker for worker in list(_RUNNING)
-               if worker.running and not worker.background]
-    return sorted(running, key=lambda worker: worker.started_at or 0.0)
-
-
 class Worker(QObject):
     """Runs one blocking callable on a QThread of its own."""
 
@@ -151,12 +141,12 @@ class Worker(QObject):
         that spells one differently is driven: `PickingSession.step` calls its
         cancellation `stop`. None suppresses one.
 
-        `what` is the job in a few words, for the activity indicator
-        ("calibrating the pipette"); it is not passed to the callable.
+        `what` is the job in a few words ("calibrating the
+        pipette"); it is not passed to the callable.
 
         `background`: not work anyone waits for - the connection
-        monitor's look at the robot (`gui.robot_monitor`). Stop and the
-        activity indicator do not count it (`any_running`, `activity`):
+        monitor's look at the robot (`gui.robot_monitor`). Stop does not
+        count it (`any_running`):
         it moves nothing and busies nothing.
 
         `lease` is the robot's (`hardware.robot_lease`), claimed by the
@@ -179,13 +169,7 @@ class Worker(QObject):
                        "message": (message_arg, MESSAGE_ARG)}
         self.cancel = threading.Event()
         self._thread: QThread | None = None
-        # Read by the activity indicator. Plain attributes, written from the
-        # worker's thread: one reference assignment each, and a reader that
-        # sees the previous value only shows it for one more tick.
         self.what = what
-        self.started_at: float | None = None
-        self.last_message = ""
-        self.last_progress: tuple[int, int] | None = None
         self.error: BaseException | None = None
 
     # -- what the callable is actually given --------------------------------
@@ -222,15 +206,10 @@ class Worker(QObject):
     # These are plain functions as far as the workflow is concerned; the signal
     # emission behind them is what crosses to the GUI thread.
     def _on_progress(self, done: int, total: int) -> None:
-        self.last_progress = (int(done), int(total))
         self.progress.emit(int(done), int(total))
 
     def _on_message(self, *parts) -> None:
-        text = " ".join(str(p) for p in parts)
-        line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
-        if line:
-            self.last_message = line
-        self.message.emit(text)
+        self.message.emit(" ".join(str(p) for p in parts))
 
     # -- running -------------------------------------------------------------
 
@@ -263,7 +242,6 @@ class Worker(QObject):
             raise RuntimeError("this worker has already been started")
         thread = QThread()
         self._thread = thread
-        self.started_at = time.monotonic()
         self.moveToThread(thread)
         thread.started.connect(self.run)
         # DirectConnection, deliberately. The worker lives in `thread` and the

@@ -1,7 +1,7 @@
 """A camera feed in a window of its own.
 
-Opened from the camera buttons on the status bar, so a feed can be looked at
-from any page; the same button hides it again. The window owns nothing: the
+Opened by Focus in Robot setup's camera sheet (`pages.camera_sheet`), and
+hidden with the sheet. The window owns nothing: the
 camera belongs to the session and stays open when the window closes, and
 closing is hiding, so the next click brings the same window back where it
 was. The view inside is the same `CameraView` as on the pages, zoom and

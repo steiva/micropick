@@ -60,8 +60,8 @@ A crosshair toggle, on by default for a camera whose label does not say
 "under" and off for one that does: the crosshair marks the reference pixel of
 the upper camera, and on the lower camera it sits over the crosshair disc the
 operator is trying to see. And focus tools, only where asked for
-(`enable_focus_tools`: the camera's own window from the status bar, not the
-pages) and only for a camera whose driver took a `focus` control at open -
+(`enable_focus_tools`: the camera's own window from Robot setup's camera
+sheet, not the pages) and only for a camera whose driver took a `focus` control at open -
 the lower camera has a motorised lens and its focus is set from the profile,
 which is the wrong place to be tuning it by trial. A slider and a number
 field set it on the device live and read it back; "default" puts back

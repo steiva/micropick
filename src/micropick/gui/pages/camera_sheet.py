@@ -12,6 +12,11 @@ other role's device swapped in, a camera added to a profile without
 one); Cancel and × save nothing. `said(text)` is the answer, for the
 window's toast.
 
+Focus opens the camera's own window (`widgets.feed_window.FeedWindow`),
+the one place a focus is tuned and saved to the profile: only for a
+camera the profile has, since the window saves under its label; a device
+not chosen yet is only a preview. The window goes with the sheet.
+
 One preview opens at a time: a choice made while one opens is opened
 after it, and Done waits for the picture of what it saves. Done is gray
 while anything has the robot: a run reads the cameras.
@@ -26,8 +31,9 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ..session import OTHER_ROLE, Session
 from ..tasks import SETUP_TITLES
-from ..theme.factory import heading, muted_label, select
+from ..theme.factory import heading, muted_label, secondary_button, select
 from ..widgets.camera_view import CameraView
+from ..widgets.feed_window import FeedWindow
 from ..widgets.overlays import SheetWindow
 from ..workers import Worker, describe_error
 
@@ -73,6 +79,13 @@ class CameraSheet(SheetWindow):
         self.state = muted_label("", self.body_widget)
         self.state.setWordWrap(True)
         panel.addWidget(self.state)
+        self.focus_button = secondary_button("Focus", self.body_widget)
+        self.focus_button.setToolTip("Open the camera's own window to set "
+                                     "its focus.")
+        self.focus_button.clicked.connect(self._open_focus)
+        panel.addWidget(self.focus_button)
+        # Made on the first Focus; hidden, not destroyed, with the sheet.
+        self.feed_window: FeedWindow | None = None
         panel.addStretch(1)
         holder = QWidget(self.body_widget)
         holder.setLayout(panel)
@@ -126,6 +139,40 @@ class CameraSheet(SheetWindow):
         self.done_button.setToolTip(
             f"Robot busy: {lease.holder}." if lease.busy else "")
 
+    def _profile_label(self) -> str | None:
+        """The profile's label of the camera on the picture, or None while
+        it is a preview of a device the profile does not have."""
+        camera = self.view.camera
+        label = getattr(camera, "label", None)
+        if camera is None or self.session.camera(label) is not camera:
+            return None
+        return label
+
+    def _show_focus(self) -> None:
+        """Focus for a camera the profile has; the focus window goes when
+        the picture is another camera's."""
+        self.focus_button.setEnabled(self._profile_label() is not None)
+        feed = self.feed_window
+        if (feed is not None and not feed.isHidden()
+                and feed.view.camera is not self.view.camera):
+            feed.view.set_camera(None)
+            feed.hide()
+
+    def _open_focus(self) -> None:
+        label = self._profile_label()
+        if label is None:
+            return
+        if self.feed_window is None or self.feed_window.label != label:
+            if self.feed_window is not None:
+                self.feed_window.hide()
+                self.feed_window.deleteLater()
+            self.feed_window = FeedWindow(
+                label, self.window(),
+                save_controls=self.session.save_camera_controls)
+            self.feed_window.setWindowTitle(
+                SETUP_TITLES[f"{self.role}_camera"])
+        self.feed_window.show_camera(self.view.camera)
+
     def _wanted(self, worker: Worker) -> bool:
         """The worker opened what is chosen now, for this role."""
         return (worker.device == self.select.currentData()
@@ -139,6 +186,7 @@ class CameraSheet(SheetWindow):
         if name is None:
             self._shown = None
             self.view.set_camera(None)
+            self._show_focus()
             self.session.close_preview()
             return
         if self._worker is not None and self._worker.running:
@@ -163,6 +211,7 @@ class CameraSheet(SheetWindow):
         self.view.set_camera(camera)
         self.state.setText("")
         self._show_done()
+        self._show_focus()
 
     def _failed(self, reason: str) -> None:
         worker = self.sender()
@@ -176,6 +225,7 @@ class CameraSheet(SheetWindow):
         self.view.set_camera(None)
         self.state.setText(reason)
         self._show_done()
+        self._show_focus()
 
     # -- closing -------------------------------------------------------
 
@@ -183,6 +233,7 @@ class CameraSheet(SheetWindow):
         """The picture off, and the camera opened only for it closed; a
         profile's camera stays open for the pages."""
         self.view.set_camera(None)
+        self._show_focus()                       # the focus window goes too
         self.session.close_preview()
 
     def _save(self) -> None:

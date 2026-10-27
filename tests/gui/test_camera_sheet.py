@@ -119,3 +119,39 @@ def test_done_is_gray_while_the_robot_is_busy(app, window):
     lease.release()
     app.processEvents()
     assert sheet.done_button.isEnabled()
+
+
+def test_focus_opens_the_cameras_own_window_and_saves_to_the_profile(
+        app, window):
+    sheet = _open(app, window, "lower_camera")
+    camera = window.session.camera("under")
+    assert sheet.view.camera is camera
+    assert sheet.focus_button.isEnabled()
+    sheet.focus_button.click()
+    feed = sheet.feed_window
+    assert feed.isVisible()
+    assert feed.view.camera is camera
+    camera.set_controls({"focus": 640})
+    feed.view.focus_save_requested.emit("under")
+    assert window.session.profile.cameras["under"].controls["focus"] == 640
+    sheet.cancel_button.click()
+    assert not feed.isVisible()                    # goes with the sheet
+
+
+def test_focus_is_gray_on_a_camera_not_yet_chosen(app, window):
+    sheet = _open(app, window, "upper_camera")
+    sheet.select.setCurrentIndex(sheet.select.findText("mock-under"))
+    _wait(app, lambda: sheet.view.camera is window.session.camera("under"))
+    assert sheet.focus_button.isEnabled()          # the profile's, by device
+    window.session.reset_setup()
+    sheet = _open(app, window, "lower_camera")     # nothing saved: a preview
+    assert not sheet.focus_button.isEnabled()
+
+
+def test_the_focus_window_goes_when_another_camera_is_chosen(app, window):
+    sheet = _open(app, window, "lower_camera")
+    sheet.focus_button.click()
+    assert sheet.feed_window.isVisible()
+    sheet.select.setCurrentIndex(sheet.select.findText("mock-over"))
+    _wait(app, lambda: sheet.view.camera is window.session.camera("over"))
+    assert not sheet.feed_window.isVisible()
