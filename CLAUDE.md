@@ -117,8 +117,11 @@ calibration, Save anyway). × closes
 it and a sweep carries on. The platforms have theirs
 (`pages.platforms_sheet.PlatformsSheet`): the 3×4 deck, a slot clicked,
 "What stands in this slot?" (the profile's module types or Nothing), its
-height, New type and Delete type - all a draft until Done
-(`Session.set_module_types`, `Session.set_deck_modules`). The three positions share
+height, New type and Delete type - all a draft until Save changes
+(`Session.set_module_types`, `Session.set_deck_modules`), gray while
+nothing differs from what is saved, then "Saved: slot 9 · Calibration
+module"; Done and × only close (no Cancel), and with unsaved changes ask
+Save / Discard first. The three positions share
 one (`pages.position_sheet.PositionSheet`, `open_for(item)`): the upper
 camera with the pad, a click moves the camera through the pixel map
 (`gui.camera_moves`, also the camera calibration's), Move camera to slot
