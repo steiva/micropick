@@ -5,8 +5,8 @@ One sheet for the three, opened from a Positions row (or a step that
 needs one): the upper camera's live picture on the left, the jog pad
 floating over it, and on the right what to do for the position opened:
 
-- **Position over the dish** (`observe`): "Where will the dish with
-  cuboids stand?" - Slot 8, on the picking platform (the default), or
+- **Position over the dish** (`observe`): "Where will the source
+  dish stand?" - Slot 8, on the picking platform (the default), or
   somewhere else - and for slot 8 "Move camera to slot 8". Then the
   picture is clicked, or the arrows used, until the dish rim surrounds
   the crosshair.
@@ -63,7 +63,7 @@ DISH_SLOT = 8
 # The module type the crosshair disc stands on.
 CALIBRATION_MODULE = "Calibration module"
 
-DISH_QUESTION = "Where will the dish with cuboids stand?"
+DISH_QUESTION = "Where will the source dish stand?"
 DISH_HINT = ("Put the dish there. The whole dish should be in the "
              "picture, its rim around the crosshair.")
 CANT_SEE = "The camera can't see this. Watch the robot itself."
