@@ -16,7 +16,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
-from micropick.core.liquid import Location                       # noqa: E402
+from micropick.core.liquid import (Aspirate, Group, Location,   # noqa: E402
+                                   Pause, Program)
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages.labware import LabwarePage              # noqa: E402
@@ -65,13 +66,10 @@ def test_a_liquid_run_keeps_another_pages_panel_off_the_robot(app, session):
     other = JogPanel(session)                   # Manual control's, say
     _settled(app, page.jog)
     _settled(app, other)
-    page.plate.set_selection({"A1", "A2"})
-    page._new_group()
-    page._add_step("pause")
-    page._add_step("aspirate")
-    page.trash.set_location(Location(kind="well", slot="5", load_name=PLATE,
-                                     well="H12"))
-    page._trash_edited()
+    session.set_liquid_plan(Program(
+        trash=Location(kind="well", slot="5", load_name=PLATE, well="H12"),
+        groups=[Group(name="g", slot="5", load_name=PLATE,
+                      wells=["A1", "A2"], steps=[Pause(), Aspirate()])]))
     page._confirm_start = lambda: True
     page._start()
     # Held at its pause: still the run's, as a pause is.

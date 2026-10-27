@@ -1,5 +1,6 @@
-"""The Liquid handling page on a mock session: groups from the plate map,
-steps, the program saved as it is edited, and a run to the end."""
+"""Liquid's Run step on a mock session: it runs the plan Use this plan
+handed over, all its groups or only one. Making the plan is the Plan
+step's (test_liquid_plan_page)."""
 
 import os
 
@@ -12,7 +13,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
-from micropick.core.liquid import Location, Program              # noqa: E402
+from micropick.core.liquid import (Aspirate, Dispense, Group,    # noqa: E402
+                                   Location, Pause, Program)
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as page_module            # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
@@ -37,6 +39,17 @@ def session(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
+TRASH = Location(kind="well", slot="5", load_name=PLATE, well="H12")
+
+
+def _plan(*groups, trash=TRASH) -> Program:
+    """Groups of (wells, steps) on the plate in slot 5."""
+    return Program(trash=trash, groups=[
+        Group(name=f"Group {n + 1}", slot="5", load_name=PLATE,
+              wells=list(wells), steps=list(steps))
+        for n, (wells, steps) in enumerate(groups)])
+
+
 def _wait(app, page, timeout_s=10.0):
     import time
     end = time.monotonic() + timeout_s
@@ -46,57 +59,15 @@ def _wait(app, page, timeout_s=10.0):
     app.processEvents()
 
 
-def test_a_group_is_made_from_the_selection(app, session):
-    page = page_module.LiquidHandlingPage(session)
-    assert page.plate_choice.count() == 1
-    page.plate.set_selection({"A1", "A2", "A3"})
-    page._new_group()
-    group = page.program.groups[0]
-    assert (group.slot, group.load_name) == ("5", PLATE)
-    assert sorted(group.wells) == ["A1", "A2", "A3"]
-    # A well is in one group of its plate at most.
-    page.plate.set_selection({"A3", "B1"})
-    page._new_group()
-    assert sorted(page.program.groups[0].wells) == ["A1", "A2"]
-    assert sorted(page.program.groups[1].wells) == ["A3", "B1"]
-    page.deleteLater()
-
-
-def test_steps_are_added_edited_and_saved(app, session, tmp_path):
-    page = page_module.LiquidHandlingPage(session)
-    page.plate.set_selection({"A1"})
-    page._new_group()
-    page._add_step("aspirate")
-    page._add_step("dispense")
-    assert [s.action for s in page.program.groups[0].steps] == [
-        "aspirate", "dispense"]
-    page.steps.setCurrentRow(0)
-    page.editor.volume.setValue(25.0)
-    assert page.program.groups[0].steps[0].volume_ul == 25.0
-    page._save_current()
-    saved = Program.load(page_module.programs_dir() / page_module.CURRENT_FILE)
-    assert saved == page.program
-    # The next start keeps the trash and not the groups.
-    again = page_module.LiquidHandlingPage(session)
-    assert again.program.groups == []
-    assert again.program.trash == page.program.trash
-    page.deleteLater()
-    again.deleteLater()
-
-
 def test_a_run_goes_through_every_well(app, session):
     session.tip = session.tip.__class__(attached=True)
     page = page_module.LiquidHandlingPage(session)
-    page.plate.set_selection({"A1", "A2"})
-    page._new_group()
-    page._add_step("aspirate")
-    page._add_step("dispense")
-    page.program.groups[0].steps[1].location = Location(kind="here")
+    session.set_liquid_plan(_plan((["A1", "A2"], [
+        Aspirate(), Dispense(location=Location(kind="here"))]), trash=None))
     _wait(app, page)
     assert any("no trash" in p for p in page._run_problems())
-    page.trash.set_location(Location(kind="well", slot="5", load_name=PLATE,
-                                     well="H12"))
-    page._trash_edited()
+    session.set_liquid_plan(_plan((["A1", "A2"], [
+        Aspirate(), Dispense(location=Location(kind="here"))])))
     assert page._run_problems() == []
     page._confirm_start = lambda: True
     page._start()
@@ -115,39 +86,35 @@ def test_a_run_goes_through_every_well(app, session):
     page.deleteLater()
 
 
-def test_problems_say_what_is_missing(app, session):
-    session.tip = session.tip.__class__(attached=False)
+def test_only_one_group_runs_when_the_plan_says_so(app, session):
+    session.tip = session.tip.__class__(attached=True)
     page = page_module.LiquidHandlingPage(session)
-    page._adopt(Program())
-    problems = page._run_problems()
-    assert any("no tip" in p for p in problems)
-    assert any("no groups" in p for p in problems)
+    steps = [Aspirate(volume_ul=10), Dispense(location=TRASH)]
+    session.set_liquid_plan(_plan((["A1", "A2"], steps), (["B1"], steps)),
+                            groups=[1])
+    assert page._total() == 1
+    page._confirm_start = lambda: True
+    page._start()
+    _wait(app, page)
+    assert page.state.done == [(1, "B1")]
+    aspirates = [c[2] for c in session.robot.calls if c[0] == "aspirate"]
+    assert "A1" not in aspirates and "B1" in aspirates
     page.deleteLater()
 
 
-def test_a_well_location_on_the_deck_is_not_marked_missing(app, session):
-    from micropick.core.liquid import Dispense
-    session.load_labware(resolve_definition("nest_1_reservoir_195ml"), 2)
+def test_problems_say_what_is_missing(app, session):
+    session.tip = session.tip.__class__(attached=False)
     page = page_module.LiquidHandlingPage(session)
-    page.plate.set_selection({"A1"})
-    page._new_group()
-    page._add_step("dispense")
-    step = Dispense(location=Location(kind="well", slot="2",
-                                      load_name="nest_1_reservoir_195ml",
-                                      well="A1"))
-    page.program.groups[-1].steps[0] = step
-    page._show_steps(select=0)
-    where = page.editor.where
-    assert "not on the deck" not in where.labware.currentText()
-    assert where.location() == step.location
+    problems = page._run_problems()
+    assert any("no tip" in p for p in problems)
+    assert any("no plan" in p for p in problems)
     page.deleteLater()
 
 
 def test_the_well_under_the_pointer_is_named_and_the_window_mirrors(app,
                                                                     session):
     page = page_module.LiquidHandlingPage(session)
-    page.plate.set_selection({"A1", "A2"})
-    page._new_group()
+    session.set_liquid_plan(_plan((["A1", "A2"], [Pause()])))
     page.plate._set_hover("A2")
     group = page.program.groups[0].name
     assert page.hover_line.text() == f"A2 — {group}, to do"
@@ -191,10 +158,7 @@ def test_steps_name_the_slot_of_each_well(app, session):
     from micropick.core.liquid import Aspirate, describe
     assert "each well of slot 5" in describe(Aspirate(), "5")
     page = page_module.LiquidHandlingPage(session)
-    page.plate.set_selection({"A1"})
-    page._new_group()
-    page._add_step("aspirate")
-    assert "each well of slot 5" in page.steps.item(0).text()
+    session.set_liquid_plan(_plan((["A1"], [Aspirate()])))
     assert page.wells_heading.text() == "Wells: slot 5"
     assert page.deck.parent() is not None
     assert "slot 5" in page._group_route(page.program.groups[0])

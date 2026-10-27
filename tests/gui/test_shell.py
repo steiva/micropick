@@ -221,3 +221,23 @@ def test_dish_bottom_is_its_own_page_and_done_by_use_it_not_by_next(
     page.use_button.click()
     assert window.footer.next.isEnabled()
     assert _chips(window)[2] == ("Dish bottom", True)
+
+
+def test_liquids_plan_is_its_own_page_and_done_by_use_this_plan(app, window):
+    from micropick.core.liquid import Aspirate, Group, Location, Program
+    _connect(app, window)
+    window.home.tiles["liquid"].clicked.emit()
+    window.step_bar.clicked.emit(3)                # Plan
+    page = window.liquid_plan_page
+    assert window.current_page() is page
+    assert window.step == "liquid_plan"
+    assert _chips(window)[3] == ("Plan", False)
+    page.program = Program(
+        trash=Location(kind="point", point="waste"),
+        groups=[Group(name="g", slot="5", load_name="plate", wells=["A1"],
+                      steps=[Aspirate()])])
+    window.session.set_liquid_plan(page.program)
+    assert _chips(window)[3] == ("Plan", True)
+    window.step_bar.clicked.emit(4)                # Run
+    assert window.current_page() is window.liquid_page
+    assert window.liquid_page.program == page.program

@@ -349,6 +349,9 @@ class Session(QObject):
     # and read by the Picking page: the two never see each other, and the
     # session is what a session is attached to.
     routine_changed = Signal(object)
+    # The liquid plan a liquid run does, and which of its groups (None: all),
+    # or None. Set by Liquid's Plan step (Use this plan).
+    liquid_plan_changed = Signal(object)
     camera_opened = Signal(str)
     camera_closed = Signal(str)
     # The application's settings were saved; carries the AppSettings.
@@ -402,6 +405,8 @@ class Session(QObject):
         # (`RobotMonitor`), and is dropped.
         self.run_generation = 0
         self.routine = None                      # see routine_changed
+        self.liquid_plan = None                  # see liquid_plan_changed
+        self.liquid_groups = None
         self.tip = Tip.unknown()                 # see tip_changed
         # What is in the tip, in µl, from `aspirate` and `dispense`; see
         # "liquid in the tip".
@@ -703,6 +708,22 @@ class Session(QObject):
         log.info("routine in hand: %s", routine.name if routine is not None
                  else "none")
         self.routine_changed.emit(routine)
+
+    def set_liquid_plan(self, program, groups=None) -> None:
+        """Use this plan on Liquid's Plan step: a copy of `program` is what
+        a liquid run does, `groups` the indices of the groups it runs (None:
+        all, one after another). Liquid's Plan is done for the robot
+        session (`tasks.step_state`). None clears it."""
+        self.liquid_plan = (program.model_copy(deep=True)
+                            if program is not None else None)
+        self.liquid_groups = (list(groups) if program is not None
+                              and groups is not None else None)
+        if program is not None:
+            log.info("liquid plan in hand: %d groups, running %s",
+                     len(program.groups), "all" if groups is None
+                     else ", ".join(program.groups[i].name for i in groups))
+            self.confirm("liquid_plan")
+        self.liquid_plan_changed.emit(self.liquid_plan)
 
     # -- templates -----------------------------------------------------------
     #

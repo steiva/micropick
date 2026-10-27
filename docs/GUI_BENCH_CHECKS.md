@@ -1638,3 +1638,35 @@ tip box and a 384 plate at hand.
 - [ ] **A run's plate.**
   During a liquid run into a plate, its Save is gray, the tooltip naming
   the run.
+
+## Redesign — Liquid Plan step (#22)
+
+- [ ] **The plate.**
+  Liquid › Plan with a measured and an unmeasured plate on the deck: the
+  dropdown's tiles say "Measured" (green) and "Not measured" (yellow).
+  Choosing the unmeasured one shows the yellow banner; Measure now opens
+  the Well center step, Use anyway hides the banner for that plate.
+
+- [ ] **Groups.**
+  Choose wells (click, row, column, drag; Undo / Redo), "N wells
+  selected", Make a group: the wells take the group's color, a fold card
+  appears under "Groups, in the order they run". Drag a card's header
+  above another: the order changes and the run follows it.
+
+- [ ] **Steps.**
+  "+ Aspirate" with Take liquid from In a well (a reservoir well chosen)
+  adds an aspirate from that well; By hand adds "Pause: Bring the tip to
+  the liquid…" and an aspirate there. Edit unfolds the fields; Try once
+  with a tip on does it for the selected well (watch the robot); Delete
+  step removes it.
+
+- [ ] **What to run and Use this plan.**
+  Only one group, the second chosen: the summary says "1 group · N
+  wells"; Use this plan: "Plan ready", the step is ✓; Run starts only that
+  group (after the trash). A change after it brings Use this plan back.
+
+- [ ] **Templates.**
+  Save as template "Wash", then New plan and A template: "Wash" listed as
+  "1 group · N wells · saved <date>"; a click brings its groups back;
+  a change shows Save changes to "Wash". The file is in
+  `Outputs/templates/liquid-plans/`.

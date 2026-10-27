@@ -7,9 +7,8 @@ shown, the StepBar is over it and the Footer (Back, Next) under it; Home,
 Settings and a setup item have neither.
 
 A **task** is a fixed order of steps (`gui.tasks`); the existing pages are
-the steps' content, `STEP_PAGES` says which. One page can be several
-steps - Liquid handling is Liquid's Plan and Run - and Deck, Tip and
-Dish bottom are the same page and the same state in every task.
+the steps' content, `STEP_PAGES` says which. Deck, Tip and Dish bottom
+are the same page and the same state in every task.
 
 Whether a step is done, and the first need it has not got, are read from
 the session each time (`tasks.step_state`): nothing records a visit. A
@@ -49,8 +48,8 @@ from .. import _version as version
 from .. import paths
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
-                    dish_bottom, home, labware, liquid, manual, picking,
-                    platforms_sheet, position_sheet, robot_setup, routine,
+                    dish_bottom, home, labware, liquid, liquid_plan, manual,
+                    picking, platforms_sheet, position_sheet, robot_setup, routine,
                     settings, well_center)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
@@ -82,6 +81,7 @@ PAGES = (
     ("dish_bottom", dish_bottom.TITLE, dish_bottom.DishBottomPage),
     ("picking", picking.TITLE, picking.PickingPage),
     ("well_center", well_center.TITLE, well_center.WellCenterPage),
+    ("liquid_plan", liquid_plan.TITLE, liquid_plan.LiquidPlanPage),
     ("liquid", liquid.TITLE, liquid.LiquidHandlingPage),
     ("manual", manual.TITLE, manual.ManualPage),
     ("robot_setup", robot_setup.TITLE, robot_setup.RobotSetupPage),
@@ -91,7 +91,7 @@ PAGES = (
 STEP_PAGES = {
     "deck": "labware", "tip": "tip_calibration", "plan": "routine",
     "dish_bottom": "dish_bottom", "picking": "picking", "work": "manual",
-    "well_center": "well_center", "liquid_plan": "liquid", "run": "liquid",
+    "well_center": "well_center", "liquid_plan": "liquid_plan", "run": "liquid",
 }
 
 # The sheet each Robot setup item is set in (`SHEETS`).
@@ -491,7 +491,7 @@ class MainWindow(QMainWindow):
             self.open_setup_item(name)
             return
         if self.task is not None:
-            # The step shown when it is that page (Liquid handling is three),
+            # The step shown when it is that page,
             # else the first that is.
             step = (self._task_step
                     if STEP_PAGES.get(self._task_step) == name else

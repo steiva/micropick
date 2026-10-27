@@ -267,10 +267,16 @@ the cards around it do not flicker.
 
 ### Liquid handling is a program of blocks
 
-The Liquid handling tab (right side, beside Manual control) builds a
-`core.liquid.Program`: groups of wells chosen on the plate map, each with
+Liquid's Plan step (`pages.liquid_plan`, REDESIGN §6.8) builds a
+`core.liquid.Program`: groups of wells chosen on the `PlateGrid`, each with
 steps that each carry their own `Location` (this well, a fixed well, a saved
-point, here); `workflows.liquid` runs it through `JogPanel.run_job`. Saved
+point, here), the groups as fold cards dragged into run order, each step
+one line with Edit (Try once, Delete step), Take liquid from (In a well /
+At a point / By hand: where "+ Aspirate" takes from), What to run (all
+groups or only one), templates as Auto Plan's (`Outputs/templates/
+liquid-plans/`). Use this plan hands a copy and the groups to the session
+(`Session.set_liquid_plan`); Run (`pages.liquid`) runs that, through
+`JogPanel.run_job`, `workflows.liquid.run(groups=...)`. Saved
 points are `profile.positions`, not a list of the page's own. The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing is a program written with these blocks

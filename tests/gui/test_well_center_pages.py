@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox          # noqa: E402
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
+from micropick.gui.pages import liquid_plan                      # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
 from micropick.gui.pages.manual import ManualPage                # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
@@ -73,8 +74,6 @@ def _manual(app, session):
 def _liquid(app, session):
     page = liquid_page.LiquidHandlingPage(session)
     _settle(app, page.jog)
-    page.plate.set_selection({"B2"})
-    page._refresh()
     return page
 
 
@@ -221,11 +220,9 @@ def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session,
 def test_a_center_measured_on_one_page_is_the_other_pages(app, session):
     manual = _manual(app, session)
     _measure(app, session, manual, (0.4, -0.3, -1.5))
-    liquid = _liquid(app, session)
-    plate = liquid._plates()["5"]
+    plate = liquid_plan.plates_for(session)["5"]
     assert plate.center == pytest.approx((0.4, -0.3, -1.5), abs=0.05)
     manual.deleteLater()
-    liquid.deleteLater()
 
 
 @pytest.mark.parametrize("make", [_manual], ids=["manual control"])
@@ -269,13 +266,12 @@ def test_a_run_on_another_plate_leaves_this_ones_center_alone(app, session):
 def test_a_liquid_run_says_which_plates_it_goes_into(app, session):
     from micropick.core.liquid import Location
     session.tip = session.tip.__class__(attached=True)
+    from micropick.core.liquid import Group, Pause, Program
     page = _liquid(app, session)
-    page.plate.set_selection({"A1"})
-    page._new_group()
-    page._add_step("pause")
-    page.trash.set_location(Location(kind="well", slot="5", load_name=PLATE,
-                                     well="H12"))
-    page._trash_edited()
+    session.set_liquid_plan(Program(
+        trash=Location(kind="well", slot="5", load_name=PLATE, well="H12"),
+        groups=[Group(name="g", slot="5", load_name=PLATE, wells=["A1"],
+                      steps=[Pause()])]))
     page._confirm_start = lambda: True
     page._start()
     end = time.monotonic() + 10
