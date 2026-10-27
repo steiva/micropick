@@ -356,6 +356,11 @@ class PlatformsSheet(SheetWindow):
         if not self._changes():
             self._shut(signal)
             return
+        self._ask(signal)
+
+    def _ask(self, signal) -> None:
+        """Save / Discard over the window; `signal` (None: the sheet is
+        already gone) emitted once it is answered and closed."""
         if self.question is not None:
             return
         self.question = ConfirmDialog(
@@ -370,6 +375,11 @@ class PlatformsSheet(SheetWindow):
         question, self.question = self.question, None
         if question is not None:
             question.deleteLater()
+        if signal is None:
+            # Gone elsewhere: a failed save is said, the sheet stays shut.
+            if not discard:
+                self.save()
+            return
         if discard or self.save():
             self._shut(signal)
 
@@ -378,10 +388,12 @@ class PlatformsSheet(SheetWindow):
         signal.emit()
 
     def discard(self) -> None:
-        """Closed by going elsewhere: nothing is saved, nothing asked."""
-        if self.question is not None:
-            self.question.hide()
-            self.question.deleteLater()
-            self.question = None
+        """Closed by going elsewhere (a crumb, Home, another task): the
+        sheet goes, and with unsaved changes Save / Discard is asked over
+        what is shown next, as Done and × ask."""
         if not self.isHidden():
             self.hide()
+        if self._changes():
+            self._ask(None)
+            if self.question is not None:
+                self.question.raise_()

@@ -170,6 +170,40 @@ def test_closing_with_changes_asks_and_save_saves_them(app, window):
     assert _row(window, "platforms")[0]
 
 
+def test_going_elsewhere_with_changes_asks_and_save_saves_them(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    _choose(sheet, 9, "Calibration module")
+    window.open_home()
+    # Gone home, and asked over it: nothing dropped silently.
+    assert not sheet.isVisible()
+    assert sheet.question is not None and sheet.question.isVisible()
+    sheet.question.safe.click()
+    assert sheet.question is None
+    assert window.session.profile.deck.module_for(9).name == (
+        "Calibration module")
+
+
+def test_going_elsewhere_with_changes_asks_and_discard_drops_them(
+        app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    _choose(sheet, 9, "Calibration module")
+    window.open_task("manual")
+    assert sheet.question is not None and sheet.question.isVisible()
+    sheet.question.destructive.click()
+    assert sheet.question is None
+    assert window.session.profile.deck.modules == []
+    assert not sheet.isVisible()
+
+
+def test_going_elsewhere_without_changes_asks_nothing(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    window.open_home()
+    assert sheet.question is None and not sheet.isVisible()
+
+
 def test_a_slots_height_is_changed_and_saved(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
