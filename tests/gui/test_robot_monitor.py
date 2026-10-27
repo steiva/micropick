@@ -1,6 +1,6 @@
 """The connection monitor (#4): the robot is looked at every few seconds,
 a session it can carry on with is taken without a click, and nothing
-moves until the operator says Home the robot.
+moves until the operator says Home and connect.
 
 Driven through `Session.look_at_robot` (the read, on a worker) and
 `Session.robot_seen` (what it changes, on the GUI thread), with the mock
@@ -183,8 +183,9 @@ def test_home_follows_the_robot_switched_off_and_on(app, window):
 
     session._api.power_off()
     _look_now(app, window)
-    assert home.robot_title.text() == "Robot not connected"
-    assert home.robot_text.text().startswith("Looking for the robot")
+    assert home.robot_title.text() == "Connecting to the robot…"
+    assert home.robot_text.text() == (
+        "This can take a few minutes after it is switched on.")
     assert home.waiting.isVisibleTo(home)
     assert not home.below.isEnabled()
 
@@ -193,6 +194,7 @@ def test_home_follows_the_robot_switched_off_and_on(app, window):
     assert home.robot_title.text() == "Robot needs to home"
     assert "restarted" in home.robot_text.text()
     assert home.home_button.isVisibleTo(home)
+    assert home.home_button.text() == "Home and connect"
     assert not home.below.isEnabled()
 
 
@@ -229,6 +231,26 @@ def test_home_the_robot_homes_once_confirmed(app, window, monkeypatch):
     assert window.home.robot_title.text() == "Robot connected"
     assert window.home.below.isEnabled()
 
+
+def test_home_says_homing_while_it_homes(app, window, monkeypatch):
+    import threading
+    _restarted(app, window)
+    gate = threading.Event()
+    new_run = window.session.new_run
+
+    def held(*args, **kwargs):
+        gate.wait(5)
+        return new_run(*args, **kwargs)
+
+    monkeypatch.setattr(window.session, "new_run", held)
+    monkeypatch.setattr(QInputDialog, "exec",
+                        lambda self: QInputDialog.DialogCode.Accepted)
+    window.home.home_button.click()
+    app.processEvents()
+    assert window.home.robot_title.text() == "Homing…"
+    gate.set()
+    _until(app, lambda: window.session.robot is not None)
+    _until(app, lambda: not window.session.robot_lease.busy)
 
 
 def test_a_look_is_not_work_that_stop_waits_for(app, window, monkeypatch):
