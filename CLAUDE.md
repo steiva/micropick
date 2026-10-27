@@ -97,7 +97,8 @@ centered once within two of its sides of the middle; Start calibration,
 the sweep a run (its lease `run=True`: STOP, the pill, which reopens the
 sheet), "Don't touch the robot."; Stop goes back to centering. Good and
 Acceptable are saved at once ("Camera calibrated and saved."), Redo
-waits ("Not accurate enough: …", Redo calibration, Save anyway). × closes
+waits ("Not accurate enough: the marker was off center.", Redo
+calibration, Save anyway). × closes
 it and a sweep carries on. While a Robot setup sheet is open the page
 under it is disabled, so its keys are the sheet's. Reset setup asks (Keep setup primary),
 then `Session.reset_setup` zips the profile folder beside it, dated, and
@@ -310,7 +311,7 @@ The lower camera's mode and crop for pickup clips are settings too
 mode, and the pipette calibration reopens it in the profile's own.
 The camera calibration sweep's parameters (marker side, dictionary, grid,
 degree) are settings too (`AppSettings.sweep_*`); the Camera calibration
-sheet shows them and links to Settings.
+sheet shows them.
 So is where the models run (`AppSettings.inference_device`: Auto, CPU,
 GPU). A `.pt` is run as its ONNX export beside it (`name.onnx`, made by
 `python -m micropick.export_models`, checked against the `.pt`; the build

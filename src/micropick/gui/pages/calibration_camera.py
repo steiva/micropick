@@ -23,13 +23,12 @@ left, and on the right the steps, each a card with a mark
    progress bar and "Don't touch the robot.". Stop (Esc, STOP) ends it at
    the next pose; the gantry has then moved, so the steps go back to 3.
 5. **The result.** Good and Acceptable are saved at once: "Camera
-   calibrated and saved.". Redo is not: "Not accurate enough: ..." with
-   Redo calibration and Save anyway.
+   calibrated and saved.". Redo is not: "Not accurate enough: the marker
+   was off center." with Redo calibration and Save anyway.
 
 The sweep's parameters - marker side, dictionary, grid, degree - are the
 bench's and set in Settings (`AppSettings.sweep_*`); step 4 says which it
-will use, with the way there, and "Use DICT_…" writes the dictionary the
-marker was found in to Settings.
+will use. A marker printed in another dictionary is not in view.
 
 The sweep is the upper camera's - the one Robot setup names - since the
 lower camera looks up at the tip and a map of it is used by nothing.
@@ -48,7 +47,7 @@ residual, how far the recovered marker side is from the printed one, and
 how much of the frame the sweep covered. The worst of the four is the
 verdict. The limits are set from the first real sweep (DESIGN section 3:
 24 µm held out, the side 0.4 % off, the edges of the frame reached). The
-report and two plots are behind Statistics.
+report and the verdict's line go to the log.
 
 Nothing but the result writes the profile, and only after the fit:
 `run_sweep` raises `Cancelled` before the fit is attempted, so a stopped
@@ -62,11 +61,8 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
-import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QFontDatabase, QPalette
-from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPlainTextEdit,
-                               QProgressBar, QPushButton, QVBoxLayout,
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar, QVBoxLayout,
                                QWidget)
 
 from ...config.app_settings import AppSettings
@@ -81,9 +77,8 @@ from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
 from ..tasks import SETUP_TITLES
 from ..theme import SPACING
-from ..theme.factory import (heading, muted_label, primary_button,
-                             quiet_button, scroll_column, secondary_button,
-                             select)
+from ..theme.factory import (muted_label, primary_button, quiet_button,
+                             scroll_column, select)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
@@ -110,6 +105,7 @@ MARKER_FOUND = "MARKER FOUND"
 NO_MARKER = "NO MARKER IN VIEW"
 
 SAVED = "Camera calibrated and saved."
+NOT_ACCURATE = "Not accurate enough: the marker was off center."
 DONT_TOUCH = "Don't touch the robot."
 USE_THE_ARROWS = "Use the arrows to center the marker."
 CENTER_BY_CLICK = ("Click the marker on the picture or use the arrows "
@@ -159,7 +155,6 @@ class Verdict:
     level: str                       # GOOD, ACCEPTABLE or REDO
     line: str                        # the one line for the top of Result
     checks: tuple                    # (what, value, unit, level) for each
-    why: str = ""                    # what made it worse than Good
 
 
 def _grade(what: str, value: float) -> str:
@@ -191,11 +186,11 @@ def judge(report, printed_side_mm: float | None) -> Verdict:
         return f"{what} {value:.1f} {unit}" if unit != "%" else \
             f"{value:.0f} % of the frame covered"
 
-    parts = []
     if level == GOOD:
         line = f"{GOOD}: " + ", ".join(said(*c[:3]) for c in checks) + "."
     else:
         worst = [c for c in checks if c[3] == level]
+        parts = []
         for what, value, unit, _ in worst:
             _u, good, acceptable, higher = VERDICT_LIMITS[what]
             limit = good if level == ACCEPTABLE else acceptable
@@ -206,21 +201,13 @@ def judge(report, printed_side_mm: float | None) -> Verdict:
         line = f"{level}: " + "; ".join(parts) + "."
         if level == REDO:
             line += " Center the marker and sweep again."
-    return Verdict(level, line, checks, "; ".join(parts))
+    return Verdict(level, line, checks)
 
 
 # How often the sheet looks for the marker. Three times a second is faster than
 # a hand moves a marker and a twentieth of what the detection costs, so the
 # grab loop and the view keep the rest.
 WATCH_MS = 330
-
-# Plot colours. A plot is its own surface, like the camera viewport, so these
-# are fixed; what is not fixed is the ink, which comes from the palette's text
-# colour. That one role does track the theme — measured, unlike the background
-# roles qdarktheme leaves as placeholders.
-CORNER_PEN = (94, 158, 235)      # blue
-LIMIT_PEN = (235, 128, 80)       # orange
-
 
 
 class CameraCalibrationSheet(SheetWindow):
@@ -276,7 +263,6 @@ class CameraCalibrationSheet(SheetWindow):
             if name == "center":
                 cards.addWidget(self.jog)
         cards.addStretch(1)
-        self._build_statistics()
 
         self.body.addWidget(
             FeedRow(self.view, scroll_column(column, PANEL_WIDTH)), 1)
@@ -324,12 +310,6 @@ class CameraCalibrationSheet(SheetWindow):
         step.add(self.center_how)
         self.center_state = muted_label()
         step.add(self.center_state)
-        # Only when the marker is found under a dictionary other than the
-        # one the sweep is set to: one click, and it says which.
-        self.use_dictionary_button = secondary_button("", self)
-        self.use_dictionary_button.clicked.connect(self._use_found_dictionary)
-        self.use_dictionary_button.hide()
-        step.add(self.use_dictionary_button)
         self.centered_button = primary_button("It is centered", self)
         self.centered_button.clicked.connect(lambda: self._go("calibrate"))
         step.add(self.centered_button)
@@ -339,19 +319,10 @@ class CameraCalibrationSheet(SheetWindow):
         step = StepCard(self.body_widget, number, "Calibrate")
         step.add(wrapped("The robot moves the camera over the marker by "
                          "itself. About 2 min."))
-        # The parameters are Settings'; said here, with the way there.
-        row = QHBoxLayout()
+        # The parameters are Settings'; said here.
         self.parameters = QLabel()
         self.parameters.setWordWrap(True)
-        row.addWidget(self.parameters, 1)
-        self.parameters_button = QPushButton("Settings ›", self)
-        self.parameters_button.setFlat(True)
-        self.parameters_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.parameters_button.setToolTip("Calibration parameters.")
-        self.parameters_button.clicked.connect(
-            lambda: self.session.page_requested.emit("settings"))
-        row.addWidget(self.parameters_button, 0, Qt.AlignmentFlag.AlignTop)
-        step.add_layout(row)
+        step.add(self.parameters)
         # What stops Start, or how the last sweep ended.
         self.camera_note = muted_label()
         self.camera_note.setWordWrap(True)
@@ -372,7 +343,7 @@ class CameraCalibrationSheet(SheetWindow):
         step = StepCard(self.body_widget, number, "Result")
         self.saved_banner = Banner(SAVED, tone="ok", parent=self)
         step.add(self.saved_banner)
-        self.poor_banner = Banner("", tone="warn", parent=self)
+        self.poor_banner = Banner(NOT_ACCURATE, tone="warn", parent=self)
         step.add(self.poor_banner)
         row = QHBoxLayout()
         self.redo_button = primary_button("Redo calibration", self)
@@ -383,48 +354,7 @@ class CameraCalibrationSheet(SheetWindow):
         row.addWidget(self.save_anyway_button)
         row.addStretch(1)
         step.add_layout(row)
-        self.stats_button = quiet_button("Statistics", self)
-        self.stats_button.setToolTip("Report, coverage and residual plots.")
-        self.stats_button.clicked.connect(self._show_statistics)
-        step.add(self.stats_button)
         return step
-
-    def _build_statistics(self) -> None:
-        """The report and the plots, in a window of their own."""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Calibration statistics")
-        dialog.resize(760, 860)
-        column = QVBoxLayout(dialog)
-        self.report_text = QPlainTextEdit(dialog)
-        self.report_text.setReadOnly(True)
-        self.report_text.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.report_text.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.report_text.setMaximumHeight(170)
-        column.addWidget(self.report_text)
-        column.addWidget(heading("Coverage", 3))
-        self.coverage_plot = self._plot("u, px", "v, px")
-        column.addWidget(self.coverage_plot, 1)
-        column.addWidget(heading("Residual per pose", 3))
-        self.resid_plot = self._plot("pose", "residual, µm")
-        column.addWidget(self.resid_plot, 1)
-        self.statistics = dialog
-
-    def _show_statistics(self) -> None:
-        self.statistics.show()
-        self.statistics.raise_()
-
-    def _plot(self, x_label: str, y_label: str):
-        """A transparent plot, inked with the palette's text colour."""
-        widget = pg.PlotWidget(background=None)
-        ink = self.palette().color(QPalette.ColorRole.Text)
-        for axis in ("left", "bottom"):
-            widget.getAxis(axis).setPen(ink)
-            widget.getAxis(axis).setTextPen(ink)
-        widget.setLabel("bottom", x_label)
-        widget.setLabel("left", y_label)
-        widget.showGrid(x=True, y=True, alpha=0.2)
-        return widget
 
     # -- opening and closing -------------------------------------------------
 
@@ -464,7 +394,6 @@ class CameraCalibrationSheet(SheetWindow):
         if STEPS.index(step) < STEPS.index("result"):
             self._result = self._verdict = None
             self._saved, self._save_error = False, ""
-            self.statistics.hide()
         self._refresh()
 
     def _fill_slots(self) -> None:
@@ -590,19 +519,6 @@ class CameraCalibrationSheet(SheetWindow):
         log.error("looking for the marker: %s", reason)
         self._refresh()
 
-    def _use_found_dictionary(self) -> None:
-        """Set the sweep's dictionary in Settings to the one the marker was
-        found in, and save it: the marker on the bench is printed in it."""
-        if self._sighting is None or not self._sighting.found:
-            return
-        name = self._sighting.dictionary
-        if name not in DICTIONARIES:
-            return
-        settings = self.session.settings
-        self.session.set_settings(
-            settings.model_copy(update={"sweep_dictionary": name}))
-        log.info("dictionary set to %s, where the marker was found", name)
-
     def _parameters(self) -> dict:
         return sweep_parameters(self.session.settings)
 
@@ -714,13 +630,10 @@ class CameraCalibrationSheet(SheetWindow):
     def _on_finished(self, result) -> None:
         self._worker = None
         self.view.set_overlay_items([])
-        pmap, report, sweep = result
+        _pmap, report, _sweep = result
         verdict = judge(report, self._sweep_used["marker_side_mm"])
         log.info("camera calibration fitted:\n%s", report)
         log.info("camera calibration verdict: %s", verdict.line)
-        self.report_text.setPlainText(f"{verdict.line}\n\n{report}")
-        self._draw_coverage(report, sweep)
-        self._draw_residuals(report)
         self._go("result")
         self._result, self._verdict = result, verdict
         self._saved, self._save_error = False, ""
@@ -821,10 +734,6 @@ class CameraCalibrationSheet(SheetWindow):
         self.marker_state = ("" if not watching else
                              MARKER_FOUND if self._seen() else NO_MARKER)
         self.view.set_status([self.marker_state] if self.marker_state else [])
-        wrong = watching and sighting.found and not sighting.as_asked
-        self.use_dictionary_button.setVisible(wrong)
-        if wrong:
-            self.use_dictionary_button.setText(f"Use {sighting.dictionary}")
         if self._centered():
             self.center_state.setText("In the middle.")
         elif self._seen():
@@ -843,11 +752,10 @@ class CameraCalibrationSheet(SheetWindow):
         self.saved_banner.setVisible(self._saved)
         if unsaved:
             self.poor_banner.set_text(
-                self._save_error or f"Not accurate enough: {verdict.why}.")
+                self._save_error or NOT_ACCURATE)
         self.poor_banner.setVisible(unsaved)
         self.redo_button.setVisible(unsaved)
         self.save_anyway_button.setVisible(unsaved)
-        self.stats_button.setVisible(verdict is not None)
 
     def _show_marks(self, index: int, running: bool) -> None:
         """Done before the step open now, to do there, waiting after."""
@@ -858,54 +766,3 @@ class CameraCalibrationSheet(SheetWindow):
                 card.set_state(TODO)
             else:
                 card.set_state(BLOCKED, f"First: step {index + 1}.")
-
-    # -- the plots -----------------------------------------------------------
-
-    def _draw_coverage(self, report, sweep) -> None:
-        """Where in the frame the map was actually fitted.
-
-        Straight out of SweepData: every detected corner of every pose. It
-        answers the question the residual numbers cannot — a map with a fine
-        residual over a third of the frame is still wrong everywhere else.
-        """
-        plot = self.coverage_plot
-        plot.clear()
-        points = np.asarray(sweep.track_px).reshape(-1, 2)
-        plot.plot(points[:, 0], points[:, 1], pen=None, symbol="o",
-                  symbolSize=4, symbolBrush=CORNER_PEN, symbolPen=None)
-
-        width, height = sweep.image_size
-        u0, v0, u1, v1 = report.coverage
-        for (x0, y0, x1, y1), colour in (((0, 0, width, height), LIMIT_PEN),
-                                         ((u0, v0, u1, v1), CORNER_PEN)):
-            plot.plot([x0, x1, x1, x0, x0], [y0, y0, y1, y1, y0],
-                      pen=pg.mkPen(colour, width=1))
-        plot.setTitle(f"{report.coverage_frac[0]*100:.0f} % x "
-                      f"{report.coverage_frac[1]*100:.0f} % of the frame")
-        # v grows downward in image coordinates.
-        plot.getViewBox().invertY(True)
-
-    def _draw_residuals(self, report) -> None:
-        """One point per corner per pose.
-
-        The mean and the max cannot tell one pose that flew off from all of
-        them drifting a little, and those are different faults: the first is a
-        sweep to run again, the second a loose mount or a focus that moved.
-        """
-        plot = self.resid_plot
-        plot.clear()
-        resid = report.resid_um
-        if resid is None:
-            plot.setTitle("this build's fit reports no per-pose residuals")
-            return
-        resid = np.asarray(resid)
-        poses = np.repeat(np.arange(resid.shape[0]), resid.shape[1])
-        plot.plot(poses, resid.reshape(-1), pen=None, symbol="o", symbolSize=4,
-                  symbolBrush=CORNER_PEN, symbolPen=None)
-        plot.plot([0, resid.shape[0] - 1],
-                  [report.holdout_mean_um, report.holdout_mean_um],
-                  pen=pg.mkPen(LIMIT_PEN, width=1, style=Qt.PenStyle.DashLine))
-        plot.setTitle(f"mean {report.resid_mean_um:.1f}  "
-                      f"max {report.resid_max_um:.1f} µm   "
-                      f"(dashed: held out {report.holdout_mean_um:.1f})")
-

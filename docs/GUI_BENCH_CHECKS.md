@@ -1236,7 +1236,8 @@ camera chosen, the robot connected, the calibration marker at hand.
 - [ ] **The result.**
   A full sweep: green "Camera calibrated and saved.", the Camera
   calibration row says it was done just now. With the marker off center
-  on purpose: yellow "Not accurate enough: …" with Redo calibration
+  on purpose: yellow "Not accurate enough: the marker was off center."
+  with Redo calibration
   (back to step 3) and Save anyway (saves, then green).
 
 - [ ] **Parameters.**
