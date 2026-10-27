@@ -26,7 +26,10 @@ tip is on - the robot never moves while the disc is being placed:
 
 Then "Tip calibrated." with Check: tip to crosshair, which sends the tip to
 the crosshair the routine found, at the module height, with the offset
-now saved. Liquid's Tip step has no calibration (`set_task`): it is done
+now saved. With no calibration since the program started (the tip
+calibrated in an earlier start, same tip and robot session), the
+crosshair is the pixel map's at the middle of the picture from the
+calibration position. Liquid's Tip step has no calibration (`set_task`): it is done
 once a tip is on.
 
 **The calibration is one run.** Start claims the robot's lease as a run
@@ -149,7 +152,7 @@ class PipetteCalibration(QWidget):
         # How the last run ended, shown under Start until the next one.
         self._outcome = ""
         # The crosshair the last calibration found, robot XY: where Check
-        # sends the tip.
+        # sends the tip (else `_crosshair_xy`'s guess).
         self._crosshair: tuple[float, float] | None = None
         # The lower camera after a check, until the next refresh that
         # changes something: the tip is under it.
@@ -394,6 +397,19 @@ class PipetteCalibration(QWidget):
         if profile is None:
             return None
         return profile.positions.get(POSITION_NAME)
+
+    def _crosshair_xy(self) -> tuple[float, float] | None:
+        """Where the crosshair is, robot XY: the last calibration's, else
+        the middle of the picture from the calibration position through the
+        pixel map - the camera is set over the disc there."""
+        if self._crosshair is not None:
+            return self._crosshair
+        profile, stored = self.session.profile, self._stored_position()
+        if profile is None or profile.pixel_map is None or stored is None:
+            return None
+        pmap = PixelMap(profile.pixel_map)
+        x, y = pmap.to_robot(pmap.config.cu, pmap.config.cv, stored[:2])
+        return float(x), float(y)
 
     def _start_offset(self) -> tuple[float, float]:
         """Where the routine first looks for the tip: the profile's offset,
@@ -670,10 +686,11 @@ class PipetteCalibration(QWidget):
         height, through the offset now saved."""
         profile = self.session.profile
         offset = profile.calibration.pipette_offset if profile else None
-        if self._crosshair is None or offset is None or self._running():
+        crosshair = self._crosshair_xy()
+        if crosshair is None or offset is None or self._running():
             return
-        x = self._crosshair[0] + offset.dx
-        y = self._crosshair[1] + offset.dy
+        x = crosshair[0] + offset.dx
+        y = crosshair[1] + offset.dy
         z = float(profile.calibration.tip_target.module_height)
         motion = self.session.motion
         self._looking_at_tip = True
@@ -818,7 +835,7 @@ class PipetteCalibration(QWidget):
         self.checks.setVisible(bool(self.checks.text()))
         self.calibrated.setVisible(measured and not running)
         self.check_button.setEnabled(
-            measured and not running and self._crosshair is not None
+            measured and not running and self._crosshair_xy() is not None
             and not session.robot_lease.busy)
         if not running and not self.jog.busy:
             self._looking_at_tip = self._looking_at_tip and measured

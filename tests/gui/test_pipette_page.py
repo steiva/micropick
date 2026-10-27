@@ -245,6 +245,34 @@ def test_check_sends_the_tip_to_the_crosshair_it_found(app, page, ready):
                                    abs=0.05)
 
 
+def test_check_after_a_restart_takes_the_crosshair_from_the_pixel_map(
+        app, page, ready):
+    from micropick.config.schema import PixelMap as PixelMapConfig
+    from micropick.core.calibration.pixel_map import PixelMap
+    w, h, k = 1600, 1200, 0.01
+    page.session.profile.calibration.pixel_map = PixelMapConfig(   # a toy
+        degree=1, cu=w / 2, cv=h / 2, s=w / 2,
+        coef=[[0.0, k * w / 2], [k * w / 2, 0.0]], zero=[0.0, 0.0],
+        ref=[w / 2, h / 2], bounds=[100.0, 100.0, w - 100.0, h - 100.0],
+        image_size=[w, h], sweep_z=0.0)
+    page.start_button.click()
+    assert _until(app, lambda: page.disc_button.isEnabled())
+    page.disc_button.click()
+    page.calibrate_button.click()
+    assert _until(app, lambda: page.skip_button.isEnabled())
+    page.skip_button.click()
+    assert _until(app, lambda: not page.session.robot_lease.busy)
+    page._crosshair = None                   # as a page of a new start
+    page._refresh()
+    assert page.check_button.isEnabled()
+    pmap = PixelMap(page.session.profile.pixel_map)
+    gx, gy = pmap.to_robot(pmap.config.cu, pmap.config.cv, (150.0, 150.0))
+    page.check_button.click()
+    assert _until(app, lambda: not page.jog.busy)
+    x, y, _z = tip_page.xyz(page.session.robot)
+    assert (x, y) == pytest.approx((gx + 1.5, gy - 2.5), abs=0.05)
+
+
 def test_stop_at_the_disc_ends_the_run_with_nothing_saved(app, page, ready):
     session = page.session
     page.start_button.click()
