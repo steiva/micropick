@@ -1143,8 +1143,8 @@ bench's profile.
   Upper and lower camera name the attached cameras; Camera calibration
   says "Done N days ago"; Platforms names each kind with its slots
   ("Picking platform in 5 and 8 · Calibration module in 9"). Each position
-  reads `≈ slot <n> · X … Y … Z …`, and the slot is the one the camera is
-  over when the robot goes to that position. No "observe", "shake" or
+  reads `≈ slot <n> · X … Y … Z …`, the slot the head is roughly over
+  at that position (the robot's X and Y, not the camera's). No "observe", "shake" or
   "tip_calib" anywhere.
 
 - [ ] **A row opens where it is set.**
@@ -1162,5 +1162,7 @@ bench's profile.
   "Not set.". Beside the profile folder (`Documents\micropick\profiles`)
   is `<profile>-<date>_<time>.zip` holding the folder as it was. The deck
   page's labware, the plate plan, the picking settings (Settings) and the
-  dish bottom are as before. Set the cameras back from Settings to carry
+  dish bottom are as before. With the platforms cleared, jogging no
+  longer stops above a module's top until Platforms is set again. Set
+  the cameras back from Settings to carry
   on, or restore the zip by hand.

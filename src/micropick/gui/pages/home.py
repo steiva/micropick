@@ -110,6 +110,10 @@ class _ClickableCard(QFrame):
         super().__init__(parent)
         self.setObjectName("card")
         self.setFrameShape(QFrame.Shape.Panel)
+        # As `card` has it: its wrapped text asks for height by width.
+        policy = self.sizePolicy()
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)

@@ -60,8 +60,7 @@ from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
 from ..hardware.robot_lease import RobotLease       # noqa: E402
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
-from .readiness import (CALIBRATION_POSITION, DISH_POSITION,  # noqa: E402
-                        SHAKE_POSITION)
+from .tasks import SETUP_POSITIONS                  # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
            "MemoPoint",
@@ -1726,8 +1725,7 @@ class Session(QObject):
             raise SessionError(f"Robot busy: {self.robot_lease.holder}.")
         for label in list(self._open):
             self.close_camera(label)
-        archive = self.profile.reset_setup(
-            (DISH_POSITION, SHAKE_POSITION, CALIBRATION_POSITION))
+        archive = self.profile.reset_setup(SETUP_POSITIONS.values())
         self.cameras = CameraManager.from_profile(self.profile)
         log.warning("robot setup of profile %r reset; the profile before it "
                     "is in %s", self.profile.name, archive)

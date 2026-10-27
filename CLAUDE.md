@@ -72,7 +72,7 @@ time, never from a visit; a step whose need is not met is dimmed
 banner naming that need with a button there. A task opens on its first
 step not done. Next is enabled when the step is done or optional; Deck is
 confirmed by its own Next. Robot setup (`pages.robot_setup`, from Home's
-Setup card) is one page of rows - the cameras, camera calibration,
+Setup card; the one page with a title, REDESIGN §5) is one page of rows - the cameras, camera calibration,
 platforms, the three positions (each `≈ slot n · X Y Z`, never its stored
 name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
 and Home's "N steps left" read. A row, or a Robot setup item needed by a

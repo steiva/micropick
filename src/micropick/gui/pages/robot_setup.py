@@ -27,9 +27,8 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
 from ...core.deck import nearest_slot
-from ..readiness import CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION
 from ..session import Session
-from ..tasks import SETUP_TITLES, setup_done
+from ..tasks import SETUP_POSITIONS, SETUP_TITLES, setup_done
 from ..theme import COLORS
 from ..theme.factory import caption, card, heading, secondary_button
 from ..theme.icons import pixmap
@@ -55,10 +54,6 @@ BLOCKS = (
                    "calibration_position")),
 )
 
-_POSITIONS = {"dish_position": DISH_POSITION,
-              "shake_position": SHAKE_POSITION,
-              "calibration_position": CALIBRATION_POSITION}
-
 
 class SetupRow(QFrame):
     """A mark, a label, a value and a ›; the whole row is clicked."""
@@ -71,8 +66,8 @@ class SetupRow(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.done = False
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 10, 12, 10)
-        row.setSpacing(14)
+        row.setContentsMargins(12, 8, 12, 8)
+        row.setSpacing(16)
         self.mark = QLabel(self)
         self.mark.setFixedSize(MARK_PX, MARK_PX)
         self.mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -144,7 +139,7 @@ class RobotSetupPage(QWidget):
         self.session = session
 
         column = QVBoxLayout()
-        column.setSpacing(10)
+        column.setSpacing(8)
         top = QHBoxLayout()
         top.addWidget(heading(TITLE, 1, self))
         top.addStretch(1)
@@ -152,13 +147,13 @@ class RobotSetupPage(QWidget):
         self.reset_button.clicked.connect(self._reset)
         top.addWidget(self.reset_button)
         column.addLayout(top)
-        column.addSpacing(12)
+        column.addSpacing(8)
 
         self.rows: dict[str, SetupRow] = {}
         for name, items in BLOCKS:
             column.addWidget(caption(name, self))
             box = card(self)
-            box.layout().setContentsMargins(8, 6, 8, 6)
+            box.layout().setContentsMargins(8, 4, 8, 4)
             box.layout().setSpacing(0)
             for item in items:
                 if item is None:
@@ -173,7 +168,7 @@ class RobotSetupPage(QWidget):
                 box.layout().addWidget(row)
                 self.rows[item] = row
             column.addWidget(box)
-            column.addSpacing(14)
+            column.addSpacing(16)
         column.addStretch(1)
 
         holder = QWidget(self)
@@ -189,7 +184,7 @@ class RobotSetupPage(QWidget):
 
     # -- display -------------------------------------------------------
 
-    def value(self, item: str) -> str:
+    def value_text(self, item: str) -> str:
         """What a row says is set; NOT_SET when nothing is."""
         session, profile = self.session, self.session.profile
         if profile is None or not setup_done(session, item):
@@ -208,11 +203,11 @@ class RobotSetupPage(QWidget):
                                  []).extend(module.slots)
             return " · ".join(f"{name} in {_slots(slots)}"
                               for name, slots in kinds.items())
-        return position_text(profile.positions[_POSITIONS[item]])
+        return position_text(profile.positions[SETUP_POSITIONS[item]])
 
     def refresh(self) -> None:
         for item, row in self.rows.items():
-            row.show_state(setup_done(self.session, item), self.value(item))
+            row.show_state(setup_done(self.session, item), self.value_text(item))
         lease = self.session.robot_lease
         self.reset_button.setEnabled(not lease.busy)
         self.reset_button.setToolTip(
@@ -232,7 +227,7 @@ class RobotSetupPage(QWidget):
         if not ConfirmDialog.confirm(
                 self, "Reset the setup?",
                 text="Clears the cameras, camera calibration, platforms "
-                     "and positions. The deck and picking settings stay.",
+                     "and positions; keeps the deck and picking settings.",
                 safe="Keep setup", destructive="Reset"):
             return
         try:

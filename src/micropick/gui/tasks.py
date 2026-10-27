@@ -39,7 +39,7 @@ from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
 __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
-           "StepState", "missing_setup", "setup_done", "skipped_plate",
+           "SETUP_POSITIONS", "StepState", "missing_setup", "setup_done", "skipped_plate",
            "step_state", "steps", "title"]
 
 # task -> (its name on screen, its steps in order)
@@ -80,6 +80,14 @@ class StepState:
 
 
 _ROBOT = Need("robot", "robot", "The robot is not connected.")
+
+# The Robot setup items that are a stored position, and its name in the
+# profile: on screen by slot and coordinates, cleared by Reset setup.
+SETUP_POSITIONS = {
+    "dish_position": DISH_POSITION,
+    "shake_position": SHAKE_POSITION,
+    "calibration_position": CALIBRATION_POSITION,
+}
 
 # The Robot setup items, in the order of its page (REDESIGN §5): the
 # sentence a step's banner says when it needs one, and whether it is set,
