@@ -251,3 +251,40 @@ def test_a_blow_out_away_from_a_well_prepares_the_plunger():
     names = [c[0] for c in robot.calls]
     at = names.index("blow_out_in_place")
     assert names[at + 1] == "prepare_to_aspirate"
+
+
+def _two_groups() -> Program:
+    return Program(trash=WASTE, groups=[
+        Group(name="g", slot="5", load_name="plate", wells=["A1", "A2"],
+              steps=[Aspirate(volume_ul=10), Dispense(location=WASTE)]),
+        Group(name="h", slot="5", load_name="plate", wells=["B1"],
+              steps=[Aspirate(volume_ul=5), Dispense(location=WASTE)])])
+
+
+def test_only_one_group_runs_its_wells_and_keeps_its_index():
+    robot, state = MockRobot(), LiquidState()
+    progress = []
+    liquid.run(Motion(robot), _two_groups(), PLATES, POSITIONS, state,
+               groups=[1], on_progress=lambda *a: progress.append(a))
+    assert [c for c in _liquid_calls(robot) if c[0] == "aspirate"] == [
+        ("aspirate", "plate-id", "B1", 5.0, 50.0)]
+    assert state.done == [(1, "B1")]
+    assert progress == [(1, 1, 1, "B1")]
+
+
+def test_all_groups_run_when_none_is_chosen():
+    state = LiquidState()
+    liquid.run(Motion(MockRobot()), _two_groups(), PLATES, POSITIONS, state,
+               groups=None)
+    assert state.done == [(0, "A1"), (0, "A2"), (1, "B1")]
+    assert [gi for gi, _g, _w in liquid.plan(_two_groups(), PLATES,
+                                             groups=[0])] == [0, 0]
+
+
+def test_problems_of_a_group_that_does_not_run_do_not_count():
+    program = _two_groups()
+    program.groups[0].wells = ["Z9"]
+    assert liquid.problems(program, PLATES, POSITIONS)
+    assert liquid.problems(program, PLATES, POSITIONS, groups=[1]) == []
+    assert liquid.problems(program, PLATES, POSITIONS, groups=[]) == [
+        "no group chosen to run."]

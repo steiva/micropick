@@ -105,7 +105,7 @@ from ..hardware.protocols import (Robot, move_relative, move_to,
 from . import manual as moves
 from .motion import Motion
 
-__all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "problems",
+__all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "chosen", "problems",
            "plan", "go",
            "do_step", "run", "run_step", "slots_used", "points_used"]
 
@@ -252,19 +252,35 @@ def _plate_problem(plates: dict[str, Plate], slot: str | None,
     return ""
 
 
+def chosen(program: Program, groups=None) -> Program:
+    """The program as a run of `groups` (indices; None: all) sees it: the
+    other groups left out, the trash and the tip kept."""
+    if groups is None:
+        return program
+    keep = set(groups)
+    return program.model_copy(update={"groups": [
+        g for gi, g in enumerate(program.groups) if gi in keep]})
+
+
 def problems(program: Program, plates: dict[str, Plate],
              positions: dict, *, volumes: bool = True,
-             in_tip: float = 0.0, trash: bool = True) -> list[str]:
+             in_tip: float = 0.0, trash: bool = True,
+             groups=None) -> list[str]:
     """What stops the program from running as written, in words. Only what
     the data says; the page adds the robot, the tip and the deck. Without
     `volumes` the run is not played through for the tip's contents - for one
     step tried on its own, whose dispense may be of liquid already drawn.
     `in_tip` is what the tip holds when the run starts, unless a trash blows
-    it out first. Without `trash` none is needed: a step tried on its own."""
+    it out first. Without `trash` none is needed: a step tried on its own.
+    `groups`: the indices of the groups the run does (None: all); a group
+    that does not run is not checked."""
     out = []
     if not program.groups:
         return ["the program has no groups: select wells on the plate and "
                 "make one."]
+    program = chosen(program, groups)
+    if not program.groups:
+        return ["no group chosen to run."]
     if trash:
         out += _trash_problems(program.trash, plates, positions)
         if program.trash is not None:
@@ -392,10 +408,15 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
     return out
 
 
-def plan(program: Program, plates: dict[str, Plate]) -> list[tuple[int, Group, str]]:
-    """(group index, group, well) in the order the run visits them."""
+def plan(program: Program, plates: dict[str, Plate],
+         groups=None) -> list[tuple[int, Group, str]]:
+    """(group index, group, well) in the order the run visits them, for the
+    groups at `groups` (indices; None: all). A group keeps its index in the
+    program, so `LiquidState.done` means the same whichever groups run."""
     out = []
     for gi, group in enumerate(program.groups):
+        if groups is not None and gi not in groups:
+            continue
         plate = plates.get(group.slot)
         if plate is None:
             raise ValueError(f"group {group.name!r}: slot {group.slot} holds "
@@ -782,15 +803,19 @@ def _retract(motion: Motion, state: LiquidState) -> None:
 def run(motion: Motion, program: Program, plates: dict[str, Plate],
         positions: dict, state: LiquidState, *, pause=None, stop=None,
         log=None, on_well=None, on_progress=None, on_paused=None,
-        log_path: Path | None = None, clear_first: bool = False) -> None:
+        log_path: Path | None = None, clear_first: bool = False,
+        groups=None) -> None:
     """Do the program, skipping the wells in `state.done` and starting a
     stopped well at its next step. With `clear_first` - a run from the
     first well - the tip is blown out over the program's trash before
     anything else (`core.liquid`, "The trash"). `on_well(gi, well)` as a
-    well is begun, `on_progress(done, total, gi, well)` as it is finished.
-    The tip is raised however this ends."""
-    jobs = plan(program, plates)
+    well is begun, `on_progress(done, total, gi, well)` as it is finished:
+    `done` and `total` count the wells of the groups that run. `groups`:
+    the indices of the groups to do, in the program's order (None: all,
+    one after another). The tip is raised however this ends."""
+    jobs = plan(program, plates, groups)
     total = len(jobs)
+    ours = {(gi, well) for gi, _group, well in jobs}
     capacity = program.tip_ul
     # The last well of each group: an auto empty there always empties. The
     # first: a group may pause after it.
@@ -843,10 +868,11 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
                          in_tip=f"{state.in_tip:g}", note=said)
             state.resume.pop((gi, well), None)
             state.done.append((gi, well))
-            _say(log, f"[{len(state.done)}/{total}] {group.name} {well} done "
+            done = sum(1 for key in state.done if key in ours)
+            _say(log, f"[{done}/{total}] {group.name} {well} done "
                       f"(tip holds {state.in_tip:g} µl)")
             if on_progress is not None:
-                on_progress(len(state.done), total, gi, well)
+                on_progress(done, total, gi, well)
             if (group.pause_after_first and well == first_well[gi]
                     and pause is not None):
                 # After the well is counted done, so a Stop here and a
