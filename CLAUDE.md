@@ -198,7 +198,7 @@ a device that took a focus - the profile's or one only previewed - the
 focus row under the picture (slider, typed number, Default (960)), tried
 on the device live. Done saves it (`Session.save_camera_focus`); × saves
 nothing and puts back the open camera's focus. No Focus button, no
-window of its own; `CameraView.enable_focus_tools` is off on the pages.
+window of its own, and `CameraView` has no focus tools.
 
 ### Manual pick drives the robot from the picture
 

@@ -126,25 +126,6 @@ def test_crosshair_default_follows_the_label_and_is_remembered(app):
     view.close()
 
 
-def test_focus_slider_only_for_a_camera_with_a_focus(app):
-    plain = _Camera("under")
-    view = _view(app, plain)
-    view.enable_focus_tools()
-    assert view.focus_row.isHidden()
-    focused = _Camera("under", controls=ControlReport(applied={"focus": 500.0}))
-    view.set_camera(focused)
-    assert not view.focus_row.isHidden()
-    assert view.focus_slider.value() == 500
-    view.focus_slider.setValue(640)
-    view._focus_timer.stop()
-    view._apply_focus()
-    assert focused.sets == [{"focus": 640}]
-    assert view.focus_number.value() == 640
-    view.focus_box.setChecked(False)
-    assert view.focus_row.isHidden()
-    view.close()
-
-
 def test_a_click_reports_the_sensor_pixel_under_it(app):
     """The check page compares a click with a detection, and detections are
     in sensor pixels: the view is the only thing that knows about the

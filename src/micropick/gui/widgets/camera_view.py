@@ -68,22 +68,15 @@ it can, the row says to use the arrows instead and a left click is not
 sent: before the first camera calibration a pixel has no direction on the
 deck.
 
-On the picture, two small controls
-----------------------------------
+On the picture, small controls
+------------------------------
 A crosshair toggle, on by default for a camera whose label does not say
 "under" and off for one that does: the crosshair marks the reference pixel of
 the upper camera, and on the lower camera it sits over the crosshair disc the
-operator is trying to see. And focus tools, only where asked for
-(`enable_focus_tools`, off on the pages: a focus is set in Robot setup's
-camera sheet, `pages.camera_sheet`) and only for a camera whose driver took a `focus` control at open -
-the lower camera has a motorised lens and its focus is set from the profile,
-which is the wrong place to be tuning it by trial. A slider and a number
-field set it on the device live and read it back; "default" puts back
-`DEFAULT_FOCUS`; "save to profile" asks for it to be written
-(`focus_save_requested`), deliberately a separate act: trying a focus is not
-deciding on it. A "focus" box hides the row.
+operator is trying to see. A camera's focus is not set here: Robot setup's
+camera sheet (`pages.camera_sheet`) has the one focus row.
 
-A third, "points", appears only while a page has marks to offer
+Another, "points", appears only while a page has marks to offer
 (`set_marks_available`): the profile's saved positions drawn where they are
 on the deck (`gui.position_marks`). Off by default (a page may turn the
 default on, `marks_default`), and remembered per camera like the crosshair. The marks are a layer of their own, apart from
@@ -134,13 +127,10 @@ import numpy as np
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QFontMetrics,
                            QPainter, QPen, QPixmap, QTransform)
-from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox,
-                               QHBoxLayout, QLabel, QSlider, QSpinBox,
-                               QToolButton, QWidget)
+from PySide6.QtWidgets import QApplication, QCheckBox, QToolButton, QWidget
 
 from ... import paths
 from ...core.vision.cuboids import center_crop_box
-from ...hardware.camera import DEFAULT_FOCUS
 from . import overlay_painter
 from .frame import to_qimage
 from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE, OUTSIDE_ALPHA,
@@ -194,11 +184,6 @@ DEFAULT_ASPECT = 4 / 3           # the upper camera, 2592x1944
 ZOOM_MIN, ZOOM_MAX = 1.0, 16.0
 ZOOM_STEP = 1.25                 # per wheel notch
 
-# UVC focus ranges differ by device; this covers the ones seen here (the
-# Arducam takes 0-1023). A value outside is still shown, clamped.
-FOCUS_RANGE = (0, 1023)
-FOCUS_SETTLE_MS = 60             # coalesce slider moves into one set()
-
 # How long "saved: …" stays on the picture.
 FLASH_MS = 4000
 
@@ -234,9 +219,6 @@ class CameraView(QWidget):
     marks_toggled = Signal(bool)
     # A picture was saved; carries its path.
     snapshot_saved = Signal(str)
-    # "save to profile" on the focus row; carries the camera's label. The
-    # view owns no profile: whoever enabled the tools writes it.
-    focus_save_requested = Signal(str)
     # The chart button on the size histogram was pressed: open (True) or
     # close the page's statistics window.
     stats_toggled = Signal(bool)
@@ -293,7 +275,6 @@ class CameraView(QWidget):
         # A double click fits the picture. Off on a page where it is a
         # command of its own (Manual control's move); the wheel still does.
         self.double_click_fits = True
-        self._focus_tools = False                 # see enable_focus_tools
         self._stats_enabled = False               # see enable_stats_button
         self._corner: list[QWidget] = []          # see add_corner_widget
         self._top: list[QWidget] = []             # see add_top_widget
@@ -367,80 +348,6 @@ class CameraView(QWidget):
         self.stats_button.toggled.connect(self.stats_toggled)
         self.stats_button.hide()
 
-        # Hides the focus row; there only while the row could be shown.
-        self.focus_box = QCheckBox("focus", self)
-        self.focus_box.setChecked(True)
-        self.focus_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.focus_box.setToolTip("Show focus controls.")
-        self.focus_box.toggled.connect(lambda _on: self._sync_controls())
-        self.focus_box.setStyleSheet(self.crosshair_box.styleSheet())
-        self.focus_box.hide()
-
-        fg = f"rgb({CAPTION_FG.red()},{CAPTION_FG.green()},{CAPTION_FG.blue()})"
-        self.focus_row = QWidget(self)
-        row = QHBoxLayout(self.focus_row)
-        row.setContentsMargins(6, 2, 6, 2)
-        row.setSpacing(6)
-        self.focus_label = QLabel("focus", self.focus_row)
-        self.focus_slider = QSlider(Qt.Orientation.Horizontal, self.focus_row)
-        self.focus_slider.setRange(*FOCUS_RANGE)
-        self.focus_slider.setSingleStep(1)
-        self.focus_slider.setPageStep(10)
-        self.focus_slider.setMinimumWidth(220)
-        self.focus_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        # The wheel over the slider steps the focus, not the zoom: the
-        # slider takes the event before the view sees it.
-        self.focus_slider.valueChanged.connect(self._focus_moved)
-        # The number typed: taken on Enter or on leaving the field, not per
-        # digit, so typing 960 does not send the lens to 9 and 96 first.
-        self.focus_number = QSpinBox(self.focus_row)
-        self.focus_number.setRange(*FOCUS_RANGE)
-        self.focus_number.setKeyboardTracking(False)
-        self.focus_number.setButtonSymbols(
-            QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.focus_number.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-        self.focus_number.setToolTip("Focus value; Enter applies.")
-        self.focus_number.setFixedWidth(56)
-        self.focus_number.valueChanged.connect(self.focus_slider.setValue)
-        # What the device made of it: "…" while a value is on its way, the
-        # read-back when it differs from what was asked.
-        self.focus_value = QLabel("", self.focus_row)
-        self.focus_default = QToolButton(self.focus_row)
-        self.focus_default.setText(f"default ({DEFAULT_FOCUS})")
-        self.focus_default.setToolTip(
-            f"Reset focus to {DEFAULT_FOCUS}.")
-        self.focus_default.clicked.connect(
-            lambda: self.focus_slider.setValue(DEFAULT_FOCUS))
-        self.focus_save = QToolButton(self.focus_row)
-        self.focus_save.setText("save to profile")
-        self.focus_save.setToolTip(
-            "Save this focus to the profile.")
-        self.focus_save.clicked.connect(
-            lambda: self.focus_save_requested.emit(self._label()))
-        for button in (self.focus_default, self.focus_save):
-            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        row.addWidget(self.focus_label)
-        row.addWidget(self.focus_slider, 1)
-        row.addWidget(self.focus_number)
-        row.addWidget(self.focus_value)
-        row.addWidget(self.focus_default)
-        row.addWidget(self.focus_save)
-        self.focus_row.setStyleSheet(
-            f"QLabel {{ color: {fg}; }} "
-            f"QToolButton {{ color: {fg}; background: rgba(255,255,255,40); "
-            f"border-radius: 4px; padding: 2px 6px; }} "
-            f"QToolButton:hover {{ background: rgba(255,255,255,70); }} "
-            f"QWidget#focusrow {{ background: rgba(0,0,0,140); "
-            f"border-radius: 4px; }}")
-        self.focus_row.setObjectName("focusrow")
-        self.focus_row.setAutoFillBackground(False)
-        self.focus_row.hide()
-
-        self._focus_timer = QTimer(self)
-        self._focus_timer.setSingleShot(True)
-        self._focus_timer.setInterval(FOCUS_SETTLE_MS)
-        self._focus_timer.timeout.connect(self._apply_focus)
-        self._focus_pending: int | None = None
         # Both appear with a camera; without one there is only the placeholder.
         self.crosshair_box.hide()
         self._place_controls()
@@ -471,8 +378,8 @@ class CameraView(QWidget):
         return str(getattr(self._camera, "label", "") or "")
 
     def _sync_controls(self) -> None:
-        """Crosshair from memory or from the label; focus slider from the
-        device, and only when the device took a focus at open."""
+        """The crosshair from memory or from the label; the boxes shown
+        for a camera."""
         label = self._label()
         wanted = self._crosshair_choice.get(
             label, UNDER_WORD not in label.lower())
@@ -490,32 +397,7 @@ class CameraView(QWidget):
         self.sizes_box.setVisible(self._camera is not None
                                   and self._histogram is not None)
 
-        controls = getattr(self._camera, "controls", None)
-        applied = getattr(controls, "applied", {}) or {}
-        has_focus = (self._focus_tools and "focus" in applied
-                     and hasattr(self._camera, "set_controls"))
-        self.focus_box.setVisible(has_focus)
-        self.focus_row.setVisible(has_focus and self.focus_box.isChecked())
-        if has_focus:
-            current = self._camera.get_control("focus")
-            value = int(round(current if current is not None else applied["focus"]))
-            self._show_focus(max(FOCUS_RANGE[0], min(FOCUS_RANGE[1], value)))
-            self.focus_value.setText("")
         self._place_controls()
-
-    def enable_focus_tools(self, on: bool = True) -> None:
-        """The focus row, for a camera that has a focus. Off by default: the
-        pages show the picture, the camera's own window is where it is
-        tuned."""
-        self._focus_tools = bool(on)
-        self._sync_controls()
-
-    def _show_focus(self, value: int) -> None:
-        """Slider and number to `value`, without sending it anywhere."""
-        for widget in (self.focus_slider, self.focus_number):
-            widget.blockSignals(True)
-            widget.setValue(int(value))
-            widget.blockSignals(False)
 
     @property
     def crosshair(self) -> bool:
@@ -635,14 +517,8 @@ class CameraView(QWidget):
         if self.width() < 2 * width or self.height() < 2 * height:
             return None                           # no room on a small view
         mouse = self._mouse_rect()
-        bottom = mouse.top() - 4 if mouse is not None else self._free_bottom()
+        bottom = mouse.top() - 4 if mouse is not None else self.height() - 8
         return QRect(8, bottom - height, width, height)
-
-    def _free_bottom(self) -> int:
-        """The lowest y a box in the bottom-left corner may reach: over the
-        focus row while it is shown."""
-        return (self.focus_row.geometry().top() - 8
-                if self.focus_row.isVisible() else self.height() - 8)
 
     def add_corner_widget(self, widget: QWidget) -> None:
         """Float `widget` over the picture's bottom-right corner, at its own
@@ -687,28 +563,6 @@ class CameraView(QWidget):
         self.marks_toggled.emit(bool(on))
         self.update()
 
-    def _focus_moved(self, value: int) -> None:
-        """Coalesced: a drag produces dozens of values a second and the
-        device takes one control transfer at a time."""
-        self._focus_pending = int(value)
-        self._show_focus(value)
-        self.focus_value.setText("…")
-        self._focus_timer.start()
-
-    def _apply_focus(self) -> None:
-        value, self._focus_pending = self._focus_pending, None
-        if value is None or self._camera is None:
-            return
-        report = self._camera.set_controls({"focus": value})
-        if "focus" in report.rejected:
-            asked, got = report.rejected["focus"]
-            self.focus_value.setText(f"got {got:g}")
-            self.focus_value.setToolTip(f"Asked for {asked:g}; the camera "
-                                        f"reports {got:g}.")
-        else:
-            self.focus_value.setText("")
-            self.focus_value.setToolTip("")
-
     def _place_controls(self) -> None:
         margin = 8
         hint = self.crosshair_box.sizeHint()
@@ -721,17 +575,12 @@ class CameraView(QWidget):
             side, side)
         # The toggles stack down the top-right corner, the shown ones only.
         top = margin + hint.height() + margin // 2
-        for box in (self.marks_box, self.sizes_box, self.focus_box):
+        for box in (self.marks_box, self.sizes_box):
             size = box.sizeHint()
             box.move(self.width() - size.width() - margin, top)
             box.resize(size)
             if box.isVisible():
                 top += size.height() + margin // 2
-        height = self.focus_row.sizeHint().height()
-        width = min(max(680, self.focus_row.sizeHint().width()),
-                    max(200, self.width() - 2 * margin))
-        self.focus_row.setGeometry(margin, self.height() - height - margin,
-                                   width, height)
         right = self.width() - hint.width() - margin - margin // 2 - side
         for widget in self._top:
             size = widget.sizeHint()
@@ -1234,7 +1083,7 @@ class CameraView(QWidget):
 
     def _draw_histogram(self, painter: QPainter) -> None:
         """The size histogram, small, in the bottom-left corner: clear of
-        the jog pad on the right, over the mouse row and the focus slider.
+        the jog pad on the right, over the mouse row.
         The same bins as the page's plot, so the two count alike."""
         bins = self._histogram
         box = self._hist_rect()
@@ -1363,12 +1212,12 @@ class CameraView(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     def _mouse_rect(self) -> QRect | None:
-        """Where the mouse row goes: the bottom-left corner, clear of the
-        focus row, or None when there is nothing to say."""
+        """Where the mouse row goes: the bottom-left corner, or None when
+        there is nothing to say."""
         if not self.mouse_help:
             return None
         height = QFontMetrics(QFont(self.font().family(), 9)).height() + 8
-        return QRect(8, self._free_bottom() - height, self.width() - 16,
+        return QRect(8, self.height() - 8 - height, self.width() - 16,
                      height)
 
     def _draw_mouse_help(self, painter: QPainter) -> None:

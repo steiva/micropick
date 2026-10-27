@@ -33,12 +33,13 @@ from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
                                QSlider, QVBoxLayout, QWidget)
 
+from ...hardware.camera import DEFAULT_FOCUS
 from ..session import OTHER_ROLE, Session
 from ..tasks import SETUP_TITLES
-from ...hardware.camera import DEFAULT_FOCUS
+from ..theme import COLORS
 from ..theme.factory import (heading, muted_label, secondary_button, select,
                              spin_box)
-from ..widgets.camera_view import FOCUS_RANGE, FOCUS_SETTLE_MS, CameraView
+from ..widgets.camera_view import CameraView
 from ..widgets.overlays import SheetWindow
 from ..workers import Worker, describe_error
 
@@ -51,6 +52,10 @@ NOT_ATTACHED = "{} (not attached)"
 HINT = ("The picture on the left is live. Pick the camera whose picture "
         "matches.")
 OPENING = "Opening camera…"
+# UVC focus ranges differ by device; this covers the ones seen here (the
+# Arducam takes 0-1023). A value outside is still shown, clamped.
+FOCUS_RANGE = (0, 1023)
+FOCUS_SETTLE_MS = 60             # coalesce slider moves into one set()
 
 
 class CameraSheet(SheetWindow):
@@ -108,8 +113,8 @@ class CameraSheet(SheetWindow):
         self.opening = QFrame(self.view)
         self.opening.setObjectName("opening")
         self.opening.setStyleSheet(
-            "QFrame#opening { background: rgb(24,24,26); }"
-            "QLabel { color: rgb(200,200,206); }")
+            f"QFrame#opening {{ background: {COLORS['bg']}; }}"
+            f"QLabel {{ color: {COLORS['text-2']}; }}")
         box = QVBoxLayout(self.opening)
         box.setContentsMargins(16, 12, 16, 12)
         box.setSpacing(8)

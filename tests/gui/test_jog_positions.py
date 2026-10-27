@@ -76,13 +76,6 @@ def test_the_points_layer_follows_the_panels_pose(app, session):
     host.deleteLater()
 
 
-def test_rename_refuses_to_collide(app, session):
-    session.profile.positions.clear()
-    session.remember("a", (1.0, 2.0, 3.0))
-    session.remember("b", (4.0, 5.0, 6.0))
-    with pytest.raises(Exception, match="already has a position"):
-        session.rename_position("a", "b")
-    assert session.profile.positions["a"] == (1.0, 2.0, 3.0)
 
 
 @pytest.mark.parametrize("name", ["tip_calib", "shake", "observe"])

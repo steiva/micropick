@@ -83,7 +83,7 @@ from ..theme import SPACING
 from ..theme.factory import (muted_label, primary_button, quiet_button,
                              scroll_column, select)
 from ..widgets.banner import Banner
-from ..widgets.camera_view import ZOOM_AND_PAN, CameraView
+from ..widgets.camera_view import NO_CLICK_MOVE, ZOOM_AND_PAN, CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
@@ -101,7 +101,6 @@ log = logging.getLogger(__name__)
 PANEL_WIDTH = 420
 
 CANT_SEE = "The camera can't see this. Watch the robot itself."
-USE_THE_ARROWS = "Use the arrows to move the camera."
 SLOT_HINT = "Click the slot. The camera moves there."
 BY_CLICK = "Click the picture or use the arrows."
 BY_ARROWS = "Use the arrows."
@@ -570,10 +569,10 @@ class PositionSheet(SheetWindow):
         step, the tip over it."""
         if self._at("hole"):
             move_tip_to_pixel(self.session, self.jog, u, v,
-                              no_map=USE_THE_ARROWS,
+                              no_map=NO_CLICK_MOVE,
                               then=self._over_the_hole)
             return
-        move_to_pixel(self.session, self.jog, u, v, no_map=USE_THE_ARROWS)
+        move_to_pixel(self.session, self.jog, u, v, no_map=NO_CLICK_MOVE)
 
     def _over_the_hole(self, said):
         self.next_step("hole")
