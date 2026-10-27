@@ -1,8 +1,10 @@
 """Settings of this computer's application: the robot's address, and where
 what the application produces is put.
 
-Opened from the gear at the end of the tab row, not from a tab: the tabs
-are the work, and this is set once and seldom looked at again. The values are
+A sheet (`SettingsSheet`) opened from the gear at the end of the top bar,
+over whatever screen is shown, outside the tasks: this is set once and
+seldom looked at again. Three sections: General (all below), Advanced (the
+robot session by hand, `AdvancedPanel`) and the Log. The values are
 `config.app_settings`, one file beside `profiles/`, not a profile's - the
 same robot and calibration are reached at 169.254.x.x over a cable and at
 another address over Wi-Fi.
@@ -22,6 +24,9 @@ cannot be made is refused here rather than at the first file.
 Pickup clips: the lower camera's mode and crop while a picking run records
 (`gui.pages.picking`, "Pickup clips"). The modes offered are the ones the
 loaded profile lists for that camera.
+
+Tip calibration: how it measures, and the starting offset (dx, dy) it
+looks for the tip at while the profile has no measured one.
 
 Keys: the keys that move the robot and Manual control's aspirate and
 dispense (`gui.keys`), one per action, for a keyboard without PgUp and
@@ -51,7 +56,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout,
                                QHBoxLayout, QKeySequenceEdit, QLabel,
-                               QLineEdit, QVBoxLayout, QWidget)
+                               QLineEdit, QStackedWidget, QVBoxLayout,
+                               QWidget)
 
 from ... import paths
 from ...config.app_settings import AppSettings, settings_path
@@ -65,9 +71,13 @@ from ..theme import SPACING
 from ..theme.factory import (card, combo_box, double_spin_box, heading,
                              muted_label, primary_button, scroll_column,
                              secondary_button, spin_box)
+from ..widgets.controls import Segmented
+from ..widgets.overlays import SheetWindow
 from ..workers import Worker, any_running
+from .log import LogPage
 
-__all__ = ["SettingsPage", "TITLE", "parse_address"]
+__all__ = ["AdvancedPanel", "SettingsPage", "SettingsSheet", "TITLE",
+           "parse_address"]
 
 TITLE = "Settings"
 
@@ -186,18 +196,13 @@ class SettingsPage(QWidget):
         # in view however far the left column is scrolled, which is where a
         # change was made. What was saved, or why not, beside them.
         bar = QHBoxLayout()
-        # The log has no tab any more; it is reached from here.
-        self.log_button = secondary_button("Log", self)
-        self.log_button.clicked.connect(
-            lambda: session.page_requested.emit("log"))
-        bar.addWidget(self.log_button)
         self.save_state = _label()
         self.save_state.setAlignment(Qt.AlignmentFlag.AlignRight
                                      | Qt.AlignmentFlag.AlignVCenter)
         bar.addWidget(self.save_state, 1)
         self.revert_button = secondary_button("Revert", self)
         self.revert_button.setToolTip("Discard unsaved changes.")
-        self.revert_button.clicked.connect(self._show)
+        self.revert_button.clicked.connect(self.revert)
         self.save_button = primary_button("Save", self)
         self.save_button.setToolTip("Save this computer's settings (left "
                                     "column). Profile settings save "
@@ -213,7 +218,7 @@ class SettingsPage(QWidget):
         outer.addLayout(columns, 1)
         outer.addLayout(bar)
 
-        session.robot_state_changed.connect(lambda _s: self._refresh())
+        session.robot_state_changed.connect(self._refresh)
         session.settings_changed.connect(lambda _s: self._show())
         session.profile_changed.connect(self._on_profile_changed)
         session.camera_opened.connect(lambda _l: self._show_cameras())
@@ -354,14 +359,33 @@ class SettingsPage(QWidget):
         self.tip_frames = spin_box(self)
         self.tip_frames.setRange(1, 30)
         self.tip_frames.valueChanged.connect(lambda _v: self._edited())
+        # The starting offset, measured roughly with a ruler.
+        offset = QWidget(self)
+        offset.setObjectName("plain")
+        offset_row = QHBoxLayout(offset)
+        offset_row.setContentsMargins(0, 0, 0, 0)
+        self.tip_dx = double_spin_box(self)
+        self.tip_dy = double_spin_box(self)
+        for name, spin in (("dx", self.tip_dx), ("dy", self.tip_dy)):
+            spin.setRange(-300.0, 300.0)
+            spin.setDecimals(3)
+            spin.setSingleStep(0.1)
+            spin.setSuffix(" mm")
+            spin.valueChanged.connect(lambda _v: self._edited())
+            offset_row.addWidget(QLabel(name))
+            offset_row.addWidget(spin)
+        offset_row.addStretch(1)
         grid = QGridLayout()
         for row, (label, widget, hint) in enumerate((
                 ("Tip type", self.tip_type,
                  "Recorded with the offset. Empty: the tip rack's type."),
                 ("Frames", self.tip_frames,
-                 "Frames averaged per reading."))):
+                 "Frames averaged per reading."),
+                ("Start offset", offset,
+                 "Approximate camera-to-tip offset, used while the profile "
+                 "has no measured one."))):
             grid.addWidget(QLabel(label), 2 * row, 0)
-            if widget is self.tip_type:            # the whole width
+            if widget in (self.tip_type, offset):  # the whole width
                 grid.addWidget(widget, 2 * row, 1)
             else:
                 grid.addWidget(widget, 2 * row, 1, Qt.AlignmentFlag.AlignLeft)
@@ -431,11 +455,14 @@ class SettingsPage(QWidget):
         return out
 
     def _show_tip(self, settings: AppSettings) -> None:
-        widgets = (self.tip_frames, self.tip_verify, self.tip_touch_up)
+        widgets = (self.tip_frames, self.tip_verify, self.tip_touch_up,
+                   self.tip_dx, self.tip_dy)
         for widget in widgets:
             widget.blockSignals(True)
         self.tip_type.setText(settings.tip_cal_tip_type)
         self.tip_frames.setValue(settings.tip_cal_frames)
+        self.tip_dx.setValue(settings.tip_cal_start_dx)
+        self.tip_dy.setValue(settings.tip_cal_start_dy)
         self.tip_verify.setChecked(settings.tip_cal_verify)
         self.tip_touch_up.setChecked(settings.tip_cal_touch_up)
         for widget in widgets:
@@ -645,6 +672,11 @@ class SettingsPage(QWidget):
                 else "Defaults (not saved yet)."))
         self._refresh()
 
+    def revert(self) -> None:
+        """Revert, and the sheet's ×: the saved settings back in the
+        fields."""
+        self._show()
+
     def _typed(self) -> AppSettings:
         """The fields as settings; raises ValueError with what is wrong."""
         host = self.host.text().strip() or None
@@ -667,6 +699,8 @@ class SettingsPage(QWidget):
                            tip_cal_frames=int(self.tip_frames.value()),
                            tip_cal_verify=self.tip_verify.isChecked(),
                            tip_cal_touch_up=self.tip_touch_up.isChecked(),
+                           tip_cal_start_dx=round(self.tip_dx.value(), 3),
+                           tip_cal_start_dy=round(self.tip_dy.value(), 3),
                            inference_device=self.inference_device.currentData(),
                            keys=self._typed_keys())
 
@@ -1019,7 +1053,7 @@ class SettingsPage(QWidget):
 
     # -- display -------------------------------------------------------------
 
-    def _refresh(self) -> None:
+    def _refresh(self, _arg=None) -> None:
         connected = self.session.robot is not None
         testing = self._worker is not None and self._worker.running
         for widget in (self.host, self.port):
@@ -1031,3 +1065,186 @@ class SettingsPage(QWidget):
         elif not self.robot_state.text():
             self.robot_state.setText(f"Looking for the robot at "
                                      f"{self.session.robot_address}.")
+
+
+class AdvancedPanel(QWidget):
+    """The robot session, by hand: Start new robot session (it homes, so
+    it asks, as Home the robot does) and Disconnect robot session, which
+    lets the session go and keeps the connection monitor off it until
+    Continue robot session (`Session.release_run`). Both claim the robot's
+    lease and are refused while it is held."""
+
+    def __init__(self, session: Session, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.session = session
+        self._worker: Worker | None = None
+        self._done_text = ""                     # said when the job ends
+        box = card(self)
+        box.layout().addWidget(heading("Robot session", 2))
+        self.session_line = _label()
+        box.layout().addWidget(self.session_line)
+        row = QHBoxLayout()
+        self.new_button = secondary_button("Start new robot session", self)
+        self.new_button.clicked.connect(self._new)
+        self.disconnect_button = secondary_button("Disconnect robot session",
+                                                  self)
+        self.disconnect_button.clicked.connect(self._disconnect)
+        self.continue_button = secondary_button("Continue robot session",
+                                                self)
+        self.continue_button.setToolTip("Carry on with the robot's session.")
+        self.continue_button.clicked.connect(session.continue_run)
+        for button in (self.new_button, self.disconnect_button,
+                       self.continue_button):
+            row.addWidget(button)
+        row.addStretch(1)
+        box.layout().addLayout(row)
+        self.state = _label()
+        box.layout().addWidget(self.state)
+
+        column = QVBoxLayout()
+        column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(box)
+        column.addStretch(1)
+        holder = QWidget(self)
+        holder.setLayout(column)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addStretch(1)
+        outer.addWidget(scroll_column(holder, COLUMN_WIDTH))
+        outer.addStretch(1)
+
+        # Bound methods, not lambdas: the session's signals come from a
+        # worker too, and Qt queues only a bound method onto this thread.
+        session.robot_state_changed.connect(self.refresh)
+        session.robot_busy_changed.connect(self.refresh)
+        session.lock_changed.connect(self.refresh)
+        self.refresh()
+
+    def refresh(self, _arg=None) -> None:
+        session = self.session
+        holder = session.robot_lease.holder
+        refusal = (f"Robot busy: {holder}." if holder is not None else
+                   "Robot locked." if session.locked else "")
+        state = session.run_state
+        if session.robot is not None and state is not None:
+            self.session_line.setText(f"Robot session {state.label}.")
+        elif session.released is not None:
+            self.session_line.setText("Robot session disconnected.")
+        else:
+            self.session_line.setText("No robot session.")
+        answers = session.robot is not None or (
+            session.has_connection and session.robot_answers is True
+            and state is not None)
+        self.new_button.setEnabled(answers and not refusal)
+        self.new_button.setToolTip(
+            refusal or ("Start a new robot session with an empty deck."
+                        if answers else "Robot not connected."))
+        self.disconnect_button.setVisible(session.released is None)
+        self.disconnect_button.setEnabled(session.robot is not None
+                                          and not refusal)
+        self.disconnect_button.setToolTip(
+            refusal or ("Let go of the robot's session."
+                        if session.robot is not None else
+                        "Robot not connected."))
+        self.continue_button.setVisible(session.released is not None)
+
+    def _claim(self, what: str):
+        lease = self.session.robot_lease.claim(what)
+        if lease is None:
+            self.state.setText(self.session.robot_lease.refusal)
+        return lease
+
+    def _run(self, job, *args, what: str, lease, done: str) -> None:
+        worker = Worker(job, *args, what=what, lease=lease)
+        self._done_text = done
+        worker.finished.connect(self._finished)
+        worker.failed.connect(self._failed)
+        self._worker = worker
+        log.info("%s", what)
+        worker.start()
+        self.refresh()
+
+    def _new(self) -> None:
+        from .home import new_session_dialog
+        dialog = new_session_dialog(self.session, self,
+                                    title="Start new robot session")
+        if dialog.exec() != dialog.DialogCode.Accepted:
+            return
+        name = dialog.textValue().strip() or None
+        what = "new robot session, then home"
+        lease = self._claim(what)
+        if lease is not None:
+            self.state.setText("Homing.")
+            self._run(self.session.new_run, name, what=what, lease=lease,
+                      done="New robot session started.")
+
+    def _disconnect(self) -> None:
+        what = "disconnecting the robot session"
+        lease = self._claim(what)
+        if lease is not None:
+            self._run(self.session.release_run, what=what, lease=lease,
+                      done="Robot session disconnected.")
+
+    def _finished(self, _result=None) -> None:
+        self._worker = None
+        self.state.setText(self._done_text)
+        self.refresh()
+
+    def _failed(self, reason: str) -> None:
+        self._worker = None
+        self.state.setText(reason)
+        log.error("robot session: %s", reason)
+        self.refresh()
+
+
+# The sheet's sections: (key, words on screen).
+SECTIONS = (("general", "General"), ("advanced", "Advanced"), ("log", "Log"))
+
+
+class SettingsSheet(SheetWindow):
+    """Settings, opened from the gear over whatever is shown (REDESIGN
+    §12.15): this computer's settings and the profile's (General), the
+    robot session by hand (Advanced), and the log. General keeps its own
+    Save and Revert; closing it, by × or by going elsewhere, discards what
+    was not saved.
+
+    The profile's camera choice is still here: it leaves for Robot
+    setup's camera sheets (#9) when they exist."""
+
+    def __init__(self, session: Session, host: QWidget):
+        super().__init__(host, TITLE, buttons=False)
+        self.sections = Segmented([title for _key, title in SECTIONS],
+                                  parent=self.body_widget)
+        self.sections.setFixedWidth(360)
+        self.form = SettingsPage(session, self.body_widget)
+        self.form.layout().setContentsMargins(0, 0, 0, 0)
+        self.advanced = AdvancedPanel(session, self.body_widget)
+        self.log = LogPage(session, self.body_widget)
+        self.log.layout().setContentsMargins(0, 0, 0, 0)
+        self.stack = QStackedWidget(self.body_widget)
+        for widget in (self.form, self.advanced, self.log):
+            self.stack.addWidget(widget)
+        self.sections.changed.connect(self.stack.setCurrentIndex)
+        self.body.setSpacing(SPACING * 2)
+        self.body.addWidget(self.sections, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.body.addWidget(self.stack, 1)
+        self.canceled.connect(self.form.revert)
+
+    def discard(self) -> None:
+        """Closed by going elsewhere: as ×, what was not saved is gone."""
+        if not self.isHidden():
+            self.hide()
+            self.form.revert()
+
+    def section(self) -> str:
+        return SECTIONS[self.stack.currentIndex()][0]
+
+    def show_section(self, key: str) -> None:
+        index = [k for k, _title in SECTIONS].index(key)
+        self.stack.setCurrentIndex(index)
+        self.sections.set_current(index)
+
+    def open_on(self, key: str = "general") -> None:
+        self.show_section(key)
+        self.advanced.refresh()
+        self.open()

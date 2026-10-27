@@ -111,10 +111,9 @@ POSITION_NAME = CALIBRATION_POSITION
 # The jog step for the touch-up, as the notebook sets it.
 TOUCH_UP_STEP_MM = 0.05
 
-# Where to start when the profile has no offset yet: notebook 01's manual
-# offset for this rig. Only has to land the tip inside the lower camera's
-# view; the calibration measures the real one.
-DEFAULT_OFFSET_MM = (16.0, 60.0)
+# Where to start when the profile has no offset yet is set in Settings
+# (`AppSettings.tip_cal_start_offset`). It only has to land the tip inside
+# the lower camera's view; the calibration measures the real one.
 
 class TouchUpAborted(RuntimeError):
     """The operator pressed Abort during the manual touch-up."""
@@ -139,6 +138,8 @@ class PipetteCalibration(QWidget):
         # The profile the offset boxes were last filled for: a new one is a
         # new starting point.
         self._filled_for = None
+        # The start offset the boxes were last filled from.
+        self._start_offset = session.settings.tip_cal_start_offset
         self.opener = CameraOpener(session, self)
 
         self.view = CameraView(self)
@@ -162,7 +163,7 @@ class PipetteCalibration(QWidget):
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.profile_changed.connect(lambda _p: self._refresh())
-        session.settings_changed.connect(lambda _s: self._refresh())
+        session.settings_changed.connect(self._settings_changed)
         # The window's Stop. The routine has no point to stop at between
         # its moves; only the manual adjustment can be left, which ends it
         # with nothing saved. A second Stop halts the robot.
@@ -239,9 +240,8 @@ class PipetteCalibration(QWidget):
             spin.setSuffix(" mm")
             spin.setToolTip("Approximate camera-to-tip offset.")
         self.reset_offset_button = secondary_button("Reset", self)
-        self.reset_offset_button.setToolTip(
-            f"Reset to dx {DEFAULT_OFFSET_MM[0]:g} mm, dy "
-            f"{DEFAULT_OFFSET_MM[1]:g} mm.")
+        self.reset_offset_button.setToolTip("Reset to the start offset set "
+                                            "in Settings.")
         self.reset_offset_button.clicked.connect(self._reset_offset)
         row = QHBoxLayout()
         row.addWidget(QLabel("dx"))
@@ -325,9 +325,18 @@ class PipetteCalibration(QWidget):
         self.details.body.layout().addWidget(self.run_log)
         return self.details
 
+    def _settings_changed(self, settings) -> None:
+        # A new start offset in Settings fills the boxes again; any other
+        # setting keeps what was typed.
+        if settings.tip_cal_start_offset != self._start_offset:
+            self._start_offset = settings.tip_cal_start_offset
+            self._filled_for = None
+        self._refresh()
+
     def _reset_offset(self) -> None:
-        self.dx.setValue(DEFAULT_OFFSET_MM[0])
-        self.dy.setValue(DEFAULT_OFFSET_MM[1])
+        dx, dy = self.session.settings.tip_cal_start_offset
+        self.dx.setValue(dx)
+        self.dy.setValue(dy)
 
     # -- the disc ------------------------------------------------------------
 
@@ -743,9 +752,9 @@ class PipetteCalibration(QWidget):
         # 4. the calibration
         offset = profile.calibration.pipette_offset if profile else None
         if offset is None:
+            dx, dy = session.settings.tip_cal_start_offset
             self.offset_note.setText(
-                f"No saved offset. Start values: dx "
-                f"{DEFAULT_OFFSET_MM[0]:g} mm, dy {DEFAULT_OFFSET_MM[1]:g} "
+                f"No saved offset. Start values: dx {dx:g} mm, dy {dy:g} "
                 f"mm.")
         else:
             when = (offset.measured_at.strftime("%Y-%m-%d %H:%M")
@@ -804,7 +813,7 @@ class PipetteCalibration(QWidget):
         if profile is not None and profile is not self._filled_for:
             self._filled_for = profile
             dx, dy = ((offset.dx, offset.dy) if offset is not None
-                      else DEFAULT_OFFSET_MM)
+                      else self.session.settings.tip_cal_start_offset)
             self.dx.setValue(dx)
             self.dy.setValue(dy)
 

@@ -49,7 +49,7 @@ from .. import _version as version
 from .. import paths
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, home, labware,
-                    liquid, log, manual, picking, routine, settings)
+                    liquid, manual, picking, routine, settings)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -82,8 +82,6 @@ PAGES = (
      calibration_camera.CameraCalibration),
     ("liquid", liquid.TITLE, liquid.LiquidHandlingPage),
     ("manual", manual.TITLE, manual.ManualPage),
-    ("settings", settings.TITLE, settings.SettingsPage),
-    ("log", log.TITLE, log.LogPage),
 )
 
 # The page each step shows.
@@ -172,6 +170,13 @@ class MainWindow(QMainWindow):
         inner.setContentsMargins(0, 0, 0, 0)
         inner.addWidget(self.stack)
         self.dim = DimCover(holder)
+        # Settings over whatever is shown, the Log one of its sections.
+        self.settings_sheet = settings.SettingsSheet(session, holder)
+        self.settings_page = self.settings_sheet.form
+        self.log_page = self.settings_sheet.log
+        self.settings_sheet.canceled.connect(self._settings_closed)
+        # The breadcrumb under the sheet, given back when it closes.
+        self._under_sheet: list[str] = []
         # Over the page, under the top bar: Light and Unlock stay at hand.
         self.lock_overlay = LockOverlay(holder)
 
@@ -217,7 +222,7 @@ class MainWindow(QMainWindow):
         self.footer.next_clicked.connect(self._next)
         self.top.home_clicked.connect(self.open_home)
         self.top.crumb_clicked.connect(self._crumb)
-        self.top.settings_clicked.connect(lambda: self.show_page("settings"))
+        self.top.settings_clicked.connect(self.open_settings)
         self.top.light_toggled.connect(self._toggle_lights)
         self.top.park_clicked.connect(self._park)
         self.top.stop_clicked.connect(self._stop)
@@ -354,6 +359,7 @@ class MainWindow(QMainWindow):
         # A page dimmed as one step is not dimmed as anything else.
         page.setEnabled(True)
         self.dim.hide()
+        self.settings_sheet.discard()
         self.stack.setCurrentWidget(page)
         self._page = name
         self.top.set_path(path)
@@ -405,6 +411,9 @@ class MainWindow(QMainWindow):
         if name in ("home", "profile"):
             self.open_home()
             return
+        if name in ("settings", "log"):
+            self.open_settings("log" if name == "log" else "general")
+            return
         if self.task is not None:
             # The step shown when it is that page (Picking is two steps),
             # else the first that is.
@@ -415,19 +424,34 @@ class MainWindow(QMainWindow):
             if step is not None:
                 self.show_step(step)
                 return
-        if name == "log":
-            path = [self._titles["settings"], self._titles["log"]]
-        else:
-            path = [self._titles[name]]
-            if self.task is not None and name != "settings":
-                path.insert(0, tasks.TASKS[self.task][0])
+        path = [self._titles[name]]
+        if self.task is not None:
+            path.insert(0, tasks.TASKS[self.task][0])
         self._show(name, path, in_task=False)
 
+    def open_settings(self, section: str = "general") -> None:
+        """The Settings sheet over the screen shown, which stays as it is;
+        the breadcrumb gains "Settings"."""
+        if self.settings_sheet.isHidden():
+            self._under_sheet = list(self.top.path)
+        # Over the lock too: the settings and the log are not the robot's,
+        # and Advanced's buttons are refused under it.
+        self.settings_sheet.open_on(section)
+        self.top.set_path([*self._under_sheet, settings.TITLE])
+
+    def _settings_closed(self) -> None:
+        self.top.set_path(self._under_sheet)
+
     def _crumb(self, index: int) -> None:
-        """A crumb between Home and the last: Settings, or the task."""
-        if self.top.path[index] == self._titles["settings"]:
-            self.show_page("settings")
-        elif self.task is not None:
+        """A crumb between Home and the last: the task. Under the Settings
+        sheet, any crumb closes it first; the one of the screen under it
+        does only that."""
+        if not self.settings_sheet.isHidden():
+            self.settings_sheet.discard()
+            self._settings_closed()
+            if index >= len(self._under_sheet) - 1:
+                return
+        if self.task is not None:
             self.show_step(self._task_step)
 
     # -- steps ----------------------------------------------------------------
@@ -578,6 +602,8 @@ class MainWindow(QMainWindow):
         """The overlay over the page, and the page's keys and clicks off
         under it: the session refuses the moves, the page need not try."""
         self.lock_overlay.set_locked(locked)
+        if not self.settings_sheet.isHidden():
+            self.settings_sheet.raise_()
         self.stack.setEnabled(not locked)
         self._show_lock_button()
         self._show_park()

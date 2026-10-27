@@ -244,3 +244,31 @@ def test_a_look_is_not_work_that_stop_waits_for(app, window, monkeypatch):
     assert not any_running()
     gate.set()
     _until(app, lambda: not window.monitor.busy)
+
+
+def test_a_session_let_go_is_not_carried_on_with_until_continued(session):
+    _look(session)
+    session.adopt_run()
+    run_id = session.run_state.run_id
+    session.release_run()
+    assert session.robot is None and session.released == run_id
+    assert _look(session) is False                 # let go: not taken back
+    assert not session.needs_home
+    session._api.create_run()                      # the Opentrons app's
+    assert _look(session) is False                 # not taken either
+    run_id = session.run_state.run_id
+    session.continue_run()
+    assert session.released is None
+    assert _look(session) is True
+    session.adopt_run()
+    assert session.run_state.run_id == run_id
+    assert "home_robot" not in [c[0] for c in _moves(session)]
+
+
+def test_a_new_session_after_letting_go_clears_it(session):
+    _look(session)
+    session.adopt_run()
+    session.release_run()
+    _look(session)
+    session.new_run()
+    assert session.robot is not None and session.released is None

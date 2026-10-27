@@ -75,7 +75,15 @@ confirmed by its own Next. A Robot setup item needed by a step opens its
 page as `Home › <task> › <item>` (`shell.SETUP_PAGES`) until Robot setup
 has its own sheets. The last profile is loaded at start
 (`Session.load_last_profile`, `default` made if none); profiles are never
-chosen on screen. The Log is reached from Settings.
+chosen on screen. Settings is a sheet (`pages.settings.SettingsSheet`)
+over whatever is shown, the breadcrumb gaining "Settings": General (Save,
+Revert; closing it discards what was not saved), Advanced and the Log
+(over the lock: only Advanced is the robot's). The profile's camera
+choice stays in General until Robot setup's camera sheets (#9). Advanced's
+Start new robot session and Disconnect robot session claim the robot's
+lease; Disconnect lets the session go (`Session.release_run`) and the
+monitor leaves it alone until Continue robot session (Home or Advanced)
+or a new session.
 
 A run is seen from every screen (`MainWindow._show_run`): the pill says
 what it does (`shell.RUNS`, by the lease's holder; "Paused" and "Waiting
@@ -263,8 +271,8 @@ picking position**.
 ### Settings belong to the computer, not the profile
 
 The robot's address and the output folders (Outputs, Logs, Images) are
-`config.app_settings`: `settings.json` beside `profiles/`, edited on the
-Settings page behind the gear at the end of the top bar.
+`config.app_settings`: `settings.json` beside `profiles/`, edited in the
+Settings sheet behind the gear at the end of the top bar.
 `paths` applies the folders as overrides, so writers keep asking `paths`.
 The address reaches the robot wrapper as `OpentronsAPI(host=...)`;
 `--robot-host` overrides it for one start. Nothing hard-codes an address.
@@ -282,7 +290,7 @@ measures each device that works on the first load and takes the faster
 (`core.vision.yolo`). `core.vision.onnx_yolo` gives ultralytics' own boxes:
 change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
-verify, manual adjustment). The Tip calibration page is numbered steps,
+verify, manual adjustment, the start offset dx, dy). The Tip calibration page is numbered steps,
 each a card with a mark: place the disc (ticked by the operator), set the
 disc position, put a tip on, calibrate, nudge the tip (only while it
 waits); its cameras are the profile's upper and lower ones.

@@ -41,7 +41,7 @@ from ..theme.icons import pixmap
 from ..widgets.overlays import DimCover
 from ..workers import Worker
 
-__all__ = ["HomePage", "TaskTile", "TILE_TEXT"]
+__all__ = ["HomePage", "TaskTile", "TILE_TEXT", "new_session_dialog"]
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +55,22 @@ TILE_TEXT = {
 
 COLUMN_WIDTH = 1040
 MARK_PX = 44
+
+
+def new_session_dialog(session: Session, parent: QWidget, *,
+                       title: str = "Home the robot") -> QInputDialog:
+    """The question a new robot session asks - Home the robot here, Start
+    new robot session in Settings (`title`) - with the new session's
+    name. It homes either way, so the button says Home."""
+    profile = session.profile
+    dialog = QInputDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.setLabelText("Keep hands out of the robot. The gantry will "
+                        "move.\n\nName of the robot session:")
+    dialog.setTextValue(robot_sessions.default_name(
+        profile.name if profile is not None else None))
+    dialog.setOkButtonText("Home")
+    return dialog
 
 
 class TaskTile(QFrame):
@@ -141,8 +157,8 @@ class HomePage(QWidget):
         outer.setContentsMargins(24, 48, 24, 24)
         outer.addWidget(holder)
 
-        session.robot_state_changed.connect(lambda _s: self.refresh())
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_state_changed.connect(self.refresh)
+        session.robot_busy_changed.connect(self.refresh)
         session.profile_changed.connect(lambda _p: self.refresh())
         self.refresh()
 
@@ -175,6 +191,12 @@ class HomePage(QWidget):
             "first.")
         self.home_button.clicked.connect(self._new_run)
         row.addWidget(self.home_button, 0, Qt.AlignmentFlag.AlignTop)
+        # A session let go in Settings (`Session.release_run`) is taken
+        # back on the operator's word only.
+        self.continue_button = primary_button("Continue robot session", box)
+        self.continue_button.setToolTip("Carry on with the robot's session.")
+        self.continue_button.clicked.connect(self.session.continue_run)
+        row.addWidget(self.continue_button, 0, Qt.AlignmentFlag.AlignTop)
         box.layout().addLayout(row)
         return box
 
@@ -234,7 +256,7 @@ class HomePage(QWidget):
         return [key for key, (_text, is_set) in SETUP.items()
                 if profile is None or not is_set(profile)]
 
-    def refresh(self) -> None:
+    def refresh(self, _arg=None) -> None:
         session = self.session
         busy = self._worker is not None and self._worker.running
         ready = (session.robot is not None
@@ -254,6 +276,9 @@ class HomePage(QWidget):
                 "The robot's session could not be continued."
                 if session.adopt_refused is not None else
                 "The robot has no robot session to carry on with.")
+        elif session.released is not None:
+            self.robot_title.setText("Robot not connected")
+            self.robot_text.setText("Robot session disconnected.")
         elif session.robot_answers and session.robot is None:
             self.robot_title.setText("Robot not connected")
             self.robot_text.setText("Continuing the robot's session.")
@@ -262,6 +287,8 @@ class HomePage(QWidget):
             self.robot_text.setText(
                 "Looking for the robot. Is it switched on?")
         self.home_button.setVisible(session.needs_home)
+        self.continue_button.setVisible(session.released is not None
+                                        and not ready)
         self.home_button.setEnabled(not busy
                                     and not session.robot_lease.busy)
         self.waiting.setVisible(not ready)
@@ -340,15 +367,7 @@ class HomePage(QWidget):
 
     def home_dialog(self) -> QInputDialog:
         """The question Home the robot asks, with the new session's name."""
-        profile = self.session.profile
-        dialog = QInputDialog(self)
-        dialog.setWindowTitle("Home the robot")
-        dialog.setLabelText("Keep hands out of the robot. The gantry will "
-                            "move.\n\nName of the robot session:")
-        dialog.setTextValue(robot_sessions.default_name(
-            profile.name if profile is not None else None))
-        dialog.setOkButtonText("Home")
-        return dialog
+        return new_session_dialog(self.session, self)
 
     def _worker_done(self, _result=None) -> None:
         self._worker = None

@@ -83,7 +83,10 @@ class SheetWindow(_Cover):
     done = Signal()
     canceled = Signal()
 
-    def __init__(self, host: QWidget, title: str, *, done_text: str = "Done"):
+    def __init__(self, host: QWidget, title: str, *, done_text: str = "Done",
+                 buttons: bool = True):
+        """`buttons` False: no Cancel and Done, for a sheet that saves with
+        buttons of its own (Settings); × still closes it."""
         super().__init__(host, 0.72)
         self.title = title
         outer = QVBoxLayout(self)
@@ -104,7 +107,7 @@ class SheetWindow(_Cover):
         self.title_label = heading(title, 3, header)
         row.addWidget(self.title_label)
         row.addStretch(1)
-        close = QToolButton(header)
+        self.close_button = close = QToolButton(header)
         close.setObjectName("barButton")
         close.setIcon(icon("close", COLORS["text-2"], 18))
         close.setToolTip("Close without saving")
@@ -120,19 +123,23 @@ class SheetWindow(_Cover):
         self.body.setSpacing(SPACING * 2)
         column.addWidget(self.body_widget, 1)
 
-        buttons = QHBoxLayout()
-        buttons.setContentsMargins(24, 8, 24, 20)
-        buttons.setSpacing(10)
-        buttons.addStretch(1)
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(24, 8, 24, 20)
+        button_row.setSpacing(10)
+        button_row.addStretch(1)
         self.cancel_button = secondary_button("Cancel", self.frame)
         self.cancel_button.setMinimumWidth(96)
         self.cancel_button.clicked.connect(self._cancel)
         self.done_button = primary_button(done_text, self.frame)
         self.done_button.setMinimumWidth(110)
         self.done_button.clicked.connect(self._done)
-        buttons.addWidget(self.cancel_button)
-        buttons.addWidget(self.done_button)
-        column.addLayout(buttons)
+        button_row.addWidget(self.cancel_button)
+        button_row.addWidget(self.done_button)
+        column.addLayout(button_row)
+        if not buttons:
+            self.cancel_button.hide()
+            self.done_button.hide()
+            button_row.setContentsMargins(0, 0, 0, 0)
 
     def _cancel(self) -> None:
         self.hide()

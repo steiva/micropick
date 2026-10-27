@@ -371,6 +371,10 @@ class Session(QObject):
         # The robot session whose carrying on failed (`adopt_failed`): not
         # tried again; Home the robot is the way on.
         self.adopt_refused: str | None = None
+        # The robot session let go on the operator's word (`release_run`):
+        # no session is carried on with until `continue_run` or a new one
+        # made here - the one the Opentrons app made meanwhile included.
+        self.released: str | None = None
         # Counts every change of the robot session this one holds: a look
         # begun before one and answered after it saw the robot as it was
         # (`RobotMonitor`), and is dropped.
@@ -811,6 +815,7 @@ class Session(QObject):
         if changed:
             self.robot_state_changed.emit(self.robot_state)
         return (self.robot is None and state.reusable
+                and self.released is None
                 and state.run_id != self.adopt_refused)
 
     def adopt_failed(self, run_id: str | None) -> None:
@@ -1468,6 +1473,7 @@ class Session(QObject):
         self.robot = self._api
         self.motion.set_robot(self.robot)
         self.run_origin = origin
+        self.released = None
         self.restarted = False
         self.run_generation += 1
         # Before anything is loaded through this session: the offset attaches
@@ -1507,6 +1513,26 @@ class Session(QObject):
         self.lights = None
         self.lights_changed.emit(None)
         log.info("released the robot")
+        self.robot_state_changed.emit(self.robot_state)
+
+    def release_run(self) -> None:
+        """Disconnect robot session (Settings, Advanced): let go of the
+        robot and leave its session alone - the Opentrons app or a notebook
+        can take it - until `continue_run`. Blocking; retracts Z, so it
+        holds the robot's lease. The connection monitor would otherwise
+        carry on with it at its next look."""
+        state = self.run_state
+        self.released = state.run_id if state is not None else None
+        self.disconnect_robot()
+        log.info("robot session %s let go", self.released)
+
+    def continue_run(self) -> None:
+        """Undo `release_run`: the monitor carries on with the session at
+        its next look."""
+        if self.released is None:
+            return
+        log.info("robot session %s to be continued", self.released)
+        self.released = None
         self.robot_state_changed.emit(self.robot_state)
 
     def _retract(self) -> None:

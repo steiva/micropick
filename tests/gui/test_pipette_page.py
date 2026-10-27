@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages.calibration_pipette import (            # noqa: E402
-    DEFAULT_OFFSET_MM, PipetteCalibration)
+    PipetteCalibration)
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.jog_panel import view_move            # noqa: E402
 
@@ -36,15 +36,19 @@ def page(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
-def test_no_offset_in_the_profile_starts_from_the_defaults(page):
-    assert page.session.profile.calibration.pipette_offset is None
-    assert (page.dx.value(), page.dy.value()) == DEFAULT_OFFSET_MM
+def test_no_offset_in_the_profile_starts_from_the_settings(page):
+    session = page.session
+    assert session.profile.calibration.pipette_offset is None
+    assert (page.dx.value(), page.dy.value()) == (16.0, 60.0)   # the default
     assert "Start values" in page.offset_note.text()
     page.dx.setValue(3.0)
     page._refresh()
     assert page.dx.value() == 3.0                  # typed, so kept
     page.reset_offset_button.click()
-    assert (page.dx.value(), page.dy.value()) == DEFAULT_OFFSET_MM
+    assert (page.dx.value(), page.dy.value()) == (16.0, 60.0)
+    session.set_settings(session.settings.model_copy(
+        update={"tip_cal_start_dx": 12.5, "tip_cal_start_dy": 55.0}))
+    assert (page.dx.value(), page.dy.value()) == (12.5, 55.0)
 
 
 def test_one_page_with_the_gate_in_words(page):

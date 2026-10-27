@@ -195,9 +195,8 @@ def test_a_page_asked_for_from_a_step_keeps_the_task(app, window):
     window.session.page_requested.emit("picking")
     assert window.step == "picking"                # not Dish bottom
     window.session.page_requested.emit("settings")
-    assert window.top.path == ["Settings"]
-    window.settings_page.log_button.click()
-    window.top.crumb_clicked.emit(0)               # Settings, not the task
-    assert window.current_page() is window.settings_page
-    window.session.page_requested.emit("labware")
+    assert window.top.path == ["Auto pick", "Settings"]
+    assert window.settings_sheet.isVisible()
+    window.session.page_requested.emit("labware")   # closes the sheet
+    assert not window.settings_sheet.isVisible()
     assert window.step == "deck" and window.top.path == ["Auto pick"]

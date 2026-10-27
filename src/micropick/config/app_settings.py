@@ -74,9 +74,18 @@ class AppSettings(BaseModel):
     tip_cal_frames: int = Field(default=7, ge=1, le=30)
     tip_cal_verify: bool = True
     tip_cal_touch_up: bool = True
+    # Where the tip calibration first looks for the tip when the profile
+    # has no measured offset: the camera-to-tip offset measured roughly
+    # with a ruler, in mm. The bench's pipette mount, like the marker.
+    tip_cal_start_dx: float = Field(default=16.0, ge=-300.0, le=300.0)
+    tip_cal_start_dy: float = Field(default=60.0, ge=-300.0, le=300.0)
     # What runs the machine learning models: "auto" measures the CPU and
     # any GPU on the first load and takes the faster, "cpu" and "gpu" ask
     # for one (`core.vision.yolo`). A computer's, like its graphics card.
+    @property
+    def tip_cal_start_offset(self) -> tuple[float, float]:
+        return self.tip_cal_start_dx, self.tip_cal_start_dy
+
     inference_device: Literal["auto", "cpu", "gpu"] = "auto"
     # The keys that drive the robot, where they differ from the defaults:
     # action id -> key in Qt's portable text (`gui.keys`).
