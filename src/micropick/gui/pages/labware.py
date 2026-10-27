@@ -51,16 +51,9 @@ without one is named on its tile and in the warn banner, whose Load again
 loads it with the offset (`Session.reload_labware`). Deck is not done
 while one is.
 
-Tips stay here until the Tip step has its own card (#14): while the slot
-clicked holds a tip rack, or a tip is on, the Tip card picks one up from a
-well of the rack and drops it in place or in the trash. Which tip is on is
-the robot's answer (`Session.read_tip`), never a note of what this page
-asked for: no pick-up while a tip is on, no drop while there is none, and
-nothing while the record could not be read - "unknown" is not "none".
-
 Loading, removing and moving are HTTP and go to a `Worker` under the
 robot's lease like every job that changes the robot session. None moves
-the gantry; picking up a tip and dropping it in the trash do.
+the gantry. A tip is put on at the Tip step.
 """
 
 from __future__ import annotations
@@ -69,19 +62,18 @@ import logging
 from dataclasses import replace
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QButtonGroup, QComboBox, QCompleter,
-                               QHBoxLayout, QLabel, QLineEdit, QListWidget,
-                               QListWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QWidget)
 
 from ...config.labware import (LabwareDefinition, LabwareError,
-                               local_definitions, row_first,
+                               local_definitions,
                                shared_definitions)
 from ..labware_kinds import CHIPS, facts, in_chip, kind
 from ...hardware.labware import LoadedLabware
 from ..session import Session
 from ..theme import COLORS, SIZES, SPACING
-from ..theme.factory import (card, combo_box, compact, heading, muted_label,
-                             primary_button, scroll_column, secondary_button)
+from ..theme.factory import (card, compact, heading, muted_label,
+                             scroll_column, secondary_button)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
 from ..widgets.deck_tiles import (TRASH_SLOT, DeckTiles, kind_icon,
@@ -170,7 +162,6 @@ class LabwarePage(QWidget):
         session.robot_state_changed.connect(self._on_robot_changed)
         session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.labware_changed.connect(lambda _s: self._refresh())
-        session.tip_changed.connect(self._on_tip_changed)
         # Another profile has other platforms and another Frequent.
         session.profile_changed.connect(lambda _p: self._refresh())
 
@@ -289,50 +280,12 @@ class LabwarePage(QWidget):
         catalogue.addWidget(self.items_note)
         column.addWidget(self.catalogue, 1)
 
-        column.addWidget(self._tip_card())
         column.addStretch(1)
         platforms = secondary_button("Change platforms in Robot setup", self)
         platforms.clicked.connect(
             lambda: self.session.page_requested.emit("platforms"))
         column.addWidget(platforms)
         return column
-
-    def _tip_card(self) -> QWidget:
-        self.tip_box = box = card(self)
-        box.layout().addWidget(heading("Tip", 3))
-        self.tip_state = QLabel()
-        self.tip_state.setWordWrap(True)
-        box.layout().addWidget(self.tip_state)
-
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Well"))
-        self.tip_well = combo_box(self)
-        self.tip_well.setMinimumWidth(80)
-        # Typed to find a well, never to make one: the completer offers the
-        # rack's wells as they are typed, and whatever is left in the box
-        # when editing ends is a well of the rack or goes back to the last.
-        self.tip_well.setEditable(True)
-        self.tip_well.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        completer = self.tip_well.completer()
-        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        self.tip_well.lineEdit().editingFinished.connect(self._well_typed)
-        row.addWidget(self.tip_well)
-        self.pick_button = primary_button("Pick up tip", self)
-        self.pick_button.clicked.connect(self._pick_up)
-        row.addWidget(self.pick_button)
-        row.addStretch(1)
-        box.layout().addLayout(row)
-
-        drops = QHBoxLayout()
-        self.drop_place_button = secondary_button("Drop in place", self)
-        self.drop_place_button.clicked.connect(self._drop_in_place)
-        self.drop_trash_button = secondary_button("Drop in trash", self)
-        self.drop_trash_button.clicked.connect(self._drop_in_trash)
-        drops.addWidget(self.drop_place_button)
-        drops.addWidget(self.drop_trash_button)
-        box.layout().addLayout(drops)
-        return box
 
     # -- the catalogue -------------------------------------------------------
 
@@ -439,37 +392,6 @@ class LabwarePage(QWidget):
                      f"Moved to slot {target}."):
             self.slot = target
 
-    def _pick_up(self) -> None:
-        if self.slot is None or self.session.robot is None:
-            return
-        # The chosen item, not the text in the box: that may still be a
-        # half-typed name.
-        well = self.tip_well.itemText(self.tip_well.currentIndex())
-        if not well:
-            return
-        self._run(Worker(self.session.pick_up_tip, str(self.slot), well),
-                  f"picking up a tip from slot {self.slot} {well}")
-
-    def _drop_in_place(self) -> None:
-        if self.session.robot is not None:
-            self._run(Worker(self.session.drop_tip_in_place),
-                      "dropping the tip in place")
-
-    def _drop_in_trash(self) -> None:
-        if self.session.robot is not None:
-            self._run(Worker(self.session.drop_tip_in_trash),
-                      "dropping the tip in the trash")
-
-    def _well_typed(self) -> None:
-        """What was typed, as the rack's well of that name (any case), or
-        back to the well chosen before."""
-        text = self.tip_well.currentText().strip()
-        index = self.tip_well.findText(text, Qt.MatchFlag.MatchFixedString)
-        if index < 0:
-            index = self.tip_well.currentIndex()
-        self.tip_well.setCurrentIndex(index)
-        self.tip_well.setEditText(self.tip_well.itemText(index))
-
     def _reload_problems(self) -> None:
         """Load again every labware the run holds without its platform's
         height, one after the other in one job."""
@@ -548,16 +470,6 @@ class LabwarePage(QWidget):
             self.replacing = False
         self._refresh()
 
-    def _on_tip_changed(self, tip) -> None:
-        # A rack is used in order: after a pick-up the chooser moves on to
-        # the next well, so the next press takes a fresh tip rather than an
-        # empty position. The operator can still choose any well.
-        if tip.returnable and tip.slot == str(self.slot):
-            index = self.tip_well.findText(tip.well)
-            if 0 <= index < self.tip_well.count() - 1:
-                self.tip_well.setCurrentIndex(index + 1)
-        self._refresh()
-
     def _say(self, text: str) -> None:
         self.message.setText(text)
         self.message.setVisible(bool(text))
@@ -628,7 +540,6 @@ class LabwarePage(QWidget):
         lease = session.robot_lease
         self.items.setToolTip(f"Robot busy: {lease.holder}."
                               if lease.busy else "")
-        self._show_tip(entry, connected, free)
 
     def _show_held(self, entry) -> None:
         label, its_kind, its_facts = self._shown(entry)
@@ -636,40 +547,6 @@ class LabwarePage(QWidget):
         self.held_name.setText(label)
         self.held_facts.setText(its_facts)
         self.held_facts.setVisible(bool(its_facts))
-
-    def _show_tip(self, entry, connected: bool, free: bool) -> None:
-        rack = self._definition_of(entry) if entry is not None else None
-        rack = rack if (rack is not None and rack.is_tiprack) else None
-        tip = self.session.tip
-        self.tip_box.setVisible(connected and (rack is not None
-                                               or bool(tip.attached)))
-        self._fill_wells(rack)
-        if tip.attached is None:
-            self.tip_state.setText("Tip state unknown.")
-        elif tip.attached:
-            self.tip_state.setText(
-                "Tip on" + (f" (slot {tip.slot} {tip.well})"
-                            if tip.returnable else "") + ".")
-        else:
-            self.tip_state.setText("No tip.")
-        known = connected and free and tip.attached is not None
-        self.pick_button.setEnabled(known and not tip.attached
-                                    and rack is not None
-                                    and self.tip_well.count() > 0)
-        self.drop_place_button.setEnabled(known and bool(tip.attached))
-        self.drop_trash_button.setEnabled(known and bool(tip.attached))
-
-    def _fill_wells(self, definition) -> None:
-        """The rack's wells, row by row; kept if unchanged so the chooser
-        does not jump back to A1 on every refresh."""
-        wells = (sorted(definition.wells, key=row_first)
-                 if definition is not None else [])
-        current = [self.tip_well.itemText(i)
-                   for i in range(self.tip_well.count())]
-        if wells == current:
-            return
-        self.tip_well.clear()
-        self.tip_well.addItems(wells)
 
     def _shown(self, entry: LoadedLabware) -> tuple[str, str | None, str]:
         """Name, kind and facts of what the run holds; its load name alone

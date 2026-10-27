@@ -112,26 +112,6 @@ def test_start_picking_is_refused_while_the_robot_is_held(app, session,
     page.deleteLater()
 
 
-def test_the_deck_waits_for_a_run(app, session):
-    session.load_labware(resolve_definition(RACK), 1)
-    page = LabwarePage(session)
-    page.choose(1)
-    assert page.tip_well.count() > 0
-    lease = session.robot_lease.claim("picking run", run=True)
-    try:
-        app.processEvents()
-        assert not page.pick_button.isEnabled()
-        before = list(session.robot.calls)
-        page._pick_up()
-        assert session.robot.calls == before
-        assert session.tip.attached is False
-    finally:
-        lease.release()
-    app.processEvents()
-    assert page.pick_button.isEnabled()
-    page.deleteLater()
-
-
 def test_home_the_robot_is_refused_while_the_robot_is_busy(app, session):
     session._api.power_off()
     session._api.power_on()
@@ -199,10 +179,10 @@ def test_a_load_refused_for_a_busy_robot_is_not_taken_for_the_next_job(
         page.put(resolve_definition(refused))
     finally:
         lease.release()
-    # The next job here, a tip, is not the load that never started.
+    # The next job here, a remove, is not the load that never started.
     page.choose(1)
-    page._pick_up()
+    page.remove_button.click()
     assert _until(app, lambda: not page._busy())
-    assert session.tip.attached is True
+    assert "1" not in session.run_state.labware
     assert refused not in session.profile.deck.recent_labware
     page.deleteLater()

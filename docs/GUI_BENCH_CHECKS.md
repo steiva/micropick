@@ -1383,3 +1383,41 @@ tip box and a 384 plate at hand.
 - [ ] **Change platforms in Robot setup.**
   Opens the Platforms sheet over the step, the breadcrumb "Home › Auto
   pick › Platforms"; Done there updates the chips on the tiles.
+
+## Redesign — Tip step: put a tip on, calibrate the tip (#14)
+
+- [ ] **No tip box.**
+  With no tip rack on the deck, the Tip step says "There is no tip box on
+  the deck. Add it on the Deck step." Back to Deck opens the Deck step.
+
+- [ ] **Take a tip.**
+  A rack in slot 10: the Select reads "<rack name> · slot 10", the rack's
+  first free tip is ringed and the button reads "Take tip A1". Click A3 on
+  the rack: "Take tip A3", the button keeps its width (also for H12).
+  Take it: the tip comes off A3, a toast and "Tip A3 is on.", Drop in
+  trash and Put back.
+
+- [ ] **Put back, Drop in trash.**
+  Put back: the tip goes into A3 again, A3 is not gray. Take it, Drop in
+  trash: the tip drops into the bin, A3 is gray and A1 is offered.
+
+- [ ] **Calibrate the tip.**
+  Without a tip the four steps are dimmed. With one: Start tip
+  calibration - the pill reads "Calibrating the tip", STOP shows, the
+  camera goes over the calibration position and waits ("Waiting for
+  you"). The disc is there, Calibrate: about 30 s, the lower camera's
+  picture. With the manual adjustment on in Settings, nudge with the pad
+  and Save, or Skip (the tip goes back to where the routine put it).
+  "Tip calibrated.", Tip gets its ✓.
+
+- [ ] **Stop while it waits.**
+  Start, then Esc (or STOP) at the disc: the run ends, "Calibration
+  stopped. Nothing was saved.", the pill goes.
+
+- [ ] **Check: tip to crosshair.**
+  After a calibration the tip goes to the crosshair at the module height:
+  on the lower camera it is on the central crosshair.
+
+- [ ] **Done follows the tip.**
+  Drop the tip and take another: Tip loses its ✓ until calibrated again.
+  In Liquid, the Tip step has no calibration and is ✓ once any tip is on.

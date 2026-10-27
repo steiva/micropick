@@ -346,10 +346,19 @@ measures each device that works on the first load and takes the faster
 (`core.vision.yolo`). `core.vision.onnx_yolo` gives ultralytics' own boxes:
 change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
-verify, manual adjustment, the start offset dx, dy). The Tip calibration page is numbered steps,
-each a card with a mark: place the disc (ticked by the operator), set the
-disc position, put a tip on, calibrate, nudge the tip (only while it
-waits); its cameras are the profile's upper and lower ones.
+verify, manual adjustment, the start offset dx, dy). The Tip step
+(`pages.calibration_pipette`, REDESIGN §6.2) is two cards. Put a tip on:
+a Select of the deck's tip boxes, the rack (wells taken here and not put
+back gray, `Session.used_tips`), Take tip A3; then "Tip A3 is on." with
+Drop in trash and Put back; no tip box, a warning with Back to Deck.
+Calibrate the tip, its steps dimmed until a tip is on: Start tip
+calibration (the camera to the calibration position), The disc is
+there, Calibrate, the fine-tune (Save, or Skip: back to the automatic
+result) - one run from Start to its end (lease `run=True`, STOP, the
+pill), waiting for the operator at the disc and the fine-tune, where Stop
+ends it with nothing saved; then "Tip calibrated." with Check: tip to
+crosshair. Liquid's Tip step shows no calibration (`set_task`). Its
+cameras are the profile's upper and lower ones.
 Picking is the same, leading to the run: complete the Operation checklist,
 set the picking position, the shake position, the dish bottom (optional),
 analyze the dish, start picking; the jog panel last. Steps 2-4 are marked

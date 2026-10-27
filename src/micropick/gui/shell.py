@@ -435,6 +435,8 @@ class MainWindow(QMainWindow):
         self.show_step(first)
 
     def show_step(self, step: str) -> None:
+        # Liquid's Tip step has no calibration.
+        self.tip_calibration_page.set_task(self.task)
         self._show(STEP_PAGES[step], [tasks.TASKS[self.task][0]],
                    in_task=True)
         self.step = self._task_step = step

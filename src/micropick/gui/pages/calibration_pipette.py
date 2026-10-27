@@ -1,67 +1,70 @@
-"""Measuring the tip offset, as numbered steps on one page.
+"""The Tip step (REDESIGN §6.2): put a tip on, then calibrate it.
 
-The picture on the left, and on the right the steps in the order they are
-done, each a card with a mark - done, to do, or waiting for a step above:
+The picture on the left - the upper camera, the lower one while the
+routine measures the tip - and on the right two cards:
 
-1. Place the calibration disc on the calibration module. The application
-   cannot see it, so the operator ticks it; Set position and Start wait for
-   the tick.
-2. Set the disc position: jog the disc's central crosshair under the camera
-   crosshair at the working height, then Set position. With one stored, Go
-   to saved position drives there to check it. The jog panel sits right
-   under this step.
-3. Put a tip on the pipette - on the Deck step, for now (#14).
-4. Calibrate: the starting offset, what still stops the run, and Start.
-5. Nudge the tip onto the crosshair - only while the routine waits for it.
+**Put a tip on.** A Select of the tip boxes on the deck ("<name> · slot
+10"), the rack's wells (a well taken here and not put back gray,
+`Session.used_tips`; the one to take ringed, the first free one until
+another is clicked) and **Take tip A3**, fixed in width so that "H12" does
+not move it. Once one is on: "Tip A3 is on." with Drop in trash and Put
+back. With no tip box on the deck, a warning and Back to Deck. Which tip
+is on is the robot's answer (`Session.read_tip`), never a note of what
+was asked: no pick-up while a tip is on, no drop while there is none,
+nothing while it could not be read. These go through the page's jog panel
+(`JogPanel.run_job`), as every robot command from a page with one.
+
+**Calibrate the tip**, its steps shown from the start and dimmed until a
+tip is on - the robot never moves while the disc is being placed:
+
+1. Start tip calibration: the camera goes to the calibration position
+   (the profile's `tip_calib`, set in Robot setup).
+2. The disc is there: checked on the picture once the camera is over it.
+3. Calibrate: the automatic routine, about 30 s.
+4. Fine-tune by hand (when Settings has the manual adjustment on): nudge,
+   then Save, or Skip - the tip goes back to where the routine put it.
+
+Then "Tip calibrated." with Check: tip to crosshair, which sends the tip to
+the crosshair the routine found, at the module height, with the offset
+now saved. Liquid's Tip step has no calibration (`set_task`): it is done
+once a tip is on.
+
+**The calibration is one run.** Start claims the robot's lease as a run
+(STOP and "Calibrating the tip" in the top bar) and one worker goes
+through every step: it drives there, waits for Calibrate, measures, waits
+for the fine-tune, saves. A wait is an Event the GUI sets; Stop (Esc,
+STOP) during one ends the run with nothing saved. Between the waits the
+routine is a handful of moves and a few seconds of detection, with no
+point to stop at; a second Stop holds the robot.
 
 How the routine measures - frames per reading, the check after the
-correction, the manual adjustment, the tip type recorded - is set in
-Settings (`AppSettings.tip_cal_*`), not here: those are chosen once. The
-cameras are the profile's upper and lower ones, chosen in Settings too.
-
-**The disc position is a profile position, `tip_calib`.** The notebook
-teaches it once with `jog(...)` and `profile.remember`, and drives to it with
-`profile.where("tip_calib")` before every calibration. The routine's own
-drive to the stored position happens at the start of the run, as in the
-notebook, so Go to saved position is for looking, not a step that can be
-forgotten.
-
-**One picture.** It shows the upper camera while the disc is set and the
-lower one while the routine runs and waits for the operator. The disc's jog
-panel is hidden while the routine runs, so nothing but the touch-up can move
-the robot then; the touch-up has a jog panel of its own, shown only while it
-waits.
+correction, the manual adjustment, the tip type recorded, the start
+offset with no offset in the profile - is set in Settings
+(`AppSettings.tip_cal_*`). The cameras are the profile's upper and lower.
 
 **The routine needs a tip on the pipette, and asks the robot.** Every tip
 seats differently, which is why this is redone after each pick-up; a
 calibration taken with no tip measures nothing and a stored offset from it
-would send every pick to the wrong place. `Session.tip` is the robot's record,
-and the run is refused on anything but "a tip is on".
+would send every pick to the wrong place. The step is done while the tip
+it measured is on, in the robot session it was measured in
+(`readiness.tip_calibration_status`).
 
 **The manual touch-up is the notebook's `jog_in_window`, in Qt**, with one
 difference: its arrows follow the lower camera's picture, which is turned
 and mirrored, through `TipTarget.axes` (`JogPanel` `view_axes`) - right on
-the screen moves the tip right on the picture. The
-workflow calls `manual_touch_up(robot, camera, view)` from its own thread and
-carries on when it returns, reading the final pose to compute the offset. Here
-the callback raises a signal to the GUI thread and waits on an Event; step 5
-appears with the lower camera live and a jog panel at 0.05 mm, and Done sets
-the event. Abort sets it too, with a flag the callback turns into an
-exception, so the routine ends before it saves. Between Start and Done the
-routine is not cancellable — it is a handful of moves and a few seconds of
-detection — and the log says which of those it is doing.
+the screen moves the tip right on the picture. The workflow calls
+`manual_touch_up(robot, camera, view)` from its own thread and carries on
+when it returns, reading the final pose to compute the offset; Skip moves
+the tip back to the pose it was called at, so the offset is the
+automatic one. Its jog panel is lent the run's lease (`JogPanel.lend`).
 
 **The routine ends with the Z axis retracted**, as the notebook's cell does
-after printing the result: the tip is at the module height over the disc,
-and every next move starts by going somewhere else. An aborted or failed run
-leaves the gantry where it stopped, so what happened can be seen.
+after printing the result. An aborted or failed run leaves the gantry
+where it stopped, so what happened can be seen.
 
-**The profile is written by the workflow, on Done.** `calibrate_pipette_offset`
-saves the offset and the by-product homography together when given the
-profile, and it is given the profile here because Done is the operator
-looking at the tip on the crosshair and saying so — the same act the camera
-page's Save button is. Skipping the touch-up saves on the automatic result,
-which is what the notebook does with `manual_touch_up=None`.
+**The profile is written by the workflow**, which saves the offset and the
+by-product homography together when given the profile: Save, or Skip, is
+the operator looking at the tip on the crosshair and saying so.
 """
 
 from __future__ import annotations
@@ -71,74 +74,90 @@ import threading
 import time
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFontDatabase
-from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
-                               QPlainTextEdit, QPushButton, QWidget)
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
+from ...config.labware import LabwareError, resolve_definition
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
-from ...hardware.protocols import xyz
+from ...hardware.protocols import move_to, xyz
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
-from ..theme import SPACING
-from ..theme.factory import (Section, double_spin_box, muted_label,
-                             primary_button, scroll_column, secondary_button)
+from ..theme import COLORS, SPACING
+from ..theme.factory import (card, heading, muted_label, primary_button,
+                             scroll_column, secondary_button, select)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
+from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.checklist import BLOCKED, OK, TODO
-from ..widgets.done_banner import DoneBanner
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
+from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_card import StepCard, wrapped
+from ..widgets.toast import show_toast
 from ..workers import Worker
 
 __all__ = ["PipetteCalibration", "POSITION_NAME", "TouchUpAborted"]
 
-TITLE = "Tip calibration"
+TITLE = "Tip"
 
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 420
 
-# The profile position the disc is taught under. The notebook's name, kept:
-# a profile taught from the notebook works here and the other way round.
+# The profile position the calibration starts at: Robot setup's
+# calibration position. The notebook's name, kept: a profile taught from
+# the notebook works here and the other way round.
 POSITION_NAME = CALIBRATION_POSITION
 
 # The jog step for the touch-up, as the notebook sets it.
 TOUCH_UP_STEP_MM = 0.05
 
-# Where to start when the profile has no offset yet is set in Settings
-# (`AppSettings.tip_cal_start_offset`). It only has to land the tip inside
-# the lower camera's view; the calibration measures the real one.
+NO_RACK = "There is no tip box on the deck. Add it on the Deck step."
+CALIBRATED = "Tip calibrated."
+NOTHING_SAVED = "Nothing was saved."
+FIRST_A_TIP = "Put a tip on first."
+
+# Where a run is: driving to the calibration position, waiting for the
+# disc to be checked and Calibrate, measuring, waiting for the fine-tune.
+MOVING, DISC, MEASURING, TUNING = "moving", "disc", "measuring", "tuning"
+
 
 class TouchUpAborted(RuntimeError):
-    """The operator pressed Abort during the manual touch-up."""
+    """The operator stopped the calibration while it waited for them."""
 
 
 class PipetteCalibration(QWidget):
-    # Emitted from the worker thread when the routine wants the operator.
-    # A signal, so that the slot runs on the GUI thread whatever thread asked.
+    # Emitted from the worker thread when the routine waits for the
+    # operator: at the disc, and for the fine-tune. Signals, so that the
+    # slot runs on the GUI thread whatever thread asked.
+    disc_requested = Signal()
     touch_up_requested = Signal()
 
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        self._result = None
-        self._standin = False
+        self._phase: str | None = None
+        self._disc_seen = False
         self._gate = threading.Event()
         self._aborted = False
+        self._skip = False
         self._last_line = ""
         # How the last run ended, shown under Start until the next one.
         self._outcome = ""
-        # The profile the offset boxes were last filled for: a new one is a
-        # new starting point.
-        self._filled_for = None
-        # The start offset the boxes were last filled from.
-        self._start_offset = session.settings.tip_cal_start_offset
+        # The crosshair the last calibration found, robot XY: where Check
+        # sends the tip.
+        self._crosshair: tuple[float, float] | None = None
+        # The lower camera after a check, until the next refresh that
+        # changes something: the tip is under it.
+        self._looking_at_tip = False
+        self._task: str | None = None
+        # The well to take, by rack slot: the first free one until another
+        # is clicked.
+        self._chosen: dict[str, str] = {}
         self.opener = CameraOpener(session, self)
 
         self.view = CameraView(self)
@@ -146,9 +165,8 @@ class PipetteCalibration(QWidget):
                             machine_controls=False,
                             collapsed=("positions",), parent=self)
         self.jog.show_position_on(self.view)
-        panel = CardColumns([self._disc_step(), self._position_step(),
-                             self.jog, self._tip_step(), self._run_step(),
-                             self._touch_step(), self._details_card()], self)
+        panel = CardColumns([self._tip_card(), self._calibration_card(),
+                             self.jog], self)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)
@@ -156,188 +174,220 @@ class PipetteCalibration(QWidget):
         layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
                          1)
 
+        self.disc_requested.connect(self._at_disc)
         self.touch_up_requested.connect(self._begin_touch_up)
         session.camera_opened.connect(lambda _l: self._refresh())
         session.camera_closed.connect(lambda _l: self._refresh())
         session.robot_state_changed.connect(lambda _s: self._refresh())
-        session.robot_busy_changed.connect(self._on_robot_busy)
+        session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.profile_changed.connect(lambda _p: self._refresh())
-        session.settings_changed.connect(self._settings_changed)
-        # The window's Stop. The routine has no point to stop at between
-        # its moves; only the manual adjustment can be left, which ends it
-        # with nothing saved. A second Stop halts the robot.
+        session.settings_changed.connect(lambda _s: self._refresh())
+        session.labware_changed.connect(self._refresh)
+        # The window's Stop: a wait for the operator ends the run with
+        # nothing saved. A second Stop halts the robot.
         session.stop_requested.connect(self._on_stop)
         session.tip_changed.connect(lambda _t: self._refresh())
         self._refresh()
 
     # -- construction --------------------------------------------------------
 
-    def _disc_step(self) -> QWidget:
-        self.disc = StepCard(self, 1, "Place the calibration disc on the "
-                                   "calibration module")
-        self.disc.add(wrapped(
-            "Place the crosshair disc flat and centered on the calibration "
-            "module."))
-        self.disc_placed = QCheckBox("The disc is on the module", self)
-        # The keys over this page are the gantry's.
-        self.disc_placed.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.disc_placed.toggled.connect(lambda _on: self._refresh())
-        self.disc.add(self.disc_placed)
-        return self.disc.box
-
-    def _position_step(self) -> QWidget:
-        self.position = StepCard(self, 2, "Set the disc position")
-        self.position_text = wrapped()
-        self.position.add(self.position_text)
-        self.position_state = muted_label()
-        self.position.add(self.position_state)
-        buttons = QHBoxLayout()
-        self.remember_button = primary_button("Set position", self)
-        self.remember_button.clicked.connect(self._remember)
-        self.goto_button = secondary_button("Go to saved position", self)
-        self.goto_button.clicked.connect(self._goto)
-        buttons.addWidget(self.remember_button)
-        buttons.addWidget(self.goto_button)
-        buttons.addStretch(1)
-        self.position.add_layout(buttons)
-        self.position_note = wrapped()
-        self.position.add(self.position_note)
-        return self.position.box
-
-    def _tip_step(self) -> QWidget:
-        self.tip = StepCard(self, 3, "Put a tip on the pipette")
-        self.tip_text = wrapped()
-        self.tip.add(self.tip_text)
-        row = QHBoxLayout()
-        # "&&": a single & is a mnemonic, and would read "Robot _Deck".
-        self.tip_link = QPushButton("Robot && Deck ›", self)
-        self.tip_link.setFlat(True)
-        self.tip_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.tip_link.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.tip_link.clicked.connect(
+    def _tip_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Put a tip on", 2))
+        self.no_rack = Banner(NO_RACK, tone="warn", parent=box)
+        self.back_to_deck = self.no_rack.add_action("Back to Deck")
+        self.back_to_deck.clicked.connect(
             lambda: self.session.page_requested.emit("labware"))
-        row.addWidget(self.tip_link)
-        row.addStretch(1)
-        self.tip.add_layout(row)
-        return self.tip.box
+        box.layout().addWidget(self.no_rack)
 
-    def _run_step(self) -> QWidget:
-        self.run = StepCard(self, 4, "Calibrate")
-        self.run.add(wrapped(
-            "Moves to the disc position and measures the tip offset from "
-            "the camera center with the lower camera."))
+        self.racks = select(box)
+        # The keys over this page are the gantry's.
+        self.racks.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.racks.currentIndexChanged.connect(lambda _i: self._refresh())
+        box.layout().addWidget(self.racks)
+        self.rack_hint = muted_label("Click the tip to take.", box)
+        box.layout().addWidget(self.rack_hint)
+        self.rack_grid = PlateGrid(mini=True, parent=box)
+        self.rack_grid.well_clicked.connect(self._choose_tip)
+        box.layout().addWidget(self.rack_grid)
+        self.take_button = primary_button("Take tip", box)
+        metrics = self.take_button.fontMetrics()
+        self.take_button.setFixedWidth(
+            metrics.horizontalAdvance("Take tip H12") + 6 * SPACING)
+        self.take_button.clicked.connect(self._take)
+        box.layout().addWidget(self.take_button)
 
-        # The starting offset: where the routine first looks for the tip.
-        self.offset_note = muted_label()
-        self.run.add(self.offset_note)
-        self.dx = double_spin_box(self)
-        self.dy = double_spin_box(self)
-        for spin in (self.dx, self.dy):
-            spin.setRange(-300.0, 300.0)
-            spin.setDecimals(3)
-            spin.setSingleStep(0.1)
-            spin.setSuffix(" mm")
-            spin.setToolTip("Approximate camera-to-tip offset.")
-        self.reset_offset_button = secondary_button("Reset", self)
-        self.reset_offset_button.setToolTip("Reset to the start offset set "
-                                            "in Settings.")
-        self.reset_offset_button.clicked.connect(self._reset_offset)
+        self.tip_state = wrapped()
+        box.layout().addWidget(self.tip_state)
         row = QHBoxLayout()
-        row.addWidget(QLabel("dx"))
-        row.addWidget(self.dx)
-        row.addWidget(QLabel("dy"))
-        row.addWidget(self.dy)
-        row.addWidget(self.reset_offset_button)
+        self.drop_button = secondary_button("Drop in trash", box)
+        self.drop_button.clicked.connect(self._drop_in_trash)
+        self.put_back_button = secondary_button("Put back", box)
+        self.put_back_button.clicked.connect(self._put_back)
+        row.addWidget(self.drop_button)
+        row.addWidget(self.put_back_button)
         row.addStretch(1)
-        self.run.add_layout(row)
+        box.layout().addLayout(row)
+        self.tip_note = muted_label("", box)
+        self.tip_note.setWordWrap(True)
+        box.layout().addWidget(self.tip_note)
+        return box
 
-        # What stops the run, in words, under the button it holds back.
-        self.checks = QLabel()
-        self.checks.setWordWrap(True)
-        self.checks.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.run.add(self.checks)
-        row = QHBoxLayout()
-        self.start_button = primary_button("Start", self)
+    def _calibration_card(self) -> QWidget:
+        """The four steps under one heading, in one widget: dimmed as one
+        until a tip is on, hidden as one on Liquid's Tip step."""
+        self.calibration_box = QWidget(self)
+        column = QVBoxLayout(self.calibration_box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        column.addWidget(heading("Calibrate the tip", 2))
+
+        self.start_step = StepCard(self, 1, "Start")
+        self.start_step.add(wrapped(
+            "The camera goes to the calibration position."))
+        self.start_button = primary_button("Start tip calibration", self)
         self.start_button.clicked.connect(self._start)
-        row.addWidget(self.start_button)
-        self.settings_link = QPushButton("Settings ›", self)
-        self.settings_link.setFlat(True)
-        self.settings_link.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.settings_link.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.settings_link.setToolTip("Calibration parameters.")
-        self.settings_link.clicked.connect(
-            lambda: self.session.page_requested.emit("settings"))
-        row.addStretch(1)
-        row.addWidget(self.settings_link)
-        self.run.add_layout(row)
-        self.method_note = muted_label()
-        self.run.add(self.method_note)
-        self.done = DoneBanner(self)
-        self.run.add(self.done)
-        return self.run.box
+        self.start_step.add(self.start_button)
+        column.addWidget(self.start_step.box)
 
-    def _touch_step(self) -> QWidget:
-        """Shown only while the routine is waiting for the operator."""
-        self.touch = StepCard(self, 5, "Nudge the tip onto the crosshair")
-        self.touch_box = self.touch.box
-        self.touch.add(wrapped(
-            f"Nudge the tip onto the central crosshair "
-            f"({TOUCH_UP_STEP_MM:g} mm steps), then Done. Abort discards "
-            f"the calibration."))
-        # Move open: nudging the tip onto the crosshair is the whole of this
-        # block. Positions folded: nothing here is a place to return to.
-        # XY only: a Z step here pushes the tip into the disc.
+        self.disc_step = StepCard(self, 2, "Disc on the calibration module")
+        self.disc_step.add(wrapped(
+            "Check on the picture that the crosshair disc is there. If not, "
+            "put it on now."))
+        self.disc_button = secondary_button("The disc is there", self)
+        self.disc_button.clicked.connect(self._disc_there)
+        self.disc_step.add(self.disc_button)
+        column.addWidget(self.disc_step.box)
+
+        self.calibrate_step = StepCard(self, 3, "Calibrate")
+        self.calibrate_step.add(wrapped(
+            "The robot finds the tip under the camera by itself. About "
+            "30 s."))
+        self.calibrate_button = primary_button("Calibrate", self)
+        self.calibrate_button.clicked.connect(self._calibrate)
+        self.calibrate_step.add(self.calibrate_button)
+        column.addWidget(self.calibrate_step.box)
+
+        self.tune_step = StepCard(self, 4, "Fine-tune by hand")
+        self.tune_text = wrapped()
+        self.tune_step.add(self.tune_text)
+        # XY only: a Z step here pushes the tip into the disc. Positions
+        # folded: nothing here is a place to return to.
         self.touch_jog = JogPanel(self.session, shortcut_host=self,
                                   machine_controls=False,
                                   collapsed=("positions",), xy_only=True,
-                                  parent=self.touch_box)
+                                  parent=self.tune_step.box)
         self.touch_jog.show_position_on(self.view)
-        self.touch.add(self.touch_jog)
+        self.touch_jog.hide()
+        self.tune_step.add(self.touch_jog)
         row = QHBoxLayout()
-        self.accept_button = primary_button("Done", self)
-        self.accept_button.clicked.connect(self._accept)
-        self.abort_button = secondary_button("Abort", self)
-        self.abort_button.clicked.connect(self._abort)
-        row.addWidget(self.accept_button)
-        row.addWidget(self.abort_button)
+        self.save_button = primary_button("Save", self)
+        self.save_button.clicked.connect(self._accept)
+        self.skip_button = secondary_button("Skip", self)
+        self.skip_button.clicked.connect(self._skip_tune)
+        row.addWidget(self.save_button)
+        row.addWidget(self.skip_button)
         row.addStretch(1)
-        self.touch.add_layout(row)
-        self.touch_box.hide()
-        return self.touch_box
+        self.tune_step.add_layout(row)
+        column.addWidget(self.tune_step.box)
 
-    def _details_card(self) -> QWidget:
-        """Everything the routine wrote, in one text: the run's lines, then
-        the result and where it was saved. A card of its own and folded: the
-        line under Start says what the routine is doing, the banner what it
-        saved, and every line also goes to the application log. The full
-        text is for checking a result or seeing what went wrong."""
-        self.details = Section("Details", collapsed=True, parent=self)
-        self.run_log = QPlainTextEdit(self)
-        self.run_log.setReadOnly(True)
-        self.run_log.setMaximumBlockCount(2000)
-        # Not wrapped: the result's tables line up in columns.
-        self.run_log.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-        self.run_log.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        self.run_log.setMinimumHeight(260)
-        self.details.body.layout().addWidget(self.run_log)
-        return self.details
+        # What stops Start, what the run is doing, or how it ended.
+        self.checks = muted_label("", self)
+        self.checks.setWordWrap(True)
+        column.addWidget(self.checks)
+        self.calibrated = Banner(CALIBRATED, tone="ok", parent=self)
+        self.check_button = self.calibrated.add_action(
+            "Check: tip to crosshair")
+        self.check_button.clicked.connect(self._check)
+        column.addWidget(self.calibrated)
+        return self.calibration_box
 
-    def _settings_changed(self, settings) -> None:
-        # A new start offset in Settings fills the boxes again; any other
-        # setting keeps what was typed.
-        if settings.tip_cal_start_offset != self._start_offset:
-            self._start_offset = settings.tip_cal_start_offset
-            self._filled_for = None
+    def set_task(self, task: str | None) -> None:
+        """The task the step is shown in: Liquid's has no calibration."""
+        self._task = task
         self._refresh()
 
-    def _reset_offset(self) -> None:
-        dx, dy = self.session.settings.tip_cal_start_offset
-        self.dx.setValue(dx)
-        self.dy.setValue(dy)
+    # -- the tip -------------------------------------------------------------
 
-    # -- the disc ------------------------------------------------------------
+    def _racks(self) -> list[tuple[str, object]]:
+        """(slot, definition) of every tip box the robot session holds,
+        by slot number."""
+        state = self.session.run_state
+        if self.session.robot is None or state is None:
+            return []
+        out = []
+        for slot, entry in state.labware.items():
+            try:
+                definition = resolve_definition(entry.load_name)
+            except LabwareError:
+                continue
+            if definition.is_tiprack:
+                out.append((slot, definition))
+        return sorted(out, key=lambda r: int(r[0]) if r[0].isdigit() else 99)
+
+    def _rack(self) -> tuple[str, object] | None:
+        slot = self.racks.currentData()
+        return next((r for r in self._racks() if r[0] == slot), None)
+
+    def _free_wells(self, slot: str, definition) -> list[str]:
+        used = self.session.used_tips(slot)
+        return [w for column in definition.ordering for w in column
+                if w not in used]
+
+    def _well_to_take(self) -> str | None:
+        rack = self._rack()
+        if rack is None:
+            return None
+        slot, definition = rack
+        chosen = self._chosen.get(slot)
+        free = self._free_wells(slot, definition)
+        if chosen in free:
+            return chosen
+        return free[0] if free else None
+
+    def _choose_tip(self, well: str) -> None:
+        rack = self._rack()
+        if rack is not None:
+            self._chosen[rack[0]] = well
+        self._refresh()
+
+    def _take(self) -> None:
+        rack, well = self._rack(), self._well_to_take()
+        if rack is None or well is None or self._running():
+            return
+        slot, session = rack[0], self.session
+        self.tip_note.setText("")
+
+        def job(_log):
+            session.pick_up_tip(slot, well)
+
+        self._tip_job(job, f"picking up a tip from slot {slot} {well}",
+                      f"Tip {well} is on.")
+
+    def _drop_in_trash(self) -> None:
+        self._tip_job(lambda _log: self.session.drop_tip_in_trash(),
+                      "dropping the tip in the trash")
+
+    def _put_back(self) -> None:
+        self._tip_job(lambda _log: self.session.return_tip(),
+                      "putting the tip back")
+
+    def _tip_job(self, job, what: str, done: str = "") -> None:
+        if self._running():
+            return
+
+        def then(_result):
+            if done:
+                show_toast(self, done)
+            self._refresh()
+
+        if not self.jog.run_job(job, what=what, then=then):
+            self.tip_note.setText(self.session.robot_lease.refusal
+                                  if self.session.robot_lease.busy
+                                  else "Robot busy.")
+        self._refresh()
+
+    # -- the calibration -----------------------------------------------------
 
     def _stored_position(self):
         profile = self.session.profile
@@ -345,95 +395,31 @@ class PipetteCalibration(QWidget):
             return None
         return profile.positions.get(POSITION_NAME)
 
-    def _goto(self) -> None:
-        stored = self._stored_position()
-        if stored is None or self.session.robot is None or self._busy():
-            return
-        robot, motion = self.session.robot, self.session.motion
-        what = f"going to {POSITION_NAME} {stored}"
-        lease = self.session.robot_lease.claim(what)
-        if lease is None:
-            self.position_note.setText(self.session.robot_lease.refusal)
-            return
-
-        def job():
-            motion.tip_to(stored[:2], stored[2])
-            return xyz(robot)
-
-        self._run_short(Worker(job, lease=lease), what)
-
-    def _remember(self) -> None:
-        if self.session.robot is None or self.session.profile is None or self._busy():
-            return
-        stored = self._stored_position()
-        if stored is not None:
-            answer = QMessageBox.question(
-                self, "Set the disc position",
-                f"Replace the saved disc position "
-                f"{tuple(round(v, 2) for v in stored)} with the current "
-                f"position?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        robot, session = self.session.robot, self.session
-
-        def job():
-            session.remember(POSITION_NAME, xyz(robot))
-
-        self._run_short(Worker(job), f"remembering {POSITION_NAME}")
-
-    def _module_height(self) -> float:
+    def _start_offset(self) -> tuple[float, float]:
+        """Where the routine first looks for the tip: the profile's offset,
+        else the start offset in Settings."""
         profile = self.session.profile
-        return float(profile.calibration.tip_target.module_height) if profile else 67.1
-
-    def _run_short(self, worker: Worker, what: str) -> None:
-        """A move or a save: no log panel, just the buttons greyed out."""
-        self._worker = worker
-        worker.what = worker.what or what
-        worker.finished.connect(self._short_done)
-        worker.failed.connect(self._short_failed)
-        log.info("%s", what)
-        self.position_note.setText("")
-        worker.start()
-        self._refresh()
-
-    def _short_done(self, _result=None) -> None:
-        if self.sender() is not self._worker:
-            return
-        self._worker = None
-        self._refresh()
-
-    def _short_failed(self, reason: str) -> None:
-        if self.sender() is not self._worker:
-            return
-        self._worker = None
-        self.position_note.setText(reason)
-        log.error("%s", reason)
-        self._refresh()
-
-    # -- running -------------------------------------------------------------
+        offset = profile.calibration.pipette_offset if profile else None
+        if offset is not None:
+            return offset.dx, offset.dy
+        return tuple(self.session.settings.tip_cal_start_offset)
 
     def _readiness(self) -> list[str]:
-        """Everything that stops the routine from starting, as sentences,
-        in the order of the steps. Empty means go."""
+        """What stops the routine from starting, as sentences. The step's
+        own needs - the robot, the camera calibration, the calibration
+        position - are the step banner's; these are what is left."""
         session, problems = self.session, []
         profile = session.profile
         if session.robot is None:
-            problems.append("Connect the robot on the Profile page.")
+            problems.append("The robot is not connected.")
         if profile is None:
-            problems.append("Load a profile on the Profile page.")
+            problems.append("No profile loaded.")
         elif profile.pixel_map is None:
-            problems.append("Calibrate the camera first (Camera calibration): "
-                            "the tip is found through its pixel map.")
-        if not self.disc_placed.isChecked():
-            problems.append("Step 1: place the disc and tick it.")
+            problems.append("The camera is not calibrated.")
         if profile is not None and self._stored_position() is None:
-            problems.append("Step 2: set the disc position.")
-        tip = session.tip
-        if session.robot is not None and tip.attached is not True:
-            problems.append("Step 3: put a tip on the pipette. The offset is "
-                            "of the tip, and every tip seats differently.")
+            problems.append("The calibration position is not set.")
+        if session.robot is not None and session.tip.attached is not True:
+            problems.append(FIRST_A_TIP)
         over, under = self._over_camera(), self._under_camera()
         if over is None:
             problems.append("The upper camera is not open yet.")
@@ -442,18 +428,12 @@ class PipetteCalibration(QWidget):
         else:
             mode = self._calibration_mode(self.session.lower_camera_label)
             if mode is not None and tuple(under.resolution) != mode:
-                problems.append(
-                    f"The lower camera is open at {under.resolution[0]}x"
-                    f"{under.resolution[1]} (the clips' mode); the "
-                    f"calibration is measured at {mode[0]}x{mode[1]}, and it "
-                    f"is being opened again in that.")
+                problems.append(f"The lower camera is opening at {mode[0]}x"
+                                f"{mode[1]}.")
         if over is not None and over is under:
-            problems.append("The upper and lower camera are the same camera: "
-                            "choose them in Settings.")
-        if self.dx.value() == 0.0 and self.dy.value() == 0.0 \
-                and (profile is None or profile.calibration.pipette_offset is None):
-            problems.append("No starting offset: measure it roughly with a "
-                            "ruler and enter dx, dy.")
+            problems.append("The upper and lower camera are the same camera.")
+        if self._start_offset() == (0.0, 0.0):
+            problems.append("The start offset in Settings is not set.")
         return problems
 
     def _tip_type(self) -> str | None:
@@ -472,12 +452,12 @@ class PipetteCalibration(QWidget):
         return offset.tip_type if offset is not None else None
 
     def _start(self) -> None:
+        if self._running():
+            return
         problems = self._readiness()
         if problems:
-            for line in problems:
-                self._append("not started: " + line)
-            return
-        if self._busy():
+            self._outcome = problems[0]
+            self._refresh()
             return
         session = self.session
         settings = session.settings
@@ -487,27 +467,18 @@ class PipetteCalibration(QWidget):
         target = profile.calibration.tip_target
         pmap = PixelMap.from_config(profile.pixel_map)
         stored = self._stored_position()
-        current = (self.dx.value(), self.dy.value())
+        current = self._start_offset()
         frames, verify = settings.tip_cal_frames, settings.tip_cal_verify
         tip_type = self._tip_type()
         touch_up = self._touch_up if settings.tip_cal_touch_up else None
         mock = session.mock
-        device = session.settings.inference_device
+        device = settings.inference_device
         # Which tip is measured: the offset holds for it alone
         # (`readiness.tip_calibration_status`).
         robot_session = (session.run_state.run_id
                          if session.run_state is not None else None)
         tip_pickup = session.tip.pickup
-
-        self.run_log.clear()
-        self.done.clear()
-        self._outcome = ""
-        self._last_line = ""
-        self._result = None
-        self._standin = False
-        self._append(f"starting from ({current[0]:+.3f}, {current[1]:+.3f}) mm, "
-                     f"{frames} frames per reading"
-                     + (f", tip {tip_type}" if tip_type else ""))
+        wait = self._wait
 
         def job(log):
             log("loading the tip detector")
@@ -516,9 +487,15 @@ class PipetteCalibration(QWidget):
             standin = bool(getattr(detector, "is_standin", False))
             if standin:
                 log(STANDIN_NOTE)
-            log(f"driving to {POSITION_NAME} {tuple(round(v, 2) for v in stored)}")
+            log(f"driving to {POSITION_NAME} "
+                f"{tuple(round(v, 2) for v in stored)}")
             motion.tip_to(stored[:2], stored[2], log=log)
+            wait(self.disc_requested, "waiting for you: check the disc, "
+                 "then Calibrate")
             time.sleep(0.5)
+            log(f"starting from ({current[0]:+.3f}, {current[1]:+.3f}) mm, "
+                f"{frames} frames per reading"
+                + (f", tip {tip_type}" if tip_type else ""))
             try:
                 result = calibrate_pipette_offset(
                     robot, over, under, detector, pmap, target=target,
@@ -529,44 +506,76 @@ class PipetteCalibration(QWidget):
             finally:
                 # It switches the lights on when it finds them off.
                 session.refresh_lights()
-            # As the notebook does once the offset is saved: the tip is at
-            # the module height over the disc, and the next thing anyone
-            # does is drive somewhere else.
+            # The tip is on the crosshair, offset by what was measured.
+            fx, fy, _fz = xyz(robot)
+            offset = result.offset
+            crosshair = (fx - offset.dx, fy - offset.dy)
+            # As the notebook does once the offset is saved: the next thing
+            # anyone does is drive somewhere else.
             log("retracting leftZ")
             robot.retract_axis("leftZ", verbose=False)
-            return result, standin
+            return result, standin, crosshair
 
-        # The robot for the whole calibration, the touch-up's wait included;
-        # the touch-up's panel is lent it (`_begin_touch_up`).
+        # The robot for the whole calibration, the waits included; the
+        # touch-up's panel is lent it (`_begin_touch_up`).
         lease = session.robot_lease.claim("pipette calibration", run=True)
         if lease is None:
-            self._append(f"not started: {session.robot_lease.refusal}")
+            self._outcome = session.robot_lease.refusal
+            self._refresh()
             return
+        self._outcome = self._last_line = ""
+        self._disc_seen = False
+        self._looking_at_tip = False
+        self._phase = MOVING
         worker = Worker(job, what="calibrating the pipette", lease=lease)
         self._worker = worker
         worker.message.connect(self._on_message)
         worker.finished.connect(self._on_finished)
         worker.failed.connect(self._on_failed)
+        log.info("pipette calibration: started")
         worker.start()
         self._refresh()
 
-    # The touch-up, from the worker's side: ask, then wait.
-    def _touch_up(self, robot, camera, view) -> None:
+    # A wait, from the worker's side: ask, then wait for the GUI.
+    def _wait(self, signal, line: str) -> None:
         self._gate.clear()
         self._aborted = False
         worker = self._worker
         if worker is not None:
             # The activity line, and the log: the calibration is not
             # working now, it is waiting for the operator.
-            worker._on_message("waiting for you: nudge the tip onto the "
-                               "crosshair, then Done")
-        self.touch_up_requested.emit()
+            worker._on_message(line)
+        signal.emit()
         self._gate.wait()
         if self._aborted:
-            raise TouchUpAborted("aborted during the manual touch-up; nothing "
-                                 "was saved")
+            raise TouchUpAborted("stopped while waiting for you")
+
+    def _touch_up(self, robot, camera, view) -> None:
+        start = xyz(robot)
+        self._skip = False
+        self._wait(self.touch_up_requested, "waiting for you: nudge the tip "
+                   "onto the crosshair, then Save or Skip")
+        if self._skip:
+            now = xyz(robot)
+            if any(abs(a - b) > 1e-3 for a, b in zip(now, start)):
+                move_to(robot, start, force_direct=True)
 
     # ...and from the GUI's side.
+    def _at_disc(self) -> None:
+        self._phase = DISC
+        self._refresh()
+
+    def _disc_there(self) -> None:
+        if self._phase == DISC:
+            self._disc_seen = True
+            self._refresh()
+
+    def _calibrate(self) -> None:
+        if self._phase == DISC and self._disc_seen:
+            self._phase = MEASURING
+            self._gate.set()
+            self._refresh()
+
     def _begin_touch_up(self) -> None:
         # The lower camera is turned and mirrored: through TipTarget.axes the
         # arrows move the tip the way they point on its picture.
@@ -579,236 +588,240 @@ class PipetteCalibration(QWidget):
         lease = getattr(self._worker, "lease", None)
         if lease is not None:
             self.touch_jog.lend(lease)
-        self.touch_box.show()
-        self._append("waiting: nudge the tip onto the crosshair, then Done")
+        self._phase = TUNING
+        self.touch_jog.show()
         self._refresh()
+
+    def _end_touch_up(self) -> bool:
+        """The fine-tune's panel let go; False while a step still moves:
+        the step took no lease of its own, and the calibration's ends
+        after this - the robot would be free while the step still moves."""
+        if self.touch_jog.busy:
+            self.touch_jog.tell("A step is still moving.")
+            return False
+        self.touch_jog.hide()
+        self.touch_jog.end_loan()
+        return True
 
     def _accept(self) -> None:
-        if self.touch_jog.busy:
-            self._append("a jog step is still moving; press Done after it")
-            return
-        self.touch_box.hide()
-        self.touch_jog.end_loan()
-        self._append("done adjusting")
-        self._gate.set()
-        self._refresh()
+        if self._phase == TUNING and self._end_touch_up():
+            self._phase = MEASURING
+            self._gate.set()
+            self._refresh()
+
+    def _skip_tune(self) -> None:
+        if self._phase == TUNING and self._end_touch_up():
+            self._skip = True
+            self._phase = MEASURING
+            self._gate.set()
+            self._refresh()
 
     def _on_stop(self) -> None:
-        if not self.touch_box.isHidden():
+        if self._phase in (DISC, TUNING):
             self._abort()
 
     def _abort(self) -> None:
-        # As Done: the step took no lease of its own, and the calibration's
-        # ends with it - the robot would be free while the step still moves.
-        if self.touch_jog.busy:
-            self._append("a jog step is still moving; press Abort after it")
+        if not self._end_touch_up():
             return
-        self.touch_box.hide()
-        self.touch_jog.end_loan()
         self._aborted = True
         self._gate.set()
         self._refresh()
 
     def _on_message(self, text: str) -> None:
-        self._append(text)
+        log.info("pipette calibration: %s", text)
+        self._last_line = text
+        self._refresh()
 
     def _on_finished(self, payload) -> None:
         self._worker = None
+        self._phase = None
         self.touch_jog.end_loan()
-        result, standin = payload
-        self._result, self._standin = result, standin
+        self.touch_jog.hide()
+        result, standin, crosshair = payload
         offset: PipetteOffset = result.offset
-        self._append("done")
-        self._outcome = "Finished: the full result is under Details."
-        self.done.show_done(f"Offset ({offset.dx:+.3f}, {offset.dy:+.3f}) mm "
-                            f"saved to the profile.")
+        self._crosshair = crosshair
+        self._outcome = STANDIN_NOTE if standin else ""
         log.info("pipette offset calibrated: dx %+.3f dy %+.3f mm (%s)",
                  offset.dx, offset.dy, offset.method)
         profile = self.session.profile
-        note = (f"Saved to {profile.path / 'calibration.json'}: offset "
-                f"({offset.dx:+.3f}, {offset.dy:+.3f}) mm, method "
-                f"{offset.method}"
-                + (", with the homography" if result.homography is not None
-                   else "") + ".")
-        if standin:
-            note = STANDIN_NOTE + "\n" + note
-        # The result after the run's lines, in the same text; not through
-        # _append, which would log line by line what the log already has.
-        text = f"\n{note}\n\n{result}"
-        if result.homography_report is not None:
-            text += f"\n\n{result.homography_report}"
-        self.run_log.appendPlainText(text)
-        self.session.profile_changed.emit(profile)
-        self.dx.setValue(offset.dx)
-        self.dy.setValue(offset.dy)
+        if profile is not None:
+            log.info("pipette calibration: saved to %s\n%s",
+                     profile.path / "calibration.json", result)
+            self.session.profile_changed.emit(profile)
+        show_toast(self, CALIBRATED)
         self._refresh()
 
     def _on_failed(self, reason: str) -> None:
         self._worker = None
-        self.touch_box.hide()
+        self._phase = None
         self.touch_jog.end_loan()
-        self.done.clear()
+        self.touch_jog.hide()
         error = getattr(self.sender(), "error", None)
-        aborted = isinstance(error, TouchUpAborted)
-        kind = "aborted" if aborted else "failed"
-        detail = reason
-        self._append(f"{kind}: {detail}")
-        self._append("nothing was written to the profile")
-        log.error("pipette calibration %s: %s", kind, detail)
-        self._outcome = (f"Calibration {kind}: {detail}\nNothing was written "
-                         f"to the profile.")
+        if isinstance(error, TouchUpAborted):
+            log.info("pipette calibration stopped: %s", reason)
+            self._outcome = f"Calibration stopped. {NOTHING_SAVED}"
+        else:
+            log.error("pipette calibration failed: %s", reason)
+            self._outcome = f"Calibration failed: {reason} {NOTHING_SAVED}"
+        self._refresh()
+
+    def _check(self) -> None:
+        """The tip to the crosshair the calibration found, at the module
+        height, through the offset now saved."""
+        profile = self.session.profile
+        offset = profile.calibration.pipette_offset if profile else None
+        if self._crosshair is None or offset is None or self._running():
+            return
+        x = self._crosshair[0] + offset.dx
+        y = self._crosshair[1] + offset.dy
+        z = float(profile.calibration.tip_target.module_height)
+        motion = self.session.motion
+        self._looking_at_tip = True
+
+        def job(log):
+            motion.tip_to((x, y), z, log=log)
+
+        if not self.jog.run_job(job, what=f"tip to the crosshair "
+                                f"({x:.2f}, {y:.2f}) at z {z:g}"):
+            self._looking_at_tip = False
         self._refresh()
 
     # -- display -------------------------------------------------------------
 
-    def _busy(self) -> bool:
+    def _running(self) -> bool:
         return self._worker is not None and self._worker.running
 
-    def _append(self, text: str) -> None:
-        """A line of the run: into Details and the application log, and as
-        the latest word under Start while it runs."""
-        self.run_log.appendPlainText(text)
-        log.info("pipette calibration: %s", text)
-        self._last_line = text
-        if self._busy():
-            self.checks.setText(f"Running: {text}")
-
-    def _on_robot_busy(self, _holder) -> None:
-        self._refresh()
-
     def run_activity(self) -> str | None:
-        """For the top bar's pill: "waiting" during the touch-up."""
-        return "waiting" if not self.touch_box.isHidden() else None
+        """For the top bar's pill: "waiting" while the run waits for the
+        operator - at the disc, and for the fine-tune."""
+        return "waiting" if self._phase in (DISC, TUNING) else None
 
-    def _refresh(self) -> None:
+    def _refresh(self, *_args) -> None:
         self.session.run_activity_changed.emit()
-        busy = self._busy()
-        waiting = not self.touch_box.isHidden()
-        session = self.session
-        profile = session.profile
-        connected = session.robot is not None
-        running = busy or waiting
-        placed = self.disc_placed.isChecked()
-
-        # The disc's jog panel only while nothing runs: hidden, its keys are
+        running = self._phase is not None
+        # The page's jog panel only while nothing runs: hidden, its keys are
         # given up, and the touch-up's panel is the only thing that moves the
         # robot during a calibration.
         self.jog.setVisible(not running)
+        self._show_tip(running)
+        self._show_calibration(running)
+        # The upper camera finds the disc; the lower one sees the tip.
+        lower = self._phase in (MEASURING, TUNING) or self._looking_at_tip
+        self.view.set_camera(self._under_camera() if lower
+                             else self._over_camera())
 
-        # 1. the disc
-        self.disc.set_state(OK if placed else TODO)
-        self.disc_placed.setEnabled(not running)
-
-        # 2. its position
-        stored = self._stored_position()
-        self.position_text.setText(
-            f"Jog the disc's central crosshair under the camera crosshair "
-            f"at module height ({self._module_height():g} mm), then Set "
-            f"position.")
-        self.position_state.setText(
-            f"Saved: ({stored[0]:.2f}, {stored[1]:.2f}, {stored[2]:.2f})."
-            if stored is not None else "No disc position saved.")
-        if stored is not None:
-            self.position.set_state(OK)
-        elif not placed:
-            self.position.set_state(BLOCKED, "First: step 1.")
-        elif not connected:
-            self.position.set_state(BLOCKED, "First: connect the robot.")
-        else:
-            self.position.set_state(TODO)
-        self.goto_button.setVisible(stored is not None)
-        free = not session.robot_lease.busy
-        self.goto_button.setEnabled(connected and free and not busy
-                                    and not running)
-        self.remember_button.setEnabled(connected and profile is not None
-                                        and placed and not running)
-        self.remember_button.setToolTip(
-            "" if placed else "Requires step 1.")
-
-        # 3. the tip
+    def _show_tip(self, running: bool) -> None:
+        session = self.session
+        connected = session.robot is not None
         tip = session.tip
+        racks = self._racks()
+        current = self.racks.currentData()
+        wanted = [(f"{d.display_name} · slot {slot}", slot)
+                  for slot, d in racks]
+        shown = [(self.racks.itemText(i), self.racks.itemData(i))
+                 for i in range(self.racks.count())]
+        if wanted != shown:
+            self.racks.blockSignals(True)
+            self.racks.clear()
+            for text, slot in wanted:
+                self.racks.addItem(text, slot)
+            index = self.racks.findData(current)
+            self.racks.setCurrentIndex(max(index, 0) if wanted else -1)
+            self.racks.blockSignals(False)
+
+        on = tip.attached is True
+        offering = connected and not on and bool(racks)
+        self.no_rack.setVisible(connected and not on and not racks)
+        for widget in (self.racks, self.rack_hint, self.rack_grid,
+                       self.take_button):
+            widget.setVisible(offering)
+        rack = self._rack()
+        if rack is not None:
+            slot, definition = rack
+            if self.rack_grid.wells != [w for c in definition.ordering
+                                        for w in c]:
+                self.rack_grid.set_ordering(definition.ordering)
+            used = session.used_tips(slot)
+            self.rack_grid.set_fills(
+                {w: COLORS["faint"] if w in used else COLORS["tips"]
+                 for c in definition.ordering for w in c})
+        well = self._well_to_take()
+        self.rack_grid.set_current(well)
+        self.take_button.setText(f"Take tip {well}" if well else "Take tip")
+        free = not session.robot_lease.busy and not running
+        known = connected and free and tip.attached is not None
+        self.take_button.setEnabled(known and not on and well is not None)
+
         if not connected:
-            self.tip.set_state(BLOCKED, "First: connect the robot.")
-            self.tip_text.setText("Robot not connected.")
-        elif tip.attached is True:
-            self.tip.set_state(OK)
-            self.tip_text.setText("Tip on"
-                                  + (f", from slot {tip.slot} {tip.well}"
-                                     if tip.returnable else "") + ".")
+            self.tip_state.setText("")
+        elif tip.attached is None:
+            self.tip_state.setText("Tip state unknown.")
+        elif on:
+            self.tip_state.setText(f"Tip {tip.well} is on." if tip.returnable
+                                   else "A tip is on.")
         else:
-            self.tip.set_state(TODO)
-            self.tip_text.setText("No tip on the pipette."
-                                  if tip.attached is False else
-                                  "Tip state unknown.")
-        self.tip_link.setVisible(connected and tip.attached is not True)
+            self.tip_state.setText("")
+        self.tip_state.setVisible(bool(self.tip_state.text()))
+        self.drop_button.setVisible(on)
+        self.put_back_button.setVisible(on)
+        self.drop_button.setEnabled(known and on)
+        self.put_back_button.setEnabled(known and tip.returnable)
+        self.tip_note.setVisible(bool(self.tip_note.text()))
 
-        # 4. the calibration
-        offset = profile.calibration.pipette_offset if profile else None
-        if offset is None:
-            dx, dy = session.settings.tip_cal_start_offset
-            self.offset_note.setText(
-                f"No saved offset. Start values: dx {dx:g} mm, dy {dy:g} "
-                f"mm.")
-        else:
-            when = (offset.measured_at.strftime("%Y-%m-%d %H:%M")
-                    if offset.measured_at else "date unknown")
-            self.offset_note.setText(
-                f"Last offset: ({offset.dx:+.3f}, {offset.dy:+.3f}) mm, "
-                f"{offset.method}, {when}"
-                + (f", tip {offset.tip_type}" if offset.tip_type else "")
-                + ".")
-        for widget in (self.dx, self.dy, self.reset_offset_button):
-            widget.setEnabled(not running)
-        if not running:
-            self._prefill(offset)
-        settings = session.settings
-        tip_type = self._tip_type()
-        self.method_note.setText(
-            f"{settings.tip_cal_frames} frames per reading, "
-            + ("verified after the correction, " if settings.tip_cal_verify
-               else "not verified, ")
-            + ("manual adjustment at the end" if settings.tip_cal_touch_up
-               else "no manual adjustment")
-            + (f"; recorded as tip {tip_type}" if tip_type else "") + ".")
+    def _show_calibration(self, running: bool) -> None:
+        session = self.session
+        self.calibration_box.setVisible(self._task != "liquid")
+        on = session.tip.attached is True
+        # Dimmed until a tip is on; never while its own run goes on.
+        self.calibration_box.setEnabled(on or running)
+        measured, why, _stale = tip_calibration_status(session)
+        problems = [] if running else self._readiness()
+        phase = self._phase
 
-        problems = self._readiness()
-        if running:
-            self.checks.setText(f"Running: {self._last_line}"
-                                if self._last_line else
-                                "Running.")
-            self.run.set_state(TODO)
+        if not on and not running:
+            self.start_step.set_state(BLOCKED, FIRST_A_TIP)
         else:
-            text = ("Ready: press Start." if not problems else
-                    "Before Start:\n" + "\n".join("• " + p for p in problems))
-            self.checks.setText(f"{self._outcome}\n\n{text}" if self._outcome
-                                else text)
-            # Done while the tip it measured is on, as in the checklist: a
-            # new tip, or a restarted robot, is to calibrate again.
-            measured, why, _stale = tip_calibration_status(session)
-            self.run.set_state(OK if measured else
-                               TODO if not problems else BLOCKED,
-                               why if not measured and not problems else
-                               "" if not problems else problems[0])
+            self.start_step.set_state(OK if running and phase != MOVING
+                                      or measured and not running else TODO)
         self.start_button.setEnabled(not running and not problems
                                      and not session.robot_lease.busy)
 
-        # 5. the touch-up
-        self.touch.set_state(TODO)
-        self.accept_button.setEnabled(waiting)
-        self.abort_button.setEnabled(waiting)
-        self.view.set_camera(self._under_camera() if running
-                             else self._over_camera())
+        self.disc_step.set_state(OK if self._disc_seen and running
+                                 or measured and not running else TODO)
+        self.disc_button.setEnabled(phase == DISC and not self._disc_seen)
 
-    def _prefill(self, offset) -> None:
-        """The profile's offset into the boxes, or the defaults when it has
-        none - once per profile, so a value the operator typed stays."""
-        profile = self.session.profile
-        if profile is not None and profile is not self._filled_for:
-            self._filled_for = profile
-            dx, dy = ((offset.dx, offset.dy) if offset is not None
-                      else self.session.settings.tip_cal_start_offset)
-            self.dx.setValue(dx)
-            self.dy.setValue(dy)
+        self.calibrate_step.set_state(OK if measured and not running
+                                      else TODO)
+        self.calibrate_button.setEnabled(phase == DISC and self._disc_seen)
+
+        tuning = phase == TUNING
+        if session.settings.tip_cal_touch_up:
+            self.tune_text.setText(
+                f"Nudge the tip onto the central crosshair "
+                f"({TOUCH_UP_STEP_MM:g} mm steps), then Save or Skip.")
+        else:
+            self.tune_text.setText("Off in Settings.")
+        self.tune_step.set_state(OK if measured and not running else TODO)
+        self.save_button.setEnabled(tuning)
+        self.skip_button.setEnabled(tuning)
+
+        if running:
+            self.checks.setText(f"Running: {self._last_line}"
+                                if self._last_line else "Running.")
+        else:
+            lines = [self._outcome] if self._outcome else []
+            if problems and on:
+                lines.append(problems[0])
+            elif not measured and on and not self._outcome:
+                lines.append(why)
+            self.checks.setText("\n".join(lines))
+        self.checks.setVisible(bool(self.checks.text()))
+        self.calibrated.setVisible(measured and not running)
+        self.check_button.setEnabled(
+            measured and not running and self._crosshair is not None
+            and not session.robot_lease.busy)
+        if not running and not self.jog.busy:
+            self._looking_at_tip = self._looking_at_tip and measured
 
     # -- cameras -------------------------------------------------------------
 

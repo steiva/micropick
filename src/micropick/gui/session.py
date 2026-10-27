@@ -395,6 +395,9 @@ class Session(QObject):
         self.run_generation = 0
         self.routine = None                      # see routine_changed
         self.tip = Tip.unknown()                 # see tip_changed
+        # The wells taken from each rack, by its labware id: a rack loaded
+        # again, or a new robot session, is a new id and starts full.
+        self._used_tips: dict[str, set[str]] = {}
         # Every move across the deck: the travel height, the measured top
         # of Z and the jog envelope (`workflows.motion`). One for the
         # session's life; it is told the robot, the tip and the deck
@@ -1338,6 +1341,7 @@ class Session(QObject):
             require_ok(self._api.pick_up_tip(entry.labware_id, well, verbose=False),
                        f"pick up tip from slot {slot} {well}")
             log.info("picked up a tip from slot %s %s", slot, well)
+            self._used_tips.setdefault(entry.labware_id, set()).add(well)
         finally:
             self.read_tip()
 
@@ -1384,8 +1388,20 @@ class Session(QObject):
             require_ok(self._api.drop_tip(entry.labware_id, well, verbose=False),
                        f"return tip to slot {slot} {well}")
             log.info("returned the tip to slot %s %s", slot, well)
+            self._used_tips.get(entry.labware_id, set()).discard(well)
         finally:
             self.read_tip()
+
+    def used_tips(self, slot) -> set[str]:
+        """The wells of the rack in `slot` a tip was taken from here and not
+        put back. What this program saw: a tip taken by a notebook or the
+        Opentrons app is not in it."""
+        state = self.run_state
+        entry = (state.labware.get(str(slot))
+                 if self.robot is not None and state is not None else None)
+        if entry is None:
+            return set()
+        return set(self._used_tips.get(entry.labware_id, ()))
 
     def _labware_in(self, slot) -> LoadedLabware:
         self._require_robot()

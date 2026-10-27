@@ -120,6 +120,20 @@ def test_pick_up_then_return(session):
                                         ("drop_tip", rack.labware_id, "A1")]
 
 
+def test_the_wells_taken_from_a_rack_are_used_until_put_back(session):
+    rack_in(session, 10)
+    rack_in(session, 7)
+    assert session.used_tips(10) == set()
+    session.pick_up_tip(10, "A1")
+    session.drop_tip_in_trash()
+    session.pick_up_tip(10, "B1")
+    assert session.used_tips(10) == {"A1", "B1"}
+    assert session.used_tips(7) == set()           # another rack's own
+    session.return_tip()                            # B1 holds a tip again
+    assert session.used_tips(10) == {"A1"}
+    assert session.used_tips(3) == set()            # nothing there
+
+
 def test_no_pick_up_over_a_tip(session):
     rack = rack_in(session)
     session.pick_up_tip(10, "A1")
