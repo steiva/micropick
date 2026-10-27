@@ -97,6 +97,16 @@ def test_a_measured_dish_bottom_is_saved_and_holds_for_the_robot_session(
     assert session.profile.picking.dish_bottom == 66.42      # the value stays
 
 
+def test_the_checklist_marks_the_dish_bottom_as_the_step_does(session):
+    from micropick.gui import readiness
+    session.set_dish_bottom(66.4)
+    assert readiness._status(session)["dish_bottom"][0]
+    session.new_run()                                  # an earlier date
+    done, tip, _note = readiness._status(session)["dish_bottom"]
+    assert not done
+    assert tip.startswith("Not set in this robot session: 66.40 mm, set on")
+
+
 def test_use_it_takes_the_last_value_for_the_robot_session_only(session):
     _measured(session, 66.4)
     assert not session.is_confirmed("dish_bottom")

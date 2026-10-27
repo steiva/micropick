@@ -183,10 +183,15 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
                     (False, "Not set.", False))
     bottom = profile.calibration.dish_bottom_set_at
     depth = f"{profile.picking.dish_bottom:.2f} mm"
+    # Done as the Dish bottom step is: measured, or the last one used, in
+    # this robot session (`tasks.step_state`).
+    measured = (f"set on {_date(bottom)[0]}" if bottom is not None
+                else "default, not measured")
     out["dish_bottom"] = (
-        (True, f"{depth}, set on {_date(bottom)[0]}.", False)
-        if bottom is not None else
-        (False, f"{depth} (default, not measured).", False))
+        (True, f"{depth}, {measured}.", False)
+        if session.is_confirmed("dish_bottom") else
+        (False, f"Not set in this robot session: {depth}, {measured}.",
+         False))
 
     routine = session.routine
     if routine is None:
