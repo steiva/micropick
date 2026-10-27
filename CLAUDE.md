@@ -77,8 +77,15 @@ platforms, the three positions (each `≈ slot n · X Y Z`, never its stored
 name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
 and Home's "N steps left" read. A row, or a Robot setup item needed by a
 step, opens its page as `Home › Robot setup › <item>` or `Home › <task> ›
-<item>` (`shell.SETUP_PAGES`; the cameras: the Settings sheet) until
-Robot setup has its own sheets. Reset setup asks (Keep setup primary),
+<item>` (`shell.SETUP_PAGES`) until Robot setup has its own sheets. The
+cameras have theirs (`pages.camera_sheet.CameraSheet`, over the screen,
+the breadcrumb gaining the item): the live picture of the device chosen
+in the Select, which follows the choice before anything is saved
+(`Session.preview_camera`: the profile's camera on that device, opened
+as the pages open it and left open; any other device opened on its own,
+so none is opened twice). Done saves (`Session.choose_camera`: the other
+role's device swapped in, a camera added to a profile without one), gray
+while the robot is busy; Cancel and × save nothing. Reset setup asks (Keep setup primary),
 then `Session.reset_setup` zips the profile folder beside it, dated, and
 clears the cameras, the pixel map, the deck modules and those three
 positions; the deck, the picking settings, the tip calibration and saved
@@ -87,8 +94,7 @@ points stay. The last profile is loaded at start
 chosen on screen. Settings is a sheet (`pages.settings.SettingsSheet`)
 over whatever is shown, the breadcrumb gaining "Settings": General (Save,
 Revert; closing it discards what was not saved), Advanced and the Log
-(over the lock: only Advanced is the robot's). The profile's camera
-choice stays in General until Robot setup's camera sheets (#9). Advanced's
+(over the lock: only Advanced is the robot's). Advanced's
 Start new robot session and Disconnect robot session claim the robot's
 lease; Disconnect lets the session go (`Session.release_run`) and the
 monitor leaves it alone until Continue robot session (Home or Advanced)
@@ -345,11 +351,9 @@ in deck.json). A file written by 0.4.0 or earlier has "centre" keys
 (`AliasChoices`) and written back spelled "center".
 
 The Settings page's second column is the loaded profile's, saved into it at
-once: which attached camera is the upper and which the lower
-(`Session.assign_camera_devices`, the specs' `device_name`; choosing the
-other's device swaps them; a profile without a camera for a role gets one
-from `Session.add_camera`, the bench's spec on the chosen device), the
-machine learning models, the calibration summary.
+once: the machine learning models, the calibration summary. Which
+attached camera is the upper and which the lower is Robot setup's camera
+sheets'.
 
 ## Agent skills
 

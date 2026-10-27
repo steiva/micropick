@@ -49,8 +49,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
 from .. import _version as version
 from .. import paths
 from . import log_bridge, tasks
-from .pages import (calibration_camera, calibration_pipette, home, labware,
-                    liquid, manual, picking, robot_setup, routine, settings)
+from .pages import (calibration_camera, calibration_pipette, camera_sheet,
+                    home, labware, liquid, manual, picking, robot_setup,
+                    routine, settings)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -94,11 +95,12 @@ STEP_PAGES = {
 }
 
 # The page each Robot setup item is set on, until Robot setup has its own
-# sheets: the cameras are chosen in the Settings sheet (`open_settings`).
+# sheets; the cameras have theirs (`CAMERA_SHEET`, `camera_sheet`).
+CAMERA_SHEET = "camera_sheet"
 SETUP_PAGES = {
-    "upper_camera": "settings",
+    "upper_camera": CAMERA_SHEET,
     "camera_calibration": "camera_calibration",
-    "lower_camera": "settings",
+    "lower_camera": CAMERA_SHEET,
     "platforms": "labware",
     "calibration_position": "tip_calibration",
     "dish_position": "picking",
@@ -180,7 +182,11 @@ class MainWindow(QMainWindow):
         self.settings_sheet = settings.SettingsSheet(session, holder)
         self.settings_page = self.settings_sheet.form
         self.log_page = self.settings_sheet.log
-        self.settings_sheet.canceled.connect(self._settings_closed)
+        self.settings_sheet.canceled.connect(self._sheet_closed)
+        # Which attached camera is the upper and which the lower.
+        self.camera_sheet = camera_sheet.CameraSheet(session, holder)
+        self.camera_sheet.canceled.connect(self._sheet_closed)
+        self.camera_sheet.done.connect(self._sheet_closed)
         # The breadcrumb under the sheet, given back when it closes.
         self._under_sheet: list[str] = []
         # Over the page, under the top bar: Light and Unlock stay at hand.
@@ -228,6 +234,7 @@ class MainWindow(QMainWindow):
         self.robot_setup_page.item_chosen.connect(
             lambda item: self.open_setup_item(item, from_setup=True))
         self.robot_setup_page.said.connect(self.say)
+        self.camera_sheet.said.connect(self.say)
         self.step_bar.clicked.connect(
             lambda i: self.show_step(tasks.steps(self.task)[i]))
         self.footer.back_clicked.connect(self._back)
@@ -372,6 +379,7 @@ class MainWindow(QMainWindow):
         page.setEnabled(True)
         self.dim.hide()
         self.settings_sheet.discard()
+        self.camera_sheet.discard()
         self.stack.setCurrentWidget(page)
         self._page = name
         self._from_setup = False
@@ -417,12 +425,13 @@ class MainWindow(QMainWindow):
     def open_setup_item(self, item: str, *, from_setup: bool = False) -> None:
         """The page a Robot setup item is set on, out of the steps; its
         crumb back is Robot setup's when it was opened there (`from_setup`),
-        else the task's when one is open. A camera is chosen in the
-        Settings sheet, over Robot setup."""
-        if SETUP_PAGES[item] == "settings":
+        else the task's when one is open. A camera is chosen in its sheet,
+        over Robot setup or the step that needs it."""
+        if SETUP_PAGES[item] == CAMERA_SHEET:
             if from_setup and self._page != "robot_setup":
                 self.open_robot_setup()
-            self.open_settings("general")
+            self._under(tasks.SETUP_TITLES[item])
+            self.camera_sheet.open_for(item.removesuffix("_camera"))
             return
         path = [tasks.SETUP_TITLES[item]]
         if from_setup:
@@ -461,22 +470,36 @@ class MainWindow(QMainWindow):
         """The Settings sheet over the screen shown, which stays as it is;
         the breadcrumb gains "Settings"."""
         if self.settings_sheet.isHidden():
-            self._under_sheet = list(self.top.path)
+            self._under(settings.TITLE)
         # Over the lock too: the settings and the log are not the robot's,
         # and Advanced's buttons are refused under it.
         self.settings_sheet.open_on(section)
-        self.top.set_path([*self._under_sheet, settings.TITLE])
 
-    def _settings_closed(self) -> None:
+    def _under(self, crumb: str) -> None:
+        """A sheet is opened over the screen shown: the one shown closes,
+        and the breadcrumb, kept to give back, gains `crumb`."""
+        self._close_sheets()
+        self._under_sheet = list(self.top.path)
+        self.top.set_path([*self._under_sheet, crumb])
+
+    def _sheet_closed(self) -> None:
         self.top.set_path(self._under_sheet)
 
+    def _close_sheets(self) -> bool:
+        """Close the sheet shown, saving nothing; False when none was."""
+        shown = [sheet for sheet in (self.settings_sheet, self.camera_sheet)
+                 if not sheet.isHidden()]
+        for sheet in shown:
+            sheet.discard()
+        if shown:
+            self._sheet_closed()
+        return bool(shown)
+
     def _crumb(self, index: int) -> None:
-        """A crumb between Home and the last: the task. Under the Settings
-        sheet, any crumb closes it first; the one of the screen under it
-        does only that."""
-        if not self.settings_sheet.isHidden():
-            self.settings_sheet.discard()
-            self._settings_closed()
+        """A crumb between Home and the last: the task. Under a sheet, any
+        crumb closes it first; the one of the screen under it does only
+        that."""
+        if self._close_sheets():
             if index >= len(self._under_sheet) - 1:
                 return
         if self._from_setup:

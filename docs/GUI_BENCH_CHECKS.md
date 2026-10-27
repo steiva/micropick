@@ -1148,7 +1148,7 @@ bench's profile.
   "tip_calib" anywhere.
 
 - [ ] **A row opens where it is set.**
-  The cameras open Settings over Robot setup; Platforms opens the deck
+  The cameras open their sheet over Robot setup (see #9 below); Platforms opens the deck
   page, Camera calibration its page, the positions the Picking page and
   the tip calibration, each as `Home › Robot setup › <item>`. The
   "Robot setup" crumb comes back to the rows.
@@ -1164,5 +1164,40 @@ bench's profile.
   page's labware, the plate plan, the picking settings (Settings) and the
   dish bottom are as before. With the platforms cleared, jogging no
   longer stops above a module's top until Platforms is set again. Set
-  the cameras back from Settings to carry
+  the cameras back from their rows to carry
   on, or restore the zip by hand.
+
+
+## Redesign — Upper and lower camera sheets (#9)
+
+Start the program normally (no `--mock`) on the bench machine, with both
+cameras attached, on the bench's profile.
+
+- [ ] **A camera row opens its sheet.**
+  Robot setup, Upper camera: a sheet "Upper camera" over the rows, the
+  breadcrumb `Home › Robot setup › Upper camera`. Left, the upper
+  camera's live picture; right, "Which camera is the upper camera?" with
+  the attached cameras, the upper one chosen.
+
+- [ ] **The picture follows the choice.**
+  Choose the lower camera's device: within a few seconds the picture is
+  the view from under the dish, and Done is gray until it is. Choose the
+  first one back: the deck again. Nothing is saved yet: the Lower camera
+  row under the sheet still names its device.
+
+- [ ] **Cancel and × save nothing.**
+  Choose the other device, then Cancel: the rows as before. Again with ×.
+  Open Picking: the dish camera is the same one as before.
+
+- [ ] **Done swaps.**
+  Choose the other device, Done: a toast "Upper camera: <device>. Lower
+  camera: <device>.", the two rows swapped. Picking now shows what the
+  lower camera saw. Swap them back the same way.
+
+- [ ] **During a run.**
+  Start a picking run and open the Upper camera row from Robot setup:
+  the picture shows, Done says "Robot busy: …" and changes nothing.
+
+- [ ] **Settings no longer chooses cameras.**
+  Settings › General has no Cameras card; the profile's column starts
+  with Models.

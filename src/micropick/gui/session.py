@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -47,6 +48,7 @@ from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
                              DeckConfig, DeckModule, ModuleType,
                              PickingConfig, WellCenter,
                              ProfileMeta)
+from ..hardware import devices as camera_devices   # noqa: E402
 from ..hardware import labware                      # noqa: E402
 from ..hardware import robot_clock                  # noqa: E402
 from ..hardware.camera import (DEFAULT_FOCUS,         # noqa: E402
@@ -69,6 +71,11 @@ __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
 log = logging.getLogger(__name__)
 
 MOCK_PROFILE_NAME = "mock"
+# The label of a camera opened to be looked at before it is chosen
+# (`Session.preview_camera`); never a profile's.
+PREVIEW_LABEL = "preview"
+# The camera roles, each to the other.
+OTHER_ROLE = {"upper": "lower", "lower": "upper"}
 # The profile made at the first start, when there is none to load.
 DEFAULT_PROFILE_NAME = "default"
 
@@ -270,6 +277,12 @@ def _mock_cameras() -> dict[str, CameraSpec]:
     }
 
 
+def _mock_camera(device_name: str) -> CameraSpec:
+    """The mock camera on the device `device_name`."""
+    return next(spec for spec in _mock_cameras().values()
+                if spec.device_name == device_name)
+
+
 # A new profile's cameras, as the bench's are set up (profiles/lab_main):
 # role -> (label, preferred mode, crop, controls, capture backend, notes).
 # The upper camera opens at 2592x1944, the mode the pixel maps are fitted
@@ -396,6 +409,9 @@ class Session(QObject):
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
+        # See preview_camera: set in a worker, closed from the window.
+        self._preview = None
+        self._preview_lock = threading.Lock()
         # The cuboid detector, one for the application: Picking and Manual
         # control both run it, and the weights are seconds to load and
         # hundreds of megabytes to hold twice.
@@ -1712,6 +1728,126 @@ class Session(QObject):
         self.profile_changed.emit(self.profile)
         return label
 
+    def attached_cameras(self) -> list[str]:
+        """The names of the cameras attached to this computer, in index
+        order; under --mock, the mock ones. Raises DeviceError when the
+        system cannot list them."""
+        if self.mock:
+            return [spec.device_name for spec in _mock_cameras().values()]
+        return [device.name for device in camera_devices.list_devices()]
+
+    def camera_device(self, role: str,
+                      attached: list[str] | None = None) -> str | None:
+        """The device the profile's `role` camera is saved on, or None
+        while the profile has none for it. Given the `attached` cameras,
+        the one of them it opens as when there is one (a saved name can
+        be a vendor's shorter one, `find_device`)."""
+        label = self._role_label(role)
+        if label is None:
+            return None
+        return ((attached is not None and self._attached_as(label, attached))
+                or self.profile.cameras[label].device_name)
+
+    def choose_camera(self, role: str, device_name: str) -> str | None:
+        """Make the attached camera `device_name` the profile's `role`
+        camera (Robot setup's camera sheets). The other role's device is
+        swapped in, and that device is returned; a profile without a
+        camera for `role` gets one (`add_camera`). Refused while anything
+        has the robot: a run reads the cameras."""
+        if self.profile is None:
+            raise SessionError("load a profile before choosing its cameras")
+        if self.robot_lease.busy:
+            raise SessionError(f"Robot busy: {self.robot_lease.holder}.")
+        names = self.attached_cameras()
+        label = self._role_label(role)
+        other = self._role_label(OTHER_ROLE[role])
+        others_device = other is not None and \
+            self._attached_as(other, names) == device_name
+        if label is None:
+            if others_device:
+                raise SessionError(f"{device_name} is already the "
+                                   f"{OTHER_ROLE[role]} camera.")
+            self.add_camera(role, device_name, self._device_sizes(device_name))
+            return None
+        current = self.camera_device(role, names)
+        if current == device_name:
+            return None
+        assignment = {label: device_name}
+        if others_device and other != label:
+            assignment[other] = current
+        self.assign_camera_devices(assignment)
+        return current if len(assignment) > 1 else None
+
+    def preview_camera(self, role: str, device_name: str):
+        """The attached camera `device_name`, open to be looked at before
+        it is chosen as the `role` camera. Blocking: run it in a Worker.
+
+        A device is opened once at a time: the profile's camera on it is
+        handed back as `open_camera` gives it (and stays open); any other
+        is opened as a camera of its own, the bench's `role` spec on it,
+        open until `close_preview` or the next preview."""
+        if self.profile is None:
+            raise SessionError("load a profile before opening a camera")
+        self.close_preview()
+        names = self.attached_cameras()
+        for label in self.profile.cameras:
+            if self._attached_as(label, names) == device_name:
+                return self.open_camera(label)
+        if self.mock:
+            if self.robot is None:
+                raise SessionError(
+                    f"connect the robot before opening {device_name!r}: the "
+                    f"synthetic scene is rendered from the gantry pose")
+            spec = _mock_camera(device_name)
+            camera = open_scene_camera(
+                self.robot, MarkerScene(image_size=spec.default_resolution),
+                label=PREVIEW_LABEL)
+        else:
+            _label, spec = new_camera_spec(role, device_name,
+                                           self._device_sizes(device_name))
+            manager = CameraManager({PREVIEW_LABEL: spec.model_dump()})
+            camera = manager.open(PREVIEW_LABEL, verbose=False)
+        camera.crop = float(spec.crop)
+        with self._preview_lock:
+            self._preview = camera
+        log.info("camera %r open to be looked at, %dx%d", device_name,
+                 *camera.resolution)
+        return camera
+
+    def close_preview(self) -> None:
+        """Close the camera `preview_camera` opened of its own, if any."""
+        with self._preview_lock:
+            camera, self._preview = self._preview, None
+        if camera is not None:
+            camera.close()
+
+    def _role_label(self, role: str) -> str | None:
+        return (self.upper_camera_label if role == "upper"
+                else self.lower_camera_label)
+
+    def _attached_as(self, label: str, names: list[str]) -> str | None:
+        """The attached camera among `names` the profile's camera `label`
+        resolves to, as it would at open, or None (none, or several)."""
+        attached = [camera_devices.Device(i, n) for i, n in enumerate(names)]
+        try:
+            return camera_devices.find_device(
+                self.profile.cameras[label].device_name,
+                devices=attached).name
+        except camera_devices.DeviceError:
+            return None
+
+    def _device_sizes(self, device_name: str) -> list[tuple[int, int]]:
+        """The sizes the attached camera offers; none when unknown."""
+        if self.mock:
+            return [tuple(size)
+                    for size in _mock_camera(device_name).resolutions]
+        try:
+            device = camera_devices.find_device(device_name)
+        except camera_devices.DeviceError:
+            return []
+        return [(m.width, m.height)
+                for m in camera_devices.device_modes(device.index)]
+
     def reset_setup(self) -> Path:
         """Reset setup (REDESIGN §12.8): the profile's folder zipped beside
         it, dated, then its cameras, camera calibration, platforms and the
@@ -1751,6 +1887,7 @@ class Session(QObject):
                 self.close_camera(label)
             except Exception as exc:                 # noqa: BLE001
                 log.warning("could not close camera %r: %s", label, exc)
+        self.close_preview()
         if self.robot is not None:
             self._retract()
         self._api = self.robot = None

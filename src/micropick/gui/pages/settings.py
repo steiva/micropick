@@ -38,13 +38,11 @@ runs on. A change unloads the cuboid detector, so the next page that needs
 it loads it on the new device.
 
 Beside them, in a column of its own, what belongs to the loaded profile and
-is set as seldom: which attached camera is the upper (overview) and which
-the lower (underview) one, which machine learning models it uses, and what
-its calibration holds. These are written into the profile the moment they
-are chosen, as they always were, so Save and Revert are the left column's
-only. Choosing a camera that is the other role's swaps the two; the
-cameras attached to this computer are listed with their modes, looked up
-again whenever the page is shown.
+is set as seldom: which machine learning models it uses, and what its
+calibration holds. These are written into the profile the moment they are
+chosen, as they always were, so Save and Revert are the left column's
+only. Which attached camera is the upper and which the lower is chosen in
+Robot setup's camera sheets (`pages.camera_sheet`).
 """
 
 from __future__ import annotations
@@ -62,7 +60,6 @@ from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout,
 from ... import paths
 from ...config.app_settings import AppSettings, settings_path
 from ...core.vision import yolo
-from ...hardware import devices as camera_devices
 from .. import keys
 from ..detector import STANDIN, DetectorService
 from ..marker_watch import DICTIONARIES
@@ -73,7 +70,7 @@ from ..theme.factory import (card, combo_box, double_spin_box, heading,
                              secondary_button, spin_box)
 from ..widgets.controls import Segmented
 from ..widgets.overlays import SheetWindow
-from ..workers import Worker, any_running
+from ..workers import Worker
 from .log import LogPage
 
 __all__ = ["AdvancedPanel", "SettingsPage", "SettingsSheet", "TITLE",
@@ -96,9 +93,6 @@ FOLDERS = (("outputs_dir", "Outputs",
 # Each column's width; two of them side by side fit a 1400 px window.
 COLUMN_WIDTH = 600
 
-# The two cameras, as the operator knows them: (role, words on screen).
-ROLES = (("upper", "Upper camera (overview)"),
-         ("lower", "Lower camera (underview)"))
 
 
 def calibration_lines(profile) -> list[str]:
@@ -154,9 +148,6 @@ class SettingsPage(QWidget):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        self._devices: list[camera_devices.Device] = []
-        self._modes: dict[str, list[camera_devices.Mode]] = {}
-        self._devices_problem = ""
 
         column = QVBoxLayout()
         column.setContentsMargins(0, 0, 0, 0)
@@ -175,7 +166,6 @@ class SettingsPage(QWidget):
         profile_column.setSpacing(SPACING)
         self.profile_note = _label()
         profile_column.addWidget(self.profile_note)
-        profile_column.addWidget(self._cameras_card())
         profile_column.addWidget(self._models_card())
         profile_column.addWidget(self._calibration_card())
         profile_column.addStretch(1)
@@ -221,8 +211,6 @@ class SettingsPage(QWidget):
         session.robot_state_changed.connect(self._refresh)
         session.settings_changed.connect(lambda _s: self._show())
         session.profile_changed.connect(self._on_profile_changed)
-        session.camera_opened.connect(lambda _l: self._show_cameras())
-        session.camera_closed.connect(lambda _l: self._show_cameras())
         self._show()
         self._on_profile_changed(session.profile)
 
@@ -543,44 +531,6 @@ class SettingsPage(QWidget):
         box.layout().addLayout(grid)
         return box
 
-    def _cameras_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Cameras", 2))
-        box.layout().addWidget(_label(
-            "Assign the attached cameras to the upper (deck) and lower "
-            "(under the dish) roles."))
-        grid = QGridLayout()
-        self.role_combo: dict[str, object] = {}
-        self.role_info: dict[str, QLabel] = {}
-        for i, (role, title) in enumerate(ROLES):
-            grid.addWidget(QLabel(title), 2 * i, 0)
-            combo = combo_box(self)
-            # activated, not currentIndexChanged: only the operator's choice
-            # writes the profile, never the page filling the list.
-            combo.activated.connect(lambda _i, r=role: self._device_chosen(r))
-            grid.addWidget(combo, 2 * i, 1)
-            info = muted_label()
-            grid.addWidget(info, 2 * i + 1, 1)
-            self.role_combo[role] = combo
-            self.role_info[role] = info
-        grid.setColumnStretch(1, 1)
-        box.layout().addLayout(grid)
-        self.cameras_state = _label()
-        box.layout().addWidget(self.cameras_state)
-
-        box.layout().addWidget(heading("Attached to this computer", 3))
-        self.attached = QVBoxLayout()
-        self.attached.setSpacing(0)
-        box.layout().addLayout(self.attached)
-        row = QHBoxLayout()
-        self.rescan_button = secondary_button("Look again", self)
-        self.rescan_button.setToolTip("Rescan attached cameras.")
-        self.rescan_button.clicked.connect(self._scan_devices)
-        row.addWidget(self.rescan_button)
-        row.addStretch(1)
-        box.layout().addLayout(row)
-        return box
-
     def _models_card(self) -> QWidget:
         """Which weights this installation uses, chosen once.
 
@@ -742,207 +692,15 @@ class SettingsPage(QWidget):
 
     # -- the profile's -------------------------------------------------------
 
-    def showEvent(self, event) -> None:
-        """The attached cameras are looked up each time the page is shown:
-        a camera plugged in since is the reason to come here."""
-        super().showEvent(event)
-        self._scan_devices()
-
     def _on_profile_changed(self, profile) -> None:
         self._fill_clip_modes()
         self.profile_note.setText(
             "No profile loaded." if profile is None else
             f"Profile <b>{profile.name}</b>: saved immediately.")
-        self._show_cameras()
         self._reload_models()
         self.calibration.setText(
             "\n".join(calibration_lines(profile)) if profile is not None
             else "No profile loaded.")
-
-    def _role_label(self, role: str) -> str | None:
-        """The profile's camera that plays `role`, by its label."""
-        session = self.session
-        return (session.upper_camera_label if role == "upper"
-                else session.lower_camera_label)
-
-    def _attached_as(self, label: str) -> str | None:
-        """The attached device the profile's camera `label` resolves to, as
-        it would at open, or None when it resolves to none or to several."""
-        spec = self.session.profile.cameras[label]
-        try:
-            return camera_devices.find_device(spec.device_name,
-                                              devices=self._devices).name
-        except camera_devices.DeviceError:
-            return None
-
-    def _scan_devices(self) -> None:
-        try:
-            self._devices = camera_devices.list_devices()
-            self._devices_problem = ""
-        except camera_devices.DeviceError as exc:
-            self._devices, self._devices_problem = [], str(exc)
-        self._modes = {d.name: camera_devices.device_modes(d.index)
-                       for d in self._devices}
-        self._show_cameras()
-
-    def _show_cameras(self) -> None:
-        session, profile = self.session, self.session.profile
-        roles = {role: self._role_label(role) for role, _title in ROLES}
-
-        for role, _title in ROLES:
-            combo, info = self.role_combo[role], self.role_info[role]
-            label = roles[role]
-            combo.clear()
-            if profile is None:
-                combo.setEnabled(False)
-                info.setText("No profile loaded.")
-                continue
-            if label is None:
-                # A profile started empty: the camera is made when one is
-                # chosen (`Session.add_camera`).
-                combo.addItem("Choose a camera…", None)
-                for device in self._devices:
-                    combo.addItem(device.name, device.name)
-                combo.setCurrentIndex(0)
-                combo.setEnabled(bool(self._devices))
-                info.setText("Not set.")
-                continue
-            spec = profile.cameras[label]
-            current = self._attached_as(label)
-            for device in self._devices:
-                combo.addItem(device.name, device.name)
-            if current is None:
-                combo.insertItem(0, f"{spec.device_name} (not attached)",
-                                 spec.device_name)
-                combo.setCurrentIndex(0)
-            else:
-                combo.setCurrentIndex(combo.findData(current))
-            combo.setEnabled(bool(self._devices))
-            info.setText(self._role_text(label, spec, current))
-
-        self._fill_attached(roles)
-
-    def _role_text(self, label: str, spec, device: str | None) -> str:
-        """What the profile opens this camera as, and how it is now."""
-        width, height = spec.default_resolution
-        parts = [f"Opens at {width}×{height}"
-                 + (f" {spec.fourcc}" if spec.fourcc else "")]
-        if spec.crop != 1.0:
-            parts.append(f"view crop {spec.crop:g}")
-        focus = spec.controls.get("focus")
-        if isinstance(focus, (int, float)):
-            parts.append(f"focus {focus:g}")
-        text = ", ".join(parts) + "."
-        sizes = {(m.width, m.height) for m in self._modes.get(device, [])}
-        if sizes and (width, height) not in sizes:
-            text += f" This camera does not offer {width}×{height}."
-        camera = self.session.camera(label)
-        if camera is not None:
-            text += " Open now at {}×{}.".format(*camera.resolution)
-        return text
-
-    def _fill_attached(self, roles: dict[str, str | None]) -> None:
-        while self.attached.count():
-            widget = self.attached.takeAt(0).widget()
-            if widget is not None:
-                # Hidden at once: deleteLater waits for the event loop, and
-                # until then the label would be drawn where it was.
-                widget.hide()
-                widget.deleteLater()
-        if not self._devices:
-            self.attached.addWidget(_label(
-                self._devices_problem or "No camera is attached."))
-            return
-        profile = self.session.profile
-        used = {}
-        if profile is not None:
-            for role, title in ROLES:
-                if roles[role] is not None:
-                    name = self._attached_as(roles[role])
-                    if name is not None:
-                        used[name] = title.split(" (")[0].lower()
-        names = [d.name for d in self._devices]
-        for i, device in enumerate(self._devices):
-            if i:
-                self.attached.addSpacing(SPACING)
-            modes = self._modes.get(device.name, [])
-            text = f"<b>{device.name}</b>"
-            if device.name in used:
-                text += f" - the {used[device.name]}"
-            if names.count(device.name) > 1:
-                text += (" - two cameras carry this name, and neither can be "
-                         "told apart from the other")
-            name = _label(text)
-            self.attached.addWidget(name)
-            if modes:
-                biggest = modes[0]
-                fastest = max(m.fps for m in modes)
-                detail = muted_label(
-                    f"{len({(m.width, m.height) for m in modes})} sizes, up to "
-                    f"{biggest.width}×{biggest.height}, up to {fastest:.0f} "
-                    f"fps")
-                # On both lines: the muted one is disabled, and a disabled
-                # widget's tooltip is not to be relied on.
-                for widget in (name, detail):
-                    widget.setToolTip("\n".join(str(m) for m in modes))
-                self.attached.addWidget(detail)
-
-    def _device_chosen(self, role: str) -> None:
-        profile = self.session.profile
-        label = self._role_label(role)
-        name = self.role_combo[role].currentData()
-        if profile is None or name is None:
-            return
-        if any_running():
-            self.cameras_state.setText("Busy: try again when the current "
-                                       "task finishes.")
-            self._show_cameras()
-            return
-        title = dict(ROLES)[role]
-        if label is None:
-            self._add_camera(role, name)
-            return
-        was = self._attached_as(label) or profile.cameras[label].device_name
-        assignment = {label: name}
-        other_role = "lower" if role == "upper" else "upper"
-        other = self._role_label(other_role)
-        swapped = False
-        if other is not None and other != label and \
-                self._attached_as(other) == name:
-            assignment[other] = was
-            swapped = True
-        try:
-            self.session.assign_camera_devices(assignment)
-        except Exception as exc:                     # noqa: BLE001
-            self.cameras_state.setText(f"Not changed: {exc}")
-            self._show_cameras()
-            return
-        self.cameras_state.setText(
-            f"{title}: {name}."
-            + (f" Swapped: {dict(ROLES)[other_role].lower()} is now {was}."
-               if swapped else ""))
-
-    def _add_camera(self, role: str, name: str) -> None:
-        """The profile's first camera for `role`, on the device `name`."""
-        title = dict(ROLES)[role]
-        other_role = "lower" if role == "upper" else "upper"
-        other = self._role_label(other_role)
-        if other is not None and self._attached_as(other) == name:
-            self.cameras_state.setText(
-                f"{name} is already the {dict(ROLES)[other_role].lower()}.")
-            self._show_cameras()
-            return
-        sizes = [(m.width, m.height) for m in self._modes.get(name, [])]
-        try:
-            label = self.session.add_camera(role, name, sizes)
-        except Exception as exc:                     # noqa: BLE001
-            self.cameras_state.setText(f"Not changed: {exc}")
-            self._show_cameras()
-            return
-        spec = self.session.profile.cameras[label]
-        self.cameras_state.setText(
-            f"{title}: {name}, added to the profile "
-            "({}×{}).".format(*spec.default_resolution))
 
     def _reload_models(self) -> None:
         """What is in ml_models/, plus the stand-in for the cuboid detector.
@@ -1206,10 +964,7 @@ class SettingsSheet(SheetWindow):
     §12.15): this computer's settings and the profile's (General), the
     robot session by hand (Advanced), and the log. General keeps its own
     Save and Revert; closing it, by × or by going elsewhere, discards what
-    was not saved.
-
-    The profile's camera choice is still here: it leaves for Robot
-    setup's camera sheets (#9) when they exist."""
+    was not saved."""
 
     def __init__(self, session: Session, host: QWidget):
         super().__init__(host, TITLE, buttons=False)
