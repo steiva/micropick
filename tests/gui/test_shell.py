@@ -164,9 +164,9 @@ def test_next_is_enabled_when_the_step_is_done_and_marks_it(app, window):
 
 def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):
     _connect(app, window)
+    _tip_calibrated(window)                        # the rack on the deck first
     window.home.tiles["auto"].clicked.emit()
     window.footer.next.click()                     # Deck
-    _tip_calibrated(window)
     window.step_bar.clicked.emit(3)                # Dish bottom
     window.session.confirm("dish_bottom")
     window.top.home_clicked.emit()

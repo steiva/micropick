@@ -457,6 +457,12 @@ class Session(QObject):
         run_id = self._robot_session_id()
         return run_id is not None and self._confirmed.get(key) == run_id
 
+    def _deck_changed(self) -> None:
+        """The deck is not what the operator checked any more: Deck is
+        confirmed again only by its Next (REDESIGN §8.3)."""
+        if self._confirmed.pop("deck", None) is not None:
+            self.confirmations_changed.emit()
+
     # -- memo points ---------------------------------------------------------
 
     def add_memo_point(self, x: float, y: float,
@@ -1009,6 +1015,7 @@ class Session(QObject):
                              version=definition.version, verbose=False)
         log.info("loaded %s (%s) into slot %d", definition.load_name,
                  definition.namespace, slot)
+        self._deck_changed()
         state = self.refresh_run_state()
         entry = state.labware.get(str(slot))
         if entry is None:
@@ -1040,7 +1047,30 @@ class Session(QObject):
             log.info("slot %s already holds nothing in the run", slot)
             return
         self._move_off_deck(current)
+        self._deck_changed()
         self.refresh_run_state()
+
+    def move_labware(self, source: int, target: int) -> LoadedLabware:
+        """What the run holds in `source`, into the empty slot `target`.
+        Blocking; moves nothing.
+
+        Loaded again rather than moved with move_labware: a module's offset
+        attaches only at load, so a plate moved onto a platform would be
+        planned a platform's height too low. Loaded at `target` first, so a
+        refused load leaves the plate where it was. Not a rack whose tip
+        is on: the tip's record names the rack it came from, and putting
+        it back would go to one no longer there."""
+        entry = self._labware_in(source)
+        if self.run_state.labware.get(str(int(target))) is not None:
+            raise SessionError(f"Slot {int(target)} is not empty.")
+        if self.tip.returnable and self.tip.slot == str(int(source)):
+            raise SessionError("The tip on came from this box. Put it back "
+                               "or drop it first.")
+        definition = labware.resolve_definition(entry.load_name)
+        moved = self.load_labware(definition, int(target))
+        self._move_off_deck(entry)
+        self.refresh_run_state()
+        return moved
 
     def _move_off_deck(self, entry: LoadedLabware) -> None:
         self._api.move_labware(entry.labware_id, "offDeck", verbose=False)
@@ -1141,6 +1171,7 @@ class Session(QObject):
                  "; ".join(m.describe() for m in modules) or "none")
         if self._api is not None:
             self.register_deck_modules()
+        self._deck_changed()
         self.profile_changed.emit(self.profile)
         if self.run_state is not None:
             self.labware_changed.emit(self.run_state)
@@ -1214,8 +1245,8 @@ class Session(QObject):
         self.profile_changed.emit(self.profile)
 
     def remember_labware(self, load_name: str) -> None:
-        """Note a load name as just used, for the Robot & Deck page's
-        Recently used. Saved, but announced to nobody: only that list
+        """Note a load name as just used, for the Deck step's
+        Frequent. Saved, but announced to nobody: only that list
         shows it, and it asks."""
         if self.profile is None:
             return

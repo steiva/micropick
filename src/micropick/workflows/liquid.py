@@ -245,7 +245,7 @@ def _plate_problem(plates: dict[str, Plate], slot: str | None,
     plate = plates.get(slot)
     if plate is None:
         return (f"slot {slot} holds nothing now; load {load_name} there on the "
-                f"Robot & Deck page")
+                f"Deck step")
     if load_name and plate.load_name != load_name:
         return (f"slot {slot} holds {plate.load_name}, not {load_name} it was "
                 f"made for")

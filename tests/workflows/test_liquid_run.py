@@ -196,8 +196,8 @@ def test_a_run_needs_a_trash_and_a_tried_step_does_not():
     assert liquid.problems(program, PLATES, POSITIONS, trash=False) == []
     program.trash = Location(kind="well", slot="7", load_name="res", well="A1")
     assert liquid.problems(program, PLATES, POSITIONS) == [
-        "trash: slot 7 holds nothing now; load res there on the Robot & "
-        "Deck page."]
+        "trash: slot 7 holds nothing now; load res there on the Deck "
+        "step."]
     program.trash = Location(kind="point", point="waste")
     assert liquid.problems(program, PLATES, POSITIONS) == []
     assert "waste" in liquid.points_used(program)    # its reach is checked

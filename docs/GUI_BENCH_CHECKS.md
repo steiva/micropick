@@ -1328,3 +1328,51 @@ hand.
 - [ ] **Busy.**
   While a liquid run has the robot, Done and the move buttons on these
   sheets are gray, the tooltip naming the run.
+
+## Redesign — Deck step and Deck confirmation (#13)
+
+Start the program normally (no `--mock`), robot on, a profile with the
+platforms set (Picking platform in 5 and 8, Calibration module in 9), a
+tip box and a 384 plate at hand.
+
+- [ ] **The deck.**
+  Home, Auto pick: the Deck step shows twelve tiles, 10 11 12 at the back.
+  Slots 5, 8 and 9 carry their platform's chip and a dashed border; slot
+  12 is a faint TRASH on stripes and a click on it does nothing. A tip box
+  shows a teal tip icon, "96 tips · 200 µl"; a plate a violet icon and
+  "384 wells · 112 µl · flat".
+
+- [ ] **What goes to a slot.**
+  Click an empty slot: "What goes to slot 7?", a search, Frequent · Plates
+  · Tips · Dishes. Frequent lists what was loaded lately, then the custom
+  labware. Tips lists only tip boxes. Type "384": every 384 plate,
+  whatever the chip, each with its well volume. Click one: a toast "… is
+  in slot 7.", the tile shows it, the panel reads "In slot 7".
+
+- [ ] **In a slot.**
+  Put something else: the list again; a choice replaces the plate. Remove:
+  "Slot 7 is empty.", the tile reads Empty.
+
+- [ ] **Drag.**
+  Drag the plate from slot 7 onto empty slot 4: it moves, the robot
+  session reports it in 4 (Manual control's deck agrees). Onto a filled
+  slot: nothing happens. Dragged onto slot 5 (a platform), Manual
+  control's Go to well top stops above the plate, not inside the
+  platform.
+
+- [ ] **The robot's memory.**
+  Close and start the program again: the robot carries on with its
+  session, the Deck step shows "The robot remembers what was on it last
+  time. Check that it matches the real deck." Got it hides it until the
+  next robot session.
+
+- [ ] **Confirmation.**
+  Next on Deck: Deck gets its ✓. Back to Deck, load or remove anything,
+  or drag a plate: the ✓ is gone, Tip is dimmed under "Check the deck
+  first.", until Next again. Settings, Advanced, Start new robot session:
+  Deck is not done any more. A platform changed in Robot setup clears it
+  too.
+
+- [ ] **Change platforms in Robot setup.**
+  Opens the Platforms sheet over the step, the breadcrumb "Home › Auto
+  pick › Platforms"; Done there updates the chips on the tiles.

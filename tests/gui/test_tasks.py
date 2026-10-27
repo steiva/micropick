@@ -90,6 +90,7 @@ def test_liquid_tip_is_done_with_any_tip_on(session):
     session.confirm("deck")
     assert not tasks.step_state(session, "liquid", "tip").done
     _tip_on(session)
+    session.confirm("deck")              # the rack loaded: Deck checked again
     liquid = tasks.step_state(session, "liquid", "tip")
     assert liquid.done and liquid.need is None
     # Picking needs the tip calibrated, not only a tip on.

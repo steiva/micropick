@@ -185,7 +185,7 @@ KEYS = (("aspirate", "aspirate", "_aspirate"),
 # How far the tip may be sent from the chosen well level, either way.
 WELL_OFFSET_RANGE = (-50.0, 50.0)
 
-# The deck map: enough to tell the slots apart, not a second Robot & Deck.
+# The deck map: enough to tell the slots apart, not a second Deck step.
 DECK_HEIGHT = 170
 
 # On the picture while the lower camera is shown; see the module docstring.

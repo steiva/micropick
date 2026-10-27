@@ -26,7 +26,7 @@ request, and its answer is one line in the Labware in the slot card.
 `labware/`, with a slot typed in beside it — so a routine could name a plate
 that was not on the deck, in a slot that held a tip rack, and nothing found
 out until the first well move. The list is now what the run reports:
-everything loaded through the Robot & Deck page that has wells to deliver into,
+everything loaded through the Deck step that has wells to deliver into,
 named by slot. The deck beside it is the same `DeckView` that page draws,
 because "which one is the destination" is a question about the deck and is
 answered by pointing at it.
@@ -101,7 +101,7 @@ log = logging.getLogger(__name__)
 PANEL_WIDTH = 420
 
 # How tall the deck picture is in the panel. Enough to read a slot number
-# and tell a full slot from an empty one; the Robot & Deck page is where the
+# and tell a full slot from an empty one; the Deck step is where the
 # deck is worked on.
 MINI_DECK_HEIGHT = 190
 
@@ -230,7 +230,7 @@ class RoutinePage(QWidget):
         box = card(self)
         box.layout().addWidget(heading("Plate", 2))
 
-        # The deck as the Robot & Deck page draws it, small: picking the
+        # The deck as `DeckView` draws it, small: picking the
         # destination is pointing at the slot it is in.
         self.deck = DeckView(self)
         self.deck.setFixedHeight(MINI_DECK_HEIGHT)
@@ -708,7 +708,7 @@ class RoutinePage(QWidget):
         if slot is None:
             self.summary.setPlainText(
                 f"No slot holds {preset.load_name}, the plate this preset is "
-                f"for. Load one on the Robot & Deck page.")
+                f"for. Load one on the Deck step.")
             return
         try:
             destination = preset.destination(int(slot))

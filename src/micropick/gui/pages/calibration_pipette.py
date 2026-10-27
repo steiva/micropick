@@ -10,8 +10,7 @@ done, each a card with a mark - done, to do, or waiting for a step above:
    crosshair at the working height, then Set position. With one stored, Go
    to saved position drives there to check it. The jog panel sits right
    under this step.
-3. Put a tip on the pipette - on Robot & Deck, or from the tip button in the
-   status bar.
+3. Put a tip on the pipette - on the Deck step, for now (#14).
 4. Calibrate: the starting offset, what still stops the run, and Start.
 5. Nudge the tip onto the crosshair - only while the routine waits for it.
 
@@ -738,12 +737,9 @@ class PipetteCalibration(QWidget):
                                      if tip.returnable else "") + ".")
         else:
             self.tip.set_state(TODO)
-            self.tip_text.setText(
-                ("No tip on the pipette."
-                 if tip.attached is False else
-                 "Tip state unknown.")
-                + " Pick one up on Robot & Deck or with the tip button in "
-                  "the status bar.")
+            self.tip_text.setText("No tip on the pipette."
+                                  if tip.attached is False else
+                                  "Tip state unknown.")
         self.tip_link.setVisible(connected and tip.attached is not True)
 
         # 4. the calibration

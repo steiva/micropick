@@ -57,7 +57,7 @@ STEPS = {
                 ("profile",)),
     "model": ("Choose the cuboid model", "settings", "Settings",
               ("profile",)),
-    "tip": ("Put a tip on the pipette", "labware", "Robot & Deck",
+    "tip": ("Put a tip on the pipette", "labware", "Deck",
             ("robot",)),
     "camera_calibration": ("Calibrate the camera", "camera_calibration",
                            "Camera calibration",
@@ -72,7 +72,7 @@ STEPS = {
                        "Picking", ("profile", "robot")),
     "dish_bottom": ("Set the dish bottom", "picking", "Picking",
                     ("profile", "robot")),
-    "plate": ("Load the plate on the deck", "labware", "Robot & Deck",
+    "plate": ("Load the plate on the deck", "labware", "Deck",
               ("robot", "plan")),
 }
 

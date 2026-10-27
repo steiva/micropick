@@ -112,10 +112,10 @@ def test_start_picking_is_refused_while_the_robot_is_held(app, session,
     page.deleteLater()
 
 
-def test_robot_and_deck_waits_for_a_run(app, session):
+def test_the_deck_waits_for_a_run(app, session):
     session.load_labware(resolve_definition(RACK), 1)
     page = LabwarePage(session)
-    page._slot_clicked("1")
+    page.choose(1)
     assert page.tip_well.count() > 0
     lease = session.robot_lease.claim("picking run", run=True)
     try:
@@ -190,23 +190,17 @@ def test_after_a_failed_move_the_pose_is_read_without_taking_the_robot(
 
 def test_a_load_refused_for_a_busy_robot_is_not_taken_for_the_next_job(
         app, session):
-    from micropick.gui.pages.labware import DEFINITION_ROLE
     session.load_labware(resolve_definition(RACK), 1)
     page = LabwarePage(session)
-    items = [page.definitions.item(i) for i in range(page.definitions.count())]
-    item = next(i for i in items if i.data(DEFINITION_ROLE) is not None
-                and i.data(DEFINITION_ROLE).load_name not in (PLATE, RACK))
-    refused = item.data(DEFINITION_ROLE).load_name
-    page.definitions.setCurrentItem(item)
-    page._definition_chosen(item)
-    page._slot_clicked("3")
+    refused = "corning_384_wellplate_112ul_flat"
+    page.choose(3)
     lease = session.robot_lease.claim("picking run", run=True)
     try:
-        page._load()
+        page.put(resolve_definition(refused))
     finally:
         lease.release()
     # The next job here, a tip, is not the load that never started.
-    page._slot_clicked("1")
+    page.choose(1)
     page._pick_up()
     assert _until(app, lambda: not page._busy())
     assert session.tip.attached is True

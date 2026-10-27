@@ -43,6 +43,7 @@ class DeckTile:
     note: str = ""             # under it on the tile ("Measured")
     note_tone: str = ""        # "ok" or "warn" colors the note
     valid: bool = True         # can be chosen here
+    platform: str = ""         # what stands in the slot ("Picking platform")
 
 
 class _Tile(QPushButton):

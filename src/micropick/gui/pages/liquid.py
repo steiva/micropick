@@ -1246,8 +1246,8 @@ class LiquidHandlingPage(QWidget):
             out.append("no robot: connect it on the Profile page.")
             return out
         if tip and session.tip.attached is not True:
-            out.append("no tip on the pipette: pick one up on the Robot & Deck "
-                       "page." if session.tip.attached is False else
+            out.append("no tip on the pipette: pick one up on the Deck step."
+                       if session.tip.attached is False else
                        "the robot's tip state is unknown: connect again.")
         return out
 

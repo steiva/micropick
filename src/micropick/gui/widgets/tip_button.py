@@ -2,7 +2,7 @@
 
 A button rather than a line of text: what is on the pipette is the first
 thing to fix before anything moves, and fixing it should not mean finding
-the Robot & Deck page first. A click opens a small panel that grows up out
+the Deck step first. A click opens a small panel that grows up out
 of the button - a popup window, not a menu, so the well can be typed - with
 the three acts: drop the tip where it is, drop it in the trash, and take a
 new one from a rack in a slot of the robot session.
@@ -14,7 +14,7 @@ run. What the panel offers comes from `source`, a function the window
 gives it, read each time it opens: the tip record, the racks in the robot
 session with their wells, and whether anything is running.
 
-The acts are gated on the robot's record both ways, as on Robot & Deck: no
+The acts are gated on the robot's record both ways, as on the Deck step: no
 pick-up while a tip is on, no drop while there is none, and nothing while
 the record could not be read - "unknown" is not "none".
 """

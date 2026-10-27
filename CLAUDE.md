@@ -75,7 +75,11 @@ time, never from a visit; a step whose need is not met is dimmed
 (`overlays.DimCover`) and disabled - so its keys do nothing - under one
 banner naming that need with a button there. A task opens on its first
 step not done. Next is enabled when the step is done or optional; Deck is
-confirmed by its own Next. Robot setup (`pages.robot_setup`, from Home's
+confirmed by its own Next, for the robot session, and any change to the
+deck (a load, a remove, a move by drag - `Session.move_labware` loads
+again so a platform's height attaches - or the platforms) clears that
+(`Session._deck_changed`). The Deck step is `pages.labware`: the tiles
+of `widgets.deck_tiles`, kind and facts from `gui.labware_kinds`. Robot setup (`pages.robot_setup`, from Home's
 Setup card; the one page with a title, REDESIGN §5) is one page of rows - the cameras, camera calibration,
 platforms, the three positions (each `≈ slot n · X Y Z`, never its stored
 name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
@@ -229,8 +233,8 @@ has one, else claims the lease for a worker of its own.
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
 
-A section that folds (`theme.factory.Section`, the labware page's Deck
-modules) has an arrow as tall as a capital letter (`fold_arrow`), and
+A section that folds (`theme.factory.Section`, Manual control's Sizes)
+has an arrow as tall as a capital letter (`fold_arrow`), and
 folding lays its scroll column out at once (`_ScrollColumn.fit_now`), so
 the cards around it do not flicker.
 

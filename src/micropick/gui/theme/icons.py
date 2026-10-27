@@ -67,6 +67,10 @@ ICONS: dict[str, str] = {
                  '<path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01'
                  'M7 14h10"/>'),
     "tip": '<path d="M9 3h6v5l-2 13h-2L9 8Z"/>',
+    "plate": ('<path d="M3 6h18v12H3z"/><path d="M7 10h.01M11 10h.01'
+              'M15 10h.01M7 14h.01M11 14h.01M15 14h.01"/>'),
+    "dish": ('<path d="M3 12a9 4 0 1 0 18 0a9 4 0 1 0 -18 0"/>'
+             '<path d="M3 12v2a9 4 0 0 0 18 0v-2"/>'),
 }
 
 

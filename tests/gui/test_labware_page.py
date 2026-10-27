@@ -1,5 +1,6 @@
-"""Robot & Deck: modules placed from a catalogue of types, and Recently
-used at the top of the definitions."""
+"""The Deck step's page (REDESIGN §6.1): the deck's tiles, what goes to an
+empty slot, what is in a filled one, a move by drag, and the banner about
+the robot's memory."""
 
 import os
 import time
@@ -12,12 +13,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
+from micropick.config.labware import resolve_definition          # noqa: E402
+from micropick.config.schema import DeckModule                   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
-from micropick.gui.pages.labware import (DEFINITION_ROLE,        # noqa: E402
-                                         LabwarePage)
+from micropick.gui.pages.labware import LabwarePage              # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
+PLATE_384 = "corning_384_wellplate_112ul_flat"
+RACK = "opentrons_96_tiprack_300ul"
 
 
 @pytest.fixture(scope="module")
@@ -36,6 +40,13 @@ def session(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
+@pytest.fixture
+def page(app, session):
+    p = LabwarePage(session)
+    yield p
+    p.deleteLater()
+
+
 def _wait(app, page):
     end = time.monotonic() + 10
     while page._busy() and time.monotonic() < end:
@@ -44,56 +55,87 @@ def _wait(app, page):
     app.processEvents()
 
 
-def test_a_type_fills_the_height_and_places_on_the_clicked_slot(app, session):
-    page = LabwarePage(session)
-    assert page.module_types.count() >= 2
-    page._select_type("Picking platform")
-    assert page.module_height.value() == pytest.approx(64.2)
-    assert not page.load_button.isEnabled()                # no slot yet
-    page._slot_clicked("5")
-    page.module_height.setValue(63.9)                      # still editable
-    page._load()
-    module = session.profile.deck.module_for(5)
-    assert module.name == "Picking platform"
-    assert module.height_mm == pytest.approx(63.9)
-    # Placing again replaces; removing takes it out.
-    page._select_type("Calibration module")
-    page._load()
-    assert session.profile.deck.module_for(5).name == "Calibration module"
-    assert len(session.profile.deck.modules) == 1
-    page._remove_module()
-    assert session.profile.deck.module_for(5) is None
-    page.deleteLater()
+def _listed(page):
+    return [d.load_name for d in page.listed()]
 
 
-def test_placing_on_one_slot_of_an_old_multi_slot_module_splits_it(app, session):
-    from micropick.config.schema import DeckModule
-    session.set_deck_modules([DeckModule(slots=[5, 8, 9], offset=[0, 0, 64.2],
-                                         name="platform")])
-    page = LabwarePage(session)
-    page._select_type("Calibration module")
-    page._slot_clicked("8")                # shows the module that is there
-    assert page.module_height.value() == pytest.approx(64.2)
-    page._select_type("Calibration module")
-    page._load()
-    deck = session.profile.deck
-    assert deck.module_for(5).slots == [5, 9]
-    assert deck.module_for(8).name == "Calibration module"
-    page.deleteLater()
-
-
-def test_a_loaded_definition_goes_to_the_top(app, session):
-    page = LabwarePage(session)
-    for index in range(page.definitions.count()):
-        item = page.definitions.item(index)
-        definition = item.data(DEFINITION_ROLE)
-        if definition is not None and definition.load_name == PLATE:
-            page.definitions.setCurrentItem(item)
-            break
-    page._slot_clicked("2")
-    page._load()
+def test_an_empty_slot_asks_what_goes_there_and_a_choice_loads_it(
+        app, session, page):
+    page.choose(7)
+    assert page.title.text() == "What goes to slot 7?"
+    assert not page.catalogue.isHidden() and page.held.isHidden()
+    page.put(resolve_definition(PLATE))
     _wait(app, page)
-    assert session.profile.deck.recent_labware == [PLATE]
-    assert page.definitions.item(0).text() == "Recently used"
-    assert page.definitions.item(1).data(DEFINITION_ROLE).load_name == PLATE
-    page.deleteLater()
+    assert session.run_state.labware["7"].load_name == PLATE
+    assert page.title.text() == "In slot 7"
+    tile = page.deck.tile(7)
+    assert (tile.name, tile.kind, tile.facts) == (
+        "Corning 96 Well Plate 360 µL Flat", "plate",
+        "96 wells · 360 µl · flat")
+    # Frequent has it first now.
+    page.choose(4)
+    assert _listed(page)[0] == PLATE
+
+
+def test_chips_and_search(page):
+    page.choose(7)
+    page.choose_chip("Tips")
+    assert RACK in _listed(page) and PLATE not in _listed(page)
+    page.choose_chip("Plates")
+    assert PLATE in _listed(page) and RACK not in _listed(page)
+    # Typed: the whole catalogue, whatever the chip.
+    page.choose_chip("Tips")
+    page.search.setText("384")
+    assert PLATE_384 in _listed(page) and RACK not in _listed(page)
+
+
+def test_put_something_else_replaces_and_remove_empties(app, session, page):
+    session.load_labware(resolve_definition(PLATE), 5)
+    page.choose(5)
+    assert page.title.text() == "In slot 5" and not page.held.isHidden()
+    page.put_something_else()
+    assert page.title.text() == "What goes to slot 5?"
+    page.put(resolve_definition(PLATE_384))
+    _wait(app, page)
+    assert session.run_state.labware["5"].load_name == PLATE_384
+    assert page.title.text() == "In slot 5"
+    page.remove()
+    _wait(app, page)
+    assert "5" not in session.run_state.labware
+    assert page.title.text() == "What goes to slot 5?"
+
+
+def test_a_tile_dragged_to_an_empty_slot_moves_it(app, session, page):
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.confirm("deck")
+    page.deck.moved.emit(5, 6)
+    _wait(app, page)
+    held = session.run_state.labware
+    assert "5" not in held and held["6"].load_name == PLATE
+    assert page.slot == 6
+    assert not session.is_confirmed("deck")
+
+
+def test_the_trash_is_not_a_slot_to_choose(page):
+    page.choose(12)
+    assert page.slot is None
+    assert page.deck.tile(12).kind == "trash"
+
+
+def test_a_platform_shows_on_its_tile(session, page):
+    session.set_deck_modules([DeckModule(slots=[8], offset=[0, 0, 64.2],
+                                         name="Picking platform")])
+    assert page.deck.tile(8).platform == "Picking platform"
+    assert page.deck.tile(5).platform == ""
+
+
+def test_the_memory_banner_shows_until_got_it_in_this_robot_session(
+        app, session, page):
+    assert page.memory.isHidden()                  # nothing remembered
+    session.load_labware(resolve_definition(PLATE), 5)
+    assert not page.memory.isHidden()
+    page._memory_seen_now()
+    assert page.memory.isHidden()
+    session.new_run()
+    session.load_labware(resolve_definition(PLATE), 5)
+    assert not page.memory.isHidden()
