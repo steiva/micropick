@@ -397,7 +397,7 @@ class Session(QObject):
         self.robot_answers: bool | None = None
         self.restarted = False
         # The robot session whose carrying on failed (`adopt_failed`): not
-        # tried again; Home the robot is the way on.
+        # tried again; Home and connect is the way on.
         self.adopt_refused: str | None = None
         # The robot session let go on the operator's word (`release_run`):
         # no session is carried on with until `continue_run` or a new one
@@ -1734,7 +1734,7 @@ class Session(QObject):
     def connect_robot(self):
         """The whole sequence with the default decision made: carry on with a
         reusable run, otherwise start one - which homes. For callers with no
-        operator to ask, such as a test; the window asks (Home the robot)."""
+        operator to ask, such as a test; the window asks (Home and connect)."""
         state = self.probe_robot()
         return self.adopt_run() if state.reusable else self.new_run()
 
@@ -2003,6 +2003,33 @@ class Session(QObject):
         self.assign_camera_devices(assignment)
         return current if len(assignment) > 1 else None
 
+    def save_camera_focus(self, role: str, value: float) -> bool:
+        """Write `value` as the focus of the profile's `role` camera (the
+        camera sheet's Done), autofocus off with it: a focus means nothing
+        while the device focuses by itself. Returns whether anything
+        changed; an equal focus writes nothing."""
+        if self.profile is None:
+            raise SessionError("load a profile before saving a focus")
+        label = self._role_label(role)
+        if label is None:
+            raise SessionError(f"profile {self.profile.name!r} has no "
+                               f"{role} camera")
+        spec = self.profile.cameras[label]
+        controls = dict(spec.controls)
+        controls["focus"] = float(value)
+        if not isinstance(controls.get("autofocus"), str):
+            controls["autofocus"] = 0.0
+        if controls == spec.controls:
+            return False
+        spec.controls = controls
+        if self.cameras is not None and label in self.cameras.cameras:
+            self.cameras.cameras[label] = spec.model_dump()
+        self.profile.save_cameras()
+        log.info("camera %r focus saved to profile %r: %g", label,
+                 self.profile.name, float(value))
+        self.profile_changed.emit(self.profile)
+        return True
+
     def preview_camera(self, role: str, device_name: str):
         """The attached camera `device_name`, open to be looked at before
         it is chosen as the `role` camera. Blocking: run it in a Worker.
@@ -2027,6 +2054,8 @@ class Session(QObject):
             camera = open_scene_camera(
                 self.robot, MarkerScene(image_size=spec.default_resolution),
                 label=PREVIEW_LABEL)
+            if spec.controls:
+                camera.set_controls(dict(spec.controls))
         else:
             _label, spec = new_camera_spec(role, device_name,
                                            self._device_sizes(device_name))

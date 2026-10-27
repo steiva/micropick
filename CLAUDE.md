@@ -55,6 +55,11 @@ quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture   what
 it does" per item). Never the camera name, slot, resolution, crop, zoom,
 fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
 semi-transparent boxes, never into the frame and never as a separate panel.
+A press on a widget floating over the picture (the jog pad's card, the
+TipGauge, a page's button) is that widget's, even beside its buttons:
+never a click on the picture. A page whose click moves the robot names
+it with `CameraView.set_click_to_move`; without a pixel map that line is
+"Use the arrows to move the camera." and no click is sent.
 
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture gets the width its frame shape needs (4:3 for the upper camera),
@@ -112,8 +117,11 @@ calibration, Save anyway). × closes
 it and a sweep carries on. The platforms have theirs
 (`pages.platforms_sheet.PlatformsSheet`): the 3×4 deck, a slot clicked,
 "What stands in this slot?" (the profile's module types or Nothing), its
-height, New type and Delete type - all a draft until Done
-(`Session.set_module_types`, `Session.set_deck_modules`). The three positions share
+height, New type and Delete type - all a draft until Save changes
+(`Session.set_module_types`, `Session.set_deck_modules`), gray while
+nothing differs from what is saved, then "Saved: slot 9 · Calibration
+module"; Done and × only close (no Cancel), and with unsaved changes ask
+Save / Discard first. The three positions share
 one (`pages.position_sheet.PositionSheet`, `open_for(item)`): the upper
 camera with the pad, a click moves the camera through the pixel map
 (`gui.camera_moves`, also the camera calibration's), Move camera to slot
@@ -160,11 +168,14 @@ row. A text or number field with the keyboard keeps the keys it uses
 the pad then says so (`jog_panel.TYPING_HELP`), and Enter in the field or
 a click on the picture or the page gives them back.
 
-A camera's focus is tuned only in its own window
-(`widgets.feed_window.FeedWindow`), opened by Focus in Robot setup's
-camera sheet for a camera the profile has (a device only previewed has
-none) and hidden with the sheet: `CameraView.enable_focus_tools` -
-slider, typed number, default 960, save to profile - is off on the pages.
+A camera's focus is tuned only in Robot setup's camera sheet: while the
+chosen camera opens, a spinner and "Opening camera…" over the picture
+("No camera is attached." only when none is); from its first frame, for
+a device that took a focus - the profile's or one only previewed - the
+focus row under the picture (slider, typed number, Default (960)), tried
+on the device live. Done saves it (`Session.save_camera_focus`); × saves
+nothing and puts back the open camera's focus. No Focus button, no
+window of its own; `CameraView.enable_focus_tools` is off on the pages.
 
 ### Manual pick drives the robot from the picture
 
@@ -177,7 +188,7 @@ none. A run - picking, liquid, the camera sweep, the pipette calibration -
 holds it from Start to its end, pauses and needs operator included; the
 pipette calibration lends it to the touch-up's panel (`JogPanel.lend`).
 While anything holds it, every jog panel and every button that would move
-the robot is greyed out, the holder named in the tooltip. Home the robot
+the robot is greyed out, the holder named in the tooltip. Home and connect
 (a new robot session) is refused while it is held; closing the window during
 a run asks and stops it, and the window closes (and parks Z) only once the
 robot is free - else it stays open and says the run is still stopping.
@@ -315,12 +326,16 @@ depth changed (`well_center.run_using`).
 ### Words on screen
 
 UI strings only; code names stay. The OT-2's HTTP run is a **robot session**
-(carried on with by itself; "Home the robot" starts a new one).
+(carried on with by itself; "Home and connect" starts a new one).
 There is no Connect: the connection monitor (`gui.robot_monitor`) looks
 at the robot every few seconds from the start, carries on with a session
 it can (that moves nothing), and leaves a robot with none on "Robot needs
-to home" until the operator confirms Home the robot - a hand may be in
-the robot. A changed run id is the robot restarted: labware, the tip and
+to home" until the operator confirms Home and connect - a hand may be in
+the robot. While the robot does not answer, Home says "Connecting to the
+robot…" ("This can take a few minutes after it is switched on.": it is
+slow to boot, not lost), and "Homing…" while it homes. The dish the
+cuboids are picked from is the **source dish** on screen, never "dish
+with cuboids". A changed run id is the robot restarted: labware, the tip and
 what was confirmed are forgotten (`Session.robot_seen`). A session is shown by the name it was
 given when created here (`config.robot_sessions`, default date, time and
 profile), else by when the robot started it - never by its id. "run" on

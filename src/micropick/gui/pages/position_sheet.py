@@ -5,8 +5,8 @@ One sheet for the three, opened from a Positions row (or a step that
 needs one): the upper camera's live picture on the left, the jog pad
 floating over it, and on the right what to do for the position opened:
 
-- **Position over the dish** (`observe`): "Where will the dish with
-  cuboids stand?" - Slot 8, on the picking platform (the default), or
+- **Position over the dish** (`observe`): "Where will the source
+  dish stand?" - Slot 8, on the picking platform (the default), or
   somewhere else - and for slot 8 "Move camera to slot 8". Then the
   picture is clicked, or the arrows used, until the dish rim surrounds
   the crosshair.
@@ -63,7 +63,7 @@ DISH_SLOT = 8
 # The module type the crosshair disc stands on.
 CALIBRATION_MODULE = "Calibration module"
 
-DISH_QUESTION = "Where will the dish with cuboids stand?"
+DISH_QUESTION = "Where will the source dish stand?"
 DISH_HINT = ("Put the dish there. The whole dish should be in the "
              "picture, its rim around the crosshair.")
 CANT_SEE = "The camera can't see this. Watch the robot itself."
@@ -100,8 +100,9 @@ class PositionSheet(SheetWindow):
                             machine_controls=False,
                             parent=self.body_widget)
         self.jog.show_position_on(self.view)
-        self.view.set_mouse_help(["Click   move the camera there",
-                                  *ZOOM_AND_PAN])
+        self.view.set_mouse_help(ZOOM_AND_PAN)
+        self.view.set_click_to_move("Click   move the camera there",
+                                    self._mapped)
         self.view.clicked.connect(self._clicked)
 
         column = QWidget(self.body_widget)
@@ -195,6 +196,13 @@ class PositionSheet(SheetWindow):
         slot = self._target_slot()
         if slot is not None:
             move_over_slot(self.session, self.jog, slot)
+
+    def _mapped(self) -> bool:
+        """Whether a click on the picture can move the robot: only through
+        the profile's pixel map, so not before the first camera
+        calibration."""
+        profile = self.session.profile
+        return profile is not None and profile.pixel_map is not None
 
     def _clicked(self, u: float, v: float) -> None:
         move_to_pixel(self.session, self.jog, u, v, no_map=USE_THE_ARROWS)

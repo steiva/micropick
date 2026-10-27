@@ -8,15 +8,18 @@ the right - one of the profile's module types (Picking platform,
 Calibration module) or Nothing. Slot 12 is the fixed trash and takes
 none.
 
-The choices are a draft until Done: Done saves the deck modules
-(`Session.set_deck_modules`, which registers their offsets with the
-robot), Cancel and × save nothing. A slot keeps the height of the module
-it had while its type is not changed; a slot given a type takes that
-type's usual height; Height changes the slot's own. New type adds one
-with its usual height, Delete type takes the chosen one out of the list -
-what stands in a slot keeps its name and height. Types are a draft too,
-saved by Done (`Session.set_module_types`). Done is gray while anything
-has the robot: saving registers the offsets in the robot session.
+The choices are a draft until Save changes (#30): it saves the deck
+modules (`Session.set_deck_modules`, which registers their offsets with
+the robot) and the types (`Session.set_module_types`), and says what was
+saved ("Saved: slot 9 · Calibration module"). It is gray while the draft
+is what is saved, and while anything has the robot: saving registers the
+offsets in the robot session. Done and × only close; closed with unsaved
+changes, the sheet asks Save / Discard first. There is no Cancel. A slot
+keeps the height of the module it had while its type is not changed; a
+slot given a type takes that type's usual height; Height changes the
+slot's own. New type adds one with its usual height, Delete type takes
+the chosen one out of the list - what stands in a slot keeps its name and
+height.
 """
 
 from __future__ import annotations
@@ -33,9 +36,10 @@ from ..session import Session
 from ..tasks import SETUP_TITLES
 from ..theme import COLORS
 from ..theme.factory import (caption, compact, double_spin_box, heading,
-                             muted_label, secondary_button, select)
+                             muted_label, primary_button, secondary_button,
+                             select)
 from ..widgets.mini_deck import DECK_ROWS
-from ..widgets.overlays import SheetWindow
+from ..widgets.overlays import ConfirmDialog, SheetWindow
 from ..workers import describe_error
 
 __all__ = ["NOTHING", "PlatformsSheet"]
@@ -62,8 +66,9 @@ def _height_box(parent: QWidget):
 
 
 class PlatformsSheet(SheetWindow):
-    """`open_sheet()`; `said(text)` after Done. `slot` is the slot chosen,
-    `tiles` the deck's buttons by slot."""
+    """`open_sheet()`; `said(text)` after a save. `slot` is the slot
+    chosen, `tiles` the deck's buttons by slot, `question` the Save /
+    Discard asked on closing with changes (None while not asked)."""
 
     said = Signal(str)
 
@@ -75,6 +80,7 @@ class PlatformsSheet(SheetWindow):
         self._draft: dict[int, DeckModule] = {}
         # The profile's platform types, as they will be saved.
         self._types: list[ModuleType] = []
+        self.question: ConfirmDialog | None = None
 
         row = QHBoxLayout()
         row.setSpacing(24)
@@ -127,14 +133,24 @@ class PlatformsSheet(SheetWindow):
         panel.addSpacing(16)
         panel.addLayout(self._types_box())
         panel.addStretch(1)
+        self.saved_note = muted_label("", self.body_widget)
+        self.saved_note.setWordWrap(True)
+        panel.addWidget(self.saved_note)
+        self.save_button = primary_button("Save changes", self.body_widget)
+        self.save_button.clicked.connect(self.save)
+        panel.addWidget(self.save_button)
         holder = QWidget(self.body_widget)
         holder.setLayout(panel)
         holder.setFixedWidth(PANEL_WIDTH)
         row.addWidget(holder)
         self.body.addLayout(row, 1)
 
-        self.done.connect(self._save)
-        session.robot_busy_changed.connect(lambda _h: self._show_done())
+        # Done only closes; Save changes is the panel's one action.
+        self.cancel_button.hide()
+        self.done_button.setObjectName("secondary")
+        self.done_button.setDefault(False)
+        self.close_button.setToolTip("Close")
+        session.robot_busy_changed.connect(lambda _h: self._show_save())
 
     def _types_box(self) -> QVBoxLayout:
         """A new type: its name and usual height, a draft until Done."""
@@ -172,8 +188,9 @@ class PlatformsSheet(SheetWindow):
         self.new_name.clear()
         self.type_note.clear()
         self._fill_kinds()
+        self.saved_note.clear()
         self._choose(min(self._draft, default=1))
-        self._show_done()
+        self._show_save()
         self.open()
 
     def _fill_kinds(self) -> None:
@@ -213,6 +230,7 @@ class PlatformsSheet(SheetWindow):
                                            name=name)
         self._show_height()
         self._show_tiles()
+        self._show_save()
 
     def add_type(self) -> None:
         name = self.new_name.text().strip()
@@ -227,6 +245,7 @@ class PlatformsSheet(SheetWindow):
         self.type_note.clear()
         self._fill_kinds()
         self._choose(self.slot)
+        self._show_save()
 
     def delete_type(self) -> None:
         """The type chosen for the slot; what stands anywhere stays."""
@@ -234,12 +253,14 @@ class PlatformsSheet(SheetWindow):
         self._types = [t for t in self._types if t.name != name]
         self._fill_kinds()
         self._choose(self.slot)
+        self._show_save()
 
     def _height_changed(self, value: float) -> None:
         module = self._draft.get(self.slot)
         if module is not None:
             self._draft[self.slot] = module.model_copy(
                 update={"offset": [0.0, 0.0, round(value, 3)]})
+        self._show_save()
 
     def _show_height(self) -> None:
         module = self._draft.get(self.slot)
@@ -264,37 +285,103 @@ class PlatformsSheet(SheetWindow):
                 f"QPushButton {{ border: {2 if chosen else 1}px {style} "
                 f"{border}; border-radius: 12px; font-weight: 600; }}")
 
-    def _show_done(self) -> None:
+    def _show_save(self) -> None:
+        """Save changes: gray while the draft is what is saved, or while
+        anything has the robot (saving registers the offsets)."""
         lease = self.session.robot_lease
-        self.done_button.setEnabled(not lease.busy)
-        self.done_button.setToolTip(
+        changed = bool(self._changes())
+        self.save_button.setEnabled(changed and not lease.busy)
+        self.save_button.setToolTip(
             f"Robot busy: {lease.holder}." if lease.busy else "")
+        if changed:
+            self.saved_note.clear()
+        if self.question is not None:
+            self.question.safe.setEnabled(not lease.busy)
 
-    # -- closing -------------------------------------------------------
+    # -- saving --------------------------------------------------------
 
-    def _save(self) -> None:
+    def _changes(self) -> tuple:
+        """(slots whose module differs from the profile's, whether the
+        types do); empty while the draft is what is saved."""
         profile = self.session.profile
         if profile is None:
-            return
-        modules = [self._draft[slot] for slot in sorted(self._draft)]
+            return ()
         before = {slot: (m.name, tuple(m.offset))
                   for m in profile.deck.modules for slot in m.slots}
-        after = {m.slots[0]: (m.name, tuple(m.offset)) for m in modules}
-        types_changed = self._types != list(profile.deck.module_types)
-        if before == after and not types_changed:
-            return
+        after = {slot: (m.name, tuple(m.offset))
+                 for slot, m in self._draft.items()}
+        slots = sorted(slot for slot in before.keys() | after.keys()
+                       if before.get(slot) != after.get(slot))
+        types = self._types != list(profile.deck.module_types)
+        return (slots, types) if slots or types else ()
+
+    def save(self) -> bool:
+        """Save the draft and say what was saved; False when it failed."""
+        changes = self._changes()
+        if not changes:
+            return True
+        slots, types = changes
+        modules = [self._draft[slot] for slot in sorted(self._draft)]
         try:
-            if types_changed:
+            if types:
                 self.session.set_module_types(self._types)
-            if before != after:
+            if slots:
                 self.session.set_deck_modules(modules)
         except Exception as exc:                     # noqa: BLE001
             log.error("platforms not saved: %s", exc)
             self.said.emit(describe_error(exc))
+            return False
+        saved = [f"slot {slot} · "
+                 + (self._draft[slot].name if slot in self._draft
+                    else NOTHING) for slot in slots]
+        if types:
+            saved.append("platform types")
+        text = "Saved: " + ", ".join(saved)
+        self._show_save()
+        self.saved_note.setText(text)
+        self.said.emit(text + ".")
+        return True
+
+    # -- closing -------------------------------------------------------
+
+    def _done(self) -> None:
+        self._close(self.done)
+
+    def _cancel(self) -> None:
+        self._close(self.canceled)
+
+    def _close(self, signal) -> None:
+        """Done and × alike: closed at once while nothing is unsaved,
+        else once Save / Discard is answered."""
+        if not self._changes():
+            self._shut(signal)
             return
-        self.said.emit("Platforms saved.")
+        if self.question is not None:
+            return
+        self.question = ConfirmDialog(
+            self.window(), "Save the changes?", text="Platforms not saved.",
+            safe="Save", destructive="Discard")
+        self.question.answered.connect(
+            lambda discard: self._answered(discard, signal))
+        self._show_save()
+        self.question.open()
+
+    def _answered(self, discard: bool, signal) -> None:
+        question, self.question = self.question, None
+        if question is not None:
+            question.deleteLater()
+        if discard or self.save():
+            self._shut(signal)
+
+    def _shut(self, signal) -> None:
+        self.hide()
+        signal.emit()
 
     def discard(self) -> None:
-        """Closed by going elsewhere: as ×, nothing is saved."""
+        """Closed by going elsewhere: nothing is saved, nothing asked."""
+        if self.question is not None:
+            self.question.hide()
+            self.question.deleteLater()
+            self.question = None
         if not self.isHidden():
             self.hide()

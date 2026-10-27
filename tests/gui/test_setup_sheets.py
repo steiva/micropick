@@ -64,6 +64,12 @@ def _row(window, item):
 
 # -- platforms -----------------------------------------------------------------
 
+def _choose(sheet, slot, kind):
+    sheet.tiles[slot].click()
+    assert sheet.slot == slot
+    sheet.kind.setCurrentText(kind)
+
+
 def test_the_platforms_row_opens_the_deck(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
@@ -74,18 +80,27 @@ def test_the_platforms_row_opens_the_deck(app, window):
     assert not sheet.tiles[12].isEnabled()
     assert [sheet.kind.itemText(i) for i in range(sheet.kind.count())] == [
         "Picking platform", "Calibration module", "Nothing"]
+    # Done and × only close: there is no Cancel.
+    assert sheet.cancel_button.isHidden()
+    assert sheet.done_button.text() == "Done"
 
 
-def test_done_saves_what_stands_in_the_slots(app, window):
+def test_save_changes_saves_what_stands_in_the_slots(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
+    assert not sheet.save_button.isEnabled()
     for slot, kind in ((5, "Picking platform"), (8, "Picking platform"),
                        (9, "Calibration module")):
-        sheet.tiles[slot].click()
-        assert sheet.slot == slot
-        sheet.kind.setCurrentText(kind)
+        _choose(sheet, slot, kind)
     assert "Calibration module" in sheet.tiles[9].text()
-    sheet.done_button.click()
+    assert sheet.save_button.isEnabled()
+    sheet.save_button.click()
+    # Saved at once; the sheet stays open and says so.
+    assert sheet.isVisible()
+    assert not sheet.save_button.isEnabled()
+    assert sheet.saved_note.text() == (
+        "Saved: slot 5 · Picking platform, slot 8 · Picking platform, "
+        "slot 9 · Calibration module")
     deck = window.session.profile.deck
     assert {s: deck.module_for(s).name for s in (5, 8, 9)} == {
         5: "Picking platform", 8: "Picking platform", 9: "Calibration module"}
@@ -93,53 +108,93 @@ def test_done_saves_what_stands_in_the_slots(app, window):
         "Calibration module").height_mm
     assert _row(window, "platforms") == (
         True, "Picking platform in 5 and 8 · Calibration module in 9")
+    # A clean draft closes without a question.
+    sheet.done_button.click()
+    assert sheet.question is None
+    assert not sheet.isVisible()
     assert window.top.path == ["Robot setup"]
 
 
-def test_nothing_takes_a_platform_away_and_cancel_saves_nothing(app, window):
+def test_a_change_back_to_what_is_saved_is_no_change(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
-    sheet.tiles[5].click()
-    sheet.kind.setCurrentText("Picking platform")
-    sheet.done_button.click()
-    _open(window, "platforms")
-    sheet.tiles[5].click()
-    assert sheet.kind.currentText() == "Picking platform"
+    _choose(sheet, 5, "Picking platform")
+    assert sheet.save_button.isEnabled()
     sheet.kind.setCurrentText("Nothing")
-    sheet.cancel_button.click()
-    assert window.session.profile.deck.module_for(5) is not None
+    assert not sheet.save_button.isEnabled()
+
+
+def test_nothing_takes_a_platform_away(app, window):
     _open(window, "platforms")
-    sheet.tiles[5].click()
+    sheet = window.platforms_sheet
+    _choose(sheet, 5, "Picking platform")
+    sheet.save_button.click()
     sheet.kind.setCurrentText("Nothing")
-    sheet.done_button.click()
+    sheet.save_button.click()
+    assert sheet.saved_note.text() == "Saved: slot 5 · Nothing"
     assert window.session.profile.deck.modules == []
     assert _row(window, "platforms") == (False, "Not set.")
 
 
-def test_a_slots_height_is_changed_and_saved_by_done(app, window):
+def test_closing_with_changes_asks_and_discard_drops_them(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
+    _choose(sheet, 5, "Picking platform")
+    sheet.close_button.click()
+    # Asked, still open, nothing saved.
+    assert sheet.question is not None and sheet.question.isVisible()
+    assert sheet.isVisible()
+    assert sheet.question.safe.text() == "Save"
+    assert sheet.question.destructive.text() == "Discard"
+    sheet.question.destructive.click()
+    assert not sheet.isVisible()
+    assert window.top.path == ["Robot setup"]
+    assert window.session.profile.deck.modules == []
+    # Opened again: the draft is what is saved.
+    _open(window, "platforms")
     sheet.tiles[5].click()
-    sheet.kind.setCurrentText("Picking platform")
+    assert sheet.kind.currentText() == "Nothing"
+    assert not sheet.save_button.isEnabled()
+
+
+def test_closing_with_changes_asks_and_save_saves_them(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    _choose(sheet, 9, "Calibration module")
+    sheet.done_button.click()
+    assert sheet.isVisible()
+    sheet.question.safe.click()
+    assert not sheet.isVisible()
+    assert window.session.profile.deck.module_for(9).name == (
+        "Calibration module")
+    assert _row(window, "platforms")[0]
+
+
+def test_a_slots_height_is_changed_and_saved(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    _choose(sheet, 5, "Picking platform")
     assert sheet.height.value() == pytest.approx(64.2)    # the type's own
     sheet.height.setValue(63.9)
-    sheet.done_button.click()
+    sheet.save_button.click()
     deck = window.session.profile.deck
     assert deck.module_for(5).height_mm == pytest.approx(63.9)
     # The type keeps its usual height.
     assert deck.module_type("Picking platform").height_mm == pytest.approx(64.2)
+    sheet.height.setValue(64.0)
+    assert sheet.save_button.isEnabled()
 
 
-def test_a_new_type_is_offered_and_saved_by_done(app, window):
+def test_a_new_type_is_offered_and_saved(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
     sheet.new_name.setText("Tall platform")
     sheet.new_height.setValue(80.0)
     sheet.add_type()
-    sheet.tiles[4].click()
-    sheet.kind.setCurrentText("Tall platform")
+    assert sheet.save_button.isEnabled()
+    _choose(sheet, 4, "Tall platform")
     assert sheet.height.value() == pytest.approx(80.0)
-    sheet.done_button.click()
+    sheet.save_button.click()
     deck = window.session.profile.deck
     assert deck.module_type("Tall platform").height_mm == pytest.approx(80.0)
     assert deck.module_for(4).name == "Tall platform"
@@ -153,26 +208,19 @@ def test_a_type_of_that_name_is_not_added_twice(app, window):
     names = [sheet.kind.itemText(i) for i in range(sheet.kind.count())]
     assert names == ["Picking platform", "Calibration module", "Nothing"]
     assert sheet.type_note.text() == "There is a type of that name."
+    assert not sheet.save_button.isEnabled()
 
 
-def test_delete_type_keeps_what_stands_and_cancel_keeps_the_type(app, window):
+def test_delete_type_keeps_what_stands(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
-    sheet.tiles[9].click()
-    sheet.kind.setCurrentText("Calibration module")
-    sheet.done_button.click()
-    _open(window, "platforms")
-    sheet.tiles[9].click()
-    sheet.delete_type()
-    sheet.cancel_button.click()
-    deck = window.session.profile.deck
-    assert deck.module_type("Calibration module") is not None
-    _open(window, "platforms")
-    sheet.tiles[9].click()
+    _choose(sheet, 9, "Calibration module")
+    sheet.save_button.click()
     sheet.delete_type()
     # Still standing in slot 9, under its own name.
     assert sheet.kind.currentText() == "Calibration module"
-    sheet.done_button.click()
+    sheet.save_button.click()
+    assert sheet.saved_note.text() == "Saved: platform types"
     deck = window.session.profile.deck
     assert deck.module_type("Calibration module") is None
     assert deck.module_for(9).name == "Calibration module"
@@ -210,6 +258,21 @@ def test_move_camera_to_slot_8_and_done_saves_the_position(app, window):
     done, value = _row(window, "dish_position")
     assert done and value.startswith("≈ slot ")
     assert window.top.path == ["Robot setup"]
+
+
+def test_before_camera_calibration_a_click_on_the_picture_moves_nothing(
+        app, window):
+    """No pixel map yet: the mouse row has no click line, says to use the
+    arrows, and the camera calibration sheet's row says the same."""
+    assert window.session.profile.pixel_map is None
+    _open(window, "dish_position")
+    help_ = window.position_sheet.view.mouse_help
+    assert "Use the arrows to move the camera." in help_
+    assert not any(line.startswith("Click") for line in help_)
+    window.position_sheet.cancel_button.click()
+    view = window.calibration_sheet.view
+    assert "Use the arrows to move the camera." in view.mouse_help
+    assert not any(line.startswith("Click") for line in view.mouse_help)
 
 
 def test_cancel_saves_no_position(app, window):
