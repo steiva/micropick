@@ -815,6 +815,11 @@ class JogPanel(QWidget):
         self._message = text
         self._emit_position()
 
+    def step(self, axis: str, direction: int) -> None:
+        """One step, as the pad's button for it: from a face of a page's
+        own (the Dish bottom step's Up and Down)."""
+        self._move(axis, direction)
+
     def set_step(self, value: float) -> None:
         """Choose the step from outside, e.g. 0.05 mm for a touch-up: the
         nearest of the pad's sizes."""

@@ -8,9 +8,8 @@ Settings and a setup item have neither.
 
 A **task** is a fixed order of steps (`gui.tasks`); the existing pages are
 the steps' content, `STEP_PAGES` says which. One page can be several
-steps - Picking is the Dish bottom step and the Picking step, Liquid
-handling is all three of Liquid's own - and Deck, Tip and Dish bottom are
-the same page and the same state in every task.
+steps - Liquid handling is all three of Liquid's own - and Deck, Tip and
+Dish bottom are the same page and the same state in every task.
 
 Whether a step is done, and the first need it has not got, are read from
 the session each time (`tasks.step_state`): nothing records a visit. A
@@ -21,8 +20,8 @@ breadcrumb then reads `Home › <task> › <item>`, and its crumb goes back.
 
 A task opens on its first step not done, so one switched to after another
 starts past what they share. Next is enabled on a step that is done or
-optional; Deck is confirmed by its Next (`Session.confirm`), and so, until
-Dish bottom has its own Save and Use it, is Dish bottom.
+optional; Deck is confirmed by its Next (`Session.confirm`), Dish bottom
+by its own Save dish bottom and Use it.
 
 The window as before: Esc and STOP stop (two presses hold), closing waits
 for the robot to be free, Park is what Home robot position was, Light
@@ -50,8 +49,9 @@ from .. import _version as version
 from .. import paths
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
-                    home, labware, liquid, manual, picking, platforms_sheet,
-                    position_sheet, robot_setup, routine, settings)
+                    dish_bottom, home, labware, liquid, manual, picking,
+                    platforms_sheet, position_sheet, robot_setup, routine,
+                    settings)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -79,6 +79,7 @@ PAGES = (
     ("tip_calibration", calibration_pipette.TITLE,
      calibration_pipette.PipetteCalibration),
     ("routine", routine.TITLE, routine.RoutinePage),
+    ("dish_bottom", dish_bottom.TITLE, dish_bottom.DishBottomPage),
     ("picking", picking.TITLE, picking.PickingPage),
     ("liquid", liquid.TITLE, liquid.LiquidHandlingPage),
     ("manual", manual.TITLE, manual.ManualPage),
@@ -88,7 +89,7 @@ PAGES = (
 # The page each step shows.
 STEP_PAGES = {
     "deck": "labware", "tip": "tip_calibration", "plan": "routine",
-    "dish_bottom": "picking", "picking": "picking", "work": "manual",
+    "dish_bottom": "dish_bottom", "picking": "picking", "work": "manual",
     "well_center": "liquid", "liquid_plan": "liquid", "run": "liquid",
 }
 
@@ -125,7 +126,7 @@ RUN_ACTIVITY = {
 }
 
 # Steps their own Next confirms for the robot session.
-CONFIRMED_BY_NEXT = ("deck", "dish_bottom")
+CONFIRMED_BY_NEXT = ("deck",)
 
 # How often the steps' marks are read again: a position saved on a page has
 # no signal of its own.
@@ -485,7 +486,7 @@ class MainWindow(QMainWindow):
             self.open_setup_item(name)
             return
         if self.task is not None:
-            # The step shown when it is that page (Picking is two steps),
+            # The step shown when it is that page (Liquid handling is three),
             # else the first that is.
             step = (self._task_step
                     if STEP_PAGES.get(self._task_step) == name else

@@ -70,7 +70,7 @@ STEPS = {
                       "Picking", ("profile", "robot")),
     "shake_position": ("Set the shake position in the dish", "picking",
                        "Picking", ("profile", "robot")),
-    "dish_bottom": ("Set the dish bottom", "picking", "Picking",
+    "dish_bottom": ("Set the dish bottom", "dish_bottom", "Dish bottom",
                     ("profile", "robot")),
     "plate": ("Load the plate on the deck", "labware", "Deck",
               ("robot", "plan")),

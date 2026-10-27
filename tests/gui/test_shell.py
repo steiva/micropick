@@ -201,3 +201,23 @@ def test_a_page_asked_for_from_a_step_keeps_the_task(app, window):
     window.session.page_requested.emit("labware")   # closes the sheet
     assert not window.settings_sheet.isVisible()
     assert window.step == "deck" and window.top.path == ["Auto pick"]
+
+
+def test_dish_bottom_is_its_own_page_and_done_by_use_it_not_by_next(
+        app, window):
+    from datetime import datetime, timezone
+    _connect(app, window)
+    _tip_calibrated(window)
+    window.session.profile.positions["observe"] = (200.0, 150.0, 120.0)
+    window.session.profile.calibration.dish_bottom_set_at = datetime.now(
+        timezone.utc)
+    window.home.tiles["manual"].clicked.emit()
+    window.footer.next.click()                     # Deck
+    window.step_bar.clicked.emit(2)                # Dish bottom
+    page = window.dish_bottom_page
+    assert window.current_page() is page
+    assert window.top.path == ["Manual pick"]
+    assert not window.footer.next.isEnabled()
+    page.use_button.click()
+    assert window.footer.next.isEnabled()
+    assert _chips(window)[2] == ("Dish bottom", True)

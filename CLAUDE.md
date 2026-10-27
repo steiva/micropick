@@ -367,10 +367,19 @@ pill), waiting for the operator at the disc and the fine-tune, where Stop
 ends it with nothing saved; then "Tip calibrated." with Check: tip to
 crosshair. Liquid's Tip step shows no calibration (`set_task`). Its
 cameras are the profile's upper and lower ones.
+The Dish bottom step (`pages.dish_bottom`, REDESIGN §6.4) has no camera:
+a big Z readout, Up and Down with the step carousel between them
+(`jog_pad.StepCarousel`), active only while lowering, through a jog panel
+that is never shown (so no keys). "Last time: Z 66.40 mm · 3 days ago"
+with Use it while it was ever measured; Tip over the dish center (Move
+the tip), Lower until it touches (Done), Save dish bottom (a change over
+3 mm asked first; the tip raised after); then "Dish bottom: Z 66.42 mm".
+Done when measured (`Session.set_dish_bottom`) or Use it
+(`Session.use_last_dish_bottom`) in this robot session, never by Next.
 Picking is the same, leading to the run: complete the Operation checklist,
-set the picking position, the shake position, the dish bottom (optional),
-analyze the dish, start picking; the jog panel last. Steps 2-4 are marked
-from the checklist's own lines. On Picking the size histogram is a card
+set the picking position, the shake position, analyze the dish, start
+picking; the jog panel last. Steps 2-3 are marked from the checklist's
+own lines. On Picking the size histogram is a card
 over the picture's bottom-left corner (`widgets.size_panel`), not drawn
 into the view: the size window is dragged on it and saved like the
 settings' Save. Its expand button toggles the cuboids' figures, a window

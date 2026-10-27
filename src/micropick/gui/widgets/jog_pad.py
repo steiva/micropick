@@ -33,7 +33,7 @@ from .. import keys as key_actions
 from ..theme import COLORS, SIZES, mono_font
 from ..theme.icons import icon
 
-__all__ = ["STEPS", "JogPad", "step_label", "step_color"]
+__all__ = ["STEPS", "JogPad", "StepCarousel", "step_label", "step_color"]
 
 # The carousel's sizes, mm (§8.11): the jog controller's own.
 STEPS = tuple(DEFAULT_STEPS)
@@ -97,39 +97,21 @@ class _JogButton(QPushButton):
         painter.end()
 
 
-class JogPad(QFrame):
-    jog = Signal(str, int)          # axis "x" / "y" / "z", sign +1 / -1
+class StepCarousel(QWidget):
+    """The step size: three sizes in view, ‹ › to slide. The pad's, and
+    the Dish bottom step's between its Up and Down."""
+
     step_changed = Signal(float)
 
     def __init__(self, *, steps=STEPS, step: float = 1.0,
-                 bindings: dict | None = None, parent: QWidget | None = None):
+                 parent: QWidget | None = None):
         super().__init__(parent)
-        self.setObjectName("jogPad")
-        self.setStyleSheet("QFrame#jogPad { background: rgba(10, 12, 14, 0.86);"
-                           " border-radius: 12px; }")
         self.steps = tuple(sorted(steps))
         self.step = min(self.steps, key=lambda s: abs(s - step))
         self._first = 0
-        self._bindings = bindings or {}
 
-        column = QVBoxLayout(self)
-        column.setContentsMargins(12, 12, 12, 12)
-        column.setSpacing(10)
-
-        head = QHBoxLayout()
-        title = QLabel("MOVE THE ROBOT", self)
-        title.setObjectName("caption")
-        head.addWidget(title, 1)
-        self.keys = QPushButton("Keys", self)
-        self.keys.setObjectName("secondary")
-        self.keys.setProperty("compact", True)
-        self.keys.setCheckable(True)
-        self.keys.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.keys.toggled.connect(self._show_keys)
-        head.addWidget(self.keys)
-        column.addLayout(head)
-
-        carousel = QHBoxLayout()
+        carousel = QHBoxLayout(self)
+        carousel.setContentsMargins(0, 0, 0, 0)
         carousel.setSpacing(4)
         label = QLabel("Step", self)
         label.setObjectName("faint")
@@ -149,7 +131,88 @@ class JogPad(QFrame):
         self.bigger = self._arrow("chevron-right", "Bigger step")
         self.bigger.clicked.connect(lambda: self.step_by(+1))
         carousel.addWidget(self.bigger)
-        column.addLayout(carousel)
+        self.set_step(self.step)
+
+    def _arrow(self, name: str, tip: str) -> QPushButton:
+        button = QPushButton(self)
+        button.setObjectName("quiet")
+        button.setProperty("compact", True)
+        button.setIcon(icon(name, COLORS["text-2"], 14, stroke=2.4))
+        button.setFixedWidth(28)
+        button.setToolTip(tip)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        return button
+
+    def set_step(self, mm: float, *, emit: bool = False) -> None:
+        """Choose a size and bring it into view."""
+        self.step = min(self.steps, key=lambda s: abs(s - mm))
+        i = self.steps.index(self.step)
+        if not self._first <= i < self._first + VISIBLE:
+            self._first = max(0, min(i - 1, len(self.steps) - VISIBLE))
+        self._paint_options()
+        if emit:
+            self.step_changed.emit(self.step)
+
+    def step_by(self, delta: int) -> None:
+        """One size smaller or bigger: the step keys, and ‹ ›, which slide
+        the view with the chosen size."""
+        i = self.steps.index(self.step) + delta
+        if 0 <= i < len(self.steps):
+            self.set_step(self.steps[i], emit=True)
+
+    def _paint_options(self) -> None:
+        shown = self.steps[self._first:self._first + VISIBLE]
+        for button, mm in zip(self.options, shown):
+            chosen = mm == self.step
+            button.setText(f"{mm:g}")
+            button.setProperty("mm", mm)
+            button.setToolTip(step_label(mm))
+            bg = step_color(mm) if chosen else "transparent"
+            ink = COLORS["on-accent"] if chosen else COLORS["text-2"]
+            button.setStyleSheet(
+                f"QPushButton {{ background: {bg}; color: {ink}; border: none;"
+                f" border-radius: 7px; font-weight: 600; font-size: 13px; }}"
+                f"QPushButton:hover {{ background: "
+                f"{bg if chosen else '#22262D'}; }}")
+        self.smaller.setEnabled(self.step != self.steps[0])
+        self.bigger.setEnabled(self.step != self.steps[-1])
+
+
+class JogPad(QFrame):
+    jog = Signal(str, int)          # axis "x" / "y" / "z", sign +1 / -1
+    step_changed = Signal(float)
+
+    def __init__(self, *, steps=STEPS, step: float = 1.0,
+                 bindings: dict | None = None, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("jogPad")
+        self.setStyleSheet("QFrame#jogPad { background: rgba(10, 12, 14, 0.86);"
+                           " border-radius: 12px; }")
+        self._bindings = bindings or {}
+
+        column = QVBoxLayout(self)
+        column.setContentsMargins(12, 12, 12, 12)
+        column.setSpacing(10)
+
+        head = QHBoxLayout()
+        title = QLabel("MOVE THE ROBOT", self)
+        title.setObjectName("caption")
+        head.addWidget(title, 1)
+        self.keys = QPushButton("Keys", self)
+        self.keys.setObjectName("secondary")
+        self.keys.setProperty("compact", True)
+        self.keys.setCheckable(True)
+        self.keys.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.keys.toggled.connect(self._show_keys)
+        head.addWidget(self.keys)
+        column.addLayout(head)
+
+        self.carousel = StepCarousel(steps=steps, step=step, parent=self)
+        self.carousel.step_changed.connect(self.step_changed)
+        self.smaller = self.carousel.smaller
+        self.bigger = self.carousel.bigger
+        self.options = self.carousel.options
+        column.addWidget(self.carousel)
 
         pads = QHBoxLayout()
         pads.setSpacing(14)
@@ -199,54 +262,24 @@ class JogPad(QFrame):
         self.note.hide()
         column.addWidget(self.note)
         self.key_lines: list[str] = []
-        self.set_step(self.step)
         self.set_bindings(self._bindings)
-
-    def _arrow(self, name: str, tip: str) -> QPushButton:
-        button = QPushButton(self)
-        button.setObjectName("quiet")
-        button.setProperty("compact", True)
-        button.setIcon(icon(name, COLORS["text-2"], 14, stroke=2.4))
-        button.setFixedWidth(28)
-        button.setToolTip(tip)
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        return button
 
     # -- the step --------------------------------------------------------
 
+    @property
+    def steps(self) -> tuple:
+        return self.carousel.steps
+
+    @property
+    def step(self) -> float:
+        return self.carousel.step
+
     def set_step(self, mm: float, *, emit: bool = False) -> None:
         """Choose a size and bring it into view."""
-        self.step = min(self.steps, key=lambda s: abs(s - mm))
-        i = self.steps.index(self.step)
-        if not self._first <= i < self._first + VISIBLE:
-            self._first = max(0, min(i - 1, len(self.steps) - VISIBLE))
-        self._paint_options()
-        if emit:
-            self.step_changed.emit(self.step)
+        self.carousel.set_step(mm, emit=emit)
 
     def step_by(self, delta: int) -> None:
-        """One size smaller or bigger: the step keys, and ‹ ›, which slide
-        the view with the chosen size."""
-        i = self.steps.index(self.step) + delta
-        if 0 <= i < len(self.steps):
-            self.set_step(self.steps[i], emit=True)
-
-    def _paint_options(self) -> None:
-        shown = self.steps[self._first:self._first + VISIBLE]
-        for button, mm in zip(self.options, shown):
-            chosen = mm == self.step
-            button.setText(f"{mm:g}")
-            button.setProperty("mm", mm)
-            button.setToolTip(step_label(mm))
-            bg = step_color(mm) if chosen else "transparent"
-            ink = COLORS["on-accent"] if chosen else COLORS["text-2"]
-            button.setStyleSheet(
-                f"QPushButton {{ background: {bg}; color: {ink}; border: none;"
-                f" border-radius: 7px; font-weight: 600; font-size: 13px; }}"
-                f"QPushButton:hover {{ background: "
-                f"{bg if chosen else '#22262D'}; }}")
-        self.smaller.setEnabled(self.step != self.steps[0])
-        self.bigger.setEnabled(self.step != self.steps[-1])
+        self.carousel.step_by(delta)
 
     # -- keys ------------------------------------------------------------
 

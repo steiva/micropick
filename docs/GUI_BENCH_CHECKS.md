@@ -1459,3 +1459,31 @@ tip box and a 384 plate at hand.
 
 - [ ] **No run file.**
   Nothing on the Plan step names or opens the run's progress file.
+
+## Redesign — Dish bottom step (#16)
+
+- [ ] **No camera.**
+  Auto pick › Dish bottom (and Manual pick › Dish bottom, the same
+  screen): no picture; "Tip height", Z in big numbers, mm, then Up, the
+  step carousel and Down, gray until step 2. Readable from two meters.
+
+- [ ] **Last time.**
+  With a dish bottom measured before: "Last time: Z 66.40 mm" over
+  "3 days ago" (today, yesterday) and Use it. Use it: a toast "Using the
+  last dish bottom.", the green "Dish bottom: Z 66.40 mm", the step gets
+  its ✓. Home the robot (a new robot session): the ✓ is gone, the value
+  stays. On a profile that never measured it, no Last time card.
+
+- [ ] **Measure.**
+  Move the tip: the tip goes over the middle of the dish, about 10 mm over
+  the last dish bottom. Down with 1 mm, then smaller, until the dish
+  bottom bends; Done; Save dish bottom: a toast "Dish bottom saved.", the
+  tip goes up, the green line shows the new Z, the step gets its ✓. A
+  value more than 3 mm from the last asks first; Cancel saves nothing.
+
+- [ ] **Busy.**
+  While a run or Park has the robot, Move the tip, Up and Down are gray.
+  The arrow keys and PgUp/PgDn do nothing on this screen.
+
+- [ ] **Picking.**
+  The Picking page has no dish bottom card any more; its steps are 1-5.
