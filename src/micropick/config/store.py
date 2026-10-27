@@ -339,6 +339,42 @@ class Profile:
         _write_atomic(self.path / CAMERAS_FILE,
                       json.dumps(payload, indent=2) + "\n")
 
+    def archive(self) -> Path:
+        """The whole folder, history included, zipped beside it and dated
+        (`<name>-<UTC stamp>.zip`). A zip and not a copied folder: a copy
+        would hold a profile.json and be listed, and maybe loaded, as a
+        profile of its own."""
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        base = self.path.parent / f"{self.path.name}-{stamp}"
+        return Path(shutil.make_archive(str(base), "zip",
+                                        root_dir=self.path.parent,
+                                        base_dir=self.path.name))
+
+    def reset_setup(self, positions) -> Path:
+        """Reset setup: archive the folder (`archive`), then clear the
+        robot setup - the cameras, the camera calibration (the pixel map),
+        the deck modules and the named `positions` - and save. Everything
+        else is kept: the picking settings, the tip calibration, the other
+        positions (saved points a liquid plan may name) and the rest of
+        deck.json (module types, recent labware, well centers). Returns
+        the archive."""
+        archive = self.archive()
+        self.cameras = {}
+        self.meta.camera_label = None
+        self.calibration.pixel_map = None
+        for name in positions:
+            self.positions.pop(name, None)
+        self.deck = DeckConfig(modules=[],
+                               module_types=list(self.deck.module_types),
+                               recent_labware=list(self.deck.recent_labware),
+                               well_centers=list(self.deck.well_centers))
+        self.save_meta()
+        self.save_cameras()
+        self.save_calibration()
+        self.save_positions()
+        self.save_deck()
+        return archive
+
     def _archive(self, target: Path) -> None:
         hist = self.path / HISTORY_DIR
         hist.mkdir(parents=True, exist_ok=True)

@@ -60,6 +60,8 @@ from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
 from ..hardware.robot_lease import RobotLease       # noqa: E402
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
+from .readiness import (CALIBRATION_POSITION, DISH_POSITION,  # noqa: E402
+                        SHAKE_POSITION)
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
            "MemoPoint",
@@ -1710,6 +1712,31 @@ class Session(QObject):
                  *spec.default_resolution)
         self.profile_changed.emit(self.profile)
         return label
+
+    def reset_setup(self) -> Path:
+        """Reset setup (REDESIGN §12.8): the profile's folder zipped beside
+        it, dated, then its cameras, camera calibration, platforms and the
+        three Robot setup positions cleared (`store.Profile.reset_setup`).
+        The deck and the picking settings are kept. Refused while anything
+        has the robot: a run reads the positions and the cameras it would
+        lose. Returns the archive."""
+        if self.profile is None:
+            raise SessionError("no profile is loaded")
+        if self.robot_lease.busy:
+            raise SessionError(f"Robot busy: {self.robot_lease.holder}.")
+        for label in list(self._open):
+            self.close_camera(label)
+        archive = self.profile.reset_setup(
+            (DISH_POSITION, SHAKE_POSITION, CALIBRATION_POSITION))
+        self.cameras = CameraManager.from_profile(self.profile)
+        log.warning("robot setup of profile %r reset; the profile before it "
+                    "is in %s", self.profile.name, archive)
+        if self._api is not None:
+            self.register_deck_modules()
+        self.profile_changed.emit(self.profile)
+        if self.run_state is not None:
+            self.labware_changed.emit(self.run_state)
+        return archive
 
     # -- teardown ------------------------------------------------------------
 
