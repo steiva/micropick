@@ -55,6 +55,11 @@ quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture   what
 it does" per item). Never the camera name, slot, resolution, crop, zoom,
 fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
 semi-transparent boxes, never into the frame and never as a separate panel.
+A press on a widget floating over the picture (the jog pad's card, the
+TipGauge, a page's button) is that widget's, even beside its buttons:
+never a click on the picture. A page whose click moves the robot names
+it with `CameraView.set_click_to_move`; without a pixel map that line is
+"Use the arrows to move the camera." and no click is sent.
 
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture gets the width its frame shape needs (4:3 for the upper camera),

@@ -228,8 +228,9 @@ SPOT_COLOR = (0, 220, 255)
 SPOT_RADIUS_PX = 18
 
 # What the mouse does on the picture, its row along the bottom (§3).
-MOUSE_HELP = ("Left click   move", "Right click   mark a point",
-              "Wheel   zoom", "Middle-drag   pan")
+MOUSE_HELP = ("Right click   mark a point", "Wheel   zoom",
+              "Middle-drag   pan")
+CLICK_HELP = "Left click   move"
 
 # "A click moves the [Camera | Tip]", in this order; the button beside it.
 CLICK_MOVES = ("Camera", "Tip")
@@ -377,6 +378,7 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(MOUSE_HELP)
+        self.view.set_click_to_move(CLICK_HELP, self._mapped)
         self.jog.moved.connect(self._forget_targets)
         # Emitted whenever a job ends: Go to well top's nominal is in, and
         # the buttons greyed for the job come back.
@@ -1040,6 +1042,13 @@ class ManualPage(QWidget):
         self.view.set_histogram(bins)
 
     # -- clicking ---------------------------------------------------------------
+
+    def _mapped(self) -> bool:
+        """Whether a click on the picture can move the robot: only through
+        the profile's pixel map, so not before the first camera
+        calibration."""
+        profile = self.session.profile
+        return profile is not None and profile.pixel_map is not None
 
     def _clicked(self, u: float, v: float) -> None:
         """A left click on the picture, in sensor pixels: the camera or the

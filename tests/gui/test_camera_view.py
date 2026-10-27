@@ -158,7 +158,7 @@ def test_a_click_reports_the_sensor_pixel_under_it(app):
     # where a rounded widget coordinate can land a pixel outside it. A
     # crosshair that close to the frame edge is outside the map's coverage
     # anyway.
-    for sensor in [(400.0, 300.0), (120.0, 90.0), (780.0, 20.0)]:
+    for sensor in [(400.0, 300.0), (120.0, 90.0), (780.0, 580.0)]:
         point = view.transform.map(QPointF(*sensor))
         _click(app, view, point)
         assert seen, f"no click reported for {sensor}"
@@ -270,3 +270,62 @@ def test_a_snapshot_is_the_frame_itself_in_the_images_folder(app, tmp_path,
         assert any("saved:" in line for line in view._flash)
     finally:
         paths.set_overrides()
+
+
+def test_a_press_on_a_widget_over_the_picture_is_no_click(app):
+    """The jog pad's card, a TipGauge, a page's button: a click on one,
+    even beside its buttons, never reaches the picture as a click."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QFrame, QPushButton, QVBoxLayout
+
+    view = _view(app, _Camera("over", (800, 600)))
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    view.right_clicked.connect(lambda u, v: seen.append((u, v)))
+    card = QFrame()
+    QVBoxLayout(card).addWidget(QPushButton("Up"))
+    card.setFixedSize(card.sizeHint())
+    view.add_corner_widget(card)
+    top_left = QFrame()
+    top_left.setFixedSize(80, 40)
+    view.add_top_left_widget(top_left)
+    card.show()
+    top_left.show()
+    app.processEvents()
+    view._click_timer.setInterval(0)
+    for widget in (card, top_left):
+        beside = QPoint(4, 4)                 # in its margin, by no button
+        QTest.mouseClick(widget, Qt.MouseButton.LeftButton,
+                         Qt.KeyboardModifier.NoModifier, beside)
+        QTest.mouseClick(widget, Qt.MouseButton.RightButton,
+                         Qt.KeyboardModifier.NoModifier, beside)
+        # The same spot, as the picture would be told of it.
+        _click(app, view, QPointF(widget.mapTo(view, beside)))
+        _right_click(app, view, QPointF(widget.mapTo(view, beside)))
+    app.processEvents()
+    assert seen == []
+    view.close()
+
+
+def test_without_a_pixel_map_a_click_moves_nothing(app):
+    """Before the first camera calibration a pixel has no direction on the
+    deck: the mouse row says to use the arrows and a click is not sent."""
+    view = _view(app, _Camera("over", (800, 600)))
+    mapped = [False]
+    view.set_click_to_move("Click   move the camera there",
+                           lambda: mapped[0])
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    point = view.transform.map(QPointF(400.0, 300.0))
+
+    assert "Click   move the camera there" not in view.mouse_help
+    assert "Use the arrows to move the camera." in view.mouse_help
+    _click(app, view, point)
+    assert seen == []
+
+    mapped[0] = True
+    assert view.mouse_help[0] == "Click   move the camera there"
+    assert "Use the arrows to move the camera." not in view.mouse_help
+    _click(app, view, point)
+    assert len(seen) == 1
+    view.close()

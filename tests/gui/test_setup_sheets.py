@@ -212,6 +212,21 @@ def test_move_camera_to_slot_8_and_done_saves_the_position(app, window):
     assert window.top.path == ["Robot setup"]
 
 
+def test_before_camera_calibration_a_click_on_the_picture_moves_nothing(
+        app, window):
+    """No pixel map yet: the mouse row has no click line, says to use the
+    arrows, and the camera calibration sheet's row says the same."""
+    assert window.session.profile.pixel_map is None
+    _open(window, "dish_position")
+    help_ = window.position_sheet.view.mouse_help
+    assert "Use the arrows to move the camera." in help_
+    assert not any(line.startswith("Click") for line in help_)
+    window.position_sheet.cancel_button.click()
+    view = window.calibration_sheet.view
+    assert "Use the arrows to move the camera." in view.mouse_help
+    assert not any(line.startswith("Click") for line in view.mouse_help)
+
+
 def test_cancel_saves_no_position(app, window):
     _open(window, "dish_position")
     sheet = window.position_sheet
