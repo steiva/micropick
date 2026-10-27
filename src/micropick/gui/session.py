@@ -67,7 +67,7 @@ from .detector import DetectorService              # noqa: E402
 from .tasks import SETUP_POSITIONS                  # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
-           "MemoPoint",
+           "MemoPoint", "MEASURED", "SKIPPED", "NOT_MEASURED",
            "DEFAULT_PROFILE_NAME", "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
 
 log = logging.getLogger(__name__)
@@ -80,6 +80,10 @@ PREVIEW_LABEL = "preview"
 OTHER_ROLE = {"upper": "lower", "lower": "upper"}
 # The profile made at the first start, when there is none to load.
 DEFAULT_PROFILE_NAME = "default"
+
+# A plate's well center (`Session.well_center_status`): measured, its
+# drawing used on purpose for this robot session, or neither yet.
+MEASURED, SKIPPED, NOT_MEASURED = "measured", "skipped", "not measured"
 
 # Labware that holds no destination. A tip rack has wells and an ordering
 # like a plate, and delivering a cuboid into one is a mistake nothing
@@ -1284,6 +1288,28 @@ class Session(QObject):
         log.info("well depth of %s in slot %s: %g mm", load_name, slot, depth)
         self.profile_changed.emit(self.profile)
 
+    def skip_plate(self, slot, load_name: str) -> None:
+        """Skip this plate, use the drawing: its well center is not
+        measured, on purpose, for this robot session (REDESIGN §12.10).
+        Per slot and plate type, like a measurement; in memory only."""
+        if self._robot_session_id() is None:
+            raise SessionError("No robot session.")
+        log.info("well center of %s in slot %s skipped: the drawing is used",
+                 load_name, slot)
+        self.confirm(_skipped_plate(slot, load_name))
+
+    def plate_skipped(self, slot, load_name: str) -> bool:
+        return self.is_confirmed(_skipped_plate(slot, load_name))
+
+    def well_center_status(self, slot, load_name: str) -> str:
+        """MEASURED, SKIPPED or NOT_MEASURED. A measurement is the plate's
+        whatever was said in this robot session."""
+        profile = self.profile
+        if (profile is not None
+                and profile.deck.well_center(slot, load_name) is not None):
+            return MEASURED
+        return SKIPPED if self.plate_skipped(slot, load_name) else NOT_MEASURED
+
     def forget_well_center(self, slot, load_name: str) -> None:
         if self.profile is None:
             return
@@ -2054,3 +2080,9 @@ class Session(QObject):
         self.lights_changed.emit(None)
         self.robot_state_changed.emit(self.robot_state)
         log.info("session closed")
+
+
+def _skipped_plate(slot, load_name: str) -> str:
+    """The confirmation that the plate in `slot` is skipped (GLOSSARY,
+    Skipped plate)."""
+    return f"plate-skipped:{int(slot)}:{load_name}"

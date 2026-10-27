@@ -26,7 +26,7 @@ moves it is dimmed while it is not connected, whatever else is missing.
 A step done by a confirmation (`Session.confirm`) is confirmed by its
 screen: Deck by its Next, Dish bottom by Save dish bottom or Use it, the
 Liquid plan by Use this plan, Run by a liquid run that ended, a plate by
-"Skip this plate". Well center counts the plates on the deck until the
+"Skip this plate" (`Session.skip_plate`). Well center counts the plates on the deck until the
 Liquid plan says which it uses. Run does not need Well center: an
 unmeasured plate is used on purpose, after a warning (REDESIGN §6.8).
 """
@@ -39,7 +39,7 @@ from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
 __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
-           "SETUP_POSITIONS", "StepState", "missing_setup", "setup_done", "skipped_plate",
+           "SETUP_POSITIONS", "StepState", "missing_setup", "setup_done",
            "step_state", "steps", "title"]
 
 # task -> (its name on screen, its steps in order)
@@ -194,23 +194,18 @@ def _done(session, task: str, step: str) -> bool:
         routine = session.routine
         return routine is not None and routine.is_done()
     if step == "well_center":
+        # Measured or skipped. The session imports this module: here, not
+        # at the top.
+        from .session import NOT_MEASURED
         plates = session.plates()
-        profile = session.profile
-        return bool(plates) and profile is not None and all(
-            profile.deck.well_center(slot, entry.load_name) is not None
-            or session.is_confirmed(skipped_plate(slot, entry.load_name))
+        return bool(plates) and all(
+            session.well_center_status(slot, entry.load_name) != NOT_MEASURED
             for slot, entry, _definition in plates)
     if step in ("liquid_plan", "run"):
         # Confirmed by Use this plan, and by a liquid run that ended.
         return session.is_confirmed("liquid_run" if step == "run"
                                     else step)
     return False
-
-
-def skipped_plate(slot, load_name: str) -> str:
-    """The confirmation that a plate's well center is not measured in this
-    robot session, its drawing used instead (GLOSSARY, Skipped plate)."""
-    return f"plate-skipped:{slot}:{load_name}"
 
 
 # Steps a task can go past without: Work is a toolbox, never "done".

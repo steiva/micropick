@@ -170,7 +170,7 @@ def test_well_center_is_done_when_every_plate_is_measured_or_skipped(session):
         slot=5, load_name="corning_96_wellplate_360ul_flat",
         offset=(0.1, 0.2, 0.0), well="A1"))
     assert not tasks.step_state(session, "liquid", "well_center").done
-    session.confirm(tasks.skipped_plate(6, "corning_96_wellplate_360ul_flat"))
+    session.skip_plate(6, "corning_96_wellplate_360ul_flat")
     assert tasks.step_state(session, "liquid", "well_center").done
     session.new_run()                     # skipping holds for one session
     assert not tasks.step_state(session, "liquid", "well_center").done
