@@ -131,18 +131,20 @@ def test_the_window_is_dragged_on_the_histogram_and_saved(page, tmp_path):
     assert "5 of 7" in page.window_state.text()
 
 
-def test_the_card_hides_without_an_analysis_and_reopens_with_sizes(page):
+def test_an_analysis_opens_the_sizes_card_and_its_figures(page):
+    """Cuboid sizes and Plate fold in turn (REDESIGN §6.5): Sizes is the
+    one open after an analysis; All measures opens the figures."""
+    page.plate_card.set_open(True)
+    assert not page.sizes.is_open()
     page._detection = detection([300, 400])
     page._draw_histogram()
     page._show_sizes()
-    page.sizes.close_button.click()
-    assert not page.sizes.isVisibleTo(page)
-    page.sizes_button.click()
-    assert page.sizes.isVisibleTo(page)
-    page.sizes.expand_button.click()
+    assert page.sizes.is_open() and not page.plate_card.is_open()
+    page._refresh()
+    page.stats_button.click()
     assert page.stats.isVisible()
-    page.sizes.expand_button.click()
+    page.stats_button.click()
     assert not page.stats.isVisible()
     page._detection = None
-    page._draw_histogram()
-    assert not page.sizes.isVisibleTo(page)
+    page._refresh()
+    assert not page.stats_button.isEnabled()

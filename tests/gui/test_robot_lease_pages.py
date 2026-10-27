@@ -106,7 +106,7 @@ def test_start_picking_is_refused_while_the_robot_is_held(app, session,
         assert not page.start_button.isEnabled()
         page._start_run()
         assert not page._running()
-        assert page.run_state.text() == "Robot busy."
+        assert page.run_status()[1] == "Robot busy."
     finally:
         lease.release()
     page.deleteLater()

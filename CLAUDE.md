@@ -42,8 +42,9 @@ and, in a build, its commit.
   frame, and drawing them over a newer one shows contours where nothing was
   measured.
 - Start picking asks for confirmation (dish and plate in place, lids off,
-  settings right) and then gives the session its go-ahead at once;
-  Resume is only for leaving `needs_operator`.
+  settings right) and then gives the session its go-ahead at once.
+  The footer's one Pause / Resume button unpauses, or leaves
+  `needs_operator`; nothing else gives a go-ahead.
 
 ### Camera view chrome
 
@@ -290,8 +291,8 @@ when first listed); Save as template makes a new file under a name not
 in use, Save changes to "<name>" writes over the open one, no "are you
 sure". The run's own file (`Outputs/routines`) is never shown. Stored
 poses are set with **Set position** / **Set shake position**; the pipette
-calibration's way back is **Go to saved position**, the Picking page's **Go to
-picking position**.
+calibration's way back is **Go to saved position**, the Picking page's
+**Camera to dish center**.
 
 ### For biologists: stop, guard, say what to do
 
@@ -319,10 +320,9 @@ picking position**.
   not done). What is particular to now goes in the tooltip. A button goes
   to the page where it is done (`Session.page_requested`). It has no page
   of its own any more (the task steps and their banners lead); the
-  Picking page's step 1 lists what is left of it on
-  other pages and the page's own set-up while not ready (detector, upper
-  camera, clips camera - all opened by themselves); the Start card lists
-  nothing, it names the steps that stop it. Anything to do or blocked
+  Picking footer says NOT READY with the step's need, else the first of
+  the list or of the page's own set-up (detector, upper camera, clips
+  camera - all opened by themselves). Anything to do or blocked
   blocks Start; optional
   steps never do. "Calibrate the tip" is done only while the tip it
   measured is on, in the robot session it was measured in
@@ -376,15 +376,24 @@ the tip), Lower until it touches (Done), Save dish bottom (a change over
 3 mm asked first; the tip raised after); then "Dish bottom: Z 66.42 mm".
 Done when measured (`Session.set_dish_bottom`) or Use it
 (`Session.use_last_dish_bottom`) in this robot session, never by Next.
-Picking is the same, leading to the run: complete the Operation checklist,
-set the picking position, the shake position, analyze the dish, start
-picking; the jog panel last. Steps 2-3 are marked from the checklist's
-own lines. On Picking the size histogram is a card
-over the picture's bottom-left corner (`widgets.size_panel`), not drawn
-into the view: the size window is dragged on it and saved like the
-settings' Save. Its expand button toggles the cuboids' figures, a window
-of their own (`widgets.cuboid_stats`: counts, a histogram per picking
-measure against its window, a table). Settings
+The Picking step (`pages.picking`, REDESIGN §6.5): the dish picture with
+"N cuboids found" and Camera to dish center over its top right (during a
+run only while paused or waiting, under the run's lease lent to the jog
+panel, the tip empty; else "Pause to move the camera"); beside it, with
+no panel scroll, Analyze the dish and Shake the dish, then two FoldCards,
+one open at a time - Cuboid sizes (the histogram whose window is dragged
+and saved like the settings' Save, the pickup line, More settings, All
+measures: `widgets.cuboid_stats`) before a run, Plate · slot N (mini
+`PlateGrid`, Filled / Planned, current well ringed) during it - then Save
+pickup clips and the jog panel, folded. The positions are Robot setup's.
+The footer is the run's status: the page's `run_status` and
+`footer_buttons`, read by the shell for any step page that has them -
+READY / PICKING / PAUSED / WAITING FOR YOU / DONE / NOT READY and one
+sentence (`PickingSession.status` while it runs), Back + Start picking,
+or Pause / Resume (yellow while held) + Stop run. The shell passes the
+step's need down (`set_need`): Start waits for it. While a run's page
+says "waiting" the window flashes in the taskbar (`QApplication.alert`,
+`MainWindow._show_run`). Settings
 keeps Save and Revert at its bottom right, outside the scrolling columns.
 
 A key line on the pad, like an item of the mouse row, is "keys   what it

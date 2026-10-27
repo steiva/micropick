@@ -240,7 +240,10 @@ class MainWindow(QMainWindow):
         self._page = "home"
         self._need: tasks.Need | None = None
         # What the footer was last given (`_refresh`).
-        self._navigation: dict | None = None
+        self._navigation: dict | list | None = None
+        # What the run's page said it does, last time it was asked: the
+        # taskbar flashes when it starts waiting (`_show_run`).
+        self._activity: str | None = None
         # The run that has the robot and where it was started: (its
         # lease's holder, the task, the step), the last two None when it
         # was started out of a task's steps.
@@ -269,7 +272,8 @@ class MainWindow(QMainWindow):
         self.top.stop_clicked.connect(self._stop)
         self.top.lock_toggled.connect(self._set_locked)
         self.top.status_clicked.connect(self.go_to_run)
-        session.run_activity_changed.connect(self._show_run)
+        # The pill, and the footer of a run's step (`_refresh`).
+        session.run_activity_changed.connect(self._refresh)
         self.lock_overlay.unlock_clicked.connect(
             lambda: self._set_locked(False))
         session.lock_changed.connect(self._show_lock)
@@ -568,6 +572,8 @@ class MainWindow(QMainWindow):
         self._banner_row.setVisible(need is not None)
         page = self.pages[STEP_PAGES[self.step]]
         page.setEnabled(need is None)
+        if hasattr(page, "set_need"):
+            page.set_need(None if need is None else need.text)
         if need is None:
             self.dim.hide()
         elif not self.dim.isVisible():
@@ -576,6 +582,17 @@ class MainWindow(QMainWindow):
         confirmable = (self.step in CONFIRMED_BY_NEXT and need is None
                        and not (self.step == "deck"
                                 and self.session.deck_problems()))
+        if hasattr(page, "run_status"):
+            # A run's step: the footer is its status (REDESIGN §6.5).
+            tag, sentence, tone = page.run_status()
+            self.footer.set_status(tag, sentence, tone=tone)
+            buttons = page.footer_buttons(self.footer.back)
+            if buttons != self._navigation:
+                self._navigation = buttons
+                self.footer.set_buttons(buttons)
+            return
+        if self.footer.tone is not None:
+            self.footer.clear_status()
         # Only on a change: it takes the buttons out and puts them back.
         navigation = dict(next=index < len(steps) - 1,
                           next_enabled=state.done or state.optional
@@ -628,12 +645,17 @@ class MainWindow(QMainWindow):
             self._run = (holder, self.task, self.step)
         self.top.set_stop_visible(holder is not None)
         if holder is None:
+            self._activity = None
             self.top.set_status(None)
             self.home.show_run(None)
             return
         page, text = RUNS.get(holder, (None, "Running"))
         owner = self.pages.get(page) or self.sheets.get(page)
         activity = owner.run_activity() if owner is not None else None
+        if activity == "waiting" and self._activity != "waiting":
+            # Noticed from across the room (REDESIGN §12.5).
+            QApplication.alert(self)
+        self._activity = activity
         self.top.set_status(*RUN_ACTIVITY.get(activity, (text, "busy")))
         _holder, task, _step = self._run
         self.home.show_run(

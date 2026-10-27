@@ -1487,3 +1487,49 @@ tip box and a 384 plate at hand.
 
 - [ ] **Picking.**
   The Picking page has no dish bottom card any more; its steps are 1-5.
+
+## Redesign — Picking step (#17)
+
+- [ ] **Layout.**
+  Auto pick › Picking at 1920×1080: the dish picture on the left with
+  "N cuboids found" after Analyze the dish; on the right, without a
+  scroll bar, Analyze the dish and Shake the dish side by side, then
+  Cuboid sizes (open) and Plate · slot N (folded). Opening one folds the
+  other. No camera name, no step numbers, no checklist on the page.
+
+- [ ] **Cuboid sizes.**
+  The summary is the size window ("250–500 µm"). Drag a white line: the
+  count under the plot follows, the window is saved (picking.json
+  archived, old -> new in the log) and the summary changes. The line under
+  it is "0.5 mm above the bottom · 15 µl" (the profile's). More settings
+  opens the picking settings; All measures the cuboids' figures.
+
+- [ ] **Footer between runs.**
+  With a step before it not done: NOT READY and the banner's sentence,
+  Start picking gray. All done: READY and "N wells to fill." (after an
+  analysis, "N cuboids found."), Back and Start picking (blue). Start asks
+  the usual confirmation and nothing else.
+
+- [ ] **Footer during a run.**
+  PICKING (blue) and "Well A3 of 24 · taking a cuboid", "… · checking the
+  tip", "… · putting the cuboid in"; Pause and Stop run (red) on the
+  right. The Plate card opens by itself; filled wells turn violet, the
+  current well is ringed, the summary counts up ("3 of 24 wells").
+
+- [ ] **Pause and Camera to dish center.**
+  Running, the button over the picture reads "Pause to move the camera"
+  and is gray. Pause: PAUSED (yellow), the button becomes Resume (yellow),
+  the picture button "Camera to dish center"; with an empty tip it moves
+  the camera over the dish (Resume gray while it moves). Resume carries on
+  with the run, which looks at the dish again from the picking position.
+
+- [ ] **Waiting for you.**
+  An empty dish: after the configured number of shakes - count them on the
+  robot - WAITING FOR YOU (yellow) and "No cuboids found after 3 shakes.
+  Add cuboids, or finish by hand." The number is the shakes seen. On
+  Windows the taskbar button flashes once. Resume: the run goes on.
+
+- [ ] **The end.**
+  A filled plan: DONE (green), "The plate plan is filled.", Back and
+  Start picking. Stop run mid-run: READY, "Stopped. The tip may still hold
+  cuboids: put them back into the dish."

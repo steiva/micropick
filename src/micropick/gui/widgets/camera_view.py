@@ -274,6 +274,7 @@ class CameraView(QWidget):
         self._focus_tools = False                 # see enable_focus_tools
         self._stats_enabled = False               # see enable_stats_button
         self._corner: list[QWidget] = []          # see add_corner_widget
+        self._top: list[QWidget] = []             # see add_top_widget
         self._build_controls()
 
         self._timer = QTimer(self)
@@ -629,11 +630,21 @@ class CameraView(QWidget):
         self._corner.append(widget)
         self._place_controls()
 
+    def add_top_widget(self, widget: QWidget) -> None:
+        """Float `widget` along the picture's top edge, right-aligned left of
+        the snapshot button: a page's button over the picture (Picking's
+        Camera to dish center)."""
+        widget.setParent(self)
+        widget.installEventFilter(self)
+        self._top.append(widget)
+        self._place_controls()
+
     def eventFilter(self, watched, event) -> bool:
-        """A corner widget that changed its size or was shown is placed
-        again."""
-        if watched in self._corner and event.type() in (
-                QEvent.Type.LayoutRequest, QEvent.Type.Show):
+        """A corner or top widget that changed its size or was shown is
+        placed again."""
+        if (watched in self._corner or watched in self._top) \
+                and event.type() in (QEvent.Type.LayoutRequest,
+                                     QEvent.Type.Show):
             self._place_controls()
         return False
 
@@ -688,6 +699,11 @@ class CameraView(QWidget):
                     max(200, self.width() - 2 * margin))
         self.focus_row.setGeometry(margin, self.height() - height - margin,
                                    width, height)
+        right = self.width() - hint.width() - margin - margin // 2 - side
+        for widget in self._top:
+            size = widget.sizeHint()
+            right -= margin + size.width()
+            widget.setGeometry(right, margin, size.width(), size.height())
         for widget in self._corner:
             size = widget.sizeHint()
             widget.setGeometry(self.width() - size.width() - margin,

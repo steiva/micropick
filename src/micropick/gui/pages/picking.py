@@ -1,42 +1,39 @@
-"""Picking: look at the dish before committing the robot to it.
+"""Picking (REDESIGN §6.5): Auto pick's last step, the run itself.
 
-The page is numbered steps in the order they are done, each a card with a
-mark (`widgets.step_card`), as on the calibration pages, ending at the run:
+On the left the dish picture, with "23 cuboids found" on it and, over its
+top-right corner, **Camera to dish center**: the camera to the position
+over the dish. During a run it works only while the run is paused or waits
+for the operator - the tip has to stay where the run left it otherwise -
+and reads "Pause to move the camera" until then.
 
-1. Complete the Operation checklist: what is left of it on other pages,
-   each with a way there, and what this page sets up by itself while it
-   is not ready yet - the detector, the upper camera, the lower camera
-   for the clips.
-2. Set the picking position over the dish - the camera, Go to picking
-   position, Set position.
-3. Set the shake position in the dish, and Shake the dish.
-4. Analyse the dish, with the picking settings.
-5. Start picking: the plate plan, the clips, Start, Pause, Stop, Resume.
+On the right, top to bottom and with no scrolling:
 
-The jog panel comes last. Steps 2 and 3 are marked from the Operation
-checklist's own lines, so the page and the checklist cannot disagree. The
-dish bottom is a step of its own (`pages.dish_bottom`).
+1. **Analyze the dish** and **Shake the dish**, side by side.
+2. FoldCard **Cuboid sizes** (its summary the size window, "250-500 µm"):
+   the histogram whose white lines are dragged to change what is picked,
+   the pickup height and volume ("0.5 mm above the bottom · 15 µl"),
+   **More settings** (the picking settings) and **All measures** (the
+   cuboids' figures in a window of their own, `widgets.cuboid_stats`).
+3. FoldCard **Plate · slot N** ("12 of 24 wells"): the whole plate as a
+   mini map, filled and planned wells in their colors, the current well
+   ringed.
 
-The sizes are a card over the picture's bottom-left corner
-(`widgets.size_panel`), shown after an analysis and by Sizes: the size
-window is dragged on its histogram and saved as the picking settings'
-Save does - the previous picking.json archived, old -> new in the log -
-and the analysis labelled again under it without running the model. The
-card's expand button opens the cuboids' figures in a window of their own
-(`widgets.cuboid_stats`). A run hides it: the run judges its own frames.
+One card is open at a time: Sizes before a run, Plate during it. Under
+them Save pickup clips, and the jog panel last, folded.
 
-The run itself comes later. What is here is everything that has to be true
-before a run is worth starting, and it is the same code the run will use,
-not a demonstration to be thrown away: the camera over the dish, the pose
-it is looked at from, the settings the run reads, and one frame put through
-the detector with the answer laid out — how many cuboids, how big they are,
-and how many of them the size window would actually accept.
+The footer is the run's status (`run_status`, `footer_buttons`, read by
+the shell): a CAPS tag - READY, PICKING, PAUSED, WAITING FOR YOU, DONE,
+NOT READY - and one sentence, the run's own (`PickingSession.status`)
+while it runs. Its buttons are Back and **Start picking** between runs,
+**Pause** / **Resume** (one button, yellow while paused or waiting) and
+**Stop run** during one. While the run waits for the operator the window
+flashes in the taskbar (the shell's, for every run).
 
-The analysis is drawn over the live picture, not over a held one. The
-feed keeps running underneath it, so a dish that has been nudged, stirred
-or refilled since shows as contours that no longer sit on their cuboids:
-the cue to analyse again, visible without a second button to go back to
-live.
+The position over the dish and the shake position are Robot setup's
+(`pages.position_sheet`); the step's banner leads there while they are not
+set. What only this page sets up - the detector, the upper camera, the
+lower camera for the clips - opens by itself, and while it has not, the
+footer says NOT READY with the first of it.
 
 The size window is the point of the histogram
 ---------------------------------------------
@@ -45,94 +42,83 @@ numbers in a configuration file. On a dish of real cuboids it is also the
 difference between a run that fills a plate and one that finds nothing, and
 nothing on screen used to say which. The histogram is every detection's
 diameter with that window drawn over it, and the count inside it stated in
-words. An operator who sees the population sitting to the left of the
-window knows what to change and by how much, before the robot moves.
+words. Dragged, it is saved as the picking settings' Save saves - the
+previous picking.json archived, old -> new in the log - and the analysis
+labeled again under it without running the model. A run hides nothing but
+fixes it: the run took its settings when it began.
+
+The analysis is drawn over the live picture, not over a held one. The
+feed keeps running underneath it, so a dish that has been nudged, stirred
+or refilled since shows as contours that no longer sit on their cuboids:
+the cue to analyze again, visible without a second button to go back to
+live.
 
 The camera and the model open themselves
 ---------------------------------------
 Arriving at this page is the request to see the dish; see `gui.auto_camera`
 for why that is not the same as reaching for hardware at startup, and what
 keeps it from retrying an unplugged camera for ever. The detector is the
-same: which weights this installation uses is chosen once on the Profile
-page, and loading them is seconds of importing ultralytics that nobody
-should have to ask for twice.
+same: which weights this installation uses is chosen once in Settings, and
+loading them is seconds of importing ultralytics that nobody should have to
+ask for twice.
 
 The run is the notebook's loop, with the display on this side
 -------------------------------------------------------------
 `PickingSession.step()` is the state machine and it is not touched here. A
 worker thread calls it until the session is done, exactly as the notebook's
 `worker()` does, and every event it returns carries the `PickView` that says
-what to show — the live camera while the operator is being waited for, or
+what to show - the live camera while the operator is being waited for, or
 the frame a decision was made from with the tables measured on *that*
 picture. Deciding it on this side instead is what used to draw contours
 over a newer frame than the one they came from.
-
-The status and the keys are not drawn into the frame. The notebook writes
-them into the array with `overlays.annotate`; here they are the camera
-view's own chrome, a box under the resolution caption, so nothing touches
-the frame the session is still holding and the text is the same size
-whatever the sensor's resolution.
 
 Start is the go-ahead
 ---------------------
 In the notebook the run is a cell, and running the cell and pressing the
 key that lets the robot move are two steps because the cell is not where
-the dish can be seen. Here it can, so Start asks once — dish and plate in
-place, lids off, settings right — and then the session leaves idle at once.
-Resume is what is left of the second step: the retry out of
+the dish can be seen. Here it can, so Start asks once - dish and plate in
+place, lids off, settings right - and then the session leaves idle at once.
+Resume out of a wait is what is left of the second step: the retry out of
 needs_operator, after the operator has fixed whatever the run stopped for.
 
-Starting needs a routine - a "plate plan" on screen - because a run with
-nowhere to put a cuboid is a run that picks one up and then asks what to do
-with it. The Plate plan page hands its routine to the session; this page reads it there and says above
-the Start button which one it is.
+Shake the dish
+--------------
+The run's AUTO_SHAKE on demand - the same strokes (`workflows.picking.stir`)
+at the shake position - ending back at the position over the dish, ready to
+analyze again. During a run it works while the run is paused or waits for
+the operator, so a dish too crowded to pick from is stirred without a hand
+in the robot. The run does it then, not the jog panel, at the checkpoint
+the pause holds it at (`PickingSession.request_shake`, "A shake on
+request"); with cuboids in the tip it waits until they are delivered. A
+paused run stays paused after it, at the head of its cycle, and looks at
+the dish again.
 
-The dish pose is a profile position
------------------------------------
-`observe`, beside `tip_calib`, taught the same way and driven to the same
-way, because the gantry has to be somewhere particular for the dish to be
-in frame and that somewhere is an installation's fact rather than a run's.
-The name is the workflow's: `PickingSession` reads `profile.where("observe")`
-and refuses to start without it, so teaching it here is teaching the run's
-own starting pose rather than a second one that looks like it.
-
-The shake pose is set here too
-------------------------------
-`shake`, where the tip goes into the dish to stir it when too few cuboids
-are isolated. It depends on how the dish sits that day, so it is taught
-here, beside the dish, rather than fixed: jog the tip into the medium where
-it can stir without scraping a cuboid, and Set shake position. There is one
-of it - teaching again replaces it. Its buttons go through the jog
-panel's queue, and Go to shake arrives as Manual control's moves do: tip
-up, across at the travel height, then straight down. Shake the dish is the
-run's AUTO_SHAKE on demand - the same strokes (`workflows.picking.stir`) -
-and ends back at the picking position, ready to analyse again.
-
-During a run it works while the run is paused or waits for the operator,
-so a dish too crowded to pick from is stirred without a hand in the robot.
-The run does it then, not the jog panel, at the checkpoint the pause holds
-it at (`PickingSession.request_shake`, "A shake on request"); with cuboids
-in the tip it waits until they are delivered. A paused run stays paused
-after it, at the head of its cycle, and looks at the dish again.
+Camera to dish center during a run
+----------------------------------
+Paused or waiting, the run holds the robot's lease; the move goes through
+the jog panel under a loan of it (`JogPanel.lend`), as the pipette
+calibration's touch-up does, and the loan ends with the move. Only where a
+shake could be done now (`PickingSession.can_shake_now`): the tip holds
+nothing and nothing decided so far depends on where the gantry stands - the
+next picture is taken at the position over the dish again. Pause and
+Resume wait for the move.
 
 Pickup clips
 ------------
-Ticking Save pickup clips is the notebook's `CLIP_DIR`: the lower camera
-opens, and the run records it from the approach to the end of each
-aspirate, with a box round every cuboid of the batch where the homography
-puts it, and writes one mp4 per pickup, named for its target well, into a
-folder for the run under the Outputs folder's `clips`. Each clip is written
-while it is recorded (`hardware.camera.ClipWriter`), so a pickup's frames
-are never held in memory. Off by default: no writer is made, and a run does
-not need the lower camera at all - unticking the box closes it, unless this
-page shows it.
+Save pickup clips is the notebook's `CLIP_DIR`: the lower camera opens, and
+the run records it from the approach to the end of each aspirate, with a
+box round every cuboid of the batch where the homography puts it, and
+writes one mp4 per pickup, named for its target well, into a folder for the
+run under the Outputs folder's `clips`. Each clip is written while it is
+recorded (`hardware.camera.ClipWriter`). Off by default: no writer is made,
+and a run does not need the lower camera at all - switching it off closes
+it, unless this page shows it.
 
 The clips' camera mode and crop are Settings (`clip_resolution`,
-`clip_crop`; 2000x1500 and the middle half by default): fewer pixels is
-more frames a second, and the pickup happens in the middle. The pipette
+`clip_crop`; 2000x1500 and the middle half by default). The pipette
 calibration opens the same camera in the profile's mode, the one it was
 measured in, so this page opens it again in the clips' mode when it is
-shown with the box ticked - and the calibration does the reverse.
+shown with the switch on - and the calibration does the reverse.
 
 The overlay is drawn by `widgets/overlay_painter` from `viz.overlays.items`,
 which is the same list `viz.overlays.draw` renders with cv2 for the
@@ -147,34 +133,33 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
+                               QWidget)
 
 from ... import paths
 from ...core.calibration.pixel_map import PixelMap
-from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import well_center
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
-from ..readiness import (DISH_POSITION, SHAKE_POSITION, STEPS,
-                         readiness_checks)
+from ..readiness import DISH_POSITION, SHAKE_POSITION, readiness_checks
 from ..session import Session
-from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, muted_label,
-                             primary_button, scroll_column, secondary_button)
+from ..theme import COLORS, SPACING
+from ..theme.factory import (compact, danger_button, muted_label,
+                             primary_button, quiet_button, scroll_column,
+                             secondary_button)
 from ..widgets.camera_view import CameraView
-from ..widgets.card_columns import CardColumns
-from ..widgets.checklist import BLOCKED, NOTE, OK, TODO, Check, Checklist
-from ..widgets.done_banner import DoneBanner
-from ..widgets.feed_row import FeedRow
+from ..widgets.checklist import BLOCKED, OK, TODO, Check
+from ..widgets.controls import Switch
 from ..widgets.cuboid_stats import CuboidStats
-from ..widgets.picking_fields import BOUNDS
-from ..widgets.size_panel import SizePanel
+from ..widgets.feed_row import FeedRow
+from ..widgets.fold_card import FoldCard, FoldGroup
 from ..widgets.jog_panel import JogPanel
-from ..widgets.step_card import StepCard, wrapped
+from ..widgets.picking_fields import BOUNDS
+from ..widgets.plate_grid import PlateGrid
 from ..widgets.settings_form import PickingSettingsDialog
+from ..widgets.size_histogram import SizeHistogram
 from ..workers import Worker
 
 __all__ = ["PickingPage", "DISH_POSITION", "SHAKE_POSITION"]
@@ -189,15 +174,16 @@ PANEL_WIDTH = 440
 # pace is set by the robot; this is only the refresh of a picture.
 VIEW_MS = 100
 
-# What the keys do, shown on the picture and bound below. One list, so the
-# overlay cannot promise a key that is not bound.
+# The page's keys, bound below and listed on the jog pad's Keys.
 KEYS = (("Space", "resume", "resume"),
-        ("P", "pause", "pause"),
-        ("Esc", "stop", "stop"))
+        ("P", "pause or resume", "pause"))
 
 CONFIRM_START = (
     "Dish and plate in place, lids off, picking settings checked.\n\n"
     "The robot starts moving on Start.")
+
+CENTER = "Camera to dish center"
+CENTER_WAIT = "Pause to move the camera"
 
 
 class PickingPage(QWidget):
@@ -225,53 +211,74 @@ class PickingPage(QWidget):
         self._view = None
         self._overlaid = None                     # the view its overlays are from
         self._state_text = ""
-        self._last_event = ""
-        # What the last run ended as, kept until another one starts. Held
-        # rather than read back out of the label: a widget that decides what
-        # to write by parsing what it wrote last is one refresh away from
-        # forgetting it.
+        # The run's own sentence (`PickingSession.status`), as last said.
+        self._status = ""
+        self._stopping = False
+        # What the last run ended as, kept until another one starts: the
+        # footer's sentence between runs.
         self._run_message = ""
         # A shake asked of the run that it has not said it did yet.
         self._shake_asked = False
-        # The last run filled the plate plan: step 6 is done until the next.
+        # The last run filled the plate plan: DONE until the next.
         self._filled = False
         # Where the current or last run put its clips, if it recorded any.
         self._clip_dir = None
         # Why the lower camera did not open for the clips, until retried.
         self._clips_failure = ""
+        # A camera move under the run's lease, until it ends.
+        self._centering = False
+        # The step's first unmet need, from the shell (`set_need`).
+        self._need: str | None = None
 
         self.view = CameraView(self)
-
-        # The steps in the order they are done, the run last: the page
-        # leads to Start rather than opening on it.
-        cards = [self._checklist_step(), self._dish_card(),
-                 self._shake_card(),
-                 self._analysis_card(), self._run_card(),
-                 self._jog_section()]
-        panel = CardColumns(cards, self)
-
-        # The sizes in a card over the picture's bottom-left corner, where
-        # the size window is dragged; the cuboids in figures in a window of
-        # their own, which the card's expand button opens and closes.
+        self.center_button = compact(secondary_button(CENTER, self))
+        self.center_button.clicked.connect(self._goto_dish)
+        self.view.add_top_widget(self.center_button)
         self.stats = CuboidStats(self)
-        self.sizes = SizePanel(self.view)
-        self.sizes.follow(self.view)
-        self.sizes.expand_clicked.connect(self._toggle_stats)
-        self.sizes.window_moved.connect(self._size_window_moved)
-        # The names the page and its tests have always used for the size
-        # plot and its sentence.
-        self.hist, self.window_state = (self.sizes.histogram.plot,
-                                        self.sizes.histogram.state)
 
-        body = QHBoxLayout()
-        body.setSpacing(SPACING)
-        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
-                       1)
+        panel = QWidget(self)
+        column = QVBoxLayout(panel)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        row = QHBoxLayout()
+        self.analyse_button = primary_button("Analyze the dish", panel)
+        self.analyse_button.clicked.connect(self._analyse)
+        self.shake_button = secondary_button("Shake the dish", panel)
+        self.shake_button.clicked.connect(self._shake)
+        row.addWidget(self.analyse_button, 1)
+        row.addWidget(self.shake_button, 1)
+        column.addLayout(row)
+        column.addWidget(self._sizes_card(panel))
+        column.addWidget(self._plate_card(panel))
+        self.folds = FoldGroup([self.sizes, self.plate_card])
+
+        # Off unless asked for: see "Pickup clips".
+        self.clips_box = Switch("Save pickup clips", parent=panel)
+        self.clips_box.toggled.connect(self._clips_toggled)
+        column.addWidget(self.clips_box)
+        self.clips_state = muted_label("", panel)
+        self.clips_state.setWordWrap(True)
+        column.addWidget(self.clips_state)
+        column.addWidget(self._jog_section())
+        column.addStretch(1)
+
+        # The run's buttons, shown in the window's footer (`footer_buttons`).
+        self.start_button = primary_button("Start picking", self)
+        self.start_button.clicked.connect(self._start_run)
+        self.pause_button = secondary_button("Pause", self)
+        self.pause_button.clicked.connect(self._pause_clicked)
+        self.stop_button = danger_button("Stop run", self)
+        self.stop_button.clicked.connect(self._stop_run)
+        for button in (self.start_button, self.pause_button,
+                       self.stop_button):
+            button.hide()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
+        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                  SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addLayout(body, 1)
+        layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
+                         1)
 
         self._view_timer = QTimer(self)
         self._view_timer.setInterval(VIEW_MS)
@@ -294,215 +301,106 @@ class PickingPage(QWidget):
 
     # -- construction --------------------------------------------------------
 
-    def _checklist_step(self) -> QWidget:
-        self.step_checklist = StepCard(self, 1,
-                                       "Complete the Operation checklist")
-        self.others_state = wrapped()
-        self.step_checklist.add(self.others_state)
-        # What is left on the other pages, each with its button there.
-        self.others = Checklist(self)
-        self.others.go.connect(self.session.page_requested)
-        self.step_checklist.add(self.others)
-        return self.step_checklist.box
-
-    def _dish_card(self) -> QWidget:
-        self.step_dish = StepCard(self, 2, STEPS["dish_position"][0])
-        box = self.step_dish.box
-        box.layout().addWidget(wrapped(
-            "Jog until the dish fills the picture, then Set position. Runs "
-            "start and image the dish from here."))
-
+    def _sizes_card(self, parent: QWidget) -> FoldCard:
+        self.sizes = FoldCard("Cuboid sizes", open=True, parent=parent)
+        body = self.sizes.body.layout()
+        self.histogram = SizeHistogram(
+            "Drag the white lines to change which sizes are picked.",
+            self.sizes)
+        self.histogram.plot.setMinimumHeight(140)
+        self.histogram.plot.setMaximumHeight(170)
+        self.histogram.window_moved.connect(self._size_window_moved)
+        body.addWidget(self.histogram)
+        # The names the page and its tests have always used for the size
+        # plot and its sentence.
+        self.hist, self.window_state = (self.histogram.plot,
+                                        self.histogram.state)
+        self.pickup_line = muted_label("", self.sizes)
+        body.addWidget(self.pickup_line)
         row = QHBoxLayout()
-        row.addWidget(QLabel("Camera"))
-        self.camera_choice = combo_box(self)
-        self.camera_choice.currentTextChanged.connect(lambda _t: self._show_camera())
-        row.addWidget(self.camera_choice, 1)
-        box.layout().addLayout(row)
-
-        buttons = QHBoxLayout()
-        self.goto_button = secondary_button("Go to picking position", self)
-        self.goto_button.clicked.connect(self._goto_dish)
-        self.teach_button = secondary_button("Set position", self)
-        self.teach_button.clicked.connect(self._teach_dish)
-        buttons.addWidget(self.goto_button)
-        buttons.addWidget(self.teach_button)
-        box.layout().addLayout(buttons)
-
-        self.dish_state = muted_label()
-        box.layout().addWidget(self.dish_state)
-        return box
-
-    def _shake_card(self) -> QWidget:
-        self.step_shake = StepCard(self, 3, STEPS["shake_position"][0])
-        box = self.step_shake.box
-        box.layout().addWidget(wrapped(
-            "Where a run stirs the dish when too few cuboids are isolated. "
-            "Jog the tip into the medium, clear of the cuboids, then Set "
-            "shake position."))
-
-        buttons = QHBoxLayout()
-        self.goto_shake_button = secondary_button("Go to shake", self)
-        self.goto_shake_button.clicked.connect(self._goto_shake)
-        self.teach_shake_button = secondary_button("Set shake position",
-                                                   self)
-        self.teach_shake_button.clicked.connect(self._teach_shake)
-        buttons.addWidget(self.goto_shake_button)
-        buttons.addWidget(self.teach_shake_button)
-        box.layout().addLayout(buttons)
-
-        self.shake_state = muted_label()
-        box.layout().addWidget(self.shake_state)
-
-        # Stirring by hand, here or while a run is paused.
-        self.shake_button = secondary_button("Shake the dish", self)
-        self.shake_button.clicked.connect(self._shake)
-        box.layout().addWidget(self.shake_button)
-        return box
-
-    def _analysis_card(self) -> QWidget:
-        self.step_analysis = StepCard(self, 4, "Analyze the dish")
-        box = self.step_analysis.box
-        box.layout().addWidget(wrapped(
-            "Detect cuboids in the current picture and mark those a run "
-            "would pick."))
-
-        self.analyse_button = primary_button("Analyze the dish", self)
-        self.analyse_button.clicked.connect(self._analyse)
-        box.layout().addWidget(self.analyse_button)
-
-        row = QHBoxLayout()
-        self.settings_button = secondary_button("Picking settings…", self)
+        self.settings_button = compact(secondary_button("More settings",
+                                                        self.sizes))
         self.settings_button.clicked.connect(self._settings)
-        self.sizes_button = secondary_button("Sizes", self)
-        self.sizes_button.setToolTip("Show the size histogram on the picture.")
-        self.sizes_button.clicked.connect(self._show_sizes)
-        row.addWidget(self.settings_button, 1)
-        row.addWidget(self.sizes_button)
-        box.layout().addLayout(row)
+        self.stats_button = compact(quiet_button("All measures", self.sizes))
+        self.stats_button.clicked.connect(self._toggle_stats)
+        row.addWidget(self.settings_button)
+        row.addWidget(self.stats_button)
+        row.addStretch(1)
+        body.addLayout(row)
+        return self.sizes
 
-        self.result = QLabel("Not analyzed.")
-        self.result.setWordWrap(True)
-        self.result.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.result)
-        return box
-
-    def _run_card(self) -> QWidget:
-        self.step_run = StepCard(self, 5, "Start picking")
-        box = self.step_run.box
-
-        # Which routine Start would run, from the Plate plan page, before the
-        # button that commits the robot to it.
-        self.routine_state = QLabel()
-        self.routine_state.setWordWrap(True)
-        self.routine_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.routine_state)
-
-        # Off unless asked for: see "Pickup clips".
-        self.clips_box = QCheckBox("Save pickup clips from the lower camera",
-                                   self)
-        self.clips_box.toggled.connect(self._clips_toggled)
-        box.layout().addWidget(self.clips_box)
-        self.clips_state = QLabel()
-        self.clips_state.setWordWrap(True)
-        self.clips_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.clips_state)
-
-        row = QHBoxLayout()
-        self.start_button = primary_button("Start picking", self)
-        self.start_button.clicked.connect(self._start_run)
-        self.resume_button = secondary_button("Resume", self)
-        self.resume_button.clicked.connect(self._resume_run)
-        row.addWidget(self.start_button)
-        row.addWidget(self.resume_button)
-        box.layout().addLayout(row)
-
-        row = QHBoxLayout()
-        self.pause_button = secondary_button("Pause", self)
-        self.pause_button.setCheckable(True)
-        self.pause_button.toggled.connect(self._pause_toggled)
-        self.stop_button = secondary_button("Stop", self)
-        self.stop_button.clicked.connect(self._stop_run)
-        row.addWidget(self.pause_button)
-        row.addWidget(self.stop_button)
-        box.layout().addLayout(row)
-
-        # A green check when a run has filled the plan.
-        self.done = DoneBanner(self)
-        box.layout().addWidget(self.done)
-        self.run_state = QLabel()
-        self.run_state.setWordWrap(True)
-        self.run_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.run_state)
-        return box
+    def _plate_card(self, parent: QWidget) -> FoldCard:
+        self.plate_card = FoldCard("Plate", parent=parent)
+        body = self.plate_card.body.layout()
+        self.plate = PlateGrid(mini=True, parent=self.plate_card)
+        body.addWidget(self.plate)
+        legend = QHBoxLayout()
+        for name, color in (("Filled", "plate"), ("Planned", "planned")):
+            label = QLabel(f'<span style="color: {COLORS[color]}">'
+                           f'&#9632;</span> {name}', self.plate_card)
+            legend.addWidget(label)
+        legend.addStretch(1)
+        body.addLayout(legend)
+        return self.plate_card
 
     def _jog_section(self) -> QWidget:
         self.jog = JogPanel(self.session, shortcut_host=self,
                             machine_controls=False,
                             collapsed=("move", "positions"), parent=self)
         self.jog.show_position_on(self.view)
+        self.jog.add_help([f"{key.lower()}   {what}"
+                           for key, what, _ in KEYS])
         return self.jog
 
-    # -- the dish pose --------------------------------------------------------
+    # -- the moves ------------------------------------------------------------
 
     def _stored_dish(self):
         profile = self.session.profile
         return None if profile is None else profile.positions.get(DISH_POSITION)
 
-    # Both through the jog panel's queue, like the shake pose's: a worker of
-    # the page's own could overlap a key press, and the panel would not read
-    # the pose afterwards, so the points on the picture stayed where the
-    # gantry had been.
+    def _stored_shake(self):
+        profile = self.session.profile
+        return None if profile is None else profile.positions.get(SHAKE_POSITION)
+
+    def _can_center(self) -> bool:
+        """Camera to dish center now: between runs while the robot is free,
+        during one while it is paused or waits, the tip empty."""
+        if self._stored_dish() is None or self.session.robot is None:
+            return False
+        if self.jog.busy:
+            return False
+        if not self._running():
+            return not self.session.robot_lease.busy
+        picking = self._session
+        return (picking is not None and self._held()
+                and picking.can_shake_now and not picking.shake_pending)
+
+    # Through the jog panel's queue: a worker of the page's own could overlap
+    # a key press, and the panel would not read the pose afterwards.
     def _goto_dish(self) -> None:
-        where = self._stored_dish()
-        if (where is None or self.session.robot is None or self._busy()
-                or self._running()):
+        """The camera to the position over the dish. During a run under its
+        lease: see "Camera to dish center during a run"."""
+        if not self._can_center():
             return
+        where = self._stored_dish()
         motion = self.session.motion
 
         def job(log):
             motion.tip_to(where[:2], where[2], log=log)
             return f"at {DISH_POSITION!r}"
 
+        if self._running():
+            self.jog.lend(self._run_worker.lease)
+            self._centering = True
         if not self.jog.run_job(job):
+            self._end_centering()
             self.jog.tell(self.session.robot_lease.refusal)
+        self._refresh()
 
-    def _teach_dish(self) -> None:
-        if (self.session.robot is None or self.session.profile is None
-                or self._busy() or self._running()):
-            return
-        robot, session = self.session.robot, self.session
-
-        def job(_log):
-            where = xyz(robot)
-            session.remember(DISH_POSITION, where)
-            return (f"{DISH_POSITION!r} taught at ({where[0]:.1f}, "
-                    f"{where[1]:.1f}, {where[2]:.1f})")
-
-        if not self.jog.run_job(job, moves=False):
-            self.jog.tell(self.session.robot_lease.refusal)
-
-    # -- the shake pose -------------------------------------------------------
-
-    def _stored_shake(self):
-        profile = self.session.profile
-        return None if profile is None else profile.positions.get(SHAKE_POSITION)
-
-    def _goto_shake(self) -> None:
-        where = self._stored_shake()
-        if where is None or self.session.robot is None or self._running():
-            return
-        motion = self.session.motion
-
-        def job(log):
-            motion.tip_to(where[:2], where[2], log=log)
-            return f"at {SHAKE_POSITION!r}"
-
-        if not self.jog.run_job(job):
-            self.jog.tell(self.session.robot_lease.refusal)
+    def _end_centering(self) -> None:
+        if self._centering:
+            self._centering = False
+            self.jog.end_loan()
 
     def _shake(self) -> None:
         """What the run does when too few cuboids are isolated, on demand:
@@ -533,69 +431,36 @@ class PickingPage(QWidget):
     def _can_shake_in_run(self) -> bool:
         """A run paused or waiting, with no shake of it outstanding."""
         picking = self._session
-        return (self._running() and picking is not None
-                and (self._pause.is_set() or self._waiting())
-                and not picking.shake_pending)
+        return (self._running() and picking is not None and self._held()
+                and not picking.shake_pending and not self.jog.busy)
 
     def _shake_during_run(self) -> None:
-        """Ask the run to stir the dish; see "So is the shake pose"."""
+        """Ask the run to stir the dish; see "Shake the dish"."""
         if not self._can_shake_in_run():
             return
         picking = self._session
         now = picking.can_shake_now
         picking.request_shake()
         self._shake_asked = True
-        if not now:
-            self._last_event = ("shake asked: the tip holds cuboids, so the "
-                                "dish is shaken once they are delivered - "
-                                "unpause to let the run get there")
-        elif self._waiting():
-            self._last_event = ("shaking the dish; the run waits for Resume "
-                                "afterwards")
-        else:
-            self._last_event = ("shaking the dish; the run stays paused and "
-                                "looks at the dish again when unpaused")
-        log.info("picking run: %s", self._last_event)
+        self._status = ("Shaking the dish." if now else
+                        "The dish is shaken once the cuboids are in.")
+        log.info("picking run: shake asked%s",
+                 "" if now else ", after the delivery")
         self._refresh()
-
-    def _teach_shake(self) -> None:
-        if (self.session.robot is None or self.session.profile is None
-                or self._running()):
-            return
-        robot, session = self.session.robot, self.session
-
-        def job(_log):
-            where = xyz(robot)
-            session.remember(SHAKE_POSITION, where)
-            return (f"{SHAKE_POSITION!r} taught at ({where[0]:.1f}, "
-                    f"{where[1]:.1f}, {where[2]:.1f})")
-
-        if not self.jog.run_job(job, moves=False):
-            self.jog.tell(self.session.robot_lease.refusal)
 
     # -- looking at it --------------------------------------------------------
 
     def _camera(self):
-        return self.session.camera(self.camera_choice.currentText())
+        label = self._wanted_camera()
+        return self.session.camera(label) if label else None
 
     def _analyse(self) -> None:
         """One frame from the camera, through the detector, drawn over the
         live feed."""
         if self._busy():
             return
-        profile = self.session.profile
-        if profile is None:
-            self.result.setText("No profile loaded.")
-            return
-        if self.detector.model is None:
-            self.result.setText(
-                "Cuboid detector not loaded."
-                if self._wanted_model() else
-                "No cuboid model chosen (Settings).")
-            return
-        camera = self._camera()
-        if camera is None:
-            self.result.setText("Upper camera not open.")
+        profile, camera = self.session.profile, self._camera()
+        if profile is None or self.detector.model is None or camera is None:
             return
 
         cfg, pixel_map = profile.picking, profile.pixel_map
@@ -607,14 +472,11 @@ class PickingPage(QWidget):
             log("detecting")
             return frame, detector.detect(frame, cfg, pixel_map)
 
-        self.result.setText("analyzing…")
         self._run(Worker(job, what="analyzing the dish"), self._analysed)
 
     def _analysed(self, payload) -> None:
         frame, detection = payload
         self._frame, self._detection = frame, detection
-        self.result.setText(f"analyzed at {time.strftime('%H:%M:%S')}\n"
-                            f"{detection.summary}")
         log.info("analysis: %s", detection.summary.replace("\n", " | "))
         # Over the live feed, not a held frame: if the dish moves after
         # this, the contours stop sitting on the cuboids, which is the
@@ -624,8 +486,16 @@ class PickingPage(QWidget):
         self._show_sizes()
         self._refresh()
 
+    def _found(self) -> list[str]:
+        """The picture's line: how many cuboids the analysis found."""
+        if self._detection is None:
+            return []
+        return [f"{len(self._detection.df)} cuboids found"]
+
     def _draw_overlay(self) -> None:
         detection, profile = self._detection, self.session.profile
+        if not self._running():
+            self.view.set_status(self._found())
         if detection is None or profile is None or self._frame is None:
             self.view.set_overlay_items([])
             return
@@ -650,23 +520,24 @@ class PickingPage(QWidget):
         profile = self.session.profile
         cfg = profile.picking if profile is not None else None
         self.stats.show_detection(self._detection, cfg)
-        histogram = self.sizes.histogram
+        histogram = self.histogram
         # Dragged only between runs: a run took its settings when it began.
         histogram.set_editable(not self._running(),
                                BOUNDS["cuboid_size_threshold"])
         bins = histogram.show_detection(
             self._detection, cfg.cuboid_size_threshold if cfg else None)
         if bins is None:
-            # Nothing measured: the card and the figures go.
-            self.sizes.hide()
+            # Nothing measured: no figures to show.
             self.stats.hide()
 
     def _show_sizes(self) -> None:
-        if self._detection is not None and not self._running():
-            self.sizes.show()
-            self.sizes.raise_()
+        """The Cuboid sizes card opened, as after an analysis."""
+        if not self._running():
+            self.folds.open(self.sizes)
 
     def _toggle_stats(self) -> None:
+        if self._detection is None and not self.stats.isVisible():
+            return
         self.stats.setVisible(not self.stats.isVisible())
         if self.stats.isVisible():
             self.stats.raise_()
@@ -708,8 +579,6 @@ class PickingPage(QWidget):
             return
         if self.detector.name == wanted:
             return
-        if self._detection is None:
-            self.result.setText("loading the detector…")
         worker = Worker(self.detector.load, wanted,
                         device=self.session.settings.inference_device,
                         imgsz=self.session.profile.picking.yolo_imgsz,
@@ -717,8 +586,6 @@ class PickingPage(QWidget):
         self._run(worker, self._loaded)
 
     def _loaded(self, _description) -> None:
-        if self._detection is None:
-            self.result.setText("Not analyzed.")
         self._refresh()
 
     # -- the run ----------------------------------------------------------------
@@ -729,9 +596,8 @@ class PickingPage(QWidget):
 
     def _checks(self) -> list[Check]:
         """What has to be true before a run: the session's list
-        (`gui.readiness`, shown in full on the Profile page) and what only
-        this page can see. The "to do" ones of both stop Start; the notes
-        are said and left to the operator."""
+        (`gui.readiness`) and what only this page can see. The "to do" ones
+        of both stop Start; the notes are left to the operator."""
         return readiness_checks(self.session) + self._page_checks()
 
     def _page_checks(self) -> list[Check]:
@@ -790,15 +656,15 @@ class PickingPage(QWidget):
         return box.clickedButton() is start
 
     def _start_run(self) -> None:
-        if self._running() or self._run_problems():
+        if (self._running() or self._run_problems()
+                or self._need is not None):
             return
         if not self._confirm_start():
             return
         # Again: the robot or the routine can have changed while the
         # question was up.
-        problems = self._run_problems()
-        if problems:
-            self.run_state.setText("\n".join("• " + p for p in problems))
+        if self._run_problems() or self._need is not None:
+            self._refresh()
             return
         # The robot for the whole run, pauses and waits included: nothing
         # else moves it until the run ends (`Session.robot_lease`). Claimed
@@ -807,7 +673,8 @@ class PickingPage(QWidget):
         lease = self.session.robot_lease.claim("picking run", run=True,
                                                plates=self._plan_plates())
         if lease is None:
-            self.run_state.setText(self.session.robot_lease.refusal)
+            self._run_message = self.session.robot_lease.refusal
+            self._refresh()
             return
         try:
             self._launch(lease)
@@ -863,22 +730,23 @@ class PickingPage(QWidget):
             # The confirmation was the go-ahead; see "Start is the go-ahead".
             picking.start()
             session.refresh_lights()     # start() darkened the bench
-            emit(("started", picking.view, picking.state.value, "starting"))
+            emit(("started", picking.view, picking.state.value,
+                  picking.status))
             try:
                 while not picking.done:
                     event = picking.step(pause=pause, stop=stop)
                     log(str(event))
                     emit(("event", event.view, event.state.value,
-                          f"{event.kind}: {event.message}"))
+                          event.status))
             finally:
                 picking.close()          # recorder detached, light restored
                 session.refresh_lights()
             return picking.state.value
 
         self._run_message = ""
+        self._status = "Starting."
+        self._stopping = False
         self._filled = False
-        self.done.clear()
-        self.run_state.setText("starting…")
         self._run_worker = Worker(job, what="picking run", lease=lease)
         self._run_worker.finished.connect(self._run_finished)
         self._run_worker.failed.connect(self._run_failed)
@@ -886,9 +754,11 @@ class PickingPage(QWidget):
         self._run_worker.start()
         self._view_timer.start()
         # The run decides from its own frames; the last analysis's sizes
-        # are not what it sees, and its settings are fixed for it.
-        self.sizes.hide()
+        # are not what it sees, and its settings are fixed for it. The plate
+        # is what there is to follow now.
         self.stats.hide()
+        self.folds.open(self.plate_card)
+        self._draw_histogram()
         self._refresh()
 
     def _running(self) -> bool:
@@ -901,6 +771,10 @@ class PickingPage(QWidget):
         return (self._running()
                 and self._state_text == RobotState.NEEDS_OPERATOR.value)
 
+    def _held(self) -> bool:
+        """The run is paused or waits for the operator."""
+        return self._running() and (self._pause.is_set() or self._waiting())
+
     def run_activity(self) -> str | None:
         """For the top bar's pill: "waiting", "paused", or None."""
         if self._waiting():
@@ -909,67 +783,75 @@ class PickingPage(QWidget):
 
     def _resume_run(self) -> None:
         """The retry out of needs_operator, once the dish has been fixed."""
-        if self._session is not None and self._waiting():
+        if self._session is not None and self._waiting() \
+                and not self._centering:
             self._session.resume()
             self._refresh()
 
-    def _pause_toggled(self, on: bool) -> None:
+    def _pause_clicked(self) -> None:
+        """The footer's one button: Resume out of a wait, else Pause and
+        Resume. Not while the camera moves under the run's lease."""
+        if not self._running() or self._centering:
+            return
+        if self._waiting():
+            self._resume_run()
+            return
+        on = not self._pause.is_set()
         self._pause.set() if on else self._pause.clear()
-        if self._running():
-            log.info("picking run %s", "paused" if on else "unpaused")
+        log.info("picking run %s", "paused" if on else "unpaused")
         self._refresh()
 
     def _stop_run(self) -> None:
         if self._running():
             self._stop.set()
-            self.run_state.setText("Stopping after the current move…")
+            self._stopping = True
+            self._refresh()
 
     def _on_event(self, payload) -> None:
-        _kind, view, state, message = payload
+        _kind, view, state, status = payload
         with self._lock:
             self._view = view
-        self._state_text, self._last_event = state, message
+        self._state_text, self._status = state, status
         self._refresh()
 
     def _run_finished(self, state) -> None:
-        self._run_worker = None
-        self._session = None
-        self._shake_asked = False
-        self._view_timer.stop()
-        self._view = None
-        self._run_message = f"run {state}" + self._clips_said()
+        self._end_run()
         if state == RobotState.CANCELED.value:
             # Stopped between two moves, which may be between drawing
             # cuboids in and putting them anywhere.
-            self._run_message += (
-                "\nThe tip may still hold liquid and cuboids: put them back "
-                "into the dish (Liquid handling or Manual control) before "
-                "the next run.")
-        log.info("picking run %s", state)
+            self._run_message = ("Stopped. The tip may still hold cuboids: "
+                                 "put them back into the dish.")
+        log.info("picking run %s%s", state, self._clips_said())
         if state == RobotState.COMPLETED.value:
             self._filled = True
-            self.done.show_done("The run filled the plate plan.")
+            self._run_message = "The plate plan is filled."
         self._back_to_live()
 
     def _run_failed(self, reason: str) -> None:
+        self._end_run()
+        self._run_message = reason
+        log.error("picking run failed: %s%s", reason, self._clips_said())
+        self._back_to_live()
+
+    def _end_run(self) -> None:
         self._run_worker = None
         self._session = None
         self._shake_asked = False
+        self._stopping = False
+        self._pause.clear()
+        self._end_centering()
         self._view_timer.stop()
         self._view = None
-        self._run_message = reason + self._clips_said()
-        log.error("picking run failed: %s", reason)
-        self._back_to_live()
 
     def _clips_said(self) -> str:
-        """Where the run's clips are, for the line it ends with."""
+        """Where the run's clips are, for the log line it ends with."""
         directory, self._clip_dir = self._clip_dir, None
-        return f"\nclips in {directory}" if directory is not None else ""
+        return f"; clips in {directory}" if directory is not None else ""
 
     def _back_to_live(self) -> None:
-        """After a run: the feed again, without the run's status or its
-        overlays. The last analysis went with them - the run has changed
-        the dish it described."""
+        """After a run: the feed again, without the run's overlays. The last
+        analysis went with them - the run has changed the dish it
+        described."""
         self._detection = None
         self._overlaid = None
         self.view.set_status([])
@@ -982,11 +864,13 @@ class PickingPage(QWidget):
         """What the session says to show, once every VIEW_MS.
 
         The session hands over a `PickView`; live means read the camera,
-        otherwise the frame it decided on stays up unchanged. The status and
-        the keys go in the view's status box rather than into the frame -
-        the notebook writes them into the array with `annotate`, and the
-        frame here belongs to the session.
+        otherwise the frame it decided on stays up unchanged, with the
+        overlays measured on it. The count goes in the view's status box
+        rather than into the frame - the frame belongs to the session.
         """
+        if self._centering and not self.jog.busy:
+            self._end_centering()
+            self._refresh()
         with self._lock:
             view = self._view
         picking = self._session
@@ -994,8 +878,9 @@ class PickingPage(QWidget):
                 and not picking.shake_pending):
             # Done; in a waiting state no event says so.
             self._shake_asked = False
-            self._last_event = "dish shaken"
+            self._status = "Dish shaken."
             self._refresh()
+        self._show_plate()
         if view is None:
             return
         if view.live:
@@ -1009,19 +894,15 @@ class PickingPage(QWidget):
             frame = view.frame
         if frame is None:
             return
-        # Live or held is already in the caption above this box.
-        lines = [f"state: {self._state_text}",
-                 f"target: {self._target()}"]
-        if self._pause.is_set():
-            lines.append("PAUSED")
-        if self._shake_asked:
-            lines.append("shake asked")
+        lines = []
+        found = view.overlays.get("cuboid_df")
+        if found is not None and len(found):
+            lines.append(f"{len(found)} cuboids found")
         # Drawn on the picture too, in orange; see "A cuboid that will not
         # come up" in workflows.picking.
         stuck = len(view.overlays.get("stuck", ()))
         if stuck:
-            lines.append(f"stuck: {stuck} (tried again after a shake)")
-        lines.append("   ".join(f"{key} {what}" for key, what, _ in KEYS))
+            lines.append(f"{stuck} stuck, tried again after a shake")
         self.view.set_status(lines)
         # Only for a new view: the same items handed over again every tick
         # would have the view paint a full dish's contours afresh each time.
@@ -1030,39 +911,65 @@ class PickingPage(QWidget):
             self.view.set_overlay_items(
                 overlays.items(frame.shape, **view.overlays))
 
-    def _target(self) -> str:
-        routine = self.session.routine
-        try:
-            return str(routine.current) if routine is not None else "-"
-        except Exception:                            # noqa: BLE001
-            return "-"
-
     def _install_shortcuts(self) -> None:
-        """The notebook's keys, on the window while this page is showing.
-
-        Named in KEYS and bound from it, so the overlay cannot offer a key
-        that does nothing - the mistake `jog.LAYOUT` exists to prevent.
-        """
+        """Space and P, on the window while this page is showing; Esc is
+        the window's Stop. Named in KEYS and bound from it, so the pad's
+        list cannot offer a key that does nothing."""
         self._shortcuts = []
-        actions = {"resume": self._resume_run,
-                   "pause": lambda: self.pause_button.toggle(),
-                   "stop": self._stop_run}
+        actions = {"resume": self._resume_run, "pause": self._pause_clicked}
         for key, _what, action in KEYS:
-            if key == "Esc":
-                # Bound by the window, to Stop for every page; listed here
-                # for the picture's key box.
-                continue
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(actions[action])
             self._shortcuts.append(shortcut)
 
+    # -- the footer -------------------------------------------------------------
+
+    def set_need(self, need: str | None) -> None:
+        """The step's first unmet need (the shell's banner), or None: while
+        there is one, Start waits and the footer says NOT READY."""
+        if need != self._need:
+            self._need = need
+            self._refresh()
+
+    def run_status(self) -> tuple[str, str, str]:
+        """The footer's tag, sentence and tone (`Footer.STATUS_TONES`)."""
+        if self._running():
+            if self._stopping:
+                return "Picking", "Stopping after the current move.", "busy"
+            if self._waiting():
+                return "Waiting for you", self._status, "warn"
+            if self._pause.is_set():
+                return "Paused", self._status, "warn"
+            return "Picking", self._status, "busy"
+        if self._filled:
+            return "Done", self._run_message, "ok"
+        problems = ([self._need] if self._need is not None else []) + [
+            p + "." for p in self._run_problems()]
+        if problems:
+            return "Not ready", problems[0], "off"
+        if self._run_message:
+            return "Ready", self._run_message, "ready"
+        found = self._found()
+        if found:
+            return "Ready", found[0] + ".", "ready"
+        routine = self.session.routine
+        wells = 0 if routine is None else len(getattr(routine, "plan", ()))
+        return ("Ready", f"{wells} well{'' if wells == 1 else 's'} to fill.",
+                "ready")
+
+    def footer_buttons(self, back: QWidget) -> list[QWidget]:
+        """What the footer shows on the right: Back and Start picking
+        between runs, Pause or Resume and Stop run during one."""
+        if self._running():
+            return [self.pause_button, self.stop_button]
+        return [back, self.start_button]
+
     # -- settings ---------------------------------------------------------------
 
     def _settings(self) -> None:
         profile = self.session.profile
-        if profile is None:
-            self.result.setText("No profile loaded.")
+        if profile is None or self._running():
             return
         dialog = PickingSettingsDialog(profile.picking,
                                        profile_name=profile.name,
@@ -1110,7 +1017,7 @@ class PickingPage(QWidget):
         if self.sender() is not self._worker:
             return
         self._worker = None
-        self.result.setText(reason)
+        self._run_message = reason
         log.error("%s", reason)
         self._refresh()
 
@@ -1120,15 +1027,6 @@ class PickingPage(QWidget):
         return self.session.upper_camera_label
 
     def _show_camera(self) -> None:
-        labels = self.session.open_cameras
-        current = self.camera_choice.currentText()
-        self.camera_choice.blockSignals(True)
-        self.camera_choice.clear()
-        self.camera_choice.addItems(labels)
-        wanted = current if current in labels else self._wanted_camera()
-        if wanted in labels:
-            self.camera_choice.setCurrentIndex(labels.index(wanted))
-        self.camera_choice.blockSignals(False)
         # A run decides what is on screen itself; see _show_run_view.
         if not self._running():
             camera = self._camera()
@@ -1201,8 +1099,7 @@ class PickingPage(QWidget):
                                    f"{self._clip_mode()[0]}x"
                                    f"{self._clip_mode()[1]}: {reason}")
         else:
-            self.dish_state.setText(
-                f"Camera {label!r} did not open: {reason}")
+            self._run_message = f"The upper camera did not open: {reason}"
         self._refresh()
 
     def _on_profile_changed(self, _profile) -> None:
@@ -1211,6 +1108,7 @@ class PickingPage(QWidget):
         self.opener.forget()
         self._detection = None
         self.view.set_overlay_items([])
+        self.view.set_status([])
         self._draw_histogram()
         self._show_camera()
         if self.isVisible():
@@ -1234,139 +1132,102 @@ class PickingPage(QWidget):
 
     # -- display ------------------------------------------------------------------
 
-    def _refresh_steps(self, problems: list[str]) -> list[int]:
-        """The steps' marks: 2 and 3 are the Operation checklist's own
-        lines; 1 is what is left of it on other pages, and this page's own
-        set-up while it is not ready. Returns the steps that stop Start."""
-        shared = readiness_checks(self.session)
-        by_text = {check.text: check for check in shared}
-        for card, key in ((self.step_dish, "dish_position"),
-                          (self.step_shake, "shake_position")):
-            check = by_text[STEPS[key][0]]
-            card.set_state(check.state, check.detail)
-
-        left = [check for check in shared
-                if check.page != "picking" and check.blocking]
-        left += [check for check in self._page_checks() if check.blocking]
-        self.step_checklist.set_state(TODO if left else OK)
-        self.others_state.setText(
-            "All done." if not left else
-            f"{len(left)} to do.")
-        self.others.setVisible(bool(left))
-        if left:
-            self.others.show_checks(left)
-        stopping = [1] if left else []
-        stopping += [n for n, card in ((2, self.step_dish),
-                                       (3, self.step_shake))
-                     if card.state in (TODO, BLOCKED)]
-
-        if self._detection is not None:
-            self.step_analysis.set_state(OK, "Analyzed.")
-        elif self.detector.model is None:
-            self.step_analysis.set_state(BLOCKED, "Cuboid detector not "
-                                                  "loaded.")
-        elif self._camera() is None:
-            self.step_analysis.set_state(BLOCKED, "Upper camera not open.")
-        else:
-            self.step_analysis.set_state(NOTE, "Not analyzed yet.")
-
-        if self._filled and not self._running():
-            self.step_run.set_state(OK, "The last run filled the plate plan.")
-        elif problems and not self._running():
-            self.step_run.set_state(BLOCKED, f"First: {problems[0]}.")
-        else:
-            self.step_run.set_state(TODO)
-        return stopping
+    def _show_plate(self) -> None:
+        """The Plate card: the plan's plate, filled and planned wells in
+        their colors, the current well ringed while a run is on it."""
+        routine = self.session.routine
+        destination = getattr(routine, "destination", None)
+        if destination is None or not getattr(destination, "is_plate", False):
+            self.plate_card.set_title("Plate")
+            self.plate_card.set_summary("")
+            if self.plate.wells:
+                self.plate.set_ordering([])
+            return
+        self.plate_card.set_title(f"Plate · slot {destination.slot}")
+        if self.plate.wells != [w for c in destination.ordering for w in c]:
+            self.plate.set_ordering(destination.ordering)
+        table = routine.progress_table()
+        plan = routine.plan
+        fills, filled = {}, 0
+        for c, column in enumerate(destination.ordering):
+            for r, well in enumerate(column):
+                if well not in plan:
+                    continue
+                done = int(table.iat[r, c]) >= plan[well]
+                filled += done
+                fills[well] = COLORS["plate" if done else "planned"]
+        self.plate.set_fills(fills)
+        # A number only when more than one cuboid goes in a well (§12.11).
+        self.plate.set_counts(dict(plan) if max(plan.values(), default=0) > 1
+                              else {})
+        self.plate.set_current(routine.current if self._running() else None)
+        self.plate_card.set_summary(f"{filled} of {len(plan)} wells")
 
     def _refresh(self) -> None:
-        self.session.run_activity_changed.emit()
         busy = self._busy()
+        running = self._running()
         connected = self.session.robot is not None
         # Nothing here may move the robot while anything holds it, this
         # page's own jog or run included (`Session.robot_lease`).
         movable = connected and not self.session.robot_lease.busy
         profile = self.session.profile
-        stored = self._stored_dish()
 
-        self.goto_button.setEnabled(movable and stored is not None and not busy)
-        self.teach_button.setEnabled(connected and profile is not None and not busy)
-        if profile is None:
-            self.dish_state.setText("No profile loaded.")
-        elif stored is None:
-            self.dish_state.setText("No picking position saved yet.")
-        else:
-            self.dish_state.setText(
-                f"Saved: ({stored[0]:.1f}, {stored[1]:.1f}, "
-                f"{stored[2]:.1f}).")
+        # Camera to dish center: during a run only while it is held.
+        self.center_button.setText(
+            CENTER_WAIT if running and not self._held() else CENTER)
+        self.center_button.setEnabled(self._can_center() and not busy)
+        self.center_button.setToolTip(
+            "" if self._stored_dish() is not None else
+            "The position over the dish is not set.")
 
-        running = self._running()
         shake = self._stored_shake()
-        self.goto_shake_button.setEnabled(movable and shake is not None
-                                          and not running)
         # During a run only while it is paused or waits for you.
         self.shake_button.setEnabled(
             connected and shake is not None
             and ((movable and not running) or self._can_shake_in_run()))
         self.shake_button.setToolTip(
-            "Stir the dish at the shake position. During a run: while "
-            "paused or waiting."
-            if shake is not None else
-            "Unavailable: no shake position saved.")
-        self.teach_shake_button.setEnabled(connected and profile is not None
-                                           and not running)
-        if profile is None:
-            self.shake_state.setText("No profile loaded.")
-        elif shake is None:
-            self.shake_state.setText("No shake position saved yet.")
-        else:
-            self.shake_state.setText(
-                f"Saved: ({shake[0]:.1f}, {shake[1]:.1f}, "
-                f"{shake[2]:.1f}).")
+            "Stir the dish at the shake position."
+            if shake is not None else "The shake position is not set.")
 
-        self.settings_button.setEnabled(profile is not None and not busy
-                                        and not running)
         self.analyse_button.setEnabled(
             not busy and not running and profile is not None
             and self.detector.model is not None
             and self._camera() is not None)
-
-        routine = self.session.routine
-        self.routine_state.setText(
-            "Plate plan: none."
-            if routine is None else f"Plate plan:\n{routine.summary()}")
+        self.settings_button.setEnabled(profile is not None and not busy
+                                        and not running)
+        self.stats_button.setEnabled(self._detection is not None)
+        if profile is not None:
+            cfg = profile.picking
+            low, high = cfg.cuboid_size_threshold
+            self.sizes.set_summary(f"{low:g}–{high:g} µm")
+            self.pickup_line.setText(
+                f"{cfg.pickup_offset:g} mm above the bottom · {cfg.vol:g} µl")
 
         self.clips_box.setEnabled(not running)
         if not self.clips_box.isChecked():
             self.clips_state.setText("")
+        elif self._clips_failure:
+            self.clips_state.setText(self._clips_failure)
         elif running and self._clip_dir is not None:
             self.clips_state.setText(f"Clips go to {self._clip_dir}")
         else:
             w, h = self._clip_mode()
             self.clips_state.setText(
-                f"One clip per pickup, {w}x{h}, crop "
-                f"{self.session.settings.clip_crop:g}, saved to "
+                f"One clip per pickup, {w}x{h}, to "
                 f"{paths.clips_dir(create=False)}")
         self.clips_state.setVisible(self.clips_box.isChecked())
 
-        checks = self._checks()
-        problems = [check.text for check in checks if check.blocking]
-        stopping = self._refresh_steps(problems)
+        self._show_plate()
+        problems = self._run_problems()
         self.start_button.setEnabled(movable and not busy and not running
-                                     and not problems)
-        self.resume_button.setEnabled(self._waiting())
-        self.pause_button.setEnabled(running)
+                                     and not problems and self._need is None)
+        held = self._held()
+        self.pause_button.setText("Resume" if held else "Pause")
+        if self.pause_button.property("tone") != ("warn" if held else None):
+            self.pause_button.setProperty("tone", "warn" if held else None)
+            self.pause_button.style().unpolish(self.pause_button)
+            self.pause_button.style().polish(self.pause_button)
+        self.pause_button.setEnabled(running and not self._centering)
         self.stop_button.setEnabled(running)
-        if running:
-            self.run_state.setText(
-                f"{self._state_text} — {self._last_event}\n"
-                + "  ".join(f"{key}: {what}" for key, what, _ in KEYS))
-        elif problems:
-            steps = ", ".join(str(n) for n in stopping) or "1"
-            self.run_state.setText(
-                (self._run_message + "\n\n" if self._run_message else "")
-                + f"Before Start: step{'s' if len(stopping) > 1 else ''} "
-                  f"{steps}.")
-        else:
-            self.run_state.setText(
-                (self._run_message + "\n\n" if self._run_message else "")
-                + "Ready to start.")
+        # The shell's footer and pill read the run from here.
+        self.session.run_activity_changed.emit()

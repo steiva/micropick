@@ -10,6 +10,9 @@ the third for fixes.
 
 ## Unreleased
 
+- A picking run that finds no cuboids now shakes the dish as many times as
+  "Shakes before asking" says, and says how many it did: with 3 it shook
+  twice and said "after 3 shakes".
 - The tip is no longer retracted before a move when it is already at the
   travel height: the jog panel's Go to, Tip calibration's Go to saved
   position, the Picking page's moves (picking position, shake position,
