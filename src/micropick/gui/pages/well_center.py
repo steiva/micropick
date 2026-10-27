@@ -5,8 +5,11 @@ For each plate on the deck, the real well center and the bottom
 `Session.set_well_center`): the robot's idea of a well is the plate's
 drawing, and a step near the bottom needs the real one.
 
-On the left the upper camera with the jog pad over it, as on every page
-with a jog panel. On the right "Well center and depth", the plates on the
+On the left, **no camera** (the upper one does not see the tip at a
+well): where the tip is, Z in big numbers as on the Dish bottom step, and
+the jog pad under it - the face of a jog panel that is never shown, so it
+binds no keys and its Keys toggle is hidden; the operator watches the
+robot. On the right "Well center and depth", the plates on the
 deck - each "Measured today", "Not measured: using the drawing" (skipped,
 a ✓ in yellow) or "Not measured yet" (`Session.well_center_status`) - and,
 for the one selected, four steps:
@@ -41,16 +44,13 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
 from ...workflows import well_center
-from ..auto_camera import CameraOpener
 from ..session import MEASURED, SKIPPED, Session, SessionError
-from ..theme import COLORS, SPACING
+from ..theme import COLORS, SIZES, SPACING, mono_font
 from ..theme.factory import (caption, double_spin_box, heading, muted_label,
                              primary_button, quiet_button, scroll_column,
                              select)
 from ..theme.icons import pixmap
-from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
-from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
@@ -157,7 +157,6 @@ class WellCenterPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
-        self.opener = CameraOpener(session, self)
         self._measurement = well_center.Measurement()
         self._at = TO_WELL
         # (slot, load name) of the plate selected, and the rows shown.
@@ -167,29 +166,55 @@ class WellCenterPage(QWidget):
         # is not written over by the next refresh.
         self._depth_for = None
 
-        self.view = CameraView(self)
         self.jog = JogPanel(session, shortcut_host=self,
-                            machine_controls=False, collapsed=("positions",),
-                            parent=self)
-        self.jog.show_position_on(self.view)
-        self.jog.pose_changed.connect(lambda _p: self.refresh())
-        self.jog.position_changed.connect(lambda _l: self.refresh())
+                            machine_controls=False, parent=self)
+        self.jog.hide()
+        self.jog.pose_changed.connect(self._show_pose)
+        self.jog.position_changed.connect(self._show_said)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(FeedRow(self.view,
-                                 scroll_column(self._panel(), PANEL_WIDTH)), 1)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                  SPACING * 2)
+        layout.setSpacing(SPACING * 2)
+        layout.addWidget(self._tip_column(), 1)
+        layout.addWidget(scroll_column(self._panel(), PANEL_WIDTH))
 
         session.labware_changed.connect(lambda _s: self._list_plates())
         session.robot_state_changed.connect(self._on_robot)
         session.robot_busy_changed.connect(lambda _h: self.refresh())
         session.profile_changed.connect(lambda _p: self.refresh())
         session.confirmations_changed.connect(self.refresh)
-        session.camera_opened.connect(lambda _l: self._show_camera())
-        session.camera_closed.connect(lambda _l: self._show_camera())
         self._list_plates()
 
     # -- construction --------------------------------------------------------
+
+    def _tip_column(self) -> QWidget:
+        column = QWidget(self)
+        lines = QVBoxLayout(column)
+        lines.setSpacing(SPACING)
+        lines.addStretch(1)
+        self.xy_readout = muted_label("X —   Y —", column)
+        self.xy_readout.setFont(mono_font(SIZES["body"]))
+        self.z_readout = QLabel("Z —", column)
+        self.z_readout.setFont(mono_font(SIZES["readout"], 500))
+        for widget in (caption("Tip", column), self.xy_readout,
+                       self.z_readout, muted_label("mm", column)):
+            lines.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
+        lines.addSpacing(SPACING * 3)
+
+        # The hidden panel's own pad: it moves, steps and grays as the
+        # panel says. Its keys are not bound while the panel is hidden.
+        self.pad = self.jog.pad
+        self.pad.keys.hide()
+        lines.addWidget(self.pad, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        # What the robot answered: a step refused, a move not possible.
+        self.said = muted_label("", column)
+        self.said.setWordWrap(True)
+        self.said.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lines.addWidget(self.said)
+        lines.addStretch(1)
+        return column
 
     def _panel(self) -> QWidget:
         panel = QWidget(self)
@@ -428,17 +453,23 @@ class WellCenterPage(QWidget):
         self._at = TO_WELL
         self._list_plates()
 
-    def _show_camera(self) -> None:
-        label = self.session.upper_camera_label
-        camera = (None if self.isHidden() or label is None
-                  else self.session.camera(label))
-        if camera is not self.view.camera:
-            self.view.set_camera(camera)
+    def _show_pose(self, pose) -> None:
+        if pose is not None:
+            self.xy_readout.setText(f"X {pose[0]:.2f}   Y {pose[1]:.2f}")
+            self.z_readout.setText(f"Z {pose[2]:.2f}")
+        elif self.session.robot is None:
+            self.xy_readout.setText("X —   Y —")
+            self.z_readout.setText("Z —")
+        self.refresh()
+
+    def _show_said(self, lines) -> None:
+        """Every answer of the panel's, a job's end included: the buttons
+        follow it (the robot's lease is given back before)."""
+        self.said.setText("\n".join(lines[1:]))
+        self.refresh()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self.opener.ensure(self.session.upper_camera_label)
-        self._show_camera()
         # The robot may have moved, and the deck changed, elsewhere.
         self.jog.refresh_position()
         self._list_plates()

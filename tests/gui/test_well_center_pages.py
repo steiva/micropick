@@ -190,6 +190,18 @@ def test_the_step_lists_the_plates_with_their_state(app, session):
     page.deleteLater()
 
 
+def test_the_step_shows_the_tip_and_the_pad_and_no_camera(app, session):
+    from micropick.gui.widgets.camera_view import CameraView
+    page = _step(app, session)
+    assert not page.findChildren(CameraView)
+    assert page.pad.parent() is not page.jog       # out of the hidden panel
+    assert page.pad.keys.isHidden()                # no keys bound here
+    page._show_pose((101.5, 52.25, 66.4))
+    assert page.xy_readout.text() == "X 101.50   Y 52.25"
+    assert page.z_readout.text() == "Z 66.40"
+    page.deleteLater()
+
+
 def test_skip_is_done_for_the_well_center_step(app, session):
     from micropick.gui import tasks
     page = _step(app, session)
