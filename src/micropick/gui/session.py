@@ -511,12 +511,16 @@ class Session(QObject):
             setattr(point, key, None if value is None else float(value))
         self.memo_points_changed.emit()
 
-    def remove_memo_points(self, names) -> None:
-        names = set(names)
-        kept = [p for p in self.memo_points if p.name not in names]
-        if len(kept) != len(self.memo_points):
-            self.memo_points = kept
-            self.memo_points_changed.emit()
+    def delete_memo_point(self, name: str) -> bool:
+        """Delete the point named `name`; False if there is none. Its
+        number is free again: the next point marked takes it."""
+        kept = [p for p in self.memo_points if p.name != name]
+        if len(kept) == len(self.memo_points):
+            return False
+        self.memo_points = kept
+        log.info("memo point %s deleted", name)
+        self.memo_points_changed.emit()
+        return True
 
     # -- state ---------------------------------------------------------------
 

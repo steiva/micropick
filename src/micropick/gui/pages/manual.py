@@ -929,7 +929,7 @@ class ManualPage(QWidget):
     def _delete_memo(self) -> None:
         name = self.memo_table.chosen_name
         if name is not None:
-            self.session.remove_memo_points([name])
+            self.session.delete_memo_point(name)
 
     def _delete_all_memos(self) -> None:
         points = self.session.memo_points
@@ -941,7 +941,8 @@ class ManualPage(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No)
         if answer == QMessageBox.StandardButton.Yes:
-            self.session.remove_memo_points([p.name for p in points])
+            for point in list(points):
+                self.session.delete_memo_point(point.name)
 
     def _go_to_memo(self) -> None:
         """The button: no Click to move, as the jog panel's Go to."""
