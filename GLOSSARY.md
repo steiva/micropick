@@ -52,6 +52,18 @@ _Avoid_: profile (the profile is how it is stored, never shown)
 The stored position the upper camera looks at the crosshair disc on the calibration module from. The tip calibration starts by going there.
 _Avoid_: disc position, tip_calib (on screen)
 
+**Shake position**:
+The stored position of the tip in the hole of the source dish's holder. It is set with a calibrated tip on, so it comes after the calibration position.
+_Avoid_: shake (on screen)
+
+**Position over the dish**:
+The stored position the upper camera looks at the whole source dish from, its rim around the crosshair.
+_Avoid_: observe (on screen)
+
+**Source dish**:
+The dish the robot picks from.
+_Avoid_: dish with cuboids, picking dish
+
 **Reset setup**:
 Clearing the robot setup to start it again, after the user confirms. The deck and the picking settings are kept.
 
