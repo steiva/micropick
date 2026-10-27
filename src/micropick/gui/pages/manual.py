@@ -191,11 +191,10 @@ DECK_HEIGHT = 170
 # On the picture while the lower camera is shown; see the module docstring.
 LOWER_CAMERA_NOTE = "lower camera: clicks do not mark or move"
 
-# What the mouse does on the picture, for the same box.
-MOUSE_HELP = ("click   mark a memo point (Mark points on)",
-              "double-click   move there (Click to move on)",
-              "wheel   zoom",
-              "middle-drag   pan")
+# What the mouse does on the picture, its row along the bottom.
+MOUSE_HELP = ("Click   mark a point (Mark points on)",
+              "Double-click   move there (Click to move on)",
+              "Wheel   zoom", "Middle-drag   pan")
 
 
 def _number_box(parent: QWidget, value: float, span, suffix: str,
@@ -252,6 +251,7 @@ class ManualPage(QWidget):
         # is showing, and go quiet with it.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
+        self.view.set_mouse_help(MOUSE_HELP)
         self.jog.moved.connect(self._forget_targets)
         # Emitted whenever a job ends: Go to well top's nominal is in, and
         # the buttons greyed for the job come back.
@@ -548,7 +548,7 @@ class ManualPage(QWidget):
     def _page_help(self) -> list[str]:
         bindings = self.session.settings.keys
         return ([f"{keys.key_text(bindings, action)}   {what}"
-                 for action, what, _ in KEYS] + list(MOUSE_HELP))
+                 for action, what, _ in KEYS])
 
     def _rebind(self) -> None:
         """A and D again, after Settings changed them."""

@@ -244,7 +244,8 @@ class CameraCalibrationSheet(SheetWindow):
                             machine_controls=False, collapsed=("positions",),
                             parent=self.body_widget)
         self.jog.show_position_on(self.view)
-        self.jog.add_help(["Click   center the camera there"])
+        self.view.set_mouse_help(["Click   center the camera there",
+                                  "Wheel   zoom", "Middle-drag   pan"])
         self.view.clicked.connect(self._clicked)
 
         column = QWidget(self.body_widget)

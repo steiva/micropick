@@ -46,9 +46,13 @@ and, in a build, its commit.
 
 ### Camera view chrome
 
-Text about the camera or the run (resolution, fps, zoom, robot status, gantry
-position) is drawn by `CameraView` in widget pixels as semi-transparent
-boxes over the picture, never into the frame and never as a separate panel.
+Over the picture is only what is used there (REDESIGN §3): the robot's X,
+Y and Z (fixed font, and what a step ran into), the page's own lines
+(`set_status`: found counts, a run's state), the page's buttons and one
+quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture   what
+it does" per item). Never the camera name, slot, resolution, crop, zoom,
+fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
+semi-transparent boxes, never into the frame and never as a separate panel.
 
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture gets the width its frame shape needs (4:3 for the upper camera),
@@ -123,13 +127,20 @@ and step the run was started from. Home's tiles are dimmed under "The
 robot is busy. Go back to <task> to stop or finish it." A new run names
 its holder in `RUNS` and gives its page a `run_activity`.
 
-The keys a page binds and what the mouse does are listed in a box at the
-picture's bottom-right (`CameraView.set_help`, fed by `JogPanel.help_lines`
-plus the page's `add_help`); H toggles it. A key added to a page belongs in
-that list too. A text or number field with the keyboard keeps the keys it
-uses (never taken from it: the robot would move while a digit is
-corrected); the box then says so (`jog_panel.TYPING_HELP`), and Enter in
-the field or a click on the picture or the page gives them back.
+Every jog panel's face is the `widgets.jog_pad.JogPad` (XY arrows, Z Up /
+Down, the step carousel of `jog.DEFAULT_STEPS`, the one list of step
+sizes): it floats over the picture's bottom-right
+(`CameraView.add_corner_widget`) while its panel and Move section are
+shown, and only says what was pressed - the panel moves as before
+(lease, envelope, `run_job`), the pad grayed with the reason while the
+robot is not free. There is no keys box: the pad's Keys toggle (H) puts
+the keys as bound on its buttons and lists the step keys, the panel's
+other keys and the page's own (`add_help`) under it. A key added to a page
+belongs in that list too; what the mouse does goes in the picture's mouse
+row. A text or number field with the keyboard keeps the keys it uses
+(never taken from it: the robot would move while a digit is corrected);
+the pad then says so (`jog_panel.TYPING_HELP`), and Enter in the field or
+a click on the picture or the page gives them back.
 
 A camera's focus is tuned only in its own window
 (`widgets.feed_window.FeedWindow`; its status bar button went with the
@@ -335,14 +346,13 @@ of their own (`widgets.cuboid_stats`: counts, a histogram per picking
 measure against its window, a table). Settings
 keeps Save and Revert at its bottom right, outside the scrolling columns.
 
-The keys box on a picture has a bold "Keyboard shortcuts" title and the
-keys in blue (`camera_view.HELP_KEY`); a help line is "keys   what it
+A key line on the pad, like an item of the mouse row, is "keys   what it
 does", split at its first three spaces.
 
 The keys that move the robot (and Manual control's aspirate, dispense) are
 `gui.keys` actions with today's keys as defaults, rebound on the Settings
 page's Keys card (`AppSettings.keys`, only the changed ones stored). The
-jog panel and Manual control bind from it, rebind on save, and the key box
+jog panel and Manual control bind from it, rebind on save, and the pad
 names the keys as bound. A new robot key is an action there, never a
 hard-coded QShortcut.
 

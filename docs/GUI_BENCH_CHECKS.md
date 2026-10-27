@@ -1249,3 +1249,40 @@ camera chosen, the robot connected, the calibration marker at hand.
   first." › Go to Camera calibration: the sheet over the Tip step,
   `Home › Auto pick › Camera calibration`; the arrow keys move only the
   sheet's jog panel.
+
+---
+
+## Redesign — JogPad and quieter camera chrome (#11)
+
+Start the program normally (no `--mock`), robot on, a profile with both
+cameras.
+
+- [ ] **The pad is over the picture.**
+  Manual control, Liquid handling, the camera calibration sheet's centering
+  step, the tip calibration: MOVE THE ROBOT at the picture's bottom-right,
+  XY arrows, Up / Down, Step ‹ 0.5 1 2 ›. Picking: no pad until its Move
+  section is unfolded. Expected failure if wrong: two pads on one picture,
+  or a pad left over another page.
+
+- [ ] **A press moves one step.**
+  At step 1 each arrow moves 1 mm, Up / Down 1 mm in Z; ‹ › and + / - walk
+  0.01 … 10 mm, 5 drawn yellow and 10 red. Over the tip calibration's
+  lower camera the arrows move the tip as on the picture, each button's
+  tooltip naming the robot axis; during the touch-up there is no Up / Down.
+
+- [ ] **Gray while the robot is busy.**
+  Start a liquid run: the pad's arrows are gray, the tooltip "Robot busy:
+  liquid run." Lock: gray too.
+
+- [ ] **Keys.**
+  Keys (or H): ← ↑ → ↓ PgUp PgDn on the buttons, the step keys, Space, U,
+  H and the page's keys (A, D on Manual control) under them. Rebind Z up in
+  Settings: the keycap follows. Click into a number field: the pad says
+  the keys are the field's; Enter gives them back.
+
+- [ ] **Only what is used is on the picture.**
+  Top-left: X … Y … Z … in a fixed font and nothing else from the camera
+  - no resolution, crop, zoom or fps. Bottom-left: one row, "Wheel zoom
+  Middle-drag pan Double-click fit" (Manual control: its clicks first),
+  cut short rather than running under the pad. Picking's size histogram
+  sits above that row.

@@ -79,7 +79,7 @@ overwrite each other.
 And a fourth, "sizes", while a page has handed over a size histogram
 (`set_histogram`, the bins of `widgets.size_histogram`): the cuboids'
 diameters against the size window, small and translucent in the
-bottom-left corner. Chrome like the caption - drawn in widget pixels,
+bottom-left corner. Chrome like the position box - drawn in widget pixels,
 never into the frame, and not a widget, so a click on it still reaches the
 picture. On by default when it appears. A page that has more to say
 about the cuboids enables a chart button in the histogram's corner
@@ -91,9 +91,14 @@ an arrow for +X and one for +Y, from the pixel map, so the operator knows
 which way a jog key will carry the view without trying it. Only for a
 camera with a map; the page that has one hands the directions over.
 
-In the position box the jog step ("step 10 mm") is coloured by how far one
-key press moves the gantry (`step_colour`): white up to 3 mm, orange to
-5 mm, red above - a press at 10 mm near the dish is the one to notice.
+Quiet chrome (REDESIGN §3)
+--------------------------
+Over the picture only what is used there: the robot's X, Y and Z
+(`set_position`, in a fixed font), what the page says (`set_status`: found
+counts, a run's state), the page's own buttons and one quiet row of what
+the mouse does (`set_mouse_help`) in the bottom-left corner. No camera
+name, slot, resolution, crop, zoom or frame rate. The keys are on the jog
+pad (`add_corner_widget`), not in a box here.
 
 Saving the picture
 ------------------
@@ -108,14 +113,13 @@ encoding, and where it went is said on the picture for a few seconds.
 
 from __future__ import annotations
 
-import re
-import time
 from datetime import datetime
 
 import cv2
 import numpy as np
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QTransform
+from PySide6.QtGui import (QColor, QFont, QFontDatabase, QFontMetrics,
+                           QPainter, QPen, QPixmap, QTransform)
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox,
                                QHBoxLayout, QLabel, QSlider, QSpinBox,
                                QToolButton, QWidget)
@@ -145,18 +149,13 @@ CAPTION_BG = QColor(0, 0, 0, 140)
 CAPTION_FG = QColor(235, 235, 235)
 CAPTION_PAD = 6
 CAPTION_GAP = 6
-# The keys box: its title, where a line splits into the keys and what they
-# do, and the keys' colour - qdarktheme's dark accent, fixed because the box
-# under it is always dark, whatever the theme.
-HELP_TITLE = "Keyboard shortcuts"
-HELP_SPLIT = "   "
-HELP_KEY = QColor(138, 180, 247)
-HELP_TITLE_GAP = 4
-HELP_LEADING = 2                 # between the lines of the keys box
-# The jog step in a box's text, and its colour by size.
-STEP = re.compile(r"step (\d+(?:\.\d+)?) mm")
-STEP_ORANGE = QColor(255, 170, 40)
-STEP_RED = QColor(255, 80, 70)
+# The mouse row: a gesture and what it does, split at three spaces; the
+# gesture in the boxes' ink, what it does dimmer, the items apart.
+MOUSE_SPLIT = "   "
+MOUSE_WHAT = QColor(235, 235, 235, 170)
+MOUSE_GAP = 22
+# What the mouse does on any picture, until a page says otherwise.
+MOUSE_HELP = ("Wheel   zoom", "Middle-drag   pan", "Double-click   fit")
 # The axes box: arrow length, the margin around the arrows and their
 # letters, and a colour per axis - red and green, as X and Y are drawn in
 # most software that draws them.
@@ -165,20 +164,12 @@ AXIS_PAD = 5
 AXIS_LETTER = 8                  # half the box a letter is centered in
 AXIS_COLOURS = {"X": QColor(255, 105, 95), "Y": QColor(110, 220, 120)}
 
-
-def step_colour(mm: float) -> QColor:
-    """White up to 3 mm, orange up to 5 mm, red above."""
-    if mm <= 3:
-        return CAPTION_FG
-    return STEP_ORANGE if mm <= 5 else STEP_RED
 # White, thin and translucent: a reference to aim with, not a mark on the
 # dish. Solid red hid the few pixels it was being aimed at and read as
 # one of the detection colours.
 CROSSHAIR = QColor(255, 255, 255, 150)
 CROSSHAIR_WIDTH = 1
 CROSSHAIR_ARM = 30
-
-FPS_WINDOW_S = 0.5
 
 DEFAULT_ASPECT = 4 / 3           # the upper camera, 2592x1944
 
@@ -243,9 +234,6 @@ class CameraView(QWidget):
         self._transform = QTransform()
         self._dirty = False
 
-        self._fps = 0.0
-        self._fps_at = time.monotonic()
-        self._fps_count = 0
         self._overlay: list = []
         self._overlay_layer = None                # (transform, size, dpr, pixmap)
         self._marks: list = []
@@ -255,7 +243,7 @@ class CameraView(QWidget):
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
         self._status: list[str] = []
-        self._help: list[str] = []
+        self._mouse_help: list[str] = list(MOUSE_HELP)
         self._lost: str | None = None             # the camera's `lost`
 
         # Zoom about a point: the view pixel that sits at the widget's center.
@@ -444,9 +432,6 @@ class CameraView(QWidget):
         self._camera = camera
         self._raw = None
         self._image = None
-        self._fps = 0.0
-        self._fps_count = getattr(camera, "frame_count", 0) if camera else 0
-        self._fps_at = time.monotonic()
         self._lost = None
         self._zoom = 1.0
         self._center = None
@@ -623,7 +608,9 @@ class CameraView(QWidget):
         width, height = HIST_BOX
         if self.width() < 2 * width or self.height() < 2 * height:
             return None                           # no room on a small view
-        bottom = (self.focus_row.geometry().top() - 8
+        mouse = self._mouse_rect()
+        bottom = (mouse.top() - 4 if mouse is not None
+                  else self.focus_row.geometry().top() - 8
                   if self.focus_row.isVisible() else self.height() - 8)
         return QRect(8, bottom - height, width, height)
 
@@ -822,8 +809,6 @@ class CameraView(QWidget):
     @live.setter
     def live(self, value: bool) -> None:
         self._live = bool(value)
-        if not self._live:
-            self._fps = 0.0
 
     @property
     def held_frame(self) -> np.ndarray | None:
@@ -838,7 +823,6 @@ class CameraView(QWidget):
         are being drawn on it.
         """
         self._live = False
-        self._fps = 0.0
         self._raw = frame
         self._dirty = True
         self._rebuild()
@@ -846,8 +830,6 @@ class CameraView(QWidget):
 
     def resume(self) -> None:
         self._live = True
-        self._fps_at = time.monotonic()
-        self._fps_count = getattr(self._camera, "frame_count", 0)
 
     def set_overlay_items(self, primitives) -> None:
         """Draw these over the picture, in **sensor** coordinates.
@@ -863,7 +845,7 @@ class CameraView(QWidget):
         self.update()
 
     def set_position(self, lines) -> None:
-        """Where the gantry is, in a box under the caption. Empty removes it.
+        """Where the gantry is, in a box in the top-left corner. Empty removes it.
 
         On the picture rather than in a panel beside it: the operator jogging
         is looking here, and a readout at the other side of the window is one
@@ -873,15 +855,16 @@ class CameraView(QWidget):
         self._position = [str(line) for line in lines or ()]
         self.update()
 
-    def set_help(self, lines) -> None:
-        """What the keys and the mouse do here, in a box in the bottom-right
-        corner. Empty removes it."""
-        self._help = [str(line) for line in lines or ()]
+    def set_mouse_help(self, lines) -> None:
+        """What the mouse does on this picture, one row in the bottom-left
+        corner: "gesture   what it does" per item. Empty removes it."""
+        self._mouse_help = [str(line) for line in lines or ()]
+        self._place_controls()
         self.update()
 
     def set_status(self, lines) -> None:
-        """Lines of text under the caption: what a page is doing, where the
-        caption says what the camera is. Chrome like the caption, so it is
+        """Lines of text under the position: what a page is doing - found
+        counts, a run's state. Chrome like the position, so it is
         drawn in widget pixels and reads the same at any frame size or zoom
         rather than being scaled along with the picture. Empty removes it."""
         self._status = [str(line) for line in lines or ()]
@@ -920,7 +903,6 @@ class CameraView(QWidget):
         if not ok or frame is None:
             return
 
-        self._measure_fps(camera)
         if frame is self._raw and not self._dirty:
             # The camera has not produced anything new. Rebuilding would
             # resample the same pixels; repainting would draw them again.
@@ -929,18 +911,6 @@ class CameraView(QWidget):
         self._rebuild()
         self.update()
         self.frame_shown.emit()
-
-    def _measure_fps(self, camera) -> None:
-        """From frame_count. measure_fps() sleeps for a second and would take
-        the GUI thread with it."""
-        now = time.monotonic()
-        elapsed = now - self._fps_at
-        if elapsed < FPS_WINDOW_S:
-            return
-        count = getattr(camera, "frame_count", 0)
-        self._fps = max(0.0, (count - self._fps_count) / elapsed)
-        self._fps_count = count
-        self._fps_at = now
 
     # -- scaling, exactly once per frame -------------------------------------
 
@@ -1069,8 +1039,6 @@ class CameraView(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        self._fps_at = time.monotonic()
-        self._fps_count = getattr(self._camera, "frame_count", 0)
         self._timer.start()
 
     def hideEvent(self, event) -> None:
@@ -1120,7 +1088,6 @@ class CameraView(QWidget):
             # Where the gantry is does not depend on there being a picture.
             self._draw_boxes(painter, [self._lost_lines(), self._position,
                                        self._status])
-            self._draw_help(painter)
             painter.end()
             return
 
@@ -1134,8 +1101,10 @@ class CameraView(QWidget):
             self._draw_crosshair(painter, self._box)
         if self._histogram is not None and self.sizes_box.isChecked():
             self._draw_histogram(painter)
-        self._draw_caption(painter)
-        self._draw_help(painter)
+        top = self._draw_boxes(painter, [self._lost_lines(), self._position,
+                                         self._status, self._flash])
+        self._draw_axes(painter, top)
+        self._draw_mouse_help(painter)
         painter.end()
 
     def _draw_placeholder(self, painter: QPainter) -> None:
@@ -1151,27 +1120,9 @@ class CameraView(QWidget):
         painter.drawLine(cx - CROSSHAIR_ARM, cy, cx + CROSSHAIR_ARM, cy)
         painter.drawLine(cx, cy - CROSSHAIR_ARM, cx, cy + CROSSHAIR_ARM)
 
-    def _draw_caption(self, painter: QPainter) -> None:
-        width, height = self._view_size
-        parts = [f"{width}×{height}"]
-        crop = float(getattr(self._camera, "crop", 1.0)) if self._camera else 1.0
-        if crop != 1.0:
-            parts.append(f"crop {crop:g}")
-        if self._zoom != ZOOM_MIN:
-            parts.append(f"zoom {self._zoom:.2g}×")
-        parts.append("held" if not self._live else f"{self._fps:.0f} fps")
-
-        # The caption, then where the gantry is, then what the page is
-        # doing: boxes of one kind, stacked down the corner; the axes under
-        # them.
-        top = self._draw_boxes(painter, [["   ".join(parts)],
-                                         self._lost_lines(), self._position,
-                                         self._status, self._flash])
-        self._draw_axes(painter, top)
-
     def _draw_histogram(self, painter: QPainter) -> None:
         """The size histogram, small, in the bottom-left corner: clear of
-        the help on the right and of the focus slider when there is one.
+        the jog pad on the right, over the mouse row and the focus slider.
         The same bins as the page's plot, so the two count alike."""
         bins = self._histogram
         box = self._hist_rect()
@@ -1228,18 +1179,23 @@ class CameraView(QWidget):
                          f"{bins.smaller} smaller, {bins.bigger} bigger")
 
     def _lost_lines(self) -> list[str]:
-        """Under the caption while the camera is being opened again: the
+        """At the top while the camera is being opened again: the
         picture above is its last frame, not a live one."""
         if not self._lost:
             return []
         return [self._lost, "the picture is the last frame before it"]
 
-    def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> None:
-        painter.setFont(QFont(self.font().family(), 10))
+    def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> int:
+        """Boxes of lines down the top-left corner; the robot's position
+        (`set_position`) in a fixed font, as numbers that change in place."""
+        font = QFont(self.font().family(), 10)
+        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        mono.setPointSize(10)
         painter.setPen(QPen(CAPTION_FG))
         top = 8
         for lines in groups:
             if lines:
+                painter.setFont(mono if lines is self._position else font)
                 top = self._draw_box(painter, top, lines) + CAPTION_GAP
         return top
 
@@ -1292,60 +1248,58 @@ class CameraView(QWidget):
                              Qt.AlignmentFlag.AlignCenter, name)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
-    def _draw_help(self, painter: QPainter) -> None:
-        """The keys box, in the bottom-right corner, clear of the focus
-        slider on the left and the crosshair toggle at the top: a bold
-        title, then a line per key - the key in HELP_KEY, what it does in
-        the caption's ink, the two in columns. A line is "keys   what it
-        does", split at its first three spaces; one without them is drawn
-        whole."""
-        if not self._help:
+    def _mouse_rect(self) -> QRect | None:
+        """Where the mouse row goes: the bottom-left corner, clear of the
+        focus row, or None when there is nothing to say."""
+        if not self._mouse_help:
+            return None
+        height = QFontMetrics(QFont(self.font().family(), 9)).height() + 8
+        bottom = (self.focus_row.geometry().top() - 8
+                  if self.focus_row.isVisible() else self.height() - 8)
+        return QRect(8, bottom - height, self.width() - 16, height)
+
+    def _draw_mouse_help(self, painter: QPainter) -> None:
+        """One quiet row, "Wheel zoom   Middle-drag pan", on a translucent
+        strip as the other boxes: the gesture in the boxes' ink, what it
+        does dimmer. Cut at the jog pad, if one is over the corner beside
+        it."""
+        row = self._mouse_rect()
+        if row is None:
             return
-        font = QFont(self.font().family(), 10)
+        right = min([w.geometry().left() for w in self._corner
+                     if w.isVisible()] + [row.right()]) - 8
+        font = QFont(self.font().family(), 9)
         bold = QFont(font)
-        bold.setBold(True)
-        painter.setFont(bold)
-        title_metrics = painter.fontMetrics()
-        painter.setFont(font)
-        metrics = painter.fontMetrics()
-        rows = []
-        for line in self._help:
-            keys, sep, what = line.partition(HELP_SPLIT)
-            rows.append((keys.strip(), what.strip()) if sep else ("", line))
-        key_width = max(metrics.horizontalAdvance(k) for k, _ in rows)
-        gap = metrics.horizontalAdvance(HELP_SPLIT)
-        line_width = max(
-            (key_width + gap if k else 0) + metrics.horizontalAdvance(w)
-            for k, w in rows)
-        pad = CAPTION_PAD
-        width = max(title_metrics.horizontalAdvance(HELP_TITLE),
-                    line_width) + 2 * pad
-        height = (title_metrics.height() + HELP_TITLE_GAP
-                  + (metrics.height() + HELP_LEADING) * len(rows) + 2 * pad)
-        box = QRect(self.width() - 8 - width, self.height() - 8 - height,
-                    width, height)
-        painter.fillRect(box, CAPTION_BG)
-        x, y = box.x() + pad, box.y() + pad
-        painter.setFont(bold)
-        painter.setPen(QPen(CAPTION_FG))
-        painter.drawText(QRect(x, y, width, title_metrics.height()),
-                         Qt.AlignmentFlag.AlignLeft
-                         | Qt.AlignmentFlag.AlignVCenter, HELP_TITLE)
-        y += title_metrics.height() + HELP_TITLE_GAP
-        painter.setFont(font)
+        bold.setWeight(QFont.Weight.DemiBold)
+        items = []                       # [(text, font, ink)] per item
+        x = row.left() + CAPTION_PAD
+        for line in self._mouse_help:
+            gesture, sep, what = line.partition(MOUSE_SPLIT)
+            pieces = [(gesture.strip(), bold, CAPTION_FG)]
+            if sep:
+                pieces.append((" " + what.strip(), font, MOUSE_WHAT))
+            width = sum(QFontMetrics(f).horizontalAdvance(t)
+                        for t, f, _ in pieces)
+            if x + width > right:
+                break
+            items.append(pieces)
+            x += width + MOUSE_GAP
+        if not items:
+            return
+        painter.fillRect(QRect(row.left(), row.top(),
+                               x - MOUSE_GAP + CAPTION_PAD - row.left(),
+                               row.height()), CAPTION_BG)
+        x = row.left() + CAPTION_PAD
         flags = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        for keys, what in rows:
-            if keys:
-                painter.setPen(QPen(HELP_KEY))
-                painter.drawText(QRect(x, y, key_width + 1, metrics.height()),
-                                 flags, keys)
-                left = x + key_width + gap
-            else:
-                left = x
-            painter.setPen(QPen(CAPTION_FG))
-            painter.drawText(QRect(left, y, width, metrics.height()), flags,
-                             what)
-            y += metrics.height() + HELP_LEADING
+        for pieces in items:
+            for text, face, ink in pieces:
+                painter.setFont(face)
+                painter.setPen(QPen(ink))
+                advance = painter.fontMetrics().horizontalAdvance(text)
+                painter.drawText(QRect(x, row.top(), advance + 1,
+                                       row.height()), flags, text)
+                x += advance
+            x += MOUSE_GAP
 
     def _draw_box(self, painter: QPainter, top: int, lines: list[str],
                   left: int = 8) -> int:
@@ -1356,24 +1310,9 @@ class CameraView(QWidget):
         box = QRect(left, top, width + 2 * pad,
                     metrics.height() * len(lines) + 2 * pad)
         painter.fillRect(box, CAPTION_BG)
-        pen = painter.pen()
         for i, line in enumerate(lines):
             x, y = box.x() + pad, box.y() + pad + i * metrics.height()
-            # The step in its own colour: the line drawn in three pieces.
-            found = STEP.search(line)
-            pieces = ([(line, None)] if found is None else
-                      [(line[:found.start()], None),
-                       (found.group(0), step_colour(float(found.group(1)))),
-                       (line[found.end():], None)])
-            for text, colour in pieces:
-                if not text:
-                    continue
-                if colour is not None:
-                    painter.setPen(QPen(colour))
-                advance = metrics.horizontalAdvance(text)
-                painter.drawText(QRect(x, y, advance + 1, metrics.height()),
-                                 Qt.AlignmentFlag.AlignLeft
-                                 | Qt.AlignmentFlag.AlignVCenter, text)
-                painter.setPen(pen)
-                x += advance
+            painter.drawText(QRect(x, y, width + 1, metrics.height()),
+                             Qt.AlignmentFlag.AlignLeft
+                             | Qt.AlignmentFlag.AlignVCenter, line)
         return box.bottom() + 1
