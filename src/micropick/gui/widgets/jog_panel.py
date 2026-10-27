@@ -12,10 +12,21 @@ come back to the pose the camera was looking from. Those are the same act,
 and a second D-pad would be a second place for the step list and the soft
 limits to drift.
 
+The face is the JogPad
+----------------------
+The arrows, Z Up / Down and the step carousel are `widgets.jog_pad.JogPad`
+(REDESIGN §3), the same everywhere. It only says what was pressed; this
+panel does what it did for its own buttons - the lease, the envelope,
+`run_job`. On a page with a picture (`show_position_on`) the pad floats
+over the picture's bottom-right corner, shown while this panel and its
+Move section are; without one it sits in the Move section. Grayed while
+the robot is not free, the reason in each button's tooltip. Its steps are
+the controller's (`jog.DEFAULT_STEPS`).
+
 Two sections of it fold
 -----------------------
 Not every page that needs the panel needs all of it. Centering a marker is
-the D-pad and nothing else; the tip calibration usually drives to a stored
+the pad and nothing else; the tip calibration usually drives to a stored
 position and never jogs at all; the check page wants the stored positions
 above everything. So Move and Positions are `theme.factory.Section`s and
 each page says which of them start folded, rather than four panels or one
@@ -52,7 +63,7 @@ The layout is jog's, the keys are Settings'
 What the keys do comes from `jog.LAYOUT`; which key does it comes from
 `gui.keys`, the defaults being jog's own (the arrows, PgUp and PgDn for Z)
 and any of them rebound in Settings for a keyboard without them. The
-shortcuts and the key list on the picture are both built from the same
+shortcuts and the keys on the pad are both built from the same
 two, so the list cannot name a key that is not bound; a saved change binds
 the new keys at once (`_rebind`).
 
@@ -77,9 +88,10 @@ Where the gantry is goes on the picture
 ---------------------------------------
 The panel has no readout of its own. It says where the gantry is, and what a
 refused or clamped step was, through `position_changed`, and the page hands
-that to its `CameraView`, which draws it in a box under the resolution. The
-operator jogging is watching the picture; a readout at the other side of the
-window was one more place to look.
+that to its `CameraView`, which draws it in a box in the top-left corner:
+the robot's X, Y and Z, and what a step ran into - the step itself is on
+the pad. The operator jogging is watching the picture; a readout at the
+other side of the window was one more place to look.
 
 Arrows as on the picture, when the picture is turned
 ---------------------------------------------------
@@ -90,8 +102,8 @@ the arrow pressed. `view_axes` is for that: a 2x2 matrix from a step on the
 picture, in pixel directions (right is +u, down is +v), to the robot's X and
 Y - `TipTarget.axes`, for the lower camera. With it, each arrow is turned
 into a picture direction and then into the robot axis nearest to it, so the
-tip moves the way the arrow points; the pad's buttons lose their axis names
-and the help says "as on the picture". A step is still one axis at a time.
+tip moves the way the arrow points; each pad button's tooltip names the
+robot axis it moves, and the help says "as on the picture". A step is still one axis at a time.
 
 XY only
 -------
@@ -101,17 +113,18 @@ off the panel: the Z buttons are hidden, PgUp and PgDn are not bound (the
 shortcuts stay disabled, so the keys go to whatever else wants them), and
 the help does not list them.
 
-The keys are listed there too, in a box in the picture's bottom-right corner
-(`help_changed`, `CameraView.set_help`), shown until H hides it. A page adds
-its own keys and mouse actions to the same list with `add_help`.
+The keys are on the pad: its Keys toggle, which H also turns on and off,
+puts each button's key on it as a keycap and lists the step keys, the
+panel's other keys and the page's own (`add_help`) under it. What the
+mouse does is the picture's own row (`CameraView.set_mouse_help`).
 
 A field has the keys
 --------------------
 The keys are window shortcuts, and a text or number field with the keyboard
 takes the ones it can use first: the arrows move its cursor or step its
 number, a letter is typed. Taking them from it would move the robot while
-someone corrects a digit, so the field keeps them, and the box says so
-instead of listing keys (`TYPING_HELP`). Enter in the field, or a click on
+someone corrects a digit, so the field keeps them, and the pad says so
+under its buttons (`TYPING_HELP`). Enter in the field, or a click on
 the picture or on the page beside the fields, takes the keyboard off it and
 the keys move the robot again.
 
@@ -129,8 +142,8 @@ import re
 from dataclasses import replace
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QGridLayout,
+from PySide6.QtGui import QFontDatabase, QShortcut
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit,
                                QListWidget, QListWidgetItem, QMessageBox,
                                QPlainTextEdit, QTextEdit, QVBoxLayout,
@@ -141,13 +154,16 @@ from .. import keys
 from ..position_marks import CAMERA_POSITIONS, PositionMarks
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (Section, card, combo_box, heading,
-                             primary_button, secondary_button)
+from ..theme.factory import (Section, card, heading, primary_button,
+                             secondary_button)
+from .jog_pad import JogPad
 
 # What the picture says while there is no robot to ask.
 NO_ROBOT = "robot not connected"
+# Why the pad is gray then.
+NO_ROBOT_REASON = "Robot not connected."
 
-# The keys box while a field has the keyboard; see "A field has the keys".
+# Under the pad while a field has the keyboard; see "A field has the keys".
 TYPING_HELP = ("Keys now control the input field, not the robot.",
                "Press Enter or click the picture to move the robot again.")
 _ENTER = (Qt.Key.Key_Return, Qt.Key.Key_Enter)
@@ -205,8 +221,10 @@ def home_robot(robot) -> str:
     log.info("homed")
     return "homed"
 
-# The pose at the head of `JogController.status()`, "(x, y, z) ...".
+# The pose at the head of `JogController.status()`, "(x, y, z) ...", and
+# its "x OUT by 0.30" for each axis out of the envelope.
 POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
+OUT = re.compile(r"\b[xyz] OUT by [\d.]+")
 
 # The sections a page may ask to start folded, by name.
 SECTIONS = ("move", "positions")
@@ -264,8 +282,6 @@ def _bound_layout() -> tuple:
 _ARROW_PIXELS = {("x", +1): (1.0, 0.0), ("x", -1): (-1.0, 0.0),
                  ("y", +1): (0.0, -1.0), ("y", -1): (0.0, 1.0)}
 
-# What an arrow is called on the pad once it means a picture direction.
-_ARROW_TEXT = {("x", +1): "→", ("x", -1): "←", ("y", +1): "↑", ("y", -1): "↓"}
 
 
 def check_view_axes(axes):
@@ -305,8 +321,6 @@ class JogPanel(QWidget):
     # detections drawn on the picture drops them: they were measured from
     # where the camera was.
     moved = Signal()
-    # The key list for the picture, or [] while H has it hidden.
-    help_changed = Signal(list)
     # The gantry's (x, y, z) from the latest status line, or None while a
     # job that moves is running or before the first read.
     pose_changed = Signal(object)
@@ -349,15 +363,13 @@ class JogPanel(QWidget):
         self._job_moves = True
         self._view_axes = check_view_axes(view_axes)
         self._xy_only = bool(xy_only)
-        self._z_buttons: list[QWidget] = []
         self._z_shortcuts: list[QShortcut] = []
-        self._pad: dict[tuple[str, int], QWidget] = {}
         # The page's own lines, kept apart so the jog keys' part can be
         # generated again when an option changes what they say.
         self._extra_help: list[str] = []
         self._help = self._key_help()
-        self._help_shown = True
         self._typing = False                # a field on the page has the keys
+        self._pad_view = None               # the picture the pad floats over
         self.pose: tuple[float, float, float] | None = None
 
         # Not a scroll area itself. The page that hosts it may put it in one
@@ -391,6 +403,7 @@ class JogPanel(QWidget):
         session.robot_busy_changed.connect(self._on_robot_busy)
 
         self._on_robot_changed(session.robot_state)
+        self._emit_help()
 
     # -- construction --------------------------------------------------------
 
@@ -398,43 +411,17 @@ class JogPanel(QWidget):
         box = Section("Move", collapsed="move" in self._collapsed, parent=self)
         self.move_section = box
 
-        grid = QGridLayout()
-        grid.setSpacing(SPACING // 2)
-        pad = {("y", +1): (0, 1, "↑ Y"), ("y", -1): (2, 1, "↓ Y"),
-               ("x", -1): (1, 0, "← X"), ("x", +1): (1, 2, "X →")}
-        for (axis, direction), (row, col, text) in pad.items():
-            button = self._move_button(text, axis, direction)
-            self._pad[(axis, direction)] = button
-            grid.addWidget(button, row, col)
-        self._z_buttons = [self._move_button("↑ Z", "z", +1),
-                           self._move_button("↓ Z", "z", -1)]
-        grid.addWidget(self._z_buttons[0], 0, 3)
-        grid.addWidget(self._z_buttons[1], 2, 3)
-        self._z_column = grid
-        for button in self._z_buttons:
-            button.setVisible(not self._xy_only)
-        grid.setColumnMinimumWidth(3, 0 if self._xy_only else 90)
-        box.body.layout().addLayout(grid)
-
-        step = QHBoxLayout()
-        step.addWidget(QLabel("Step"))
-        self.step_choice = combo_box(self)
-        for value in DEFAULT_STEPS:
-            self.step_choice.addItem(f"{value:g} mm", value)
-        self.step_choice.currentIndexChanged.connect(self._step_chosen)
-        step.addWidget(self.step_choice, 1)
-        smaller = secondary_button("−", self)
-        smaller.clicked.connect(lambda: self._command("step_down"))
-        bigger = secondary_button("+", self)
-        bigger.clicked.connect(lambda: self._command("step_up"))
-        step.addWidget(smaller)
-        step.addWidget(bigger)
-        self._movers += [smaller, bigger, self.step_choice]
-        box.body.layout().addLayout(step)
+        self.pad = JogPad(steps=DEFAULT_STEPS,
+                          bindings=self.session.settings.keys, parent=box.body)
+        self.pad.jog.connect(self._move)
+        self.pad.step_changed.connect(self._pad_step)
+        self.pad.set_xy_only(self._xy_only)
+        box.body.layout().addWidget(self.pad)
+        box.toggle.toggled.connect(lambda _on: self._sync_pad())
 
         # Undo belongs with the steps it undoes. It sat under Positions,
         # where "Undo" beside a list of saved poses read as if it would undo
-        # the saving; here, next to the D-pad, and named for what it does.
+        # the saving; here, next to the pad, and named for what it does.
         self.undo_button = secondary_button("Undo step", self)
         self.undo_button.setToolTip(
             "Undo the last jog step.")
@@ -445,26 +432,16 @@ class JogPanel(QWidget):
         return box
 
     def _label_pad(self) -> None:
-        """Axis names on the pad, or bare arrows when they mean the
-        picture's directions."""
-        names = {("y", +1): "↑ Y", ("y", -1): "↓ Y", ("x", -1): "← X",
-                 ("x", +1): "X →"}
-        for key, button in self._pad.items():
-            if self._view_axes is None:
-                button.setText(names[key])
-                button.setToolTip("")
-            else:
-                axis, direction = view_move(self._view_axes, *key)
-                button.setText(_ARROW_TEXT[key])
-                button.setToolTip(f"Robot {'+' if direction > 0 else '-'}"
-                                  f"{axis.upper()}.")
-
-    def _move_button(self, text: str, axis: str, direction: int):
-        button = secondary_button(text, self)
-        button.clicked.connect(lambda: self._move(axis, direction))
-        button.setAutoRepeat(False)      # the controller refuses a queue anyway
-        self._movers.append(button)
-        return button
+        """Each arrow's robot axis in its tooltip when the arrows mean the
+        picture's directions; none when they are the robot's own."""
+        hints = {}
+        if self._view_axes is not None:
+            for action in ("x+", "x-", "y+", "y-"):
+                axis, direction = view_move(self._view_axes, action[0],
+                                            1 if action[1] == "+" else -1)
+                hints[action] = (f"Robot {'+' if direction > 0 else '-'}"
+                                 f"{axis.upper()}.")
+        self.pad.set_hints(hints)
 
     def _positions_card(self) -> QWidget:
         """The profile's named poses: what is stored, where, and how to go.
@@ -600,8 +577,7 @@ class JogPanel(QWidget):
 
         def job():
             # status() re-reads the pose, so a step costs one extra GET. At a
-            # key press per step that is nothing, and it keeps the line on
-            # screen formatted by jog itself rather than reassembled here.
+            # key press per step that is nothing.
             return controller.move(axis, direction), controller.status()
 
         self._run(Worker(job))
@@ -610,8 +586,7 @@ class JogPanel(QWidget):
         if command == "help":
             # Before the robot check: reading the keys is exactly what is
             # wanted when nothing else works yet.
-            self._help_shown = not self._help_shown
-            self._emit_help()
+            self.pad.keys.toggle()
             return
         if self.controller is None:
             return
@@ -620,9 +595,9 @@ class JogPanel(QWidget):
         controller = self.controller
 
         if command == "step_up":
-            self._set_step(controller.step_up())
+            self.pad.step_by(+1)              # the pad tells the controller
         elif command == "step_down":
-            self._set_step(controller.step_down())
+            self.pad.step_by(-1)
         elif command == "save":
             # The same act as the button: one store, and it asks for a name.
             # It used to put the pose in the controller's own dict under a
@@ -840,13 +815,9 @@ class JogPanel(QWidget):
         self._emit_position()
 
     def set_step(self, value: float) -> None:
-        """Choose the step from outside, e.g. 0.05 mm for a touch-up. A value
-        not in the list is still set on the controller; the chooser then
-        shows nothing selected rather than the wrong number."""
-        if self.controller is None:
-            return
-        self.controller.step = float(value)
-        self._set_step(float(value))
+        """Choose the step from outside, e.g. 0.05 mm for a touch-up: the
+        nearest of the pad's sizes."""
+        self.pad.set_step(float(value), emit=True)
 
     # -- the worker ----------------------------------------------------------
 
@@ -950,20 +921,33 @@ class JogPanel(QWidget):
         return [self._status] + ([self._message] if self._message else [])
 
     def show_position_on(self, view) -> None:
-        """Keep `view` (a CameraView) showing where the gantry is, and the
-        keys, from now."""
+        """Keep `view` (a CameraView) showing where the gantry is, with the
+        pad over its bottom-right corner, from now."""
         self.position_changed.connect(view.set_position)
         view.set_position(self.position_lines)
-        self.help_changed.connect(view.set_help)
-        view.set_help(self.help_lines)
+        self._pad_view = view
+        view.add_corner_widget(self.pad)
+        self._sync_pad()
         view.installEventFilter(self)       # a click on it gives the keys back
         PositionMarks.on(self.session, view).follow(self)
 
+    def _sync_pad(self) -> None:
+        """Over the picture, the pad is shown while this panel and its Move
+        section are; in the section it simply goes with it."""
+        if self._pad_view is None:
+            return
+        self.pad.setVisible(self.isVisible()
+                            and not self.move_section.collapsed)
+        if self.pad.isVisible():
+            self.pad.raise_()
+
     @property
     def help_lines(self) -> list[str]:
+        """The keys, "keys   what they do", or what a field with the
+        keyboard means for them."""
         if self._typing:
             return list(TYPING_HELP)
-        return list(self._help) if self._help_shown else []
+        return list(self._help)
 
     # -- a field with the keys ------------------------------------------------
 
@@ -1019,8 +1003,18 @@ class JogPanel(QWidget):
             layout = tuple(replace(key, help="move as on the picture")
                            if key.move is not None and key.move[0] in "xy"
                            else key for key in layout)
-        # One line per kind of key, the keys named as bound now:
-        # "Left/Right/Up/Down   move x and y".
+        return self._key_lines(layout) + list(self._extra_help)
+
+    def _pad_help(self) -> list[str]:
+        """The keys the pad has no keycap or step line for, then the
+        page's lines."""
+        layout = tuple(key for key in _bound_layout() if key.move is None
+                       and key.command not in ("step_up", "step_down"))
+        return self._key_lines(layout) + list(self._extra_help)
+
+    def _key_lines(self, layout) -> list[str]:
+        """One line per kind of key, the keys named as bound now:
+        "Left/Right/Up/Down   move x and y"."""
         bindings = self.session.settings.keys
         groups: list[tuple[str, list[str]]] = []
         for key in layout:
@@ -1029,15 +1023,12 @@ class JogPanel(QWidget):
                 groups[-1][1].append(name)
             else:
                 groups.append((key.help, [name]))
-        return ([f"{'/'.join(names)}   {what}" for what, names in groups]
-                + list(self._extra_help))
+        return [f"{'/'.join(names)}   {what}" for what, names in groups]
 
     def set_xy_only(self, on: bool) -> None:
         """Change `xy_only`; see "XY only"."""
         self._xy_only = bool(on)
-        for button in self._z_buttons:
-            button.setVisible(not self._xy_only)
-        self._z_column.setColumnMinimumWidth(3, 0 if self._xy_only else 90)
+        self.pad.set_xy_only(self._xy_only)
         self._set_enabled(getattr(self, "_enabled", False))
         self._help = self._key_help()
         self._emit_help()
@@ -1050,20 +1041,29 @@ class JogPanel(QWidget):
         self._emit_help()
 
     def _emit_help(self) -> None:
-        self.help_changed.emit(self.help_lines)
+        """The pad's key list - the keys it has no button for - and its
+        note while a field has the keys."""
+        self.pad.set_bindings(self.session.settings.keys)
+        self.pad.set_key_lines(self._pad_help())
+        self.pad.set_note("\n".join(TYPING_HELP) if self._typing else "")
 
     def _emit_position(self) -> None:
         self.position_changed.emit(self.position_lines)
 
     def _set_status(self, status: str) -> None:
-        # `controller.status()` pads its numbers into columns for a fixed
-        # font; the picture's box is set in the UI font, where the padding is
-        # only gaps.
-        self._status = re.sub(r"\(\s+", "(", re.sub(r"\s+", " ", status)).strip()
+        """The robot's X, Y and Z from `controller.status()`, and how far
+        out of the envelope it is if it is; its step is the pad's."""
+        found = POSE.match(status.strip())
+        if found is None:
+            self._status = status.strip()
+            self._emit_position()
+            return
+        pose = tuple(float(v) for v in found.groups())
+        self._status = "  ".join(
+            [f"{axis} {value:.2f}" for axis, value in zip("XYZ", pose)]
+            + OUT.findall(status))
         self._emit_position()
-        found = POSE.match(self._status)
-        if found:
-            self._set_pose(tuple(float(v) for v in found.groups()))
+        self._set_pose(pose)
 
     def _set_pose(self, pose) -> None:
         if pose != self.pose:
@@ -1079,34 +1079,9 @@ class JogPanel(QWidget):
                          if text else "")
         self._emit_position()
 
-    def _set_step(self, value: float) -> None:
-        index = self.step_choice.findData(value)
-        if index >= 0:
-            self.step_choice.blockSignals(True)
-            self.step_choice.setCurrentIndex(index)
-            self.step_choice.blockSignals(False)
+    def _pad_step(self, mm: float) -> None:
         if self.controller is not None:
-            self._set_status(self._offline_status())
-
-    def _step_chosen(self, index: int) -> None:
-        if self.controller is None or index < 0:
-            return
-        self.controller.step = self.step_choice.itemData(index)
-        self._set_status(self._offline_status())
-
-    def _offline_status(self) -> str:
-        """The line already on screen with the step brought up to date.
-
-        `controller.status()` reads the pose over HTTP, and changing the step
-        size is not a reason to talk to the robot.
-        """
-        current = self._status
-        step = f"step {self.controller.step:g} mm"
-        if "step " not in current:
-            return step
-        head, _, tail = current.partition("step ")
-        _, _, rest = tail.partition("mm")
-        return head + step + rest
+            self.controller.step = mm
 
     def _refresh_saved(self) -> None:
         """The profile's positions, name and coordinates, selection kept."""
@@ -1159,8 +1134,8 @@ class JogPanel(QWidget):
 
         self.controller = JogController(robot,
                                         limits=self.session.motion.envelope,
-                                        steps=list(DEFAULT_STEPS))
-        self._set_step(self.controller.step)
+                                        steps=list(DEFAULT_STEPS),
+                                        step=self.pad.step)
         self._set_enabled(True)
         # Now, not when the first pose read comes back: the list is the
         # profile's and needs no robot, and an empty one for the second it
@@ -1198,6 +1173,9 @@ class JogPanel(QWidget):
                   and elsewhere is None)
         for widget in self._movers:
             widget.setEnabled(usable)
+        self.pad.set_enabled_reason(
+            usable, NO_ROBOT_REASON if self.controller is None
+            else "" if elsewhere is None else f"Robot busy: {elsewhere}.")
         # Only while on screen: a robot connect enables every panel, and a
         # window-wide shortcut on a hidden page would compete with the one on
         # the page that is showing. hideEvent keeps this true afterwards.
@@ -1221,6 +1199,7 @@ class JogPanel(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._sync_pad()
         self._set_enabled(self._worker is None)
         # The pose as it is now: the robot may have moved, or the tip may
         # have changed - and with it the Z reported - while this page was
@@ -1239,3 +1218,4 @@ class JogPanel(QWidget):
         for shortcut in self._shortcuts:
             shortcut.setEnabled(False)
         super().hideEvent(event)
+        self._sync_pad()

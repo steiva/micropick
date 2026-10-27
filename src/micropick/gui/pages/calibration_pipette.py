@@ -695,9 +695,6 @@ class PipetteCalibration(QWidget):
         # given up, and the touch-up's panel is the only thing that moves the
         # robot during a calibration.
         self.jog.setVisible(not running)
-        # The key box is the panel's that has the keys now.
-        keys = self.touch_jog if waiting else self.jog
-        self.view.set_help(keys.help_lines)
 
         # 1. the disc
         self.disc.set_state(OK if placed else TODO)

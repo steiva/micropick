@@ -9,13 +9,19 @@ Only the face. It emits `jog(axis, sign)` and `step_changed(mm)`; what a
 step does - the robot's lease, the jog envelope, the travel height - stays
 `JogPanel`'s (`run_job`), which drives this pad the way it drove its own
 buttons. The keycaps name the keys as bound (`gui.keys`), so a key rebound
-in Settings shows here.
+in Settings shows here; under them, with Keys on, the panel's other keys
+and the page's (`set_key_lines`), which used to be a box on the picture.
 
 The pad floats over the bottom right of a picture, on a dark translucent
-plate, as the prototype draws it.
+plate, as the prototype draws it (`JogPanel.show_position_on`).
+
+The chosen step is colored by how far one press moves the gantry
+(`step_color`): a 10 mm step near the dish is the one to notice.
 """
 
 from __future__ import annotations
+
+from html import escape
 
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen
@@ -27,7 +33,7 @@ from .. import keys as key_actions
 from ..theme import COLORS, SIZES, mono_font
 from ..theme.icons import icon
 
-__all__ = ["STEPS", "JogPad", "step_label"]
+__all__ = ["STEPS", "JogPad", "step_label", "step_color"]
 
 # The carousel's sizes, mm (§8.11): the jog controller's own.
 STEPS = tuple(DEFAULT_STEPS)
@@ -45,6 +51,14 @@ def step_label(mm: float) -> str:
     return f"{mm:g} mm"
 
 
+def step_color(mm: float) -> str:
+    """The chosen step's fill: the accent up to 2 mm, warn to 5, the
+    destructive red above (`danger` is the Stop button's alone)."""
+    if mm <= 2:
+        return COLORS["accent"]
+    return COLORS["warn"] if mm <= 5 else COLORS["danger-text"]
+
+
 class _JogButton(QPushButton):
     """A pad button that can carry a keycap in its corner."""
 
@@ -52,6 +66,7 @@ class _JogButton(QPushButton):
         super().__init__(parent)
         self.action = action
         self.keycap = ""
+        self.hint = ""                  # the tooltip while it is enabled
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAutoRepeat(False)
         side = SIZES["jog-button"] + 4
@@ -162,6 +177,7 @@ class JogPad(QFrame):
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 label.setFixedHeight(SIZES["jog-button"] + 4)
                 z.addWidget(label)
+                self._z_label = label
                 continue
             button = _JogButton(action, self)
             button.setText(text)
@@ -177,6 +193,12 @@ class JogPad(QFrame):
         self.step_keys.setTextFormat(Qt.TextFormat.RichText)
         self.step_keys.hide()
         column.addWidget(self.step_keys)
+        # Whatever the toggle: the keys are a field's for now.
+        self.note = QLabel(self)
+        self.note.setObjectName("faint")
+        self.note.hide()
+        column.addWidget(self.note)
+        self.key_lines: list[str] = []
         self.set_step(self.step)
         self.set_bindings(self._bindings)
 
@@ -216,13 +238,13 @@ class JogPad(QFrame):
             button.setText(f"{mm:g}")
             button.setProperty("mm", mm)
             button.setToolTip(step_label(mm))
-            bg = COLORS["accent"] if chosen else "transparent"
+            bg = step_color(mm) if chosen else "transparent"
             ink = COLORS["on-accent"] if chosen else COLORS["text-2"]
             button.setStyleSheet(
                 f"QPushButton {{ background: {bg}; color: {ink}; border: none;"
                 f" border-radius: 7px; font-weight: 600; font-size: 13px; }}"
                 f"QPushButton:hover {{ background: "
-                f"{COLORS['accent-hover'] if chosen else '#22262D'}; }}")
+                f"{bg if chosen else '#22262D'}; }}")
         self.smaller.setEnabled(self.step != self.steps[0])
         self.bigger.setEnabled(self.step != self.steps[-1])
 
@@ -230,12 +252,31 @@ class JogPad(QFrame):
 
     def set_bindings(self, bindings: dict) -> None:
         self._bindings = bindings or {}
+        self._write_keys()
+
+    def set_key_lines(self, lines) -> None:
+        """More keys under the step keys, each "keys   what it does"."""
+        self.key_lines = [str(line) for line in lines]
+        self._write_keys()
+
+    def set_note(self, text: str) -> None:
+        """A line under the pad whatever Keys says, or none."""
+        self.note.setText(text)
+        self.note.setVisible(bool(text))
+
+    def _write_keys(self) -> None:
+        ink = COLORS["text-2"]
         smaller = key_actions.key_text(self._bindings, "step_down")
         bigger = key_actions.key_text(self._bindings, "step_up")
-        self.step_keys.setText(
-            f'Step size: <span style="color:{COLORS["text-2"]}">{smaller}</span>'
-            f' smaller, <span style="color:{COLORS["text-2"]}">{bigger}</span>'
-            " bigger")
+        rows = [(f'Step size: <span style="color:{ink}">{escape(smaller)}'
+                 f'</span> smaller, <span style="color:{ink}">'
+                 f'{escape(bigger)}</span> bigger')]
+        for line in self.key_lines:
+            keys, sep, what = line.partition("   ")
+            rows.append(f'<span style="color:{ink}">{escape(keys.strip())}'
+                        f'</span> {escape(what.strip())}' if sep
+                        else escape(line))
+        self.step_keys.setText("<br>".join(rows))
         self._show_keys(self.keys.isChecked())
 
     def _show_keys(self, on: bool) -> None:
@@ -247,12 +288,20 @@ class JogPad(QFrame):
     def set_xy_only(self, on: bool) -> None:
         for action in ("z+", "z-"):
             self.buttons[action].setVisible(not on)
+        self._z_label.setVisible(not on)
+
+    def set_hints(self, hints: dict) -> None:
+        """Tooltips by action, shown while the buttons are enabled."""
+        for action, button in self.buttons.items():
+            button.hint = hints.get(action, "")
+            if button.isEnabled():
+                button.setToolTip(button.hint)
 
     def set_enabled_reason(self, enabled: bool, reason: str = "") -> None:
         """Gray every move while the robot is not free, saying why."""
         for button in self.buttons.values():
             button.setEnabled(enabled)
-            button.setToolTip("" if enabled else reason)
+            button.setToolTip(button.hint if enabled else reason)
 
 
 def _keycap(bindings: dict, action: str) -> str:

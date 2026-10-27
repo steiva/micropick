@@ -114,7 +114,7 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QCheckBox,
                                QHBoxLayout, QLabel, QSlider, QSpinBox,
@@ -283,6 +283,7 @@ class CameraView(QWidget):
         self.double_click_fits = True
         self._focus_tools = False                 # see enable_focus_tools
         self._stats_enabled = False               # see enable_stats_button
+        self._corner: list[QWidget] = []          # see add_corner_widget
         self._build_controls()
 
         self._timer = QTimer(self)
@@ -626,6 +627,23 @@ class CameraView(QWidget):
                   if self.focus_row.isVisible() else self.height() - 8)
         return QRect(8, bottom - height, width, height)
 
+    def add_corner_widget(self, widget: QWidget) -> None:
+        """Float `widget` over the picture's bottom-right corner, at its own
+        size: a page's jog pad (`JogPanel.show_position_on`). Shown and
+        hidden by its owner; two pages' pads on one view take turns."""
+        widget.setParent(self)
+        widget.installEventFilter(self)
+        self._corner.append(widget)
+        self._place_controls()
+
+    def eventFilter(self, watched, event) -> bool:
+        """A corner widget that changed its size or was shown is placed
+        again."""
+        if watched in self._corner and event.type() in (
+                QEvent.Type.LayoutRequest, QEvent.Type.Show):
+            self._place_controls()
+        return False
+
     def _marks_toggled(self, on: bool) -> None:
         if self._camera is not None:
             self._marks_choice[self._label()] = bool(on)
@@ -677,6 +695,11 @@ class CameraView(QWidget):
                     max(200, self.width() - 2 * margin))
         self.focus_row.setGeometry(margin, self.height() - height - margin,
                                    width, height)
+        for widget in self._corner:
+            size = widget.sizeHint()
+            widget.setGeometry(self.width() - size.width() - margin,
+                               self.height() - size.height() - margin,
+                               size.width(), size.height())
         # The chart button in the histogram's top-right corner.
         hist = self._hist_rect() if self._stats_enabled else None
         if hist is None:

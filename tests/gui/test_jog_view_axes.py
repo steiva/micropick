@@ -11,6 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.schema import TipTarget                    # noqa: E402
+from micropick.gui import keys                                   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.jog_panel import (JogPanel,           # noqa: E402
@@ -73,16 +74,16 @@ def test_the_right_arrow_moves_the_mock_robot_along_y(app, session):
     panel = JogPanel(session, view_axes=TipTarget().axes)
     _wait(app, panel)
     before = session.robot.get_position()[0]
-    panel._pad[("x", +1)].click()
+    panel.pad.buttons["x+"].click()
     _wait(app, panel)
     after = session.robot.get_position()[0]
     step = panel.controller.step
     assert after["y"] == pytest.approx(before["y"] + step, abs=0.05)
     assert after["x"] == pytest.approx(before["x"], abs=0.05)
-    assert panel._pad[("x", +1)].text() == "→"
+    assert panel.pad.buttons["x+"].toolTip() == "Robot +Y."
     assert any("as on the picture" in line for line in panel.help_lines)
     panel.set_view_axes(None)
-    assert panel._pad[("x", +1)].text() == "X →"
+    assert panel.pad.buttons["x+"].toolTip() == ""
     assert not any("as on the picture" in line for line in panel.help_lines)
     panel.deleteLater()
 
@@ -93,18 +94,19 @@ def test_xy_only_hides_z_unbinds_its_keys_and_leaves_it_out_of_the_help(app, ses
     panel = JogPanel(session, shortcut_host=host, xy_only=True, parent=host)
     host.show()
     _wait(app, panel)
-    assert all(not b.isVisible() for b in panel._z_buttons)
+    assert not panel.pad.buttons["z+"].isVisible()
+    assert not panel.pad.buttons["z-"].isVisible()
     assert panel._z_shortcuts
     assert all(not s.isEnabled() for s in panel._z_shortcuts)
     assert any(s.isEnabled() for s in panel._shortcuts
                if s not in panel._z_shortcuts)
-    assert not any("PgUp" in line or "PgDn" in line
-                   for line in panel.help_lines)
+    up, down = (keys.key_text(session.settings.keys, a) for a in ("z+", "z-"))
+    assert not any(up in line or down in line for line in panel.help_lines)
     before = session.robot.get_position()[0]["z"]
     panel._move("z", +1)
     _wait(app, panel)
     assert session.robot.get_position()[0]["z"] == pytest.approx(before)
     panel.set_xy_only(False)
     assert all(s.isEnabled() for s in panel._z_shortcuts)
-    assert any("PgUp" in line for line in panel.help_lines)
+    assert any(up in line for line in panel.help_lines)
     host.deleteLater()
