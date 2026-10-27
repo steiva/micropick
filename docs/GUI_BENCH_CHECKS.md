@@ -1670,3 +1670,34 @@ tip box and a 384 plate at hand.
   "1 group · N wells · saved <date>"; a click brings its groups back;
   a change shows Save changes to "Wash". The file is in
   `Outputs/templates/liquid-plans/`.
+
+## Redesign — Liquid Run step (#23)
+
+- [ ] **The screen.**
+  Liquid › Run with a plan of two groups: the plate fills the left, the
+  wells in their group's color; Progress ("0 of N wells done", what the
+  tip holds) and the Deck on the right. The footer says READY and "N wells
+  to do.", with Back and Start. At 1920×1080 nothing scrolls.
+
+- [ ] **A run.**
+  Start, confirm: the footer says RUNNING and one sentence per step
+  ("Blowing out the tip over the trash.", "Wash · A1 · aspirating 50 µl"),
+  readable from two meters; STOP and the pill "Handling liquid" are in the
+  top bar; done wells are marked and the current one ringed as the robot
+  goes.
+
+- [ ] **Pause, Resume, a pause of the plan.**
+  Pause: the robot stops after the current command, the footer says
+  PAUSED, the button reads Resume in yellow; Resume carries on. A Pause
+  step (or "pause after the first well") says WAITING FOR YOU with its
+  message, and the window flashes in the taskbar.
+
+- [ ] **Stop run.**
+  Stop run (or Esc): the tip is raised, the footer says READY and
+  "Stopped. n of N wells done.", with Back, Continue and Start. Continue
+  goes on from the next step; Start begins again from the first well,
+  blowing out over the trash first.
+
+- [ ] **To the end.**
+  A run to its last well: DONE, "All N wells done.", Run gets its ✓ in the
+  step bar.

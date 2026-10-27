@@ -288,3 +288,61 @@ def test_problems_of_a_group_that_does_not_run_do_not_count():
     assert liquid.problems(program, PLATES, POSITIONS, groups=[1]) == []
     assert liquid.problems(program, PLATES, POSITIONS, groups=[]) == [
         "no group chosen to run."]
+
+
+# ---------------------------------------------------------------------------
+# what the run says
+# ---------------------------------------------------------------------------
+
+def test_the_run_says_a_sentence_per_state():
+    """`LiquidState.status`, and `on_status` as it changes: the trash, the
+    group, well and what happens to it, why it waits, the end."""
+    pause, said = threading.Event(), []
+
+    def paused(_message):
+        pause.clear()                   # the operator presses Resume
+
+    program = Program(trash=WASTE, groups=[
+        Group(name="Wash", slot="5", load_name="plate", wells=["A1", "A2"],
+              pause_after_first=True,
+              steps=[Aspirate(volume_ul=20), Mix(cycles=2, volume_ul=10),
+                     Dispense(location=WASTE),
+                     Pause(message="look at the well")])])
+    state = LiquidState()
+    liquid.run(Motion(MockRobot()), program, PLATES, POSITIONS, state,
+               pause=pause, on_paused=paused, on_status=said.append,
+               clear_first=True)
+    assert said[:6] == [
+        "Blowing out the tip over the trash.",
+        "Wash · A1 · aspirating 20 µl",
+        "Wash · A1 · mixing 2× 10 µl",
+        "Wash · A1 · dispensing all",
+        "Look at the well",
+        "Check A1, the first well of Wash, then press Resume.",
+    ]
+    assert "Wash · A2 · aspirating 20 µl" in said
+    assert said[-1] == state.status == "All 2 wells done."
+    for text in said:
+        assert text[0].isupper(), text
+
+
+def test_a_stopped_run_says_so():
+    stop = threading.Event()
+    state = LiquidState()
+
+    def well(_gi, _well):
+        stop.set()
+
+    with pytest.raises(Stopped):
+        liquid.run(Motion(MockRobot()), _program([Aspirate(volume_ul=5)]),
+                   PLATES, POSITIONS, state, stop=stop, on_well=well)
+    assert state.status == "Stopped."
+
+
+def test_step_words():
+    words = liquid.step_words
+    assert words(Dispense(volume_ul=5, location=WASTE)) == "dispensing 5 µl"
+    assert words(Dispense(auto_empty=True, location=WASTE)) == \
+        "emptying the tip"
+    assert words(BlowOut(location=WASTE)) == "blowing out"
+    assert words(MoveTo(location=WASTE)) == "moving"

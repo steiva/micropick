@@ -80,9 +80,8 @@ def test_a_run_goes_through_every_well(app, session):
     # The two of the program, after the shake that resets the plunger at
     # the trash.
     assert [c[2] for c in aspirates][-2:] == ["A1", "A2"]
-    assert "Finished" in page.run_state.text()
-    assert page.done.done                               # the green check
-    assert "2 wells done" in page.done.detail.text()
+    assert page.run_status() == ("Done", "All 2 wells done.", "ok")
+    assert page.progress_line.text() == "2 of 2 wells done"
     page.deleteLater()
 
 
@@ -159,7 +158,18 @@ def test_steps_name_the_slot_of_each_well(app, session):
     assert "each well of slot 5" in describe(Aspirate(), "5")
     page = page_module.LiquidHandlingPage(session)
     session.set_liquid_plan(_plan((["A1"], [Aspirate()])))
-    assert page.wells_heading.text() == "Wells: slot 5"
+    assert page.wells_heading.text().startswith("Slot 5 · ")
     assert page.deck.parent() is not None
     assert "slot 5" in page._group_route(page.program.groups[0])
+    page.deleteLater()
+
+
+def test_a_plate_the_plan_uses_that_is_not_loaded_is_named(app, session):
+    page = page_module.LiquidHandlingPage(session)
+    plan = _plan((["A1"], [Aspirate()]))
+    plan.groups[0].slot = "2"
+    session.set_liquid_plan(plan)
+    assert page.plate_choice.count() == 0       # only the plan's plates
+    assert page.plate_state.text() == (
+        f"Group 1: slot 2 ({PLATE}) is not loaded.")
     page.deleteLater()

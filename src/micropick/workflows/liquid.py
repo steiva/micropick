@@ -88,6 +88,14 @@ goes to the top to prepare it and then back down to where it was asked:
 done at the bottom, that was the tip down into the liquid again. Anywhere
 else it is a blow out in place and then the engine's `prepareToAspirate`
 (`hardware.protocols.prepare_to_aspirate`).
+
+What the run says
+-----------------
+`LiquidState.status` is one short sentence of what the run does, for an
+operator reading it from across the room, and `run` hands it to
+`on_status` each time it changes: the trash blow out, "Wash · A1 ·
+aspirating 20 µl" (`step_words`), why it waits, and how it ended. The log
+keeps its own, longer lines.
 """
 
 from __future__ import annotations
@@ -107,7 +115,8 @@ from .motion import Motion
 
 __all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "chosen", "problems",
            "plan", "go",
-           "do_step", "run", "run_step", "slots_used", "points_used"]
+           "do_step", "run", "run_step", "slots_used", "points_used",
+           "step_words"]
 
 LOG_FIELDS = ["time", "group", "well", "step", "in_tip", "note"]
 
@@ -169,7 +178,7 @@ class LiquidState:
     its well, for the first `here` after the tip was raised.
     `loose`: the tip is in a well but got there by coordinates, so the robot
     does not know it; see "Leaving a well the robot does not know the tip is
-    in".
+    in". `status`: what the run does, in words (see "What the run says").
     """
 
     in_tip: float = 0.0
@@ -178,6 +187,7 @@ class LiquidState:
     at: tuple | None = None
     last: tuple[Location, Group, str] | None = None
     loose: bool = False
+    status: str = ""
 
     def reset(self) -> None:
         """For a run from the start. What is in the tip is still there."""
@@ -207,6 +217,32 @@ def _gate(pause, stop) -> None:
 def _say(log, text: str) -> None:
     if log is not None:
         log(text)
+
+
+def step_words(step) -> str:
+    """What a step does, as the run says it after the group and the well:
+    "aspirating 20 µl"."""
+    action = step.action
+    if action == "aspirate":
+        return f"aspirating {step.volume_ul:g} µl"
+    if action == "dispense":
+        if step.auto_empty:
+            return "emptying the tip"
+        return ("dispensing all" if step.volume_ul is None
+                else f"dispensing {step.volume_ul:g} µl")
+    if action == "mix":
+        return f"mixing {step.cycles}× {step.volume_ul:g} µl"
+    if action == "wait":
+        return f"waiting {step.seconds:g} s"
+    if action == "blow_out":
+        return "blowing out"
+    if action == "move_to":
+        return "moving"
+    return step.message
+
+
+def _sentence(text: str) -> str:
+    return text[:1].upper() + text[1:]
 
 
 def _locations(program: Program):
@@ -803,8 +839,8 @@ def _retract(motion: Motion, state: LiquidState) -> None:
 def run(motion: Motion, program: Program, plates: dict[str, Plate],
         positions: dict, state: LiquidState, *, pause=None, stop=None,
         log=None, on_well=None, on_progress=None, on_paused=None,
-        log_path: Path | None = None, clear_first: bool = False,
-        groups=None) -> None:
+        on_status=None, log_path: Path | None = None,
+        clear_first: bool = False, groups=None) -> None:
     """Do the program, skipping the wells in `state.done` and starting a
     stopped well at its next step. With `clear_first` - a run from the
     first well - the tip is blown out over the program's trash before
@@ -812,7 +848,19 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
     well is begun, `on_progress(done, total, gi, well)` as it is finished:
     `done` and `total` count the wells of the groups that run. `groups`:
     the indices of the groups to do, in the program's order (None: all,
-    one after another). The tip is raised however this ends."""
+    one after another). `on_status(text)` as `state.status` changes (see
+    "What the run says"). The tip is raised however this ends."""
+
+    def say(text: str) -> None:
+        state.status = text
+        if on_status is not None:
+            on_status(text)
+
+    def paused(message: str) -> None:
+        say(_sentence(message))
+        if on_paused is not None:
+            on_paused(message)
+
     jobs = plan(program, plates, groups)
     total = len(jobs)
     ours = {(gi, well) for gi, _group, well in jobs}
@@ -828,6 +876,7 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
         if clear_first and program.trash is not None and jobs:
             _, group, well = jobs[0]
             _say(log, "clearing the tip over the trash")
+            say("Blowing out the tip over the trash.")
             said = do_step(motion, BlowOut(location=program.trash), group,
                            well, plates, positions, state, pause=pause,
                            stop=stop, log=log)
@@ -860,9 +909,11 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
                              step=si + 1, in_tip=f"{state.in_tip:g}",
                              note=said)
                     continue
+                if step.action != "pause":
+                    say(f"{group.name} · {well} · {step_words(step)}")
                 said = do_step(motion, step, group, well, plates, positions,
                                state, pause=pause, stop=stop, log=log,
-                               on_paused=on_paused, capacity=capacity)
+                               on_paused=paused, capacity=capacity)
                 state.resume[(gi, well)] = si + 1
                 _log_row(log_path, group=group.name, well=well, step=si + 1,
                          in_tip=f"{state.in_tip:g}", note=said)
@@ -878,12 +929,15 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
                 # After the well is counted done, so a Stop here and a
                 # Continue do not pause on it again.
                 message = (f"check {well}, the first well of {group.name}, "
-                           f"then Continue")
+                           f"then press Resume.")
                 _say(log, f"paused: {message}")
                 pause.set()
-                if on_paused is not None:
-                    on_paused(message)
+                paused(message)
                 _gate(pause, stop)
+        say("1 well done." if total == 1 else f"All {total} wells done.")
+    except Stopped:
+        say("Stopped.")
+        raise
     finally:
         if state.in_tip > VOLUME_TOL:
             _log_row(log_path, note=f"ended holding {state.in_tip:g} ul")

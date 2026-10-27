@@ -275,8 +275,15 @@ one line with Edit (Try once, Delete step), Take liquid from (In a well /
 At a point / By hand: where "+ Aspirate" takes from), What to run (all
 groups or only one), templates as Auto Plan's (`Outputs/templates/
 liquid-plans/`). Use this plan hands a copy and the groups to the session
-(`Session.set_liquid_plan`); Run (`pages.liquid`) runs that, through
-`JogPanel.run_job`, `workflows.liquid.run(groups=...)`. Saved
+(`Session.set_liquid_plan`); Run (`pages.liquid`, REDESIGN §6.9) runs
+that, through a jog panel never shown (`JogPanel.run_job`, lease
+`run=True`: STOP, the pill), `workflows.liquid.run(groups=...)`: the plate
+with progress on the left, no camera; the footer as Picking's
+(`run_status`, `footer_buttons`, `set_need`: READY / RUNNING / PAUSED /
+WAITING FOR YOU / DONE / NOT READY, the sentence the run's own,
+`LiquidState.status`), Back + Start (+ Continue after a stop), Pause /
+Resume + Stop run. A run to its end makes the step done
+(`confirm("liquid_run")`). Saved
 points are `profile.positions`, not a list of the page's own. The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing is a program written with these blocks

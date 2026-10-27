@@ -1,4 +1,4 @@
-"""Liquid's Run step: the liquid plan done by the robot.
+"""Liquid's Run step (REDESIGN §6.9): the liquid plan done by the robot.
 
 A liquid plan (`core.liquid.Program`) is groups of wells of a plate on the
 deck, each with the steps every one of its wells gets - Aspirate,
@@ -9,9 +9,20 @@ run: all, one after another, or only one. The run takes them in that
 order and, for each well of a group, does all its steps before the next
 well (`workflows.liquid`).
 
-The page shows the plate map of the plan's plates, with what was done,
-the deck with where the group goes, the run's buttons and the jog panel.
-Its layout is Run's of REDESIGN §6.9 still to come.
+On the left the plate, with what was done: the plan's plates in a
+dropdown, the wells in their group's color, done ones marked, the current
+one ringed. On the right, with what the run has done and what the tip
+holds, the deck with where the group goes. There is no camera: what a
+liquid run does is seen on the plate.
+
+The footer is the run's status as on Picking (`run_status`,
+`footer_buttons`, read by the shell): READY, RUNNING, PAUSED, WAITING FOR
+YOU, DONE, NOT READY and one sentence, the run's own
+(`LiquidState.status`) while it runs. Its buttons are Back and **Start**
+between runs (and **Continue** after a stop), **Pause** / **Resume** (one
+button, yellow while paused or waiting) and **Stop run** during one. A
+run that went to its end is what makes the step done
+(`Session.confirm("liquid_run")`).
 
 The well center
 ---------------
@@ -23,27 +34,29 @@ measured bottom, rim less depth, a level a step can use.
 
 What the tip holds
 ------------------
-The run counts it (`LiquidState.in_tip`, shown under Run and on the
-picture), and an Aspirate with "Auto refill" on - the default - is a refill:
-skipped while the tip holds enough for the dispenses after it, else a top-up
-to its volume (`core.liquid`, "What the tip holds"). The plan says how
-much a tip takes, and nothing is let overfill it. The count is the page's:
-it goes to zero when the robot reports no tip, and "Tip is empty" sets it
-there after the tip was emptied some other way.
+The run counts it (`LiquidState.in_tip`, shown beside the plate), and an
+Aspirate with "Auto refill" on - the default - is a refill: skipped while
+the tip holds enough for the dispenses after it, else a top-up to its
+volume (`core.liquid`, "What the tip holds"). The plan says how much a tip
+takes, and nothing is let overfill it. The count is the page's: it goes to
+zero when the robot reports no tip, and "Tip is empty" sets it there after
+the tip was emptied some other way.
 
 Running it
 ----------
-Through the jog panel's queue like every robot command on a page with a
-panel (`JogPanel.run_job`), so while it runs no key and no button can move
-the robot. Pause and Stop are `threading.Event`s the run checks between
-commands. Start first blows the tip out over the plan's trash (`core.liquid`,
-"The trash"), so nothing a tried step or an earlier run left in it goes
-into the first well; Continue does not. What the tip holds and how far the
-run got are kept on the page (`LiquidState`) across a stop: Continue
-carries on from the step after the last one done, Start always begins
-again from the first well. A plan used again forgets that progress unless
-only its steps' numbers changed, so a flow rate can be corrected between
-Stop and Continue.
+Through a jog panel that is never shown (as Dish bottom's), like every
+robot command on a page with a panel (`JogPanel.run_job`): the run holds
+the robot's lease from Start to its end, pauses and waits included, so
+STOP and the pill show and nothing else can move the robot. Pause and
+Stop are `threading.Event`s the run checks between commands. Start first
+blows the tip out over the plan's trash (`core.liquid`, "The trash"), so
+nothing a tried step or an earlier run left in it goes into the first
+well; Continue does not. What the tip holds and how far the run got are
+kept on the page (`LiquidState`) across a stop: Continue carries on from
+the step after the last one done, Start always begins again from the
+first well. A plan used again forgets that progress unless only its
+steps' numbers changed, so a flow rate can be corrected between Stop and
+Continue.
 """
 
 from __future__ import annotations
@@ -62,19 +75,15 @@ from ... import paths
 from ...core.liquid import ACTIONS, Group, Program, describe_location
 from ...core.routine import Destination, RoutineError
 from ...workflows import liquid
-from ..auto_camera import CameraOpener
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button)
-from ..widgets.camera_view import CameraView
-from ..widgets.card_columns import CardColumns
+from ..theme.factory import (card, combo_box, danger_button, heading,
+                             primary_button, scroll_column, secondary_button)
 from ..widgets.deck_view import DeckView
-from ..widgets.done_banner import DoneBanner
-from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..widgets.plate_view import PlateView
 from ..widgets.plate_window import PlateWindow
+from ..workers import describe_error
 from .liquid_plan import (plates_for, positions_for, reach_problems,
                           robot_problems)
 
@@ -84,15 +93,10 @@ TITLE = "Liquid handling"
 
 log = logging.getLogger(__name__)
 
-PANEL_WIDTH = 460
-# The map's height, whatever the plate: across both columns of the panel it
-# is wide enough that the height is what limits a 384.
-PLATE_HEIGHT = 420
+PANEL_WIDTH = 420
 
-# (key, what it does, handler). One list, bound below and shown in the
-# picture's key box.
-KEYS = (("P", "pause / continue the run", "_pause_key"),
-        ("Esc", "stop the run", "_stop_run"))
+# (key, what it does, handler). Esc is the window's Stop.
+KEYS = (("P", "pause / resume the run", "_pause_key"),)
 
 CONFIRM_START = (
     "Make sure every plate is in place with its lid off, and a tip is on the "
@@ -170,8 +174,12 @@ class LiquidHandlingPage(QWidget):
         self._running = False
         self._can_carry_on = False
         self._checking: str | None = None
-        self._progress = ""
+        # The run's sentence (`LiquidState.status`) while it runs; how the
+        # last one ended ("done", "stopped", "failed") and in words.
+        self._status = ""
+        self._ended: str | None = None
         self._outcome = ""
+        self._need: str | None = None
         self._current: tuple[int, str] | None = None
         self._log_path = None
         self._loading = False
@@ -179,27 +187,50 @@ class LiquidHandlingPage(QWidget):
         # refresh: each entry is a definition file resolved from disk.
         self._deck = session.plates()
 
-        self.opener = CameraOpener(session, self)
-        self.view = CameraView(self)
+        # Never shown: it runs the robot work and holds the lease, as Dish
+        # bottom's does. A pad here would move a tip the run left in a well.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
-        self.jog.show_position_on(self.view)
-        self.jog.add_help([f"{key.lower()}   {what}" for key, what, _ in KEYS])
+        self.jog.hide()
         # Emitted whenever a job ends, done or failed: the one moment the
-        # buttons that were greyed for it can come back.
+        # buttons that were grayed for it can come back.
         self.jog.position_changed.connect(lambda _lines: self._refresh())
 
-        # The plate across both columns: it needs the width more than they.
-        panel = CardColumns([self._deck_card(), self._run_card(), self.jog],
-                            self, wide=[self._plate_card()])
-        body = QHBoxLayout()
-        body.setSpacing(SPACING)
-        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
-                       1)
+        # The footer's buttons (`footer_buttons`), the shell lays them out.
+        self.start_button = primary_button("Start", self)
+        self.start_button.setToolTip("Run the plan from the first well.")
+        self.start_button.clicked.connect(self._start)
+        self.continue_button = secondary_button("Continue", self)
+        self.continue_button.setToolTip(
+            "Carry on from where the run stopped.")
+        self.continue_button.clicked.connect(self._continue)
+        self.pause_button = secondary_button("Pause", self)
+        self.pause_button.setToolTip("Key: P")
+        self.pause_button.clicked.connect(self._pause_key)
+        self.stop_button = danger_button("Stop run", self)
+        self.stop_button.setToolTip("Stop after the current command and "
+                                    "raise the tip. Key: Esc")
+        self.stop_button.clicked.connect(self._stop_run)
+        for button in (self.start_button, self.continue_button,
+                       self.pause_button, self.stop_button):
+            button.hide()
+
+        panel = QWidget(self)
+        column = QVBoxLayout(panel)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        column.addWidget(self._progress_card())
+        column.addWidget(self._deck_card())
+        column.addStretch(1)
+        self.body = QHBoxLayout()
+        self.body.setSpacing(SPACING)
+        self.plate_box = self._plate_card()
+        self.body.addWidget(self.plate_box, 1)
+        self.body.addWidget(scroll_column(panel, PANEL_WIDTH))
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addLayout(body, 1)
+        layout.addLayout(self.body, 1)
 
         self.job_said.connect(self._on_job_said)
         session.liquid_plan_changed.connect(lambda _p: self._take_plan())
@@ -209,8 +240,6 @@ class LiquidHandlingPage(QWidget):
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._deck_changed())
         session.tip_changed.connect(self._tip_changed)
-        session.camera_opened.connect(lambda _l: self._show_camera())
-        session.camera_closed.connect(lambda _l: self._show_camera())
         self._install_shortcuts()
         self._reload_plates()
         self._take_plan()
@@ -219,17 +248,15 @@ class LiquidHandlingPage(QWidget):
 
     def _plate_card(self) -> QWidget:
         box = card(self)
+        row = QHBoxLayout()
         # Names the slot: the same plate may stand in two.
         self.wells_heading = heading("Wells", 2)
-        box.layout().addWidget(self.wells_heading)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Plate"))
+        row.addWidget(self.wells_heading, 1)
         self.plate_choice = combo_box(self)
-        self.plate_choice.setToolTip("Labware loaded in the robot "
-                                     "session.")
+        self.plate_choice.setToolTip("The plates the plan uses.")
         self.plate_choice.currentIndexChanged.connect(
             lambda _i: self._show_plate())
-        row.addWidget(self.plate_choice, 1)
+        row.addWidget(self.plate_choice)
         self.enlarge_button = QToolButton(self)
         self.enlarge_button.setIcon(qta.icon("mdi6.arrow-expand"))
         self.enlarge_button.setToolTip("Show the plate in its own window.")
@@ -238,18 +265,32 @@ class LiquidHandlingPage(QWidget):
         box.layout().addLayout(row)
 
         self.plate = PlateView(self)
-        self.plate.setFixedHeight(PLATE_HEIGHT)
         self.plate.hovered.connect(self._hovered)
-        box.layout().addWidget(self.plate)
+        box.layout().addWidget(self.plate, 1)
         # The well under the pointer, by name: on a 384 the map has no room
-        # for it. A line always there, so the cards below do not move.
+        # for it. A line always there, so the map does not move.
         self.hover_line = QLabel(" ", self)
         box.layout().addWidget(self.hover_line)
         self.plate_window = PlateWindow(self.plate, self)
 
         self.plate_state = _label()
         box.layout().addWidget(self.plate_state)
+        return box
 
+    def _progress_card(self) -> QWidget:
+        box = card(self)
+        box.layout().addWidget(heading("Progress", 2))
+        self.progress_line = heading("", 3)
+        box.layout().addWidget(self.progress_line)
+        self.tip_line = _label()
+        box.layout().addWidget(self.tip_line)
+        self.empty_button = secondary_button("Tip is empty", self)
+        self.empty_button.setToolTip("Mark the tip as empty.")
+        self.empty_button.clicked.connect(self._mark_empty)
+        box.layout().addWidget(self.empty_button)
+        # What keeps Start back, every item; the footer names the first.
+        self.run_state = _label()
+        box.layout().addWidget(self.run_state)
         return box
 
     def _deck_card(self) -> QWidget:
@@ -305,10 +346,11 @@ class LiquidHandlingPage(QWidget):
                 for g in self.program.groups]):
             self.state.reset()
             self._can_carry_on = False
-            self._outcome = ""
+            self._ended, self._outcome = None, ""
         elif program.groups != self.program.groups:
             self.state.resume = {}
         self.program, self.groups = program, groups
+        self._reload_plates()
         group = self._group()
         if group is not None:
             for index in range(self.plate_choice.count()):
@@ -329,50 +371,11 @@ class LiquidHandlingPage(QWidget):
         self.deck_state.setText("\n".join(elsewhere))
         self.deck_state.setVisible(bool(elsewhere))
 
-    def _run_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Run", 2))
-        self.start_button = primary_button("Start", self)
-        self.start_button.setToolTip("Run the program from the first well.")
-        self.start_button.clicked.connect(self._start)
-        box.layout().addWidget(self.start_button)
-        row = QHBoxLayout()
-        self.pause_button = secondary_button("Pause", self)
-        self.pause_button.setToolTip("Pause after the current command. "
-                                     "Key: P")
-        self.pause_button.clicked.connect(self._pause_run)
-        self.continue_button = secondary_button("Continue", self)
-        self.continue_button.setToolTip("Resume after Pause or Stop. Key: P")
-        self.continue_button.clicked.connect(self._continue)
-        self.stop_button = secondary_button("Stop", self)
-        self.stop_button.setToolTip("Stop after the current command and "
-                                    "raise the tip. Key: Esc")
-        self.stop_button.clicked.connect(self._stop_run)
-        for button in (self.pause_button, self.continue_button,
-                       self.stop_button):
-            row.addWidget(button)
-        box.layout().addLayout(row)
-        self.empty_button = secondary_button("Tip is empty", self)
-        self.empty_button.setToolTip(
-            "Mark the tip as empty.")
-        self.empty_button.clicked.connect(self._mark_empty)
-        box.layout().addWidget(self.empty_button)
-        # A green check when the program has run to its end.
-        self.done = DoneBanner(self)
-        box.layout().addWidget(self.done)
-        self.run_state = _label()
-        box.layout().addWidget(self.run_state)
-        return box
-
     def _install_shortcuts(self) -> None:
-        """P and Esc, window-wide while this page is showing - enabled only
-        on screen, so no hidden page claims the key."""
+        """P, window-wide while this page is showing - enabled only on
+        screen, so no hidden page claims the key. Esc is the window's."""
         self._shortcuts = []
         for key, _what, handler in KEYS:
-            if key == "Esc":
-                # Bound by the window, to Stop for every page; listed here
-                # for the picture's key box.
-                continue
             shortcut = QShortcut(QKeySequence(key), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(getattr(self, handler))
@@ -389,17 +392,23 @@ class LiquidHandlingPage(QWidget):
     # -- the plate map ---------------------------------------------------------
 
     def _reload_plates(self) -> None:
+        """The plates the plan's groups are on, or every plate on the deck
+        while there is no plan."""
         shown = self._shown_plate()
         self._deck = self.session.plates()
+        used = {(g.slot, g.load_name) for g in self.program.groups}
         self._loading = True
         self.plate_choice.clear()
         for slot, _entry, definition in self._deck:
+            if used and (slot, definition.load_name) not in used:
+                continue
             self.plate_choice.addItem(f"slot {slot} — {definition.display_name}",
                                       (slot, definition))
         for index in range(self.plate_choice.count()):
             slot, definition = self.plate_choice.itemData(index)
             if shown == (slot, definition.load_name):
                 self.plate_choice.setCurrentIndex(index)
+        self.plate_choice.setVisible(self.plate_choice.count() > 1)
         self._loading = False
         self._show_plate()
 
@@ -415,8 +424,9 @@ class LiquidHandlingPage(QWidget):
             except (RoutineError, ValueError) as exc:
                 log.error("liquid handling: cannot draw slot %s: %s", slot, exc)
         self.plate.set_destination(destination)
-        self.wells_heading.setText(f"Wells: slot {data[0]}" if data is not None
-                                   else "Wells")
+        self.wells_heading.setText(
+            f"Slot {data[0]} · {data[1].display_name}" if data is not None
+            else "Wells")
         self.plate_window.setWindowTitle(
             f"plate: {self.plate_choice.currentText() or 'none'}")
         self._paint_plate()
@@ -535,12 +545,17 @@ class LiquidHandlingPage(QWidget):
                 f"slot {slot} ({names.get(slot, '?')})" for slot in goes)
         return text + "."
 
+    def _startable(self) -> bool:
+        return (not self._running and not self.jog.busy
+                and not self.session.robot_lease.busy
+                and self._need is None and not self._run_problems())
+
     def _start(self) -> None:
-        if self._running or self.jog.busy or self._run_problems():
+        if not self._startable():
             return
         if not self._confirm_start():
             return
-        if self._run_problems():                 # changed while asking
+        if not self._startable():                # changed while asking
             self._refresh()
             return
         self.state.reset()
@@ -553,11 +568,10 @@ class LiquidHandlingPage(QWidget):
             if self._pause.is_set():
                 self._pause.clear()
                 self._checking = None
-                log.info("liquid handling: continued")
+                log.info("liquid handling: resumed")
                 self._refresh()
             return
-        if (self._can_carry_on and not self.jog.busy
-                and not self._run_problems()):
+        if self._can_carry_on and self._startable():
             self._launch()
 
     def _launch(self, *, clear_first: bool = False) -> None:
@@ -578,18 +592,18 @@ class LiquidHandlingPage(QWidget):
                 liquid.run(motion, program, plates, positions, state,
                            pause=pause, stop=stop, log=log_,
                            on_well=lambda gi, well: emit(("well", (gi, well))),
-                           on_progress=lambda n, total, gi, well:
-                           emit(("progress", (n, total, gi, well))),
+                           on_progress=lambda *_a: emit(("progress", None)),
                            on_paused=lambda message: emit(("paused", message)),
+                           on_status=lambda text: emit(("status", text)),
                            log_path=log_path, clear_first=clear_first,
                            groups=groups)
             except liquid.Stopped:
-                emit(("ended", "stopped"))
+                emit(("ended", ("stopped", "")))
                 return "run stopped."
             except Exception as exc:
-                emit(("ended", f"failed: {exc}"))
+                emit(("ended", ("failed", describe_error(exc))))
                 raise
-            emit(("ended", "done"))
+            emit(("ended", ("done", state.status)))
             return "run finished."
 
         # The robot for the whole run, pauses included (`Session.robot_lease`).
@@ -598,14 +612,14 @@ class LiquidHandlingPage(QWidget):
                 if slot in plates}
         if not self.jog.run_job(job, what="liquid run", run=True,
                                 plates=used):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self._ended, self._outcome = None, self.session.robot_lease.refusal
+            self._refresh()
             return
         self._running = True
-        self.done.clear()
         self._can_carry_on = False
         self._checking = None
-        self._outcome = ""
-        self._progress = "starting"
+        self._ended, self._outcome = None, ""
+        self._status = "Starting."
         log.info("liquid handling: running %d groups (%d wells already done)",
                  len(self._indices()), len(state.done))
         self._refresh()
@@ -617,10 +631,14 @@ class LiquidHandlingPage(QWidget):
             self._refresh()
 
     def _pause_key(self) -> None:
-        if self._running and not self._pause.is_set():
-            self._pause_run()
-        else:
+        """Pause, or Resume while paused or waiting; between runs nothing:
+        Continue is a button of its own."""
+        if not self._running:
+            return
+        if self._pause.is_set():
             self._continue()
+        else:
+            self._pause_run()
 
     def _stop_run(self) -> None:
         if self._running and not self._stop.is_set():
@@ -632,26 +650,26 @@ class LiquidHandlingPage(QWidget):
         kind, value = payload
         if kind == "well":
             self._current = value
-            gi, well = value
-            name = (self.program.groups[gi].name
-                    if gi < len(self.program.groups) else "?")
-            self._progress = f"{name} {well}"
-        elif kind == "progress":
-            n, total, _gi, _well = value
-            self._progress += f" done ({n} of {total})"
+        elif kind == "status":
+            self._status = value
         elif kind == "paused":
             self._checking = value
         elif kind == "ended":
+            how, said = value
             self._running = False
             self._checking = None
             self._current = None
             self._pause.clear()
-            self._can_carry_on = value != "done" and self._total() > len(self.state.done)
-            self._outcome = {"done": "Finished.",
-                             "stopped": "Stopped."}.get(value, value.capitalize())
-            if value == "done":
-                self.done.show_done(f"{len(self.state.done)} wells done.")
-            log.info("liquid handling: %s", value)
+            done, total = len(self.state.done), self._total()
+            self._can_carry_on = how != "done" and total > done
+            self._ended = how
+            self._outcome = (
+                said if how != "stopped" else
+                f"Stopped. {done} of {total} well{'' if total == 1 else 's'}"
+                f" done.")
+            if how == "done":
+                self.session.confirm("liquid_run")
+            log.info("liquid handling: %s", how)
             # A plan used while it ran.
             self._take_plan()
         self._paint_plate()
@@ -673,16 +691,10 @@ class LiquidHandlingPage(QWidget):
         self.state.in_tip = 0.0
         self._refresh()
 
-    def _show_camera(self) -> None:
-        self.view.set_camera(self.session.camera(self.session.upper_camera_label
-                                                 or ""))
-
     def showEvent(self, event) -> None:
         super().showEvent(event)
         for shortcut in self._shortcuts:
             shortcut.setEnabled(True)
-        self.opener.ensure(self.session.upper_camera_label)
-        self._show_camera()
         self._refresh()
 
     def hideEvent(self, event) -> None:
@@ -691,14 +703,57 @@ class LiquidHandlingPage(QWidget):
             shortcut.setEnabled(False)
         super().hideEvent(event)
 
+    # -- the footer -------------------------------------------------------------
+
+    def set_need(self, need: str | None) -> None:
+        """The step's first unmet need (the shell's banner), or None: while
+        there is one, Start waits and the footer says NOT READY."""
+        if need != self._need:
+            self._need = need
+            self._refresh()
+
+    def run_status(self) -> tuple[str, str, str]:
+        """The footer's tag, sentence and tone (`Footer.STATUS_TONES`)."""
+        if self._running:
+            if self._stop.is_set():
+                return ("Running", "Stopping after the current command.",
+                        "busy")
+            if self._checking is not None:
+                return ("Waiting for you", self._status
+                        or "Waiting for you.", "warn")
+            if self._pause.is_set():
+                return "Paused", self._status, "warn"
+            return "Running", self._status, "busy"
+        if self._ended == "done":
+            return "Done", self._outcome, "ok"
+        problems = ([self._need] if self._need is not None else []) + [
+            p[:1].upper() + p[1:] for p in self._run_problems()]
+        if problems:
+            return "Not ready", problems[0], "off"
+        if self._outcome:
+            return "Ready", self._outcome, "ready"
+        total = self._total()
+        return ("Ready", f"{total} well{'' if total == 1 else 's'} to do.",
+                "ready")
+
+    def footer_buttons(self, back: QWidget) -> list[QWidget]:
+        """What the footer shows on the right: Back and Start between runs
+        (Continue between them after a stop), Pause or Resume and Stop run
+        during one."""
+        if self._running:
+            return [self.pause_button, self.stop_button]
+        if self._can_carry_on:
+            return [back, self.continue_button, self.start_button]
+        return [back, self.start_button]
+
     # -- display ------------------------------------------------------------------
 
     def _on_robot_busy(self, _holder) -> None:
         self._refresh()
 
     def run_activity(self) -> str | None:
-        """For the top bar's pill: "waiting" at a check the program
-        pauses for, "paused", or None."""
+        """For the top bar's pill: "waiting" at a check the plan pauses
+        for, "paused", or None."""
         if not self._running:
             return None
         if self._checking is not None:
@@ -706,66 +761,48 @@ class LiquidHandlingPage(QWidget):
         return "paused" if self._pause.is_set() else None
 
     def _refresh(self) -> None:
-        self.session.run_activity_changed.emit()
-        running, busy = self._running, self.jog.busy
+        running = self._running
         # Robot work waits for the robot to be free, on any page
         # (`Session.robot_lease`); marking the tip empty does not.
-        idle_here = not running and not busy
-        idle = idle_here and not self.session.robot_lease.busy
+        idle_here = not running and not self.jog.busy
         self._show_deck()
 
         # The plate.
         group = self._group()
-        if self.plate_choice.count() == 0:
-            self.plate_state.setText(
-                "No labware loaded."
-                if self.session.robot is not None else
-                "Robot not connected.")
+        if self.session.robot is None:
+            self.plate_state.setText("Robot not connected.")
         elif group is not None and self._shown_plate() is None:
             self.plate_state.setText(
                 f"{group.name}: slot {group.slot} ({group.load_name}) is not "
                 f"loaded.")
+        elif self.plate_choice.count() == 0:
+            self.plate_state.setText("No labware loaded.")
         else:
             self.plate_state.setText("")
         self.plate_state.setVisible(bool(self.plate_state.text()))
 
         # The run.
         problems = self._run_problems()
-        paused = running and self._pause.is_set()
-        self.start_button.setEnabled(idle and not problems)
-        self.pause_button.setEnabled(running and not paused)
-        self.continue_button.setEnabled(
-            paused or (idle and self._can_carry_on and not problems))
+        ready = (idle_here and not self.session.robot_lease.busy
+                 and self._need is None and not problems)
+        held = running and self._pause.is_set()
+        self.start_button.setEnabled(ready)
+        self.continue_button.setEnabled(ready and self._can_carry_on)
+        self.pause_button.setText("Resume" if held else "Pause")
+        if self.pause_button.property("tone") != ("warn" if held else None):
+            self.pause_button.setProperty("tone", "warn" if held else None)
+            self.pause_button.style().unpolish(self.pause_button)
+            self.pause_button.style().polish(self.pause_button)
+        self.pause_button.setEnabled(running and not self._stop.is_set())
         self.stop_button.setEnabled(running)
         self.empty_button.setEnabled(idle_here and self.state.in_tip > 0)
         total, done = self._total(), len(self.state.done)
-        in_tip = (f"The tip holds {self.state.in_tip:g} µl."
-                  if self.state.in_tip > 0 else "The tip is empty.")
-        if running:
-            if self._checking:
-                text = f"Paused: {self._checking}\nPress Continue to go on."
-            elif paused:
-                text = "Paused. Press Continue to go on."
-            elif self._stop.is_set():
-                text = "Stopping after the command the robot is doing…"
-            else:
-                text = f"Running: {self._progress}."
-            text += f"\n{done} of {total} wells done. {in_tip}"
-        elif problems:
-            text = "\n".join("• " + p for p in problems)
-        else:
-            text = ((self._outcome + " ") if self._outcome else "") + \
-                f"{done} of {total} wells done. {in_tip}"
-            if self._can_carry_on:
-                text += "\nContinue carries on from where the run stopped."
-        self.run_state.setText(text)
-
-        if running:
-            lines = [f"liquid handling: {self._progress}",
-                     f"{done} of {total} wells done",
-                     f"in the tip: {self.state.in_tip:g} µl"]
-            if paused:
-                lines.append("PAUSED")
-            self.view.set_status(lines)
-        else:
-            self.view.set_status([])
+        self.progress_line.setText(f"{done} of {total} wells done")
+        self.tip_line.setText(f"The tip holds {self.state.in_tip:g} µl."
+                              if self.state.in_tip > 0 else
+                              "The tip is empty.")
+        listed = problems if not running and len(problems) > 1 else []
+        self.run_state.setText("\n".join("• " + p for p in listed))
+        self.run_state.setVisible(bool(listed))
+        # Last: the shell reads `run_status` and `footer_buttons` on it.
+        self.session.run_activity_changed.emit()
