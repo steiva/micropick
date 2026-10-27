@@ -43,7 +43,7 @@ def problems(page):
 
 def test_it_names_what_is_missing_rather_than_refusing_quietly(page):
     text = problems(page)
-    for wanted in ("Connect the robot", "Make a plate plan",
+    for wanted in ("Connect the robot", "Make a plan",
                    "Set the picking position", "Set the shake position",
                    "Load the cuboid detector"):
         assert wanted in text, f"{wanted!r} not named in: {text}"
@@ -61,9 +61,9 @@ def test_a_routine_is_required(page):
         class destination:
             slot = 5
     page.session.set_routine(_Routine())
-    assert "Make a plate plan" not in problems(page)
+    assert "Make a plan" not in problems(page)
     page.session.set_routine(None)
-    assert "Make a plate plan" in problems(page)
+    assert "Make a plan" in problems(page)
 
 
 def test_the_plate_the_routine_delivers_into_has_to_be_on_the_deck(page):
@@ -100,7 +100,7 @@ def test_an_unconfirmed_routine_is_refused(page):
         class destination:
             slot = 5
     page.session.set_routine(_Routine())
-    assert "Make a plate plan" in problems(page)
+    assert "Make a plan" in problems(page)
 
 
 def test_the_model_comes_from_the_profile(page):

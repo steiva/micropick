@@ -628,6 +628,6 @@ def test_every_state_says_a_sentence():
         said = {ev.state: ev.status for ev in events}
         assert said[RobotState.PICKUP_SAMPLE] == ("Point 1 of 1 · taking a "
                                                   "cuboid")
-        assert said[RobotState.COMPLETED] == "The plate plan is filled."
+        assert said[RobotState.COMPLETED] == "The plan is filled."
     finally:
         camera.close()

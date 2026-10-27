@@ -65,7 +65,7 @@ STEPS = {
     "tip_calibration": ("Calibrate the tip", "tip_calibration",
                         "Tip calibration",
                         ("camera_calibration", "tip")),
-    "plan": ("Make a plate plan", "routine", "Plate plan", ("profile",)),
+    "plan": ("Make a plan", "routine", "Plan", ("profile",)),
     # Robot setup's position sheet: the Picking page no longer sets them.
     "dish_position": ("Set the picking position over the dish",
                       "dish_position", "Position over the dish",
@@ -190,12 +190,12 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
 
     routine = session.routine
     if routine is None:
-        out["plan"] = (False, "No plate plan.", False)
+        out["plan"] = (False, "No plan.", False)
     elif routine.needs_confirmation:
-        out["plan"] = (False, "Restored plate plan: confirm it on the Plate "
-                              "plan page.", False)
+        out["plan"] = (False, "Restored plan: confirm it on the Plan "
+                              "step.", False)
     else:
-        out["plan"] = (True, f"Plate plan {getattr(routine, 'name', '')!r}.",
+        out["plan"] = (True, f"Plan {getattr(routine, 'name', '')!r}.",
                        False)
 
     out["plate"] = (False, "", False)
@@ -203,7 +203,7 @@ def _status(session) -> dict[str, tuple[bool, str, bool]]:
         slot = str(routine.destination.slot)
         state = session.run_state
         if state is None or slot not in state.labware:
-            out["plate"] = (False, f"Slot {slot} (plate plan destination) "
+            out["plate"] = (False, f"Slot {slot} (the plan's plate) "
                                    f"is empty.",
                             False)
         elif any(p.slot == slot for p in session.deck_problems()):

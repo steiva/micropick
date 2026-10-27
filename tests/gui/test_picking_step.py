@@ -216,9 +216,9 @@ def test_the_footer_follows_the_run(app, window, monkeypatch):
     _event(app, window, RobotState.TRANSFER_TO_WELL,
            "Well A2 of 2 · putting the cuboid in")
     ScriptedRun.script.put((RobotState.COMPLETED,
-                            "The plate plan is filled."))
+                            "The plan is filled."))
     assert _until(app, lambda: not page._running())
-    assert _footer(window) == ("DONE", "The plate plan is filled.")
+    assert _footer(window) == ("DONE", "The plan is filled.")
     assert _buttons(window)[0] == "Back"
 
 

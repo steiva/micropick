@@ -824,7 +824,7 @@ class PickingPage(QWidget):
         log.info("picking run %s%s", state, self._clips_said())
         if state == RobotState.COMPLETED.value:
             self._filled = True
-            self._run_message = "The plate plan is filled."
+            self._run_message = "The plan is filled."
         self._back_to_live()
 
     def _run_failed(self, reason: str) -> None:

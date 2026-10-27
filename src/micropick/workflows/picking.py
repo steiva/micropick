@@ -207,7 +207,7 @@ _STATUS = {
     RobotState.CAPTURE_FRAME: "Taking a picture of the dish.",
     RobotState.ANALYZE_FRAME: "Finding cuboids.",
     RobotState.DEPOSIT_BACK: "Putting the liquid back into the dish.",
-    RobotState.COMPLETED: "The plate plan is filled.",
+    RobotState.COMPLETED: "The plan is filled.",
     RobotState.CANCELED: "Stopped.",
 }
 

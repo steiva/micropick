@@ -1530,7 +1530,7 @@ tip box and a 384 plate at hand.
   Windows the taskbar button flashes once. Resume: the run goes on.
 
 - [ ] **The end.**
-  A filled plan: DONE (green), "The plate plan is filled.", Back and
+  A filled plan: DONE (green), "The plan is filled.", Back and
   Start picking. Stop run mid-run: READY, "Stopped. The tip may still hold
   cuboids: put them back into the dish."
 
