@@ -50,8 +50,8 @@ from .. import _version as version
 from .. import paths
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
-                    home, labware, liquid, manual, picking, robot_setup,
-                    routine, settings)
+                    home, labware, liquid, manual, picking, platforms_sheet,
+                    position_sheet, robot_setup, routine, settings)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -92,19 +92,20 @@ STEP_PAGES = {
     "well_center": "liquid", "liquid_plan": "liquid", "run": "liquid",
 }
 
-# The page each Robot setup item is set on, until Robot setup has its own
-# sheets; the cameras and the camera calibration have theirs (`SHEETS`).
+# The sheet each Robot setup item is set in (`SHEETS`).
 CAMERA_SHEET = "camera_sheet"
 CALIBRATION_SHEET = "calibration_sheet"
-SHEETS = (CAMERA_SHEET, CALIBRATION_SHEET)
+PLATFORMS_SHEET = "platforms_sheet"
+POSITION_SHEET = "position_sheet"
+SHEETS = (CAMERA_SHEET, CALIBRATION_SHEET, PLATFORMS_SHEET, POSITION_SHEET)
 SETUP_PAGES = {
     "upper_camera": CAMERA_SHEET,
     "camera_calibration": CALIBRATION_SHEET,
     "lower_camera": CAMERA_SHEET,
-    "platforms": "labware",
-    "calibration_position": "tip_calibration",
-    "dish_position": "picking",
-    "shake_position": "picking",
+    "platforms": PLATFORMS_SHEET,
+    "calibration_position": POSITION_SHEET,
+    "dish_position": POSITION_SHEET,
+    "shake_position": POSITION_SHEET,
 }
 
 # The runs, by what their lease says it holds the robot for: the page the
@@ -191,9 +192,19 @@ class MainWindow(QMainWindow):
         self.calibration_sheet = calibration_camera.CameraCalibrationSheet(
             session, holder)
         self.calibration_sheet.canceled.connect(self._sheet_closed)
+        # What stands in each slot.
+        self.platforms_sheet = platforms_sheet.PlatformsSheet(session, holder)
+        self.platforms_sheet.canceled.connect(self._sheet_closed)
+        self.platforms_sheet.done.connect(self._sheet_closed)
+        # The three stored positions.
+        self.position_sheet = position_sheet.PositionSheet(session, holder)
+        self.position_sheet.canceled.connect(self._sheet_closed)
+        self.position_sheet.done.connect(self._sheet_closed)
         # The Robot setup sheets, by their name in SETUP_PAGES and RUNS.
         self.sheets = {CAMERA_SHEET: self.camera_sheet,
-                       CALIBRATION_SHEET: self.calibration_sheet}
+                       CALIBRATION_SHEET: self.calibration_sheet,
+                       PLATFORMS_SHEET: self.platforms_sheet,
+                       POSITION_SHEET: self.position_sheet}
         self._titles[CALIBRATION_SHEET] = calibration_camera.TITLE
         # The breadcrumb under the sheet, given back when it closes.
         self._under_sheet: list[str] = []
@@ -243,6 +254,8 @@ class MainWindow(QMainWindow):
             lambda item: self.open_setup_item(item, from_setup=True))
         self.robot_setup_page.said.connect(self.say)
         self.camera_sheet.said.connect(self.say)
+        self.platforms_sheet.said.connect(self.say)
+        self.position_sheet.said.connect(self.say)
         self.step_bar.clicked.connect(
             lambda i: self.show_step(tasks.steps(self.task)[i]))
         self.footer.back_clicked.connect(self._back)
@@ -440,8 +453,10 @@ class MainWindow(QMainWindow):
             self._under(tasks.SETUP_TITLES[item])
             if SETUP_PAGES[item] == CAMERA_SHEET:
                 self.camera_sheet.open_for(item.removesuffix("_camera"))
+            elif SETUP_PAGES[item] == POSITION_SHEET:
+                self.position_sheet.open_for(item)
             else:
-                self.calibration_sheet.open_sheet()
+                self.sheets[SETUP_PAGES[item]].open_sheet()
             # The page under it is disabled: its keys are the sheet's now.
             self.stack.setEnabled(False)
             self.lock_overlay.raise_over()

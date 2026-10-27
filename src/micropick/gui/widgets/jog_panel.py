@@ -201,11 +201,11 @@ def camera_name_refusal(name: str) -> str | None:
     """Why `name` cannot be given here, or None. A camera pose is taught on
     the page that uses it, with the camera on the spot; saved from this
     panel it would be taken for one and drawn and driven to as one."""
-    tab = CAMERA_POSITIONS.get(name)
-    if tab is None:
+    item = CAMERA_POSITIONS.get(name)
+    if item is None:
         return None
-    return (f"{name!r} is where the camera looks from; set it on the {tab} "
-            f"tab with Set position")
+    return (f"{name!r} is where the camera looks from; set it in Robot "
+            f"setup, {item}")
 
 
 PANEL_WIDTH = 400

@@ -1287,3 +1287,44 @@ cameras.
   Middle-drag pan Double-click fit" (Manual control: its clicks first),
   cut short rather than running under the pad. Picking's size histogram
   sits above that row.
+
+---
+
+## Redesign — Platform and position sheets (#12)
+
+Start the program normally (no `--mock`), robot on, a profile with the
+upper camera chosen, the dish and its holder and the crosshair disc at
+hand.
+
+- [ ] **Platforms.**
+  Robot setup, Platforms: a sheet with the deck as 3×4 big slots (10 11 12
+  at the back), slot 12 gray. Click slot 5, "What stands in this slot?":
+  Picking platform; slot 8 the same; slot 9 Calibration module. A slot
+  with a platform has a dashed border. Done: "Platforms saved.", the row
+  "Picking platform in 5 and 8 · Calibration module in 9" with a ✓.
+  Reopen, set slot 5 to Nothing, Cancel: slot 5 still has its platform.
+  Expected failure if wrong: a plate in slot 8 drawn in the hazard color
+  on the Deck step after Done.
+
+- [ ] **Position over the dish.**
+  "Where will the dish with cuboids stand?", Slot 8 chosen. Move camera
+  to slot 8: the camera goes over slot 8, the dish in the picture.
+  Somewhere else hides the button. With a pixel map, a click on the
+  picture centers the camera there; without one it says to use the
+  arrows. Done: the row "≈ slot 8 · X … Y … Z …" with a ✓.
+
+- [ ] **Shake position.**
+  The two numbered instructions, the yellow "The camera can't see this.
+  Watch the robot itself.", the pad over the picture. Jog the tip into
+  the holder's hole, Done: the row has a ✓. Go to saved position from a
+  fresh home: the tip goes back there, and never asks the robot for a
+  height above its top.
+
+- [ ] **Calibration position.**
+  Put the disc on the calibration module, Move camera to the calibration
+  module, center the crosshair, Done. The Tip page's disc position (Go to
+  saved position) goes to the same pose: it is `tip_calib`.
+
+- [ ] **Busy.**
+  While a liquid run has the robot, Done and the move buttons on these
+  sheets are gray, the tooltip naming the run.

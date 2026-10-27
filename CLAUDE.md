@@ -81,7 +81,7 @@ platforms, the three positions (each `≈ slot n · X Y Z`, never its stored
 name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
 and Home's "N steps left" read. A row, or a Robot setup item needed by a
 step, opens its page as `Home › Robot setup › <item>` or `Home › <task> ›
-<item>` (`shell.SETUP_PAGES`) until Robot setup has its own sheets. The
+<item>` (`shell.SETUP_PAGES`), each in its own sheet. The
 cameras have theirs (`pages.camera_sheet.CameraSheet`, over the screen,
 the breadcrumb gaining the item): the live picture of the device chosen
 in the Select, which follows the choice before anything is saved
@@ -103,7 +103,16 @@ sheet), "Don't touch the robot."; Stop goes back to centering. Good and
 Acceptable are saved at once ("Camera calibrated and saved."), Redo
 waits ("Not accurate enough: the marker was off center.", Redo
 calibration, Save anyway). × closes
-it and a sweep carries on. While a Robot setup sheet is open the page
+it and a sweep carries on. The platforms have theirs
+(`pages.platforms_sheet.PlatformsSheet`): the 3×4 deck, a slot clicked,
+"What stands in this slot?" (the profile's module types or Nothing), a
+draft until Done (`Session.set_deck_modules`). The three positions share
+one (`pages.position_sheet.PositionSheet`, `open_for(item)`): the upper
+camera with the pad, a click moves the camera through the pixel map
+(`gui.camera_moves`, also the camera calibration's), Move camera to slot
+8 / to the calibration module, Go to saved position (`Motion.tip_to`, no
+higher than the travel height), Done saves the panel's pose under the
+stored name - `observe`, `shake`, `tip_calib`; no new pose. While a Robot setup sheet is open the page
 under it is disabled, so its keys are the sheet's. Reset setup asks (Keep setup primary),
 then `Session.reset_setup` zips the profile folder beside it, dated, and
 clears the cameras, the pixel map, the deck modules and those three

@@ -66,13 +66,10 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QProgressBar, QVBoxLayout,
                                QWidget)
 
 from ...config.app_settings import AppSettings
-from ...core.calibration.pixel_map import PixelMap
-from ...core.deck import slot_center
-from ...hardware.protocols import xyz
 from ...viz import markers
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
-from ...workflows.manual import camera_target
 from ..auto_camera import CameraOpener
+from ..camera_moves import move_over_slot, move_to_pixel
 from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
 from ..tasks import SETUP_TITLES
@@ -409,37 +406,17 @@ class CameraCalibrationSheet(SheetWindow):
         index = self.slot.findData(chosen)
         self.slot.setCurrentIndex(max(index, 0))
 
-    def _camera_offset(self) -> np.ndarray:
-        """From the camera to the tip: measured, else Settings' start."""
-        profile = self.session.profile
-        offset = (profile.calibration.pipette_offset
-                  if profile is not None else None)
-        if offset is not None:
-            return np.array([offset.dx, offset.dy])
-        return np.array(self.session.settings.tip_cal_start_offset)
-
     def _move(self) -> None:
         """Step 2: the camera over the center of the slot chosen."""
         slot = self.slot.currentData()
         if slot is None:
             return
-        xy = np.asarray(slot_center(slot)) - self._camera_offset()
-        if self._out_of_reach(xy, f"Slot {slot}"):
-            return
-        motion = self.session.motion
-
-        def job(log_):
-            motion.camera_to(xy, log=log_)
-            return f"Camera over slot {slot}."
 
         def moved(said):
             self._go("center")
             return said
 
-        log.info("camera calibration: camera to slot %s (%.1f, %.1f)",
-                 slot, xy[0], xy[1])
-        self.jog.run_job(job, what=f"moving the camera over slot {slot}",
-                         then=moved)
+        move_over_slot(self.session, self.jog, slot, then=moved)
 
     def _clicked(self, u: float, v: float) -> None:
         """Step 3 by a click: the camera to the point clicked, through the
@@ -447,36 +424,7 @@ class CameraCalibrationSheet(SheetWindow):
         deck, and the arrows do it."""
         if self._running() or STEPS.index(self.step) < STEPS.index("center"):
             return
-        profile = self.session.profile
-        robot = self.session.robot
-        if profile is None or profile.pixel_map is None:
-            self.jog.tell(USE_THE_ARROWS)
-            return
-        if robot is None:
-            return
-        pmap = PixelMap.from_config(profile.pixel_map)
-        xy = camera_target(pmap, u, v, xyz(robot))
-        if self._out_of_reach(xy, "That point"):
-            return
-        motion = self.session.motion
-
-        def job(log_):
-            motion.camera_to(xy, log=log_)
-            return None
-
-        self.jog.run_job(job, what="centering the camera")
-
-    def _out_of_reach(self, xy, what: str) -> bool:
-        """Said under the position, and True, when the gantry cannot go to
-        `xy` at the height it crosses the deck at (where it is, while
-        that is not measured)."""
-        motion, pose = self.session.motion, self.jog.pose
-        z = motion.travel_z if motion.travel_z is not None else (
-            pose[2] if pose is not None else None)
-        why = motion.refused((xy[0], xy[1], z)) if z is not None else ""
-        if why:
-            self.jog.tell(f"{what} is out of reach: {why}")
-        return bool(why)
+        move_to_pixel(self.session, self.jog, u, v, no_map=USE_THE_ARROWS)
 
     def _redo(self) -> None:
         self._go("center")

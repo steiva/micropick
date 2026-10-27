@@ -55,11 +55,12 @@ from ..viz import overlays
 __all__ = ["MARK", "MEMO", "CAMERA_POSITIONS", "mark_items", "memo_items",
            "axis_directions", "PositionMarks"]
 
-# The camera poses, by name, with the tab that sets each. The names are the
-# workflows': `PickingSession` reads `observe` (`pages.picking.DISH_POSITION`)
-# and the pipette calibration `tip_calib` (`pages.calibration_pipette.
-# POSITION_NAME`).
-CAMERA_POSITIONS = {"observe": "Picking", "tip_calib": "Pipette"}
+# The camera poses, by name, with the Robot setup item that sets each. The
+# names are the workflows': `PickingSession` reads `observe`
+# (`pages.picking.DISH_POSITION`) and the pipette calibration `tip_calib`
+# (`pages.calibration_pipette.POSITION_NAME`).
+CAMERA_POSITIONS = {"observe": "Position over the dish",
+                    "tip_calib": "Calibration position"}
 
 # BGR, as every overlay colour. A light green, for both kinds: paler than
 # the pure green of the isolated cuboids, so the two are not confused.

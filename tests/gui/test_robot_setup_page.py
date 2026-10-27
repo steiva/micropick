@@ -99,9 +99,11 @@ def test_positions_read_as_a_slot_and_coordinates(app, window):
 def test_a_row_opens_its_item_and_the_crumb_comes_back(app, window):
     window.open_robot_setup()
     window.robot_setup_page.rows["shake_position"].clicked.emit()
-    assert window.current_page() is window.picking_page
+    assert window.position_sheet.isVisible()
+    assert window.current_page() is window.robot_setup_page
     assert window.top.path == ["Robot setup", "Shake position"]
     window.top.crumb_clicked.emit(0)
+    assert not window.position_sheet.isVisible()
     assert window.current_page() is window.robot_setup_page
     assert window.top.path == ["Robot setup"]
 

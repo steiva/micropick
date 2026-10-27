@@ -5,8 +5,7 @@ blocks of rows - Cameras (the upper camera, the camera calibration, a
 divider, the lower camera), Platforms, Positions (over the dish, shake,
 calibration) - each row a mark (a green ✓, or a yellow ring while not
 set), its label, its value and a ›. A row is clicked as a whole and
-`item_chosen(item)` names it (`tasks.SETUP`); the shell opens where it is
-set, until each has a sheet of its own.
+`item_chosen(item)` names it (`tasks.SETUP`); the shell opens its sheet.
 
 A position reads as the slot it is nearest to and its coordinates
 (`≈ slot 8 · X 245.1 Y 132.4 Z 80.0`), never the name it is stored under.
