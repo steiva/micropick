@@ -80,8 +80,6 @@ PAGES = (
      calibration_pipette.PipetteCalibration),
     ("routine", routine.TITLE, routine.RoutinePage),
     ("picking", picking.TITLE, picking.PickingPage),
-    ("camera_calibration", calibration_camera.TITLE,
-     calibration_camera.CameraCalibration),
     ("liquid", liquid.TITLE, liquid.LiquidHandlingPage),
     ("manual", manual.TITLE, manual.ManualPage),
     ("robot_setup", robot_setup.TITLE, robot_setup.RobotSetupPage),
@@ -95,11 +93,13 @@ STEP_PAGES = {
 }
 
 # The page each Robot setup item is set on, until Robot setup has its own
-# sheets; the cameras have theirs (`CAMERA_SHEET`, `camera_sheet`).
+# sheets; the cameras and the camera calibration have theirs (`SHEETS`).
 CAMERA_SHEET = "camera_sheet"
+CALIBRATION_SHEET = "calibration_sheet"
+SHEETS = (CAMERA_SHEET, CALIBRATION_SHEET)
 SETUP_PAGES = {
     "upper_camera": CAMERA_SHEET,
-    "camera_calibration": "camera_calibration",
+    "camera_calibration": CALIBRATION_SHEET,
     "lower_camera": CAMERA_SHEET,
     "platforms": "labware",
     "calibration_position": "tip_calibration",
@@ -112,7 +112,7 @@ SETUP_PAGES = {
 RUNS = {
     "picking run": ("picking", "Picking"),
     "liquid run": ("liquid", "Handling liquid"),
-    "camera calibration sweep": ("camera_calibration",
+    "camera calibration sweep": (CALIBRATION_SHEET,
                                  "Calibrating the camera"),
     "pipette calibration": ("tip_calibration", "Calibrating the tip"),
 }
@@ -187,6 +187,14 @@ class MainWindow(QMainWindow):
         self.camera_sheet = camera_sheet.CameraSheet(session, holder)
         self.camera_sheet.canceled.connect(self._sheet_closed)
         self.camera_sheet.done.connect(self._sheet_closed)
+        # The camera calibration, its sweep a run.
+        self.calibration_sheet = calibration_camera.CameraCalibrationSheet(
+            session, holder)
+        self.calibration_sheet.canceled.connect(self._sheet_closed)
+        # The Robot setup sheets, by their name in SETUP_PAGES and RUNS.
+        self.sheets = {CAMERA_SHEET: self.camera_sheet,
+                       CALIBRATION_SHEET: self.calibration_sheet}
+        self._titles[CALIBRATION_SHEET] = calibration_camera.TITLE
         # The breadcrumb under the sheet, given back when it closes.
         self._under_sheet: list[str] = []
         # Over the page, under the top bar: Light and Unlock stay at hand.
@@ -378,8 +386,7 @@ class MainWindow(QMainWindow):
         # A page dimmed as one step is not dimmed as anything else.
         page.setEnabled(True)
         self.dim.hide()
-        self.settings_sheet.discard()
-        self.camera_sheet.discard()
+        self._close_sheets()
         self.stack.setCurrentWidget(page)
         self._page = name
         self._from_setup = False
@@ -427,11 +434,17 @@ class MainWindow(QMainWindow):
         crumb back is Robot setup's when it was opened there (`from_setup`),
         else the task's when one is open. A camera is chosen in its sheet,
         over Robot setup or the step that needs it."""
-        if SETUP_PAGES[item] == CAMERA_SHEET:
+        if SETUP_PAGES[item] in SHEETS:
             if from_setup and self._page != "robot_setup":
                 self.open_robot_setup()
             self._under(tasks.SETUP_TITLES[item])
-            self.camera_sheet.open_for(item.removesuffix("_camera"))
+            if SETUP_PAGES[item] == CAMERA_SHEET:
+                self.camera_sheet.open_for(item.removesuffix("_camera"))
+            else:
+                self.calibration_sheet.open_sheet()
+            # The page under it is disabled: its keys are the sheet's now.
+            self.stack.setEnabled(False)
+            self.lock_overlay.raise_over()
             return
         path = [tasks.SETUP_TITLES[item]]
         if from_setup:
@@ -450,6 +463,9 @@ class MainWindow(QMainWindow):
             return
         if name in ("settings", "log"):
             self.open_settings("log" if name == "log" else "general")
+            return
+        if SETUP_PAGES.get(name) in SHEETS:
+            self.open_setup_item(name)
             return
         if self.task is not None:
             # The step shown when it is that page (Picking is two steps),
@@ -484,10 +500,11 @@ class MainWindow(QMainWindow):
 
     def _sheet_closed(self) -> None:
         self.top.set_path(self._under_sheet)
+        self.stack.setEnabled(not self.session.locked)
 
     def _close_sheets(self) -> bool:
         """Close the sheet shown, saving nothing; False when none was."""
-        shown = [sheet for sheet in (self.settings_sheet, self.camera_sheet)
+        shown = [sheet for sheet in (self.settings_sheet, *self.sheets.values())
                  if not sheet.isHidden()]
         for sheet in shown:
             sheet.discard()
@@ -597,8 +614,8 @@ class MainWindow(QMainWindow):
             self.home.show_run(None)
             return
         page, text = RUNS.get(holder, (None, "Running"))
-        activity = (self.pages[page].run_activity()
-                    if page is not None else None)
+        owner = self.pages.get(page) or self.sheets.get(page)
+        activity = owner.run_activity() if owner is not None else None
         self.top.set_status(*RUN_ACTIVITY.get(activity, (text, "busy")))
         _holder, task, _step = self._run
         self.home.show_run(
@@ -613,11 +630,14 @@ class MainWindow(QMainWindow):
         page = RUNS.get(holder, (None, ""))[0]
         if task is not None and self.task != task:
             self._set_task(task)
+        item = next((i for i, p in SETUP_PAGES.items() if p == page), None)
         if task is not None and step is not None:
             self.show_step(step)
-        elif page in SETUP_PAGES.values() and page not in STEP_PAGES.values():
-            self.open_setup_item(next(item for item, p in SETUP_PAGES.items()
-                                      if p == page))
+            if page in SHEETS:
+                self.open_setup_item(item)        # over the step it was on
+        elif item is not None and page not in STEP_PAGES.values():
+            # A sheet over Robot setup, where it lives.
+            self.open_setup_item(item, from_setup=page in SHEETS)
         elif page is not None:
             self.show_page(page)
 
@@ -657,7 +677,8 @@ class MainWindow(QMainWindow):
         self.lock_overlay.set_locked(locked)
         if not self.settings_sheet.isHidden():
             self.settings_sheet.raise_()
-        self.stack.setEnabled(not locked)
+        self.stack.setEnabled(not locked and all(
+            sheet.isHidden() for sheet in self.sheets.values()))
         self._show_lock_button()
         self._show_park()
 

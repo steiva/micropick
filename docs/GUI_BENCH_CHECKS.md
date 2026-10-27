@@ -1201,3 +1201,50 @@ cameras attached, on the bench's profile.
 - [ ] **Settings no longer chooses cameras.**
   Settings › General has no Cameras card; the profile's column starts
   with Models.
+
+## Redesign — Camera calibration sheet (#10)
+
+Start the program normally (no `--mock`) on the bench machine, upper
+camera chosen, the robot connected, the calibration marker at hand.
+
+- [ ] **The row opens its sheet.**
+  Robot setup, Camera calibration: a sheet "Camera calibration", the
+  breadcrumb `Home › Robot setup › Camera calibration`. Left, the upper
+  camera's live picture; right, five steps, the first open, the others
+  gray.
+
+- [ ] **Place and slot.**
+  Put the marker on the picking platform, It is in place. The slots are
+  the platforms' (all slots on a setup without platforms). Choose the
+  marker's slot, Move the camera there: the camera goes over the slot,
+  the marker in or near the picture.
+
+- [ ] **Center.**
+  The picture says NO MARKER IN VIEW until the marker is in it, then
+  MARKER FOUND. Without a saved pixel map a click on the picture moves
+  nothing and says to use the arrows; with one, a click on the marker
+  brings it to the middle. It is centered is gray until the marker is
+  near the middle.
+
+- [ ] **The sweep is a run.**
+  Start calibration: a progress bar, "Don't touch the robot.", the jog
+  panel gone, STOP and the pill "Calibrating the camera" in the top bar.
+  Close the sheet with ×: the sweep goes on; the pill brings the sheet
+  back. Esc (or STOP): the sweep stops at the next pose, "Calibration
+  stopped. Center the marker again.", step 3 open again, nothing saved.
+
+- [ ] **The result.**
+  A full sweep: green "Camera calibrated and saved.", the Camera
+  calibration row says it was done just now. With the marker off center
+  on purpose: yellow "Not accurate enough: …" with Redo calibration
+  (back to step 3) and Save anyway (saves, then green).
+
+- [ ] **Parameters.**
+  Step 4 names the marker side, dictionary, grid and degree; change the
+  grid in Settings and the line follows.
+
+- [ ] **From the Tip step.**
+  Auto pick on a profile without a pixel map, the Tip step's banner "Calibrate the camera
+  first." › Go to Camera calibration: the sheet over the Tip step,
+  `Home › Auto pick › Camera calibration`; the arrow keys move only the
+  sheet's jog panel.

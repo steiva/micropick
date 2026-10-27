@@ -85,7 +85,21 @@ in the Select, which follows the choice before anything is saved
 as the pages open it and left open; any other device opened on its own,
 so none is opened twice). Done saves (`Session.choose_camera`: the other
 role's device swapped in, a camera added to a profile without one), gray
-while the robot is busy; Cancel and × save nothing. Reset setup asks (Keep setup primary),
+while the robot is busy; Cancel and × save nothing. The camera
+calibration has its sheet too (`pages.calibration_camera.
+CameraCalibrationSheet`), the steps confirmed one after another: place
+the marker (It is in place); its slot, a platform's or any while none is
+set (Move the camera there: the slot's center less the measured tip
+offset, else Settings' start dx, dy); center it with the arrows - a click
+on the picture centers only through a pixel map there is, else it moves
+nothing - MARKER FOUND / NO MARKER IN VIEW on the picture, It is
+centered once within two of its sides of the middle; Start calibration,
+the sweep a run (its lease `run=True`: STOP, the pill, which reopens the
+sheet), "Don't touch the robot."; Stop goes back to centering. Good and
+Acceptable are saved at once ("Camera calibrated and saved."), Redo
+waits ("Not accurate enough: …", Redo calibration, Save anyway). × closes
+it and a sweep carries on. While a Robot setup sheet is open the page
+under it is disabled, so its keys are the sheet's. Reset setup asks (Keep setup primary),
 then `Session.reset_setup` zips the profile folder beside it, dated, and
 clears the cameras, the pixel map, the deck modules and those three
 positions; the deck, the picking settings, the tip calibration and saved
@@ -296,7 +310,7 @@ The lower camera's mode and crop for pickup clips are settings too
 mode, and the pipette calibration reopens it in the profile's own.
 The camera calibration sweep's parameters (marker side, dictionary, grid,
 degree) are settings too (`AppSettings.sweep_*`); the Camera calibration
-page shows them and links to Settings.
+sheet shows them and links to Settings.
 So is where the models run (`AppSettings.inference_device`: Auto, CPU,
 GPU). A `.pt` is run as its ONNX export beside it (`name.onnx`, made by
 `python -m micropick.export_models`, checked against the `.pt`; the build
@@ -309,9 +323,6 @@ verify, manual adjustment, the start offset dx, dy). The Tip calibration page is
 each a card with a mark: place the disc (ticked by the operator), set the
 disc position, put a tip on, calibrate, nudge the tip (only while it
 waits); its cameras are the profile's upper and lower ones.
-Camera calibration is the same (`widgets.step_card.StepCard`): place the
-marker (done when it is seen), center it (done within two of its sides of
-the center), sweep, save the result; the upper camera, no chooser.
 Picking is the same, leading to the run: complete the Operation checklist,
 set the picking position, the shake position, the dish bottom (optional),
 analyze the dish, start picking; the jog panel last. Steps 2-4 are marked

@@ -116,11 +116,12 @@ def test_a_robot_setup_need_opens_its_page_and_its_crumb_comes_back(
     text, (go,) = _banner(window)
     assert text == "Calibrate the camera first."
     go.click()
-    assert window.current_page() is window.camera_calibration_page
+    sheet = window.calibration_sheet
+    assert sheet.isVisible()
+    assert sheet.title_label.text() == "Camera calibration"
     assert window.top.path == ["Auto pick", "Camera calibration"]
-    assert window.camera_calibration_page.isEnabled()
-    assert not window.step_bar.isVisible() and _banner(window) is None
     window.top.crumb_clicked.emit(0)
+    assert not sheet.isVisible()
     assert window.step == "tip"
     assert window.top.path == ["Auto pick"]
 

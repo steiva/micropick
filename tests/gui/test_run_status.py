@@ -154,8 +154,28 @@ def test_a_run_started_out_of_a_task_is_gone_back_to_on_its_page(app,
         assert window.home.run_note.text() == BUSY_NOTE.format(
             "Camera calibration")
         window.top.status_clicked.emit()
-        assert window.current_page() is window.camera_calibration_page
-        assert window.top.path == ["Camera calibration"]
+        assert not window.calibration_sheet.isHidden()
+        assert window.current_page() is window.robot_setup_page
+        assert window.top.path == ["Robot setup", "Camera calibration"]
+    finally:
+        lease.release()
+
+
+def test_a_sweep_started_from_a_step_comes_back_over_that_step(app, window):
+    _connect(app, window)
+    window.home.tiles["auto"].clicked.emit()
+    window.footer.next.click()                     # Deck checked: Tip
+    window.open_setup_item("camera_calibration")   # the Tip step's banner
+    lease = window.session.robot_lease.claim("camera calibration sweep",
+                                             run=True)
+    try:
+        app.processEvents()
+        window.open_home()
+        assert window.calibration_sheet.isHidden()
+        window.top.status_clicked.emit()
+        assert not window.calibration_sheet.isHidden()
+        assert window.step == "tip"
+        assert window.top.path == ["Auto pick", "Camera calibration"]
     finally:
         lease.release()
 

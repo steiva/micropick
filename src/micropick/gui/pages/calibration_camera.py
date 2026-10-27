@@ -1,93 +1,58 @@
-"""Calibrating the upper camera, as numbered steps on one page.
+"""Robot setup's camera calibration sheet (REDESIGN §5, #10): the pixel map
+of the upper camera, as the confirmed steps.
 
-The picture on the left, and on the right the steps, each a card with a mark
-- done, to do, or waiting for a step above (`widgets.step_card`):
+A sheet over whatever is shown, opened from Robot setup's row or a step
+that needs the calibration: the live picture of the upper camera on the
+left, and on the right the steps, each a card with a mark
+(`widgets.step_card`), opened one after another by the operator's answer:
 
-1. Place the calibration marker on the picking plane, where the camera sees
-   it. Done when the page sees it, in the dictionary set in Settings.
-2. Center it under the crosshair, at the height where the picture is sharp.
-   Done when the marker is within CENTERED_SIDES of its own side of the
-   frame's center. The jog panel sits right under this step.
-3. Sweep: the parameters (set in Settings), what still stops it, Start.
-4. Save the result: the verdict, the statistics, Save to profile.
+1. **Place the marker** on a platform -> "It is in place".
+2. **Which slot is it in?** The platforms' slots (all of them while none
+   is set) -> "Move the camera there": the camera over the slot's center.
+   Before a tip calibration the camera's distance from the tip is the
+   start offset in Settings (`AppSettings.tip_cal_start_offset`): it only
+   has to bring the marker into view.
+3. **Center the camera on the marker**, with the arrows, or with a click
+   on the picture once a pixel map exists - before the first one a pixel
+   has no direction on the deck, and a click moves nothing. The picture
+   says MARKER FOUND or NO MARKER IN VIEW; "It is centered" waits for the
+   marker within CENTERED_SIDES of its own side of the center, since
+   `measure_scale` probes from wherever the gantry stands.
+4. **Calibrate** -> "Start calibration": the sweep, a **run** - it holds
+   the robot's lease from start to end, so STOP and the pill show - with a
+   progress bar and "Don't touch the robot.". Stop (Esc, STOP) ends it at
+   the next pose; the gantry has then moved, so the steps go back to 3.
+5. **The result.** Good and Acceptable are saved at once: "Camera
+   calibrated and saved.". Redo is not: "Not accurate enough: ..." with
+   Redo calibration and Save anyway.
 
-The sweep is the upper camera's - the one Settings names - since the lower
-camera looks up at the tip and a map of it is used by nothing; there is no
-chooser.
+The sweep's parameters - marker side, dictionary, grid, degree - are the
+bench's and set in Settings (`AppSettings.sweep_*`); step 4 says which it
+will use, with the way there, and "Use DICT_…" writes the dictionary the
+marker was found in to Settings.
 
-A tab of its own, on the right with the tools used when needed: on a new
-system, or after the camera was moved, refocused or set to another
-resolution, and not before every run. It still comes before Tip calibration
-(`pages/calibration_pipette.py`) the first time, since the tip offset is
-measured through the pixel map this one produces; the Operation checklist
-on the Profile page says so.
+The sweep is the upper camera's - the one Robot setup names - since the
+lower camera looks up at the tip and a map of it is used by nothing.
 
-The picture, and one panel in the order of the work: Camera, Marker, the jog
-panel, Sweep, Result. The sweep's parameters - marker side, dictionary, grid,
-degree - are the bench's and set in Settings (`AppSettings.sweep_*`); the
-Sweep card says which it will use, with the way there, and "Use DICT_…" on
-the Marker card writes the dictionary the marker was found in to Settings.
-It was a wizard of four steps, as the
-pipette page was, and became one page for the same reason: the order was
-right, but each step hid what the next one needed. The first act is still a
-physical one at the bench - center the marker and set the working height -
-and the panel says so first, because the whole sweep is planned around it:
-`measure_scale` probes from wherever the gantry is standing. What stops the
-sweep is said under Start, and the jog panel is hidden while it runs.
+The sheet watches for the marker while it is shown and no sweep runs: the
+frame on the view is passed to `gui.marker_watch` a few times a second,
+and what it finds is drawn over the picture. It reads the frame the view
+is already showing rather than the camera, so what is drawn belongs to the
+picture it is drawn on. During the sweep, `calibrate_camera`'s `on_frame`
+draws the corners being fitted instead (a signal, so the drawing happens
+on the GUI thread; the frame is dropped).
 
-**The profile is written by a button on the last step, never by the sweep.**
-That is what makes a cancellation safe rather than nearly safe: there is no
-window in which a half-finished run could write. `run_sweep` raises `Cancelled`
-before the fit is attempted, so a cancelled run has nothing to write either —
-but the guarantee here does not rest on that, it rests on nothing writing
-except an operator looking at a report.
+The result is a verdict judged from the FitReport on four things, each
+against two limits (`VERDICT_LIMITS`): the held-out error, the largest
+residual, how far the recovered marker side is from the printed one, and
+how much of the frame the sweep covered. The worst of the four is the
+verdict. The limits are set from the first real sweep (DESIGN section 3:
+24 µm held out, the side 0.4 % off, the edges of the frame reached). The
+report and two plots are behind Statistics.
 
-The sweep runs in a `Worker`, which passes it the three hooks it already
-declares: `on_progress` becomes the bar, `log` becomes lines in the panel and
-in the application log, and `cancel` is the same `threading.Event` the workflow
-has always taken. No adapter, and `workflows/calibrate_camera` learns nothing
-about Qt.
-
-The page watches for the marker while the operator puts it down
----------------------------------------------------------------
-Placing the marker is done by eye, and the one thing the eye cannot check is
-whether the camera sees it: a marker face down, or printed through the back
-of the paper, is mirrored, and a mirrored marker is in no dictionary at all.
-Undetected looks the same as badly lit. So while the page is on screen and
-no sweep runs, the frame on the widget is passed to `gui.marker_watch` a few
-times a second,
-and what it finds is drawn over the picture — the outline it was detected
-by, its own top edge, its first corner — with the id and which way up it is.
-Not detected is reported as loudly as detected, with what it could be.
-
-The detection runs in a `Worker` like any blocking call: 16 ms a frame at
-2592x1944, four times that when the marker is not where it was expected and
-the other dictionaries are tried. It reads the frame the view is already
-showing rather than the camera, so what is drawn belongs to the picture it
-is drawn on.
-
-The result is a verdict first
------------------------------
-One line at the top of Result - Good, Acceptable or Redo - judged from the
-FitReport on four things, each against two limits (`VERDICT_LIMITS`): the
-held-out error, the largest residual, how far the recovered marker side is
-from the printed one, and how much of the frame the sweep covered. The
-worst of the four is the verdict, and the line names what made it so. The
-limits are set from the first real sweep (DESIGN section 3: 24 µm held out,
-the side 0.4 % off, the edges of the frame reached). The report and the two
-plots that used to fill the step are behind Statistics: what an operator
-needs to decide is the line; why is one click away.
-
-The sweep draws what it is tracking
------------------------------------
-`calibrate_camera` already offers `on_frame(frame, corners, i, total)` at
-every pose, and those corners are the ones being fitted — not a second
-detection run beside it, which could disagree with the fit and would be
-worse than nothing. The callback runs on the worker's thread, so it emits a
-signal and the drawing happens here; the frame it is handed is dropped,
-because the view is showing the live camera and what matters is where the
-sweep believes the marker is. A pose where the tracker saw nothing draws
-nothing, which is the pose worth noticing.
+Nothing but the result writes the profile, and only after the fit:
+`run_sweep` raises `Cancelled` before the fit is attempted, so a stopped
+sweep has nothing to write.
 """
 
 from __future__ import annotations
@@ -100,43 +65,58 @@ import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFontDatabase, QPalette
-from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QMessageBox,
-                               QPlainTextEdit, QProgressBar, QPushButton,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QDialog, QHBoxLayout, QLabel, QPlainTextEdit,
+                               QProgressBar, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from ...config.app_settings import AppSettings
+from ...core.calibration.pixel_map import PixelMap
+from ...core.deck import slot_center
+from ...hardware.protocols import xyz
 from ...viz import markers
-from ..auto_camera import CameraOpener
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
+from ...workflows.manual import camera_target
+from ..auto_camera import CameraOpener
 from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
+from ..tasks import SETUP_TITLES
 from ..theme import SPACING
-from ..theme.factory import (Section, heading, muted_label,
-                             primary_button, scroll_column, secondary_button)
+from ..theme.factory import (heading, muted_label, primary_button,
+                             quiet_button, scroll_column, secondary_button,
+                             select)
+from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
-from ..widgets.card_columns import CardColumns
-from ..widgets.done_banner import DoneBanner
-from ..widgets.feed_row import FeedRow
 from ..widgets.checklist import BLOCKED, OK, TODO
+from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
+from ..widgets.overlays import SheetWindow
 from ..widgets.step_card import StepCard, wrapped
-from ..workers import Worker
+from ..workers import Worker, describe_error
 
-__all__ = ["CameraCalibration"]
-
-TITLE = "Camera calibration"
+__all__ = ["CameraCalibrationSheet", "DICTIONARIES", "STEPS",
+           "SWEEP_DEFAULTS", "judge", "sweep_parameters"]
 
 log = logging.getLogger(__name__)
 
+TITLE = SETUP_TITLES["camera_calibration"]
+
 PANEL_WIDTH = 420
 
-# The dictionaries live in `gui.marker_watch`, which is the other user of
-# them: the live watch tries every one of them, and the parameters' combo
-# offers the same list. Re-exported so nothing that imported it from
-# here breaks.
-__all__ += ["DICTIONARIES"]
+# The steps, in order; `CameraCalibrationSheet.step` is one of them.
+STEPS = ("place", "slot", "center", "calibrate", "result")
 
-# Step 2 is done when the marker's center is within this many of its own
+# What the picture says while the marker is watched for.
+MARKER_FOUND = "MARKER FOUND"
+NO_MARKER = "NO MARKER IN VIEW"
+
+SAVED = "Camera calibrated and saved."
+DONT_TOUCH = "Don't touch the robot."
+USE_THE_ARROWS = "Use the arrows to center the marker."
+CENTER_BY_CLICK = ("Click the marker on the picture or use the arrows "
+                   "until it is in the middle.")
+CENTER_BY_ARROWS = "Use the arrows until the marker is in the middle."
+
+# Step 3 is done when the marker's center is within this many of its own
 # sides of the frame's center: under the crosshair as the eye judges it.
 CENTERED_SIDES = 2.0
 
@@ -179,6 +159,7 @@ class Verdict:
     level: str                       # GOOD, ACCEPTABLE or REDO
     line: str                        # the one line for the top of Result
     checks: tuple                    # (what, value, unit, level) for each
+    why: str = ""                    # what made it worse than Good
 
 
 def _grade(what: str, value: float) -> str:
@@ -210,11 +191,11 @@ def judge(report, printed_side_mm: float | None) -> Verdict:
         return f"{what} {value:.1f} {unit}" if unit != "%" else \
             f"{value:.0f} % of the frame covered"
 
+    parts = []
     if level == GOOD:
         line = f"{GOOD}: " + ", ".join(said(*c[:3]) for c in checks) + "."
     else:
         worst = [c for c in checks if c[3] == level]
-        parts = []
         for what, value, unit, _ in worst:
             _u, good, acceptable, higher = VERDICT_LIMITS[what]
             limit = good if level == ACCEPTABLE else acceptable
@@ -225,10 +206,10 @@ def judge(report, printed_side_mm: float | None) -> Verdict:
         line = f"{level}: " + "; ".join(parts) + "."
         if level == REDO:
             line += " Center the marker and sweep again."
-    return Verdict(level, line, checks)
+    return Verdict(level, line, checks, "; ".join(parts))
 
 
-# How often the page looks for the marker. Three times a second is faster than
+# How often the sheet looks for the marker. Three times a second is faster than
 # a hand moves a marker and a twentieth of what the detection costs, so the
 # grab loop and the view keep the rest.
 WATCH_MS = 330
@@ -241,103 +222,124 @@ CORNER_PEN = (94, 158, 235)      # blue
 LIMIT_PEN = (235, 128, 80)       # orange
 
 
-class CameraCalibration(QWidget):
+
+class CameraCalibrationSheet(SheetWindow):
+    """`open_sheet()`; × closes it, a sweep going on carries on (the pill
+    leads back). `step` is the step open now, one of STEPS."""
+
     # Emitted from the sweep's thread with the corners it just tracked, or
     # None for a pose where the marker was not seen. A signal, so the
     # drawing happens on the thread that owns the widget.
     pose_tracked = Signal(object)
 
-    def __init__(self, session: Session, parent: QWidget | None = None):
-        super().__init__(parent)
+    def __init__(self, session: Session, host: QWidget):
+        super().__init__(host, TITLE, buttons=False)
         self.session = session
+        self.step = STEPS[0]
         self._worker: Worker | None = None
-        self._result = None                  # (pmap, report, sweep)
         self._sweep_used = dict(SWEEP_DEFAULTS)  # what the last sweep ran with
         self._watch = MarkerWatch()
-        self.opener = CameraOpener(session, self)
         self._watch_worker: Worker | None = None
         self._sighting = None
-        self._last_line = ""
         self._verdict: Verdict | None = None
-        # How the last sweep ended, under Start until the next one.
+        self._result = None                  # (pmap, report, sweep)
+        self._saved = False                  # the result, in the profile
+        self._save_error = ""
+        # How the last sweep ended, when not with a result.
         self._outcome = ""
+        self.marker_state = ""               # what the picture says of it
+        self.opener = CameraOpener(session, self)
 
-        self.view = CameraView(self)
+        self.view = CameraView(self.body_widget)
         # No Home and no Retract here: homing halfway through centering the
         # marker throws away the pose the sweep is about to be planned around.
-        # Centering the marker is the D-pad; the stored positions are not
-        # part of it, so they start folded.
-        self.jog = JogPanel(self.session, shortcut_host=self,
+        self.jog = JogPanel(session, shortcut_host=self,
                             machine_controls=False, collapsed=("positions",),
-                            parent=self)
+                            parent=self.body_widget)
         self.jog.show_position_on(self.view)
+        self.jog.add_help(["Click   center the camera there"])
+        self.view.clicked.connect(self._clicked)
 
-        self._saved = False                  # the last result, saved
-        panel = CardColumns([self._marker_step(), self._center_step(),
-                             self.jog, self._sweep_card(),
-                             self._report_card()], self)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
-                                  SPACING * 2)
-        layout.setSpacing(SPACING)
-        layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
-                         1)
+        column = QWidget(self.body_widget)
+        cards = QVBoxLayout(column)
+        cards.setContentsMargins(0, 0, 0, 0)
+        cards.setSpacing(SPACING)
+        self.cards = {}
+        for name, build in (("place", self._place_card),
+                            ("slot", self._slot_card),
+                            ("center", self._center_card),
+                            ("calibrate", self._calibrate_card),
+                            ("result", self._result_card)):
+            card = build(len(self.cards) + 1)
+            self.cards[name] = card
+            cards.addWidget(card.box)
+            if name == "center":
+                cards.addWidget(self.jog)
+        cards.addStretch(1)
+        self._build_statistics()
+
+        self.body.addWidget(
+            FeedRow(self.view, scroll_column(column, PANEL_WIDTH)), 1)
 
         self.pose_tracked.connect(self._draw_tracked)
-
         self._watch_timer = QTimer(self)
         self._watch_timer.setInterval(WATCH_MS)
         self._watch_timer.timeout.connect(self._watch_tick)
 
-        session.camera_opened.connect(self._refresh_cameras)
-        session.camera_closed.connect(self._refresh_cameras)
+        session.camera_opened.connect(self._refresh_camera)
+        session.camera_closed.connect(self._refresh_camera)
+        session.profile_changed.connect(lambda _p: self._fill_slots())
         session.robot_state_changed.connect(lambda _s: self._refresh())
-        session.robot_busy_changed.connect(self._on_robot_busy)
-        # The sweep's parameters are Settings'; the marker is watched for in
-        # the dictionary chosen there.
+        session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.settings_changed.connect(lambda _s: self._refresh())
         # The window's Stop: the sweep stops at its next pose.
-        session.stop_requested.connect(self._cancel)
-        self._refresh_cameras()
+        session.stop_requested.connect(self._stop)
+        self._fill_slots()
         self._refresh()
 
     # -- construction --------------------------------------------------------
 
-    def _marker_step(self) -> QWidget:
-        self.place = StepCard(self, 1, "Place the calibration marker")
-        self.place.add(wrapped(
-            "Place the calibration marker on the picking plane, in view of "
-            "the camera."))
-        # One line: found or not. The full description - the dictionary,
-        # which way up, the other ids - is its tooltip.
-        self.marker_state = muted_label("waiting for a frame…")
-        self.place.add(self.marker_state)
-        # Appears only when the marker is found under a dictionary other than
-        # the one the sweep is set to: one click, and it says which one it is
-        # changing to.
+    def _place_card(self, number: int) -> StepCard:
+        step = StepCard(self.body_widget, number, "Place the marker")
+        step.add(wrapped("Put the calibration marker on a platform."))
+        self.placed_button = primary_button("It is in place", self)
+        self.placed_button.clicked.connect(lambda: self._go("slot"))
+        step.add(self.placed_button)
+        return step
+
+    def _slot_card(self, number: int) -> StepCard:
+        step = StepCard(self.body_widget, number, "Which slot is it in?")
+        self.slot = select(self)
+        step.add(self.slot)
+        self.move_button = primary_button("Move the camera there", self)
+        self.move_button.clicked.connect(self._move)
+        step.add(self.move_button)
+        return step
+
+    def _center_card(self, number: int) -> StepCard:
+        step = StepCard(self.body_widget, number,
+                        "Center the camera on the marker")
+        # Says a click only once there is a pixel map for it to go through.
+        self.center_how = wrapped()
+        step.add(self.center_how)
+        self.center_state = muted_label()
+        step.add(self.center_state)
+        # Only when the marker is found under a dictionary other than the
+        # one the sweep is set to: one click, and it says which.
         self.use_dictionary_button = secondary_button("", self)
         self.use_dictionary_button.clicked.connect(self._use_found_dictionary)
         self.use_dictionary_button.hide()
-        self.place.add(self.use_dictionary_button)
-        return self.place.box
+        step.add(self.use_dictionary_button)
+        self.centered_button = primary_button("It is centered", self)
+        self.centered_button.clicked.connect(lambda: self._go("calibrate"))
+        step.add(self.centered_button)
+        return step
 
-    def _center_step(self) -> QWidget:
-        self.center = StepCard(self, 2, "Center it under the crosshair")
-        self.center.add(wrapped(
-            "Jog the marker under the camera crosshair, at the height where "
-            "the picture is in focus."))
-        self.center_state = muted_label()
-        self.center.add(self.center_state)
-        return self.center.box
-
-    def _sweep_card(self) -> QWidget:
-        self.sweep = StepCard(self, 3, "Sweep")
-        box = self.sweep.box
-        box.layout().addWidget(wrapped(
-            "Moves the marker across the field of view and fits the pixel "
-            "to deck map. Takes a few minutes; Cancel discards it."))
-        # The parameters are set in Settings; said here, with the way there,
-        # so a sweep is never started on numbers nobody looked at.
+    def _calibrate_card(self, number: int) -> StepCard:
+        step = StepCard(self.body_widget, number, "Calibrate")
+        step.add(wrapped("The robot moves the camera over the marker by "
+                         "itself. About 2 min."))
+        # The parameters are Settings'; said here, with the way there.
         row = QHBoxLayout()
         self.parameters = QLabel()
         self.parameters.setWordWrap(True)
@@ -345,76 +347,52 @@ class CameraCalibration(QWidget):
         self.parameters_button = QPushButton("Settings ›", self)
         self.parameters_button.setFlat(True)
         self.parameters_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.parameters_button.setToolTip("Sweep parameters.")
+        self.parameters_button.setToolTip("Calibration parameters.")
         self.parameters_button.clicked.connect(
             lambda: self.session.page_requested.emit("settings"))
         row.addWidget(self.parameters_button, 0, Qt.AlignmentFlag.AlignTop)
-        box.layout().addLayout(row)
-        # What stops the sweep, in words: the gate the wizard's steps used
-        # to be, under the button it holds back.
-        self.checks = QLabel()
-        self.checks.setWordWrap(True)
-        self.checks.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.checks)
+        step.add_layout(row)
+        # What stops Start, or how the last sweep ended.
+        self.camera_note = muted_label()
+        self.camera_note.setWordWrap(True)
+        step.add(self.camera_note)
+        self.start_button = primary_button("Start calibration", self)
+        self.start_button.clicked.connect(self._start)
+        step.add(self.start_button)
         self.progress = QProgressBar(self)
         self.progress.setRange(0, 1)
         self.progress.setValue(0)
-        box.layout().addWidget(self.progress)
+        step.add(self.progress)
+        self.notice = QLabel(DONT_TOUCH, self)
+        self.notice.setObjectName("warnText")
+        step.add(self.notice)
+        return step
 
+    def _result_card(self, number: int) -> StepCard:
+        step = StepCard(self.body_widget, number, "Result")
+        self.saved_banner = Banner(SAVED, tone="ok", parent=self)
+        step.add(self.saved_banner)
+        self.poor_banner = Banner("", tone="warn", parent=self)
+        step.add(self.poor_banner)
         row = QHBoxLayout()
-        self.start_button = primary_button("Start sweep", self)
-        self.start_button.clicked.connect(self._start)
-        self.cancel_button = secondary_button("Cancel", self)
-        self.cancel_button.clicked.connect(self._cancel)
-        row.addWidget(self.start_button)
-        row.addWidget(self.cancel_button)
+        self.redo_button = primary_button("Redo calibration", self)
+        self.redo_button.clicked.connect(self._redo)
+        self.save_anyway_button = quiet_button("Save anyway", self)
+        self.save_anyway_button.clicked.connect(self._save)
+        row.addWidget(self.redo_button)
+        row.addWidget(self.save_anyway_button)
         row.addStretch(1)
-        box.layout().addLayout(row)
-
-        self.run_log = QPlainTextEdit(self)
-        self.run_log.setReadOnly(True)
-        self.run_log.setMaximumBlockCount(2000)
-        self.run_log.setMinimumHeight(140)
-        self.run_log.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
-        # Folded, as on the pipette page: the line under Start says what the
-        # sweep is doing, and every line also goes to the application log.
-        self.details = Section("Details", collapsed=True, parent=self)
-        self.details.body.layout().addWidget(self.run_log)
-        # A green check when a sweep has ended well, and after Save.
-        self.done = DoneBanner(self)
-        box.layout().addWidget(self.done)
-        box.layout().addWidget(self.details)
-        return box
-
-    def _report_card(self) -> QWidget:
-        self.result = StepCard(self, 4, "Save the result")
-        box = self.result.box
-        self.verdict = QLabel("No sweep on this page yet.")
-        self.verdict.setWordWrap(True)
-        self.verdict.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.verdict)
-        self.stats_button = secondary_button("Statistics", self)
+        step.add_layout(row)
+        self.stats_button = quiet_button("Statistics", self)
         self.stats_button.setToolTip("Report, coverage and residual plots.")
         self.stats_button.clicked.connect(self._show_statistics)
-        self.stats_button.hide()
-        box.layout().addWidget(self.stats_button, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self.write_note = QLabel()
-        self.write_note.setWordWrap(True)
-        box.layout().addWidget(self.write_note)
-        self.save_button = primary_button("Save to profile", self)
-        self.save_button.clicked.connect(self._save)
-        box.layout().addWidget(self.save_button)
-        self._build_statistics()
-        return box
+        step.add(self.stats_button)
+        return step
 
     def _build_statistics(self) -> None:
         """The report and the plots, in a window of their own."""
         dialog = QDialog(self)
-        dialog.setWindowTitle("Sweep statistics")
+        dialog.setWindowTitle("Calibration statistics")
         dialog.resize(760, 860)
         column = QVBoxLayout(dialog)
         self.report_text = QPlainTextEdit(dialog)
@@ -437,13 +415,7 @@ class CameraCalibration(QWidget):
         self.statistics.raise_()
 
     def _plot(self, x_label: str, y_label: str):
-        """A transparent plot, inked with the palette's text colour.
-
-        Transparent so the card's surface shows through in either theme, and
-        the text role because it is the one palette role qdarktheme actually
-        varies between light and dark — the background roles it installs are
-        placeholders that are the same grey in both.
-        """
+        """A transparent plot, inked with the palette's text colour."""
         widget = pg.PlotWidget(background=None)
         ink = self.palette().color(QPalette.ColorRole.Text)
         for axis in ("left", "bottom"):
@@ -454,19 +426,143 @@ class CameraCalibration(QWidget):
         widget.showGrid(x=True, y=True, alpha=0.2)
         return widget
 
+    # -- opening and closing -------------------------------------------------
+
+    def open_sheet(self) -> None:
+        """From step 1, unless a sweep is going on: then as it is."""
+        if not self._running():
+            self._outcome = ""
+            self._go(STEPS[0])
+        self._fill_slots()
+        self.open()
+        self.opener.ensure(self.session.upper_camera_label)
+        self._refresh_camera()
+        self._watch_timer.start()
+
+    def discard(self) -> None:
+        """Closed by going elsewhere; a sweep carries on."""
+        if not self.isHidden():
+            self.hide()
+
+    def hideEvent(self, event) -> None:
+        """A sheet nobody is looking at does not detect. (The cover hides
+        itself while it is built, before the timer exists.)"""
+        timer = getattr(self, "_watch_timer", None)
+        if timer is not None:
+            timer.stop()
+        super().hideEvent(event)
+
+    def run_activity(self) -> str | None:
+        """For the top bar's pill: the sweep neither pauses nor waits."""
+        return None
+
+    # -- the steps -----------------------------------------------------------
+
+    def _go(self, step: str) -> None:
+        """Open `step`; going back to an earlier one forgets the result."""
+        self.step = step
+        if STEPS.index(step) < STEPS.index("result"):
+            self._result = self._verdict = None
+            self._saved, self._save_error = False, ""
+            self.statistics.hide()
+        self._refresh()
+
+    def _fill_slots(self) -> None:
+        """The platforms' slots; every slot while no platform is set."""
+        profile = self.session.profile
+        modules = profile.deck.modules if profile is not None else []
+        slots = sorted({s for m in modules for s in m.slots}) or range(1, 12)
+        chosen = self.slot.currentData()
+        self.slot.clear()
+        for slot in slots:
+            self.slot.addItem(f"Slot {slot}", slot)
+        index = self.slot.findData(chosen)
+        self.slot.setCurrentIndex(max(index, 0))
+
+    def _camera_offset(self) -> np.ndarray:
+        """From the camera to the tip: measured, else Settings' start."""
+        profile = self.session.profile
+        offset = (profile.calibration.pipette_offset
+                  if profile is not None else None)
+        if offset is not None:
+            return np.array([offset.dx, offset.dy])
+        return np.array(self.session.settings.tip_cal_start_offset)
+
+    def _move(self) -> None:
+        """Step 2: the camera over the center of the slot chosen."""
+        slot = self.slot.currentData()
+        if slot is None:
+            return
+        xy = np.asarray(slot_center(slot)) - self._camera_offset()
+        if self._out_of_reach(xy, f"Slot {slot}"):
+            return
+        motion = self.session.motion
+
+        def job(log_):
+            motion.camera_to(xy, log=log_)
+            return f"Camera over slot {slot}."
+
+        def moved(said):
+            self._go("center")
+            return said
+
+        log.info("camera calibration: camera to slot %s (%.1f, %.1f)",
+                 slot, xy[0], xy[1])
+        self.jog.run_job(job, what=f"moving the camera over slot {slot}",
+                         then=moved)
+
+    def _clicked(self, u: float, v: float) -> None:
+        """Step 3 by a click: the camera to the point clicked, through the
+        pixel map there is. Without one a pixel has no direction on the
+        deck, and the arrows do it."""
+        if self._running() or STEPS.index(self.step) < STEPS.index("center"):
+            return
+        profile = self.session.profile
+        robot = self.session.robot
+        if profile is None or profile.pixel_map is None:
+            self.jog.tell(USE_THE_ARROWS)
+            return
+        if robot is None:
+            return
+        pmap = PixelMap.from_config(profile.pixel_map)
+        xy = camera_target(pmap, u, v, xyz(robot))
+        if self._out_of_reach(xy, "That point"):
+            return
+        motion = self.session.motion
+
+        def job(log_):
+            motion.camera_to(xy, log=log_)
+            return None
+
+        self.jog.run_job(job, what="centering the camera")
+
+    def _out_of_reach(self, xy, what: str) -> bool:
+        """Said under the position, and True, when the gantry cannot go to
+        `xy` at the height it crosses the deck at (where it is, while
+        that is not measured)."""
+        motion, pose = self.session.motion, self.jog.pose
+        z = motion.travel_z if motion.travel_z is not None else (
+            pose[2] if pose is not None else None)
+        why = motion.refused((xy[0], xy[1], z)) if z is not None else ""
+        if why:
+            self.jog.tell(f"{what} is out of reach: {why}")
+        return bool(why)
+
+    def _redo(self) -> None:
+        self._go("center")
+
     # -- watching for the marker ---------------------------------------------
 
     def _watch_tick(self) -> None:
         """One look, if there is something to look at and nothing in flight."""
-        if not self.isVisible() or self._running():
+        if self.isHidden() or self._running():
             return
         if self._watch_worker is not None and self._watch_worker.running:
             return
         frame = self.view.held_frame
         if frame is None:
             return
-        watch, wanted = self._watch, self._parameters()["dictionary"]
-        worker = Worker(watch.look, frame, wanted,
+        worker = Worker(self._watch.look, frame, self._parameters()["dictionary"],
                         what="looking for the marker")
         self._watch_worker = worker
         # Bound methods, not lambdas: Qt takes a connection's thread from the
@@ -479,9 +575,10 @@ class CameraCalibration(QWidget):
         if self.sender() is not self._watch_worker:
             return
         self._watch_worker = None
+        if self._running():
+            return
         self._sighting = sighting
         self.view.set_overlay_items(sighting.items())
-        # The marks and the gate follow what was seen, not only the line.
         self._refresh()
 
     def _watch_failed(self, reason: str) -> None:
@@ -490,33 +587,8 @@ class CameraCalibration(QWidget):
         self._watch_worker = None
         self._sighting = None
         self.view.set_overlay_items([])
-        self.marker_state.setText(reason)
-        self.use_dictionary_button.hide()
-        self._show_marks(self._running())
-
-    def _show_sighting(self) -> None:
-        sighting = self._sighting
-        if sighting is None:
-            self.marker_state.setToolTip("")
-            self.marker_state.setText(
-                "Upper camera not open."
-                if self._camera() is None else "Looking for the marker…")
-            self.use_dictionary_button.hide()
-            return
-        self.marker_state.setToolTip(sighting.describe())
-        if sighting.as_asked:
-            self.marker_state.setText(f"Seen: marker {sighting.marker_id}.")
-        elif sighting.found:
-            self.marker_state.setText(
-                f"Seen, but in {sighting.dictionary}, not in "
-                f"{sighting.wanted}.")
-        else:
-            self.marker_state.setText(
-                "Marker not detected.")
-        wrong = sighting.found and not sighting.as_asked
-        self.use_dictionary_button.setVisible(wrong)
-        if wrong:
-            self.use_dictionary_button.setText(f"Use {sighting.dictionary}")
+        log.error("looking for the marker: %s", reason)
+        self._refresh()
 
     def _use_found_dictionary(self) -> None:
         """Set the sweep's dictionary in Settings to the one the marker was
@@ -534,24 +606,12 @@ class CameraCalibration(QWidget):
     def _parameters(self) -> dict:
         return sweep_parameters(self.session.settings)
 
-    def _show_parameters(self) -> None:
-        p = self._parameters()
-        self.parameters.setText(
-            f"Marker {p['marker_side_mm']:g} mm, {p['dictionary']}, grid "
-            f"{p['grid_n']}, degree {p['degree']}.")
-
-    # -- running -------------------------------------------------------------
-
-    def _camera(self):
-        label = self.session.upper_camera_label
-        return self.session.camera(label) if label else None
-
     def _seen(self) -> bool:
-        """Step 1: the marker in the picture, in the sweep's dictionary."""
+        """The marker in the picture, in the sweep's dictionary."""
         return self._sighting is not None and self._sighting.as_asked
 
     def _centered(self) -> bool:
-        """Step 2: within CENTERED_SIDES of its own side of the center."""
+        """Within CENTERED_SIDES of its own side of the center."""
         sighting = self._sighting
         if not self._seen() or sighting.offset_px is None \
                 or not sighting.side_px:
@@ -559,66 +619,57 @@ class CameraCalibration(QWidget):
         return (float(np.linalg.norm(sighting.offset_px))
                 <= CENTERED_SIDES * sighting.side_px)
 
+    # -- the sweep -----------------------------------------------------------
+
+    def _camera(self):
+        label = self.session.upper_camera_label
+        return self.session.camera(label) if label else None
+
     def _running(self) -> bool:
         return self._worker is not None and self._worker.running
 
-    def _readiness(self) -> list[str]:
-        """What stops the sweep from starting, as sentences."""
-        out = []
+    def _problem(self) -> str:
+        """What stops the sweep from starting, as a sentence, or ""."""
         if self.session.robot is None:
-            out.append("Connect the robot on the Profile page.")
+            return "Robot not connected."
         if self.session.upper_camera_label is None:
-            out.append("Choose the upper camera in Settings.")
-        elif self._camera() is None:
-            out.append("The upper camera is not open yet.")
-        elif not self._seen():
-            out.append("Step 1: the marker is not seen.")
-        elif not self._centered():
-            out.append("Step 2: center the marker under the crosshair.")
-        return out
+            return "Choose the upper camera first."
+        if self._camera() is None:
+            return "Upper camera not open."
+        if not self._seen():
+            return "Marker not in view."
+        if not self._centered():
+            return "Marker not centered."
+        return ""
 
     def _start(self) -> None:
         camera = self._camera()
-        if self._readiness() or self._running():
+        if self._problem() or self._running():
             return
-
         # Taken once: a change in Settings while it runs is for the next.
         params = self._sweep_used = self._parameters()
         detector = cv2.aruco.ArucoDetector(
             cv2.aruco.getPredefinedDictionary(
                 DICTIONARIES[params["dictionary"]]),
             cv2.aruco.DetectorParameters())
-
-        # The robot for the whole sweep (`Session.robot_lease`).
-        lease = self.session.robot_lease.claim("camera calibration sweep", run=True)
+        # The robot for the whole sweep (`Session.robot_lease`): a run.
+        lease = self.session.robot_lease.claim("camera calibration sweep",
+                                               run=True)
         if lease is None:
-            self.verdict.setText(self.session.robot_lease.refusal)
+            self._outcome = self.session.robot_lease.refusal
+            self._refresh()
             return
-
-        self.run_log.clear()
-        self._saved = False
         self._outcome = ""
-        self._last_line = ""
         self.progress.setRange(0, 0)         # indeterminate until the first pose
-        self._result = None
-        self._verdict = None
-        self.done.clear()
-        self.verdict.setText("Sweeping…")
-        self.stats_button.hide()
-        self.statistics.hide()
         self.view.set_overlay_items([])
-        self._append(f"sweeping with grid {params['grid_n']}, "
-                     f"degree {params['degree']}, marker "
-                     f"{params['marker_side_mm']:g} mm, "
-                     f"{params['dictionary']}")
-
-        # calibrate_camera declares on_progress, cancel and log, so the worker
-        # passes all three without an adapter. on_frame is named outright,
-        # because it is this page's and not the convention's.
+        log.info("camera calibration: grid %d, degree %d, marker %g mm, %s",
+                 params["grid_n"], params["degree"],
+                 params["marker_side_mm"], params["dictionary"])
+        # calibrate_camera declares on_progress, cancel and log, so the
+        # worker passes all three. on_frame is named outright.
         worker = Worker(calibrate_camera, self.session.robot, camera, detector,
                         marker_side_mm=params["marker_side_mm"],
-                        grid_n=params["grid_n"],
-                        degree=params["degree"],
+                        grid_n=params["grid_n"], degree=params["degree"],
                         on_frame=self._on_pose,
                         what="calibrating the camera", lease=lease)
         self._worker = worker
@@ -630,36 +681,27 @@ class CameraCalibration(QWidget):
         self._refresh()
 
     def _on_pose(self, frame, corners, index, total) -> None:
-        """The sweep's own hook, on the sweep's own thread. Emits and returns.
-
-        The frame is not carried across: the view is already showing the
-        live camera, and a 15 MB array per pose in Qt's event queue is the
-        mistake `CameraView` exists to avoid.
-        """
+        """The sweep's own hook, on the sweep's own thread. Emits and
+        returns; the frame is not carried across."""
         self.pose_tracked.emit(None if corners is None else np.asarray(corners))
 
     def _draw_tracked(self, corners) -> None:
         if corners is None:
             self.view.set_overlay_items([])
             return
+        marker_id = getattr(self._sighting, "marker_id", None)
         self.view.set_overlay_items(
-            markers.items(corners, self._sweep_marker_id(),
+            markers.items(corners, marker_id,
                           label=f"tracked  ·  {markers.orientation(corners)}"))
 
-    def _sweep_marker_id(self) -> int | None:
-        """What the watch saw, if it saw anything: the sweep adopts the marker
-        nearest the center and does not report which id that was."""
-        return getattr(self._sighting, "marker_id", None)
-
-    def _cancel(self) -> None:
-        if self._worker is None or not self._worker.running:
+    def _stop(self) -> None:
+        if not self._running():
             return
         # request_cancel is called, never connected: the worker's own event
-        # loop is blocked inside the sweep. The workflow sees the event between
-        # poses, so the gantry finishes the move it is making first.
+        # loop is blocked inside the sweep. The workflow sees the event
+        # between poses, so the gantry finishes the move it is making first.
         self._worker.request_cancel()
-        self._append("canceling at the next pose")
-        self.cancel_button.setEnabled(False)
+        log.info("camera calibration: stopping at the next pose")
 
     def _on_progress(self, done: int, total: int) -> None:
         if self.progress.maximum() != total:
@@ -667,61 +709,155 @@ class CameraCalibration(QWidget):
         self.progress.setValue(done)
 
     def _on_message(self, text: str) -> None:
-        self._append(text)
+        log.info("camera calibration: %s", text)
 
     def _on_finished(self, result) -> None:
         self._worker = None
-        self._result = result
         self.view.set_overlay_items([])
         pmap, report, sweep = result
-        self._append("fit complete")
+        verdict = judge(report, self._sweep_used["marker_side_mm"])
         log.info("camera calibration fitted:\n%s", report)
-        self._verdict = judge(report, self._sweep_used["marker_side_mm"])
-        log.info("camera calibration verdict: %s", self._verdict.line)
-        self.report_text.setPlainText(f"{self._verdict.line}\n\n{report}")
+        log.info("camera calibration verdict: %s", verdict.line)
+        self.report_text.setPlainText(f"{verdict.line}\n\n{report}")
         self._draw_coverage(report, sweep)
         self._draw_residuals(report)
-        self.verdict.setText(f"<b>{self._verdict.line}</b>")
-        self.stats_button.show()
-        self._outcome = f"Finished: {self._verdict.level}. See Result."
-        # A fit to redo is the end of the sweep, not a thing done.
-        if self._verdict.level != REDO:
-            self.done.show_done(f"Sweep finished: {self._verdict.level}.")
-        self._describe_write(pmap)
+        self._go("result")
+        self._result, self._verdict = result, verdict
+        self._saved, self._save_error = False, ""
+        if verdict.level != REDO:
+            self._save()
         self._refresh()
         # The sweep moved the gantry with the panel hidden.
         self.jog.refresh_position()
 
     def _on_failed(self, reason: str) -> None:
-        """A sweep that ended early, cancelled or otherwise.
-
-        It always says to center the marker again, and that is not politeness. A run
-        that stops part way leaves the gantry at the pose it reached, and
-        `measure_scale` probes from wherever the gantry is standing — so the
-        next attempt begins with the marker somewhere near a frame edge or off
-        it entirely, and fails with "marker not detected at the starting pose".
-        Recentering is a physical act and the operator is the only one who can
-        do it.
-        """
+        """A sweep that ended early, stopped or otherwise. The gantry is
+        left at the pose it reached, so the marker is centered again."""
         self._worker = None
-        self.done.clear()
         self.view.set_overlay_items([])
-        self.progress.setRange(0, 1)
-        self.progress.setValue(0)
-        # A cancellation is not a failure and reads as one if it is not named.
-        cancelled = isinstance(getattr(self.sender(), "error", None), Cancelled)
-        kind = "cancelled" if cancelled else "failed"
-        detail = reason
-        self._append(f"{kind}: {detail}")
-        self._append("nothing was written to the profile")
-        self._append("the gantry has moved: center the marker again before "
-                     "the next sweep")
-        self._outcome = (f"Sweep {kind}: {detail}\nNothing was written. The "
-                         f"gantry is no longer where the sweep started: center "
-                         f"the marker again before the next one.")
-        log.info("camera calibration %s: %s", kind, detail)
-        self._refresh()
+        stopped = isinstance(getattr(self.sender(), "error", None), Cancelled)
+        log.info("camera calibration %s: %s",
+                 "stopped" if stopped else "failed", reason)
+        self._outcome = ("Calibration stopped. Center the marker again."
+                         if stopped else f"Calibration failed: {reason} "
+                         f"Center the marker again.")
+        self._go("center")
         self.jog.refresh_position()
+
+    def _save(self) -> None:
+        """The map into the profile; the previous one is archived."""
+        profile = self.session.profile
+        if self._result is None or profile is None:
+            return
+        pmap, _report, _sweep = self._result
+        config = pmap.to_config()
+        try:
+            profile.calibration.pixel_map = config
+            profile.save_calibration()
+        except Exception as exc:                     # noqa: BLE001
+            log.error("pixel map not saved: %s", exc)
+            self._save_error = describe_error(exc)
+            self._refresh()
+            return
+        log.info("pixel map written to %s (degree %d, %s poses, %dx%d)",
+                 profile.path, config.degree, config.n_poses,
+                 config.image_size[0], config.image_size[1])
+        self._saved, self._save_error = True, ""
+        self._refresh()
+        self.session.profile_changed.emit(profile)
+
+    # -- display -------------------------------------------------------------
+
+    def _refresh_camera(self, _label: str = "") -> None:
+        """The upper camera on the picture while the sheet is shown."""
+        camera = None if self.isHidden() else self._camera()
+        if camera is not self.view.camera:
+            self.view.set_camera(camera)
+            # Last frame's marker belongs to last frame's camera.
+            self._sighting = None
+            self.view.set_overlay_items([])
+        self._refresh()
+
+    def _refresh(self) -> None:
+        running = self._running()
+        index = STEPS.index(self.step)
+        free = not self.session.robot_lease.busy
+        connected = self.session.robot is not None
+
+        self.jog.setVisible(not running)
+        self.placed_button.setEnabled(not running)
+        self.slot.setEnabled(index >= 1 and not running)
+        self.move_button.setEnabled(index >= 1 and not running and free
+                                    and connected)
+        self.centered_button.setEnabled(index >= 2 and not running
+                                        and self._centered())
+        problem = self._problem()
+        self.start_button.setEnabled(index >= 3 and not running and free
+                                     and not problem)
+        self.start_button.setVisible(not running)
+        self.progress.setVisible(running)
+        self.notice.setVisible(running)
+        self.camera_note.setText("\n".join(
+            line for line in (self._outcome, "" if running else problem)
+            if line))
+        p = self._parameters()
+        self.parameters.setText(
+            f"Marker {p['marker_side_mm']:g} mm, {p['dictionary']}, grid "
+            f"{p['grid_n']}, degree {p['degree']}.")
+        self._show_marker(running)
+        profile = self.session.profile
+        self.center_how.setText(
+            CENTER_BY_CLICK if profile is not None
+            and profile.pixel_map is not None else CENTER_BY_ARROWS)
+        self._show_result()
+        self._show_marks(index, running)
+
+    def _show_marker(self, running: bool) -> None:
+        """MARKER FOUND or NO MARKER IN VIEW on the picture, and how far it
+        is from the middle, while it is watched for."""
+        sighting = self._sighting
+        watching = (not running and self.view.camera is not None
+                    and sighting is not None)
+        self.marker_state = ("" if not watching else
+                             MARKER_FOUND if self._seen() else NO_MARKER)
+        self.view.set_status([self.marker_state] if self.marker_state else [])
+        wrong = watching and sighting.found and not sighting.as_asked
+        self.use_dictionary_button.setVisible(wrong)
+        if wrong:
+            self.use_dictionary_button.setText(f"Use {sighting.dictionary}")
+        if self._centered():
+            self.center_state.setText("In the middle.")
+        elif self._seen():
+            dx, dy = sighting.offset_px
+            self.center_state.setText(
+                f"{abs(dx):.0f} px {'right' if dx > 0 else 'left'}, "
+                f"{abs(dy):.0f} px {'down' if dy > 0 else 'up'} of the "
+                f"middle.")
+        else:
+            self.center_state.setText("")
+
+    def _show_result(self) -> None:
+        """Saved, or why not, with Redo calibration and Save anyway."""
+        verdict = self._verdict
+        unsaved = verdict is not None and not self._saved
+        self.saved_banner.setVisible(self._saved)
+        if unsaved:
+            self.poor_banner.set_text(
+                self._save_error or f"Not accurate enough: {verdict.why}.")
+        self.poor_banner.setVisible(unsaved)
+        self.redo_button.setVisible(unsaved)
+        self.save_anyway_button.setVisible(unsaved)
+        self.stats_button.setVisible(verdict is not None)
+
+    def _show_marks(self, index: int, running: bool) -> None:
+        """Done before the step open now, to do there, waiting after."""
+        for i, (name, card) in enumerate(self.cards.items()):
+            if i < index or (name == "result" and self._saved):
+                card.set_state(OK)
+            elif i == index:
+                card.set_state(TODO)
+            else:
+                card.set_state(BLOCKED, f"First: step {index + 1}.")
 
     # -- the plots -----------------------------------------------------------
 
@@ -773,150 +909,3 @@ class CameraCalibration(QWidget):
                       f"max {report.resid_max_um:.1f} µm   "
                       f"(dashed: held out {report.holdout_mean_um:.1f})")
 
-    # -- writing -------------------------------------------------------------
-
-    def _describe_write(self, pmap) -> None:
-        profile = self.session.profile
-        config = pmap.to_config()
-        if profile is None:
-            self.write_note.setText("No profile loaded.")
-            return
-        self.write_note.setText(
-            f"Will write to {profile.path / 'calibration.json'}:\n"
-            f"  degree {config.degree}, {config.n_poses} poses, "
-            f"image_size {config.image_size[0]}×{config.image_size[1]}, "
-            f"sweep_z {config.sweep_z:.2f}\n"
-            f"The previous calibration is archived in history/.")
-
-    def _save(self) -> None:
-        if self._result is None or self.session.profile is None:
-            return
-        if self._verdict is not None and self._verdict.level == REDO:
-            answer = QMessageBox.question(
-                self, "Save to profile",
-                f"{self._verdict.line}\n\nSave this map anyway?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        pmap, _report, _sweep = self._result
-        profile = self.session.profile
-        config = pmap.to_config()
-        profile.calibration.pixel_map = config
-        # save_calibration archives what is there before replacing it: a sweep
-        # costs minutes of robot time and yesterday's may have been better.
-        profile.save_calibration()
-        log.info("pixel map written to %s (degree %d, %s poses, %dx%d)",
-                 profile.path, config.degree, config.n_poses,
-                 config.image_size[0], config.image_size[1])
-        self.write_note.setText(
-            f"Written to {profile.path / 'calibration.json'}: degree "
-            f"{config.degree}, {config.n_poses} poses, image_size "
-            f"{config.image_size[0]}×{config.image_size[1]}.")
-        self.save_button.setEnabled(False)
-        self._saved = True
-        self.done.show_done("Pixel map saved to the profile.")
-        self.session.profile_changed.emit(profile)
-
-    # -- display -------------------------------------------------------------
-
-    def _on_robot_busy(self, _holder) -> None:
-        self._refresh()
-
-    def run_activity(self) -> str | None:
-        """For the top bar's pill: the sweep neither pauses nor waits."""
-        return None
-
-    def _refresh(self) -> None:
-        running = self._running()
-        # Hidden while the sweep runs: its keys are given up, and nothing but
-        # the sweep moves the gantry.
-        self.jog.setVisible(not running)
-        self._show_parameters()
-        if not running:
-            self._show_sighting()
-        self._show_marks(running)
-
-        problems = self._readiness()
-        if running:
-            self.checks.setText(f"Sweeping: {self._last_line}"
-                                if self._last_line else "Sweeping…")
-        else:
-            text = ("Ready: press Start sweep." if not problems else
-                    "Before Start:\n" + "\n".join("• " + p for p in problems))
-            self.checks.setText(f"{self._outcome}\n\n{text}" if self._outcome
-                                else text)
-        self.start_button.setEnabled(not problems and not running
-                                     and not self.session.robot_lease.busy)
-        self.cancel_button.setEnabled(running)
-        self.save_button.setEnabled(self._result is not None
-                                    and self.session.profile is not None)
-        self.save_button.setVisible(self._result is not None)
-
-    def _show_marks(self, running: bool) -> None:
-        """Each step's mark, from what the page sees and what was done."""
-        seen, centered = self._seen(), self._centered()
-        self.place.set_state(OK if seen else TODO)
-        if centered:
-            self.center.set_state(OK)
-            self.center_state.setText("Under the crosshair.")
-        elif not seen:
-            self.center.set_state(BLOCKED, "First: step 1.")
-            self.center_state.setText("")
-        else:
-            dx, dy = self._sighting.offset_px
-            self.center.set_state(TODO)
-            self.center_state.setText(f"{abs(dx):.0f} px "
-                                      f"{'right' if dx > 0 else 'left'}, "
-                                      f"{abs(dy):.0f} px "
-                                      f"{'down' if dy > 0 else 'up'} of the "
-                                      f"crosshair.")
-        done = (self._result is not None and self._verdict is not None
-                and self._verdict.level != REDO)
-        if running or done:
-            self.sweep.set_state(OK if done and not running else TODO)
-        else:
-            problems = self._readiness()
-            self.sweep.set_state(TODO if not problems else BLOCKED,
-                                 problems[0] if problems else "")
-        self.result.set_state(OK if self._saved else
-                              TODO if self._result is not None else BLOCKED,
-                              "" if self._result is not None else
-                              "First: a sweep.")
-
-    def _append(self, text: str) -> None:
-        """A line of the sweep: into Details and the application log, and as
-        the latest word under Start while it runs."""
-        self.run_log.appendPlainText(text)
-        log.info("camera calibration: %s", text)
-        self._last_line = text
-        if self._running():
-            self.checks.setText(f"Sweeping: {text}")
-
-    # -- cameras -------------------------------------------------------------
-
-    def _refresh_cameras(self, _label: str = "") -> None:
-        """The upper camera, the one Settings names: the pixel map is that
-        camera's, and a sweep through the lower one, which looks up at the
-        tip, maps nothing the rest of the application uses."""
-        camera = self._camera()
-        if camera is not self.view.camera:
-            self.view.set_camera(camera)
-            # Last frame's marker belongs to last frame's camera.
-            self._sighting = None
-            self.view.set_overlay_items([])
-        self._refresh()
-
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        # The sweep is this camera's, so arriving here is asking for it.
-        self.opener.ensure(self.session.upper_camera_label)
-        self._refresh_cameras()
-        self._watch_timer.start()
-
-    def hideEvent(self, event) -> None:
-        """A page nobody is looking at does not detect. The worker in flight
-        is left to finish; its result lands on a hidden widget and costs one
-        repaint that never happens."""
-        self._watch_timer.stop()
-        super().hideEvent(event)
