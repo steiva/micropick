@@ -1,137 +1,88 @@
-"""Setting up a run: which plate, which wells, how many, and whose progress.
+"""The Plan step of Auto pick (REDESIGN §6.3): which wells of which plate
+get how many cuboids, and in what order.
 
-A page of its own rather than a corner of the picking page, because this is
-what happens before a run and `Routine` is its own concept — the plan, the
-progress and the ordering, with an identity that outlives a kernel restart
-(DESIGN section 7).
+**Left:** the plate, chosen with the `MiniDeckDropdown` - the plates the
+robot session holds, by slot - and `PlateTools` (Undo, Redo, Select all,
+Clear) over the `PlateGrid`. The wells chosen on the grid are the plan;
+the gestures are not explained on screen (§3).
 
-Two things it refuses to smooth over.
+**Right:** Start from **A template** or **New plan**. A template is a named
+file (`config.templates`, `Session.plate_templates`): a short list that
+scrolls inside its own box, each "<name>" over "24 wells · saved Oct 20",
+and Open from file… for one from anywhere. A click puts it on a plate of
+its kind - the one chosen if it is, else the first slot holding one.
+Then **Cuboids per well** (a stepper), **Fill order** as two tiles, and the
+summary: "24 wells × 1 cuboid", **Use this plan** and then "Plan ready".
+Save as template asks for a name inline, for a plan not from a template;
+Save changes to "<name>" writes over the template the plan came from once
+it was changed. Neither asks "are you sure".
 
-**Resuming is a deliberate act.** `Routine.load` marks a file that carries
-progress as needing confirmation, and the reason is that the one case software
-cannot detect is the dangerous one: the same plate format, physically swapped
-for a fresh plate, is indistinguishable from carrying on with the old one. So
-`needs_confirmation` is shown as a block with the summary above it — the name,
-the run, how much is already delivered, the next well — and the run cannot
-start until the operator says yes to that particular text.
+**Counts.** One number for the wells chosen, the stepper's. A template
+whose wells differ keeps its own counts (`_counts`) until the stepper is
+changed, which sets every chosen well to its number; a well added to the
+plan takes the stepper's.
 
-**`check_labware` is a check, not a guarantee, and it says so.** It verifies
-the definition in the slot against the run state; it cannot verify that the
-physical plate is the one this progress belongs to. It runs by itself -
-when a plan is opened or created and whenever the robot session's labware
-changes - against the run state the session already keeps, so it costs no
-request, and its answer is one line in the Labware in the slot card.
+**Use this plan** makes the `Routine` a run delivers into, with fresh
+progress, and hands it to the session (`Session.set_routine`): Plan is
+done while it is the session's (`tasks.step_state`). Its file - the run's
+progress, which lets a run carry on after a restart - is written under
+`Outputs/routines` by itself and never shown here: an unfinished run is
+for Picking to offer. A plan changed after Use this plan is shown with
+Use this plan again; until then Picking runs the one used.
 
-**The plate is one the robot already has.** It used to be any definition in
-`labware/`, with a slot typed in beside it — so a routine could name a plate
-that was not on the deck, in a slot that held a tip rack, and nothing found
-out until the first well move. The list is now what the run reports:
-everything loaded through the Deck step that has wells to deliver into,
-named by slot. The deck beside it is the same `DeckView` that page draws,
-because "which one is the destination" is a question about the deck and is
-answered by pointing at it.
-
-**Selecting wells and planning them are two acts.** A click used to toggle a
-well into the plan with whatever the spin box held, which made "these twelve,
-three each" impossible to say: every count was a fresh round of clicking.
-Now the mouse selects — click, Ctrl to add, Shift to remove, a dragged box,
-or a row letter or column number for the whole line — and the count is
-applied to whatever is selected. The two are separate everywhere: the
-selection is a white ring, the plan is the number inside the well.
-
-**Every change to the plan can be undone.** Undo and Redo, on the buttons
-and on Ctrl+Z / Ctrl+Y, walk a stack of plan snapshots taken before each
-change. Typing a number into the box applies it as it is typed, so "12"
-would be two changes; typing into the same selection is one step instead.
-Choosing another plate starts a new history.
-
-**Presets.** Save plan as preset keeps the plate's kind and the counts -
-no slot, no name, no progress - and New from preset puts them on a plate
-of that kind the robot holds, as a plan to edit and Create, never as a
-plan already under way (`core.routine.PlanPreset`).
-
-**A plan under way can still be changed**, within what the plate already
-holds: more in a well, wells added, wells nothing reached taken out. Each
-change is checked against the progress by `Routine.plan_problems` as it is
-made, and refused with the reason; Save changes writes it with
-`Routine.edit_plan`, keeping the progress and the plan's identity - it is
-the same plate. Until then the plate shows the edited plan and the saved
-one stays what Picking runs.
-
-Ctrl+A selects every well and Delete takes the selected ones out of the
-plan. Every gesture and key is listed on the page, one per line, from
-`GESTURES` - the same list a new key has to be added to.
-
-The version note. `check_labware` prints a line to stdout when the slot reports
-a different definition revision, and from a GUI that goes nowhere anyone can
-see. Since `ot2_api.load_labware` hard-codes version 1 in the load command, that
-fires for most stock definitions, so this page shows both versions itself rather
-than relying on a print it cannot capture.
+Ctrl+Z / Ctrl+Y undo and redo a change of the wells chosen, Ctrl+A chooses
+them all.
 """
 
 from __future__ import annotations
 
 import logging
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFontDatabase, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QInputDialog, QLabel,
-                               QPlainTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLineEdit,
+                               QListWidget, QListWidgetItem, QPushButton,
+                               QVBoxLayout, QWidget)
 
 from ... import paths
+from ...config import templates
 from ...config.labware import LabwareError
-from ...core.routine import (STRATEGIES, Destination, PlanPreset, Routine,
-                             RoutineError)
-from ..session import Session
-from ..theme import SPACING
-from ..theme.factory import (card, combo_box, heading, primary_button,
-                             scroll_column, secondary_button, spin_box)
-from ..widgets.deck_view import DeckView
-from ..widgets.plate_view import PlateView
+from ...core.routine import Destination, PlanPreset, Routine, RoutineError
+from ..labware_kinds import facts, kind
+from ..session import Session, SessionError
+from ..theme import COLORS, SPACING
+from ..theme.factory import (caption, card, muted_label, primary_button,
+                             secondary_button, spin_box)
+from ..theme.icons import icon
+from ..widgets.banner import Banner
+from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
+from ..widgets.plate_grid import PlateGrid, PlateTools
+from ..widgets.toast import show_toast
 
 __all__ = ["RoutinePage"]
 
-# On screen a Routine is a "plate plan": what an operator sets up here is
-# which wells get how many cuboids, and "routine" read as a procedure.
-TITLE = "Plate plan"
+# On screen a Routine is a "plan" (REDESIGN §12.9): the step's name.
+TITLE = "Plan"
 
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 420
 
-# How tall the deck picture is in the panel. Enough to read a slot number
-# and tell a full slot from an empty one; the Deck step is where the
-# deck is worked on.
-MINI_DECK_HEIGHT = 190
+# The templates box: about three rows high, scrolling inside itself.
+TEMPLATE_ROWS = 3
+TEMPLATE_ROW_HEIGHT = 46
 
+NO_PLATE = "There is no plate on the deck. Add it on the Deck step."
+CHOOSE_WELLS = "Choose the wells on the plate."
+NO_WELLS = "No wells chosen yet."
+PLAN_READY = "Plan ready"
 
-# How many plan snapshots Undo keeps.
-UNDO_LIMIT = 100
-
-# What the plate answers to, as shown on the page. The keys are bound in
-# `_install_shortcuts`; a key added there belongs in this list too.
-GESTURES = (
-    ("Click", "select a well"),
-    ("Ctrl+click", "add a well to the selection, or take it out"),
-    ("Shift+click", "take a well out of the selection"),
-    ("Drag", "select the wells in a box (Ctrl adds, Shift takes out)"),
-    ("Row letter, column number", "select the whole line (Ctrl, Shift as "
-                                  "above)"),
-    ("Click on empty space", "select nothing"),
-    ("Double-click", "put the Per well number into that well"),
-    ("Per well number", "applies to the selected wells as you type; 0 takes "
-                        "them out of the plan"),
-    ("Ctrl+A", "select all wells"),
-    ("Delete", "take the selected wells out of the plan"),
-    ("Ctrl+Z / Ctrl+Y", "undo / redo"),
-)
-
-
-def presets_dir() -> Path:
-    directory = paths.outputs_dir() / "plate_plan_presets"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
+# The two fill orders, as tiles: (strategy, label, icon).
+ORDERS = (("by_row", "Row by row", "rows"),
+          ("by_column", "Column by column", "columns"))
 
 
 def routines_dir() -> Path:
@@ -140,74 +91,86 @@ def routines_dir() -> Path:
     return directory
 
 
+def summary(plan: dict[str, int]) -> str:
+    """"24 wells × 1 cuboid", or the total when the wells differ."""
+    if not plan:
+        return NO_WELLS
+    wells = f"{len(plan)} well" if len(plan) == 1 else f"{len(plan)} wells"
+    counts = set(plan.values())
+    if len(counts) == 1:
+        n = counts.pop()
+        return f"{wells} × {n} cuboid" + ("" if n == 1 else "s")
+    return f"{wells}, {sum(plan.values())} cuboids"
+
+
 class RoutinePage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
-        self.routine: Routine | None = None
         self.destination: Destination | None = None
-        self._plan: dict[str, int] = {}
-        # Plan snapshots: the plan before each change, and the ones undone.
-        self._undo: list[dict[str, int]] = []
-        self._redo: list[dict[str, int]] = []
-        # What the last change was, so typing "12" into one selection is one
-        # step rather than two.
-        self._last_change = None
+        # The template the plan came from, and the plan as it was opened,
+        # to tell an edited one.
+        self.template: templates.Template | None = None
+        self._opened: tuple[dict[str, int], str] | None = None
+        # A template's counts that differ from the stepper's (see the module
+        # docstring).
+        self._counts: dict[str, int] = {}
+        self.strategy = "by_column"
 
-        self._selection: set[str] = set()
+        self.plate = PlateGrid(parent=self)
+        self.plate.selection_changed.connect(lambda _s: self._refresh())
+        self.dropdown = MiniDeckDropdown(self, placeholder="Choose the plate")
+        self.dropdown.slot_chosen.connect(self._choose_slot)
+        self.tools = PlateTools(self.plate, self)
 
-        self.plate = PlateView(self)
-        self.plate.selection_changed.connect(self._selection_changed)
-        self.plate.well_activated.connect(self._well_activated)
+        left = QVBoxLayout()
+        left.setSpacing(SPACING)
+        top = QHBoxLayout()
+        top.addWidget(self.dropdown)
+        top.addStretch(1)
+        top.addWidget(self.tools)
+        left.addLayout(top)
+        self.no_plate = Banner(NO_PLATE, tone="warn", parent=self)
+        self.back_to_deck = self.no_plate.add_action("Back to Deck")
+        self.back_to_deck.clicked.connect(
+            lambda: self.session.page_requested.emit("labware"))
+        left.addWidget(self.no_plate)
+        left.addWidget(self.plate, 1)
 
         panel = QWidget(self)
+        panel.setFixedWidth(PANEL_WIDTH)
         column = QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        # What the page is for, before anything on it: the tab says "Plate
-        # plan", and the word alone does not say whose plan or of what.
-        intro = QLabel(
-            "Number of cuboids per well. Choose the plate, select wells, set "
-            "the count, then Create.")
-        intro.setWordWrap(True)
-        column.addWidget(intro)
-        column.addWidget(self._plate_card())
-        column.addWidget(self._plan_card())
-        column.addWidget(self._routine_card())
-        column.addWidget(self._labware_card())
+        self._start_from(column)
+        self._counts_and_order(column)
         column.addStretch(1)
+        column.addWidget(self._summary_card())
 
-        body = QHBoxLayout()
-        body.setSpacing(SPACING)
-        body.addWidget(self.plate, 1)
-        body.addWidget(scroll_column(panel, PANEL_WIDTH))
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
-        layout.setSpacing(SPACING)
-        layout.addLayout(body, 1)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                  SPACING * 2)
+        layout.setSpacing(SPACING * 2)
+        layout.addLayout(left, 1)
+        layout.addWidget(panel)
 
         session.robot_state_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._reload_plates())
+        session.routine_changed.connect(lambda _r: self._refresh())
         self._install_shortcuts()
         self._reload_plates()
-        self._refresh()
 
     def _install_shortcuts(self) -> None:
         """Window-wide while the page is showing, as every page's keys are:
         enabled only on screen, so no hidden page claims the key."""
         self._shortcuts = []
         for sequence, handler in ((QKeySequence.StandardKey.Undo,
-                                   self._undo_plan),
-                                  (QKeySequence("Ctrl+Y"), self._redo_plan),
+                                   self.plate.undo),
+                                  (QKeySequence("Ctrl+Y"), self.plate.redo),
                                   (QKeySequence.StandardKey.Redo,
-                                   self._redo_plan),
+                                   self.plate.redo),
                                   (QKeySequence.StandardKey.SelectAll,
-                                   self._select_all),
-                                  (QKeySequence(Qt.Key.Key_Delete),
-                                   self._delete_selected),
-                                  (QKeySequence(Qt.Key.Key_Backspace),
-                                   self._delete_selected)):
+                                   self.plate.select_all)):
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
             shortcut.activated.connect(handler)
@@ -218,6 +181,8 @@ class RoutinePage(QWidget):
         super().showEvent(event)
         for shortcut in self._shortcuts:
             shortcut.setEnabled(True)
+        # A template saved elsewhere, or copied into the folder.
+        self._reload_templates()
 
     def hideEvent(self, event) -> None:
         for shortcut in self._shortcuts:
@@ -226,175 +191,116 @@ class RoutinePage(QWidget):
 
     # -- construction --------------------------------------------------------
 
-    def _plate_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Plate", 2))
+    def _tile(self, text: str, height: int) -> QPushButton:
+        button = QPushButton(text, self)
+        button.setObjectName("tile")
+        button.setCheckable(True)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setMinimumHeight(height)
+        return button
 
-        # The deck as `DeckView` draws it, small: picking the
-        # destination is pointing at the slot it is in.
-        self.deck = DeckView(self)
-        self.deck.setFixedHeight(MINI_DECK_HEIGHT)
-        self.deck.slot_clicked.connect(self._slot_clicked)
-        box.layout().addWidget(self.deck)
-
-        self.definition = combo_box(self)
-        self.definition.currentIndexChanged.connect(self._chose_plate)
-        box.layout().addWidget(self.definition)
-
-        self.use_button = secondary_button("Use this plate", self)
-        self.use_button.clicked.connect(self._use_plate)
-        box.layout().addWidget(self.use_button)
-
-        self.plate_state = QLabel("no plate chosen")
-        self.plate_state.setWordWrap(True)
-        box.layout().addWidget(self.plate_state)
-        return box
-
-    def _plan_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Plan", 2))
-
-        # Every gesture and key the plate answers to, one per line: the
-        # sentence this replaced named half of them.
-        rows = "".join(
-            f"<tr><td style='padding-right:10px'><b>{what}</b></td>"
-            f"<td>{does}</td></tr>" for what, does in GESTURES)
-        note = QLabel(f"<table>{rows}</table>")
-        note.setWordWrap(True)
-        note.setTextFormat(Qt.TextFormat.RichText)
-        box.layout().addWidget(note)
-
-        selecting = QHBoxLayout()
-        self.all_button = secondary_button("Select all", self)
-        self.all_button.clicked.connect(self.plate.select_all)
-        self.none_button = secondary_button("Select none", self)
-        self.none_button.clicked.connect(self.plate.clear_selection)
-        selecting.addWidget(self.all_button)
-        selecting.addWidget(self.none_button)
-        box.layout().addLayout(selecting)
-
+    def _start_from(self, column: QVBoxLayout) -> None:
+        column.addWidget(caption("Start from", self))
         row = QHBoxLayout()
-        row.addWidget(QLabel("Per well"))
+        self.template_tile = self._tile("A template\nSaved earlier", 64)
+        self.new_tile = self._tile("New plan\nChoose wells", 64)
+        self.template_tile.clicked.connect(lambda: self._set_mode(True))
+        self.new_tile.clicked.connect(lambda: self._set_mode(False))
+        row.addWidget(self.template_tile)
+        row.addWidget(self.new_tile)
+        column.addLayout(row)
+
+        self.template_box = QWidget(self)
+        box = QVBoxLayout(self.template_box)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(SPACING // 2)
+        box.addWidget(caption("Saved templates", self))
+        self.template_list = QListWidget(self.template_box)
+        self.template_list.setFixedHeight(TEMPLATE_ROWS * TEMPLATE_ROW_HEIGHT
+                                          + 4)
+        self.template_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.template_list.itemClicked.connect(self._template_clicked)
+        box.addWidget(self.template_list)
+        self.no_templates = muted_label("No templates saved yet.",
+                                        self.template_box)
+        box.addWidget(self.no_templates)
+        self.open_file_button = secondary_button("Open from file…",
+                                                 self.template_box)
+        self.open_file_button.clicked.connect(self._open_file)
+        box.addWidget(self.open_file_button,
+                      alignment=Qt.AlignmentFlag.AlignLeft)
+        column.addWidget(self.template_box)
+
+        self.choose_wells = Banner(CHOOSE_WELLS, parent=self)
+        column.addWidget(self.choose_wells)
+        # What a template could not do ("No plate of this kind…").
+        self.message = muted_label("", self)
+        column.addWidget(self.message)
+        self._template_mode = False
+        self.new_tile.setChecked(True)
+
+    def _counts_and_order(self, column: QVBoxLayout) -> None:
+        column.addWidget(caption("Cuboids per well", self))
+        row = QHBoxLayout()
         self.per_well = spin_box(self)
-        self.per_well.setRange(0, 999)
+        self.per_well.setRange(1, 99)
         self.per_well.setValue(1)
-        self.per_well.setMinimumWidth(70)
-        # Typing a number applies it: with wells selected, the number is the
-        # whole of what is being said, and a separate Apply after it is a
-        # second click for nothing. The button is there for the operator who
-        # sets the number first and selects afterwards.
+        self.per_well.setFixedWidth(96)
         self.per_well.valueChanged.connect(self._per_well_changed)
         row.addWidget(self.per_well)
-        self.apply_button = primary_button("Set in selected", self)
-        self.apply_button.clicked.connect(self._apply_count)
-        row.addWidget(self.apply_button, 1)
-        box.layout().addLayout(row)
+        row.addStretch(1)
+        column.addLayout(row)
 
-        buttons = QHBoxLayout()
-        self.clear_button = secondary_button("Clear the plan", self)
-        self.clear_button.clicked.connect(self._clear_plan)
-        row_order = QLabel("Order")
-        self.strategy = combo_box(self)
-        self.strategy.addItems(STRATEGIES)
-        self.strategy.setCurrentText("by_column")
-        buttons.addWidget(self.clear_button)
-        buttons.addWidget(row_order)
-        buttons.addWidget(self.strategy, 1)
-        box.layout().addLayout(buttons)
+        column.addWidget(caption("Fill order", self))
+        row = QHBoxLayout()
+        self.order_tiles: dict[str, QPushButton] = {}
+        for strategy, label, name in ORDERS:
+            button = self._tile(label, 56)
+            button.setIcon(icon(name, COLORS["text-2"], 24))
+            button.setIconSize(QSize(24, 24))
+            button.clicked.connect(
+                lambda _c=False, s=strategy: self._set_strategy(s))
+            self.order_tiles[strategy] = button
+            row.addWidget(button)
+        column.addLayout(row)
 
-        history = QHBoxLayout()
-        self.undo_button = secondary_button("Undo", self)
-        self.undo_button.setToolTip("Undo. Ctrl+Z")
-        self.undo_button.clicked.connect(self._undo_plan)
-        self.redo_button = secondary_button("Redo", self)
-        self.redo_button.setToolTip("Redo. Ctrl+Y")
-        self.redo_button.clicked.connect(self._redo_plan)
-        history.addWidget(self.undo_button)
-        history.addWidget(self.redo_button)
-        history.addStretch(1)
-        box.layout().addLayout(history)
-
-        self.plan_state = QLabel("select wells on the plate")
-        self.plan_state.setWordWrap(True)
-        box.layout().addWidget(self.plan_state)
-        return box
-
-    def _routine_card(self) -> QWidget:
+    def _summary_card(self) -> QWidget:
         box = card(self)
-        box.layout().addWidget(heading("Saved plan", 2))
-        row = QHBoxLayout()
-        self.create_button = primary_button("Create…", self)
-        self.create_button.clicked.connect(self._create)
-        self.open_button = secondary_button("Open…", self)
-        self.open_button.clicked.connect(self._open)
-        row.addWidget(self.create_button)
-        row.addWidget(self.open_button)
-        row.addStretch(1)
-        box.layout().addLayout(row)
-
-        row = QHBoxLayout()
-        self.save_preset_button = secondary_button("Save plan as preset…",
-                                                   self)
-        self.save_preset_button.setToolTip(
-            "Save the plate type and counts as a preset.")
-        self.save_preset_button.clicked.connect(self._save_preset)
-        self.from_preset_button = secondary_button("New from preset…", self)
-        self.from_preset_button.setToolTip(
-            "Start a new plan from a preset.")
-        self.from_preset_button.clicked.connect(self._from_preset)
-        row.addWidget(self.save_preset_button)
-        row.addWidget(self.from_preset_button)
-        row.addStretch(1)
-        box.layout().addLayout(row)
-
-        self.summary = QPlainTextEdit(self)
-        self.summary.setReadOnly(True)
-        self.summary.setMaximumHeight(110)
-        self.summary.setFont(
-            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.summary = muted_label(NO_WELLS, box)
         box.layout().addWidget(self.summary)
+        self.use_button = primary_button("Use this plan", box)
+        self.use_button.clicked.connect(self._use)
+        box.layout().addWidget(self.use_button)
+        self.ready = Banner(PLAN_READY, tone="ok", parent=box)
+        box.layout().addWidget(self.ready)
 
-        # Not a checkbox and not tucked into a dialog's default button: the
-        # operator has to have read the summary above before this means
-        # anything, and its own text says what is being confirmed.
-        self.confirm_note = QLabel()
-        self.confirm_note.setWordWrap(True)
-        box.layout().addWidget(self.confirm_note)
-        self.confirm_button = primary_button("Confirm resume", self)
-        self.confirm_button.clicked.connect(self._confirm)
-        box.layout().addWidget(self.confirm_button)
-
-        # Changes to a plan that already exists: kept on the page until
-        # saved, so the file Picking reads is never half an edit.
-        self.edit_note = QLabel()
-        self.edit_note.setWordWrap(True)
-        box.layout().addWidget(self.edit_note)
-        row = QHBoxLayout()
-        self.save_edit_button = primary_button("Save changes", self)
-        self.save_edit_button.setToolTip("Save the changed counts; progress "
-                                         "is kept.")
-        self.save_edit_button.clicked.connect(self._save_edit)
-        self.discard_edit_button = secondary_button("Discard changes", self)
-        self.discard_edit_button.clicked.connect(self._discard_edit)
-        row.addWidget(self.save_edit_button)
-        row.addWidget(self.discard_edit_button)
-        row.addStretch(1)
-        box.layout().addLayout(row)
+        self.save_as_button = secondary_button("Save as template", box)
+        self.save_as_button.clicked.connect(self._ask_name)
+        box.layout().addWidget(self.save_as_button)
+        # Save as template's name, asked here rather than in a dialog.
+        self.name_row = QWidget(box)
+        row = QHBoxLayout(self.name_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.name_field = QLineEdit(self.name_row)
+        self.name_field.setPlaceholderText("Template name")
+        self.name_field.returnPressed.connect(self._save_as)
+        self.save_name_button = primary_button("Save", self.name_row)
+        self.save_name_button.clicked.connect(self._save_as)
+        self.cancel_name_button = secondary_button("Cancel", self.name_row)
+        self.cancel_name_button.clicked.connect(self._cancel_name)
+        row.addWidget(self.name_field, 1)
+        row.addWidget(self.save_name_button)
+        row.addWidget(self.cancel_name_button)
+        self.name_row.hide()
+        box.layout().addWidget(self.name_row)
+        self.save_changes_button = secondary_button("Save changes", box)
+        self.save_changes_button.clicked.connect(self._save_changes)
+        box.layout().addWidget(self.save_changes_button)
+        self.template_note = muted_label("", box)
+        box.layout().addWidget(self.template_note)
         return box
 
-    def _labware_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Labware in the slot", 2))
-        self.labware_state = QLabel()
-        self.labware_state.setToolTip(
-            "Checks the plate type in the slot, not the physical plate.")
-        self.labware_state.setWordWrap(True)
-        self.labware_state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.labware_state)
-        return box
-
-    # -- plate ---------------------------------------------------------------
+    # -- the plate -----------------------------------------------------------
 
     def _loaded_plates(self) -> list[tuple[str, str, str]]:
         """(slot, load_name, display name) for every labware in the run that
@@ -403,459 +309,300 @@ class RoutinePage(QWidget):
                 for slot, entry, definition in self.session.plates()]
 
     def _reload_plates(self) -> None:
-        """The run's labware, in the combo and on the deck."""
-        plates = self._loaded_plates()
-        state = self.session.run_state
-        held = (state.labware if state is not None
-                and self.session.robot is not None else {})
-        self.deck.set_labware({slot: entry.load_name
-                               for slot, entry in held.items()})
-        # The profile's modules, with the meaning they have on the Labware
-        # page: a raised floor. Not "this slot is a candidate" - one mark,
-        # one meaning, or the deck picture starts needing a legend.
-        profile = self.session.profile
-        modules = list(profile.deck.modules) if profile is not None else []
-        self.deck.set_modules({str(slot): f"module +{m.height_mm:g} mm"
-                               for m in modules for slot in m.slots})
-
-        chosen = self.definition.currentData()
-        self.definition.blockSignals(True)
-        self.definition.clear()
-        for slot, load_name, display in plates:
-            self.definition.addItem(f"slot {slot} — {display}", (slot, load_name))
-        index = next((i for i in range(self.definition.count())
-                      if self.definition.itemData(i) == chosen), -1)
-        if index >= 0:
-            self.definition.setCurrentIndex(index)
-        self.definition.blockSignals(False)
-        if self.destination is not None:
-            self.deck.select(str(self.destination.slot))
-        self._check_labware()
-        self._refresh()
-
-    def _slot_clicked(self, slot: str) -> None:
-        """Choosing on the deck picks the same plate the combo would."""
-        for index in range(self.definition.count()):
-            if self.definition.itemData(index)[0] == slot:
-                self.definition.setCurrentIndex(index)
-                # Directly, not through the signal: setting the index it
-                # already has emits nothing, and clicking the slot of the
-                # plate already chosen must still mark it on the deck.
-                self._chose_plate(index)
-                return
-        self.plate_state.setText(
-            f"Slot {slot}: no plate loaded.")
-
-    def _chose_plate(self, _index: int) -> None:
-        data = self.definition.currentData()
-        if data is not None:
-            self.deck.select(data[0])
-        self._refresh()
-
-    def _use_plate(self) -> None:
-        data = self.definition.currentData()
-        if data is None:
+        """The plates the robot session holds, in the dropdown. The plate
+        chosen stays while it is there; else the plan in use, else the
+        first plate."""
+        plates = self.session.plates()
+        self.dropdown.set_tiles([
+            DeckTile(int(slot), name=definition.display_name,
+                     kind=kind(definition), facts=facts(definition))
+            for slot, _entry, definition in plates if slot.isdigit()])
+        held = {slot: entry.load_name for slot, entry, _d in plates}
+        current = self.destination
+        if current is not None and held.get(str(current.slot)) \
+                == current.load_name:
+            self._refresh()
             return
-        slot, name = data
+        routine = self.session.routine
+        if routine is not None and held.get(
+                str(routine.destination.slot)) == routine.destination.load_name:
+            self._show_routine(routine)
+        elif plates:
+            self._choose_slot(int(plates[0][0]))
+        else:
+            self._set_destination(None)
+        self._refresh()
+
+    def _choose_slot(self, slot: int) -> None:
+        if self.destination is not None and self.destination.slot == slot:
+            return
+        load_name = dict(self._loaded_plates_by_slot()).get(str(slot))
+        if load_name is None:
+            return
         try:
-            destination = Destination.from_labware(name, int(slot))
+            destination = Destination.from_labware(load_name, slot)
         except (RoutineError, LabwareError) as exc:
-            self.plate_state.setText(str(exc))
+            self._say(str(exc))
             log.error("%s", exc)
             return
+        if self.destination is not None \
+                and self.destination.load_name == load_name:
+            # The same kind of plate in another slot: the same plan on it.
+            plan, counts = self.plate.selection, self._counts
+            self._set_destination(destination, plan)
+            self._counts = counts
+        else:
+            # Another kind: the wells chosen mean nothing on it.
+            self._close_template()
+            self._set_destination(destination)
+        self._refresh()
+
+    def _loaded_plates_by_slot(self) -> list[tuple[str, str]]:
+        return [(slot, load_name)
+                for slot, load_name, _d in self._loaded_plates()]
+
+    def _set_destination(self, destination: Destination | None,
+                         wells=()) -> None:
+        """A plate, with `wells` chosen. Undo starts again on it."""
         self.destination = destination
-        self.routine = None
-        self.session.set_routine(None)
-        self._plan = {}
-        self._forget_history()
-        self._selection = set()
-        self.plate.set_destination(destination)
-        self.plate.set_plan({})
-        self.plate.set_progress({})
-        self.deck.select(str(destination.slot))
-        self.plate_state.setText(
-            f"{destination.load_name} v{destination.version} "
-            f"({destination.namespace}), {len(destination)} wells, slot "
-            f"{destination.slot}")
-        self.summary.clear()
-        log.info("destination: %r", destination)
-        self._check_labware()
-        self._refresh()
+        self.dropdown.set_slot(destination.slot if destination else None)
+        self.plate.set_ordering(destination.ordering if destination else [])
+        self.plate.set_selection(wells, record=False)
+        self._counts = {}
 
-    # -- plan ----------------------------------------------------------------
+    # -- the plan ------------------------------------------------------------
 
-    def _selection_changed(self, names) -> None:
-        """The selection changed; the number in the box did not.
-
-        It was made to follow the selection - select a well, read its count
-        - and that turned out to be the wrong way round. The count is
-        already written inside the well, so the box has nothing to report;
-        what it is for is the value being applied, and a box that reset
-        itself to the well just clicked made "three in each of these"
-        impossible to say twice in a row.
-        """
-        self._selection = set(names)
-        self._last_change = None
-        self._refresh()
-
-    def _well_activated(self, name: str) -> None:
-        """Double click: this well, the number in the box, now."""
-        self.plate.set_selection({name})
-        self._apply_count()
+    def plan(self) -> dict[str, int]:
+        """The plan on screen: the wells chosen, each with its count."""
+        n = self.per_well.value()
+        return {w: self._counts.get(w, n) for w in self.plate.selection}
 
     def _per_well_changed(self, _value: int) -> None:
-        if self._selection:
-            self._apply_count()
-
-    def _apply_count(self) -> None:
-        if not self._selection:
-            self.plan_state.setText("No wells selected.")
-            return
-        count = self.per_well.value()
-        plan = dict(self._plan)
-        for name in self._selection:
-            if count > 0:
-                plan[name] = count
-            else:
-                plan.pop(name, None)
-        self._propose(plan, ("count", frozenset(self._selection)))
-
-    def _clear_plan(self) -> None:
-        self._propose({})
-
-    def _select_all(self) -> None:
-        if self.destination is not None:
-            self.plate.select_all()
-
-    def _delete_selected(self) -> None:
-        """Delete: the selected wells out of the plan, as 0 would."""
-        if not self._editable() or not self._selection:
-            return
-        self._propose({w: n for w, n in self._plan.items()
-                       if w not in self._selection})
-
-    def _propose(self, plan: dict[str, int], kind=None) -> None:
-        """A change to the plan, refused with the reason if a plan under way
-        cannot take it: what the plate holds cannot be unsaid."""
-        if not self._editable():
-            return
-        if self.routine is not None and plan:
-            problems = self.routine.plan_problems(plan)
-            if problems:
-                self.plan_state.setText("Not changed: " + "; ".join(problems))
-                return
-        elif self.routine is not None:
-            self.plan_state.setText("A plan in progress cannot be "
-                                    "emptied.")
-            return
-        self._change_plan(plan, kind)
-
-    # -- changing a plan under way -------------------------------------------
-
-    def _edited(self) -> bool:
-        return self.routine is not None and self._plan != self.routine.plan
-
-    def _save_edit(self) -> None:
-        if not self._edited():
-            return
-        try:
-            self.routine.edit_plan(self._plan)
-        except RoutineError as exc:
-            self.edit_note.setText(f"Not saved: {exc}")
-            return
-        log.info("plan %r changed: %s", self.routine.name,
-                 self.routine.summary().replace("\n", " | "))
-        self.session.set_routine(self.routine)
-        self._adopt(self.routine)
-
-    def _discard_edit(self) -> None:
-        if self._edited():
-            self._change_plan(dict(self.routine.plan))
-
-    # -- history -------------------------------------------------------------
-
-    def _change_plan(self, plan: dict[str, int], kind=None) -> None:
-        """Make `plan` the plan, remembering the one before. A change of the
-        same `kind` as the last one replaces it in the history rather than
-        adding to it."""
-        if plan == self._plan:
-            return
-        if kind is None or kind != self._last_change:
-            self._undo.append(dict(self._plan))
-            del self._undo[:-UNDO_LIMIT]
-        self._redo.clear()
-        self._last_change = kind
-        self._show_plan(plan)
-
-    def _show_plan(self, plan: dict[str, int]) -> None:
-        self._plan = dict(plan)
-        self.plate.set_plan(self._plan)
+        self._counts = {}
         self._refresh()
 
-    def _undo_plan(self) -> None:
-        if not self._undo or not self._editable():
-            return
-        self._redo.append(dict(self._plan))
-        self._last_change = None
-        self._show_plan(self._undo.pop())
+    def _set_strategy(self, strategy: str) -> None:
+        self.strategy = strategy
+        self._refresh()
 
-    def _redo_plan(self) -> None:
-        if not self._redo or not self._editable():
-            return
-        self._undo.append(dict(self._plan))
-        self._last_change = None
-        self._show_plan(self._redo.pop())
+    def _show_plan(self, plan: dict[str, int], strategy: str) -> None:
+        """`plan` as the stepper and the wells chosen: the stepper at its
+        most common count, the others kept."""
+        common = Counter(plan.values()).most_common(1)[0][0] if plan else 1
+        self.per_well.blockSignals(True)
+        self.per_well.setValue(common)
+        self.per_well.blockSignals(False)
+        self.plate.set_selection(set(plan))
+        self._counts = {w: n for w, n in plan.items() if n != common}
+        self.strategy = strategy
 
-    def _forget_history(self) -> None:
-        self._undo.clear()
-        self._redo.clear()
-        self._last_change = None
+    def _show_routine(self, routine: Routine) -> None:
+        """The plan in use, as it was used."""
+        self._set_destination(routine.destination)
+        self._show_plan(routine.plan, routine.strategy)
 
-    def _editable(self) -> bool:
-        return self.destination is not None
+    def _in_use(self) -> bool:
+        """Whether the plan on screen is the one the session runs."""
+        routine, destination = self.session.routine, self.destination
+        return (routine is not None and destination is not None
+                and not routine.needs_confirmation
+                and routine.destination.slot == destination.slot
+                and routine.destination.load_name == destination.load_name
+                and routine.plan == self.plan()
+                and routine.strategy == self.strategy)
 
-    # -- routine -------------------------------------------------------------
-
-    def _create(self) -> None:
-        if self.destination is None or not self._plan:
+    def _use(self) -> None:
+        plan = self.plan()
+        if self.destination is None or not plan:
             return
-        # A plate routine needs the operator's own label, and Routine refuses
-        # without one: it is what tells a resumed run from a fresh plate of the
-        # same kind.
-        name, ok = QInputDialog.getText(
-            self, "Name this plate plan",
-            "Your label for this physical plate:")
-        name = name.strip()
-        if not ok or not name:
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save the plate plan", str(routines_dir() / f"{name}.json"),
-            "Plate plan files (*.json)")
-        if not path:
-            return
+        now = datetime.now()
+        # A routine needs a label for its plate; the slot and the time
+        # tell one plate's from the next.
+        name = (self.template.name if self.template is not None else
+                f"slot {self.destination.slot}") + f" · {now:%Y-%m-%d %H:%M}"
         try:
-            routine = Routine(self.destination, dict(self._plan), name=name,
-                              strategy=self.strategy.currentText(), path=path)
+            routine = Routine(self.destination, plan, name=name,
+                              strategy=self.strategy,
+                              path=routines_dir()
+                              / f"{now:%Y%m%d-%H%M%S}-slot{self.destination.slot}.json")
             routine.save()
-        except RoutineError as exc:
-            self.summary.setPlainText(str(exc))
+        except (RoutineError, OSError) as exc:
+            self._say(str(exc))
             log.error("%s", exc)
             return
-        self._adopt(routine)
+        log.info("plan in use: %s", routine.summary().replace("\n", " | "))
+        self.session.set_routine(routine)
+        show_toast(self, PLAN_READY)
 
-    def _open(self) -> None:
+    # -- templates -----------------------------------------------------------
+
+    def _set_mode(self, template: bool) -> None:
+        if not template and (self._template_mode or self.template is not None):
+            # A new plan: the template is closed and its wells cleared - a
+            # change Undo takes back.
+            self._close_template()
+            self.plate.clear()
+        self._template_mode = template
+        if template:
+            self._reload_templates()
+        self._refresh()
+
+    def _reload_templates(self) -> None:
+        self.template_list.clear()
+        for template in self.session.plate_templates():
+            item = QListWidgetItem(f"{template.name}\n{template.facts()}")
+            item.setData(Qt.ItemDataRole.UserRole, template)
+            item.setSizeHint(QSize(0, TEMPLATE_ROW_HEIGHT))
+            self.template_list.addItem(item)
+        self._refresh()
+
+    def _template_clicked(self, item: QListWidgetItem) -> None:
+        self.open_template(item.data(Qt.ItemDataRole.UserRole))
+
+    def _open_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open a plate plan", str(routines_dir()),
-            "Plate plan files (*.json)")
-        if not path:
-            return
-        try:
-            routine = Routine.load(path)
-        except (RoutineError, LabwareError) as exc:
-            self.summary.setPlainText(str(exc))
-            log.error("%s", exc)
-            return
-        self.destination = routine.destination
-        self._plan = dict(routine.plan)
-        self._forget_history()
-        self.plate.set_destination(routine.destination)
-        self._adopt(routine)
+            self, "Open a template",
+            str(templates.templates_dir(templates.PLATE_PLANS)),
+            "Templates (*.json)")
+        if path:
+            self.open_template(path)
 
-    # -- presets -------------------------------------------------------------
-
-    def _save_preset(self) -> None:
-        if self.destination is None or not self._plan:
-            return
-        try:
-            preset = PlanPreset.from_plan(self.destination, self._plan,
-                                          strategy=self.strategy.currentText())
-        except RoutineError as exc:
-            self.summary.setPlainText(str(exc))
-            return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Save plan as preset",
-            str(presets_dir() / f"{self.destination.load_name}.json"),
-            "Plate plan presets (*.json)")
-        if not path:
-            return
-        preset.name = Path(path).stem
-        preset.save(path)
-        log.info("plate plan preset %s saved: %s, %d wells", path,
-                 preset.load_name, len(preset.plan))
-        self.summary.setPlainText(f"Preset saved: {path}")
-
-    def _from_preset(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "New from preset", str(presets_dir()),
-            "Plate plan presets (*.json)")
-        if not path:
-            return
+    def open_template(self, template: templates.Template | str | Path) -> None:
+        """The template on a plate of its kind: the one chosen if it is,
+        else the first slot holding one. A path is a file from anywhere
+        (Open from file…), named as the list would name it."""
+        path = (template.path if isinstance(template, templates.Template)
+                else Path(template))
         try:
             preset = PlanPreset.load(path)
+            if not isinstance(template, templates.Template):
+                template = templates.Template(
+                    preset.name or path.stem, path, len(preset.plan),
+                    datetime.fromtimestamp(path.stat().st_mtime))
         except (RoutineError, OSError) as exc:
-            self.summary.setPlainText(str(exc))
+            self._say(str(exc))
             return
-        self._apply_preset(preset)
-
-    def _apply_preset(self, preset: PlanPreset) -> None:
-        """The preset on a plate of its kind: the one chosen if it is, else
-        the first slot holding one. A plan to edit, not yet a routine."""
-        slots = [slot for slot, load_name, _d in self._loaded_plates()
+        slots = [slot for slot, load_name in self._loaded_plates_by_slot()
                  if load_name == preset.load_name]
-        chosen = self.definition.currentData()
-        slot = (chosen[0] if chosen is not None and chosen[0] in slots
+        current = self.destination
+        slot = (str(current.slot) if current is not None
+                and str(current.slot) in slots
                 else (slots[0] if slots else None))
         if slot is None:
-            self.summary.setPlainText(
-                f"No slot holds {preset.load_name}, the plate this preset is "
-                f"for. Load one on the Deck step.")
+            self._say(f'No plate on the deck is the kind "{template.name}" '
+                      f"is for.")
             return
         try:
-            destination = preset.destination(int(slot))
-            plan = preset.plan_for(destination)
+            if current is None or str(current.slot) != slot:
+                self._set_destination(preset.destination(int(slot)))
+            plan = preset.plan_for(self.destination)
         except (RoutineError, LabwareError) as exc:
-            self.summary.setPlainText(str(exc))
+            self._say(str(exc))
             return
-        for index in range(self.definition.count()):
-            if self.definition.itemData(index)[0] == slot:
-                self.definition.setCurrentIndex(index)
-        self._use_plate()
-        self._show_plan(plan)
-        self.strategy.setCurrentText(preset.strategy)
-        self.summary.setPlainText(
-            f"From preset {preset.name or preset.load_name}: "
-            f"{len(plan)} wells, {sum(plan.values())} objects. Edit it if "
-            f"needed, then Create.")
-        log.info("plan from preset %r on slot %s", preset.name, slot)
-
-    def _adopt(self, routine: Routine) -> None:
-        self.routine = routine
-        self._plan = dict(routine.plan)
-        # The Picking page needs it and the two pages never meet; the
-        # session is where "what this session is attached to" lives.
-        self.session.set_routine(routine)
-        self.plate.set_plan(dict(routine.plan))
-        self.plate.set_progress(self._delivered())
-        self.summary.setPlainText(routine.summary())
-        self.plate_state.setText(
-            f"{routine.destination.load_name} v{routine.destination.version}, "
-            f"slot {routine.destination.slot}  ·  {routine.path}")
-        log.info("routine %r: %s", routine.name,
-                 routine.summary().replace("\n", " | "))
-        self._check_labware()
+        self._show_plan(plan, preset.strategy)
+        self.template = template
+        self._opened = (self.plan(), self.strategy)
+        self._say("")
+        log.info("plan from template %r on slot %s", template.name, slot)
         self._refresh()
 
-    def _delivered(self) -> dict[str, int]:
-        if self.routine is None:
-            return {}
-        table = self.routine.progress_table()
-        ordering = self.routine.destination.ordering
-        # progress_table is shaped like the plate, so the cell at (row, column)
-        # is the well the ordering puts there. No name is taken apart.
-        out: dict[str, int] = {}
-        for column, wells in enumerate(ordering):
-            for row, well in enumerate(wells):
-                if well in self.routine.plan:
-                    out[well] = int(table.iat[row, column])
-        return out
+    def _close_template(self) -> None:
+        self.template = None
+        self._opened = None
 
-    def _confirm(self) -> None:
-        if self.routine is None or not self.routine.needs_confirmation:
-            return
-        self.routine.confirm_resume()
-        log.info("resume confirmed for routine %r (run %s)",
-                 self.routine.name, self.routine.run_id)
-        self._refresh()
+    def _edited(self) -> bool:
+        return (self.template is not None
+                and self._opened != (self.plan(), self.strategy))
 
-    # -- labware -------------------------------------------------------------
-
-    def _check_labware(self) -> None:
-        """The plan's slot against what the robot session holds, as one
-        line. No request: the session re-reads the run state whenever
-        labware changes, and that is what this reads."""
-        routine, session = self.routine, self.session
-        if routine is None:
-            self.labware_state.setText("No plan.")
-            return
-        slot = str(routine.destination.slot)
-        if session.robot is None or session.run_state is None:
-            self.labware_state.setText(f"Slot {slot}: robot not "
-                                       f"connected.")
-            return
-        loaded = session.run_state.labware
+    def _preset(self) -> PlanPreset | None:
         try:
-            routine.check_labware(loaded)
+            return PlanPreset.from_plan(self.destination, self.plan(),
+                                        strategy=self.strategy)
         except RoutineError as exc:
-            self.labware_state.setText(f"<b>Slot {slot}: {exc}</b>")
-            log.error("labware check: %s", exc)
+            self._say(str(exc))
+            return None
+
+    def _ask_name(self) -> None:
+        self.name_field.clear()
+        self.template_note.setText("")
+        self.name_row.show()
+        self.save_as_button.hide()
+        self.name_field.setFocus()
+
+    def _cancel_name(self) -> None:
+        self.name_row.hide()
+        self.template_note.setText("")
+        self._refresh()
+
+    def _save_as(self) -> None:
+        preset = self._preset()
+        if preset is None:
             return
-        entry = loaded.get(slot)
-        reported = getattr(entry, "version", None)
-        want = routine.destination.version
-        # check_labware prints the version difference; it is ignored there
-        # for a reason (ot2_api.load_labware sends version 1), and said here.
-        note = (f" (the slot reports v{reported}, the plan v{want}: only the "
-                f"definition's revision)" if reported is not None
-                and want is not None and int(reported) != int(want) else "")
-        self.labware_state.setText(f"Slot {slot}: {entry.load_name}, "
-                                   f"matches.{note}")
+        try:
+            template = self.session.save_plate_template(
+                preset, self.name_field.text())
+        except (SessionError, RoutineError, OSError) as exc:
+            self.template_note.setText(str(exc))
+            return
+        self.name_row.hide()
+        self.template_note.setText("")
+        self.template = template
+        self._opened = (self.plan(), self.strategy)
+        self._reload_templates()
+        show_toast(self, f'Template "{template.name}" saved.')
+
+    def _save_changes(self) -> None:
+        if not self._edited():
+            return
+        preset = self._preset()
+        if preset is None:
+            return
+        try:
+            self.template = self.session.save_plate_template_changes(
+                self.template, preset)
+        except (RoutineError, OSError) as exc:
+            self.template_note.setText(str(exc))
+            return
+        self._opened = (self.plan(), self.strategy)
+        self._reload_templates()
+        show_toast(self, f'Changes saved to "{self.template.name}".')
 
     # -- display -------------------------------------------------------------
 
+    def _say(self, text: str) -> None:
+        self.message.setText(text)
+        self.message.setVisible(bool(text))
+
     def _refresh(self) -> None:
         has_plate = self.destination is not None
-        editable = self._editable()
-        self.undo_button.setEnabled(editable and bool(self._undo))
-        self.redo_button.setEnabled(editable and bool(self._redo))
+        plan = self.plan()
+        self.no_plate.setVisible(not self.session.plates())
+        self.plate.setEnabled(has_plate)
+        self.tools.setEnabled(has_plate)
+        self.plate.set_counts({w: n for w, n in plan.items() if n > 1})
 
-        self.use_button.setEnabled(self.definition.count() > 0)
-        self.all_button.setEnabled(has_plate)
-        self.none_button.setEnabled(has_plate and bool(self._selection))
-        self.apply_button.setEnabled(editable and bool(self._selection))
-        fresh = editable and self.routine is None
-        # A plan under way keeps its order and cannot be emptied; its counts
-        # change through Save changes, not Create.
-        self.clear_button.setEnabled(fresh and bool(self._plan))
-        self.per_well.setEnabled(editable)
-        self.strategy.setEnabled(fresh)
-        self.create_button.setEnabled(fresh and bool(self._plan))
+        self.template_tile.setChecked(self._template_mode)
+        self.new_tile.setChecked(not self._template_mode)
+        self.template_box.setVisible(self._template_mode)
+        listed = self.template_list.count() > 0
+        self.template_list.setVisible(listed)
+        self.no_templates.setVisible(not listed)
+        self.choose_wells.setVisible(not self._template_mode and has_plate
+                                     and not plan)
+        self.message.setVisible(bool(self.message.text()))
+
+        for strategy, button in self.order_tiles.items():
+            button.setChecked(strategy == self.strategy)
+        self.summary.setText(summary(plan))
+        in_use = self._in_use()
+        self.use_button.setEnabled(has_plate and bool(plan) and not in_use)
+        self.ready.setVisible(in_use)
+
+        naming = self.name_row.isVisible()
+        self.save_as_button.setVisible(self.template is None and not naming)
+        self.save_as_button.setEnabled(has_plate and bool(plan))
         edited = self._edited()
-        self.save_edit_button.setVisible(edited)
-        self.discard_edit_button.setVisible(edited)
-        self.edit_note.setVisible(edited)
-        if edited:
-            self.edit_note.setText(
-                "Unsaved changes. Picking uses the saved plan.")
-        self.save_preset_button.setEnabled(has_plate and bool(self._plan))
-
-
-        if self.definition.count() == 0:
-            self.plate_state.setText(
-                "No plate loaded."
-                if self.session.robot is not None else
-                "Robot not connected.")
-
-        wells = len(self._plan)
-        objects = sum(self._plan.values())
-        chosen = len(self._selection)
-        parts = []
-        if chosen:
-            parts.append(f"{chosen} selected")
-        if chosen:
-            # What is in the selection now, so the number to type is an
-            # informed one without the box having to show it.
-            counts = sorted({self._plan.get(n, 0) for n in self._selection})
-            parts[-1] += (f", holding {counts[0]}" if len(counts) == 1 else
-                          f", holding {counts[0]} to {counts[-1]}")
-        parts.append(f"{wells} wells planned, {objects} objects"
-                     if wells else "nothing planned yet")
-        self.plan_state.setText("  ·  ".join(parts))
-
-        needs = self.routine is not None and self.routine.needs_confirmation
-        self.confirm_button.setVisible(needs)
-        self.confirm_note.setVisible(needs)
-        if needs:
-            self.confirm_note.setText(
-                "Restored plan with progress. Confirm only if the same "
-                "plate is in the slot; for a fresh plate, create a new "
-                "plan.")
+        self.save_changes_button.setVisible(edited)
+        if self.template is not None:
+            self.save_changes_button.setText(
+                f'Save changes to "{self.template.name}"')

@@ -1421,3 +1421,41 @@ tip box and a 384 plate at hand.
 - [ ] **Done follows the tip.**
   Drop the tip and take another: Tip loses its ✓ until calibrated again.
   In Liquid, the Tip step has no calibration and is ✓ once any tip is on.
+
+## Redesign — Plan step and templates (#15)
+
+- [ ] **The plate.**
+  Auto pick › Plan with a 384 plate in slot 5: the dropdown reads "Slot 5
+  Corning 384 …" and the grid is 16×24. With no plate on the deck: "There
+  is no plate on the deck. Add it on the Deck step." and Back to Deck.
+
+- [ ] **Choosing wells.**
+  Click wells, a row letter, a column number, drag a box: they turn
+  purple. Undo, Redo, Select all, Clear; Ctrl+Z, Ctrl+Y, Ctrl+A do the
+  same. New plan with no wells: "Choose the wells on the plate."
+
+- [ ] **Use this plan.**
+  Cuboids per well 2, Column by column: the summary reads "N wells × 2
+  cuboids", the wells show 2. Use this plan: a toast "Plan ready", the
+  green "Plan ready", Plan gets its ✓ and Next is enabled. Change a well:
+  Use this plan is offered again.
+
+- [ ] **Save as template, Save changes.**
+  Save as template: a name field in place, Save. A name already used is
+  refused under it. Change a well: Save changes to "<name>" appears and
+  writes over that template; the folder `Outputs/templates/plate-plans`
+  holds one file for it. No dialog asks "are you sure".
+
+- [ ] **A template.**
+  A template: the list, about three rows high, scrolls inside its box;
+  each reads "<name>" over "24 wells · saved Oct 20". A click puts it on
+  the plate. Open from file… takes one from anywhere (a colleague's).
+  A template for a plate that is not on the deck says so.
+
+- [ ] **Old presets.**
+  Files from `Outputs/plate_plan_presets` (Save plan as preset… before)
+  are in the list under their file name, and moved to
+  `Outputs/templates/plate-plans`.
+
+- [ ] **No run file.**
+  Nothing on the Plan step names or opens the run's progress file.

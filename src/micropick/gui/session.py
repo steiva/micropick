@@ -42,6 +42,7 @@ from PySide6.QtCore import QObject, Signal          # noqa: E402
 
 from .. import paths                                # noqa: E402
 from ..config import app_settings, robot_sessions, store            # noqa: E402
+from ..config import templates                       # noqa: E402
 from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
 from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
@@ -688,6 +689,31 @@ class Session(QObject):
         log.info("routine in hand: %s", routine.name if routine is not None
                  else "none")
         self.routine_changed.emit(routine)
+
+    # -- templates -----------------------------------------------------------
+    #
+    # Plans saved under the operator's name, to start the next one from
+    # (`config.templates`). On the Plan step: Save as template for a new
+    # plan, Save changes to "<name>" for an edited one.
+
+    def plate_templates(self) -> list[templates.Template]:
+        return templates.plate_templates()
+
+    def save_plate_template(self, preset, name: str) -> templates.Template:
+        """`preset` as a new template called `name`. Refused for an empty
+        name or one a template already has: Save as never writes over."""
+        name = " ".join(str(name).split())
+        if not name:
+            raise SessionError("Name the template.")
+        if templates.name_in_use(name):
+            raise SessionError(f'A template is already called "{name}".')
+        preset.name = name
+        return templates.save_plate_template(preset)
+
+    def save_plate_template_changes(self, template: templates.Template,
+                                    preset) -> templates.Template:
+        """`preset` written over `template`, which keeps its name."""
+        return templates.save_plate_template(preset, over=template)
 
     def remember(self, name: str, position) -> None:
         if self.profile is None:

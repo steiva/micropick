@@ -71,6 +71,11 @@ ICONS: dict[str, str] = {
               'M15 10h.01M7 14h.01M11 14h.01M15 14h.01"/>'),
     "dish": ('<path d="M3 12a9 4 0 1 0 18 0a9 4 0 1 0 -18 0"/>'
              '<path d="M3 12v2a9 4 0 0 0 18 0v-2"/>'),
+    # Fill order: row by row, column by column.
+    "rows": '<path d="M3 6h16M3 12h16M3 18h16M16 3l3 3-3 3M16 9l3 3-3 3'
+            'M16 15l3 3-3 3"/>',
+    "columns": '<path d="M6 3v16M12 3v16M18 3v16M3 16l3 3 3-3M9 16l3 3 3-3'
+               'M15 16l3 3 3-3"/>',
 }
 
 

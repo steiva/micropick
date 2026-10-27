@@ -280,7 +280,15 @@ given when created here (`config.robot_sessions`, default date, time and
 profile), else by when the robot started it - never by its id. "run" on
 screen means a picking or liquid run. The pipette
 is set up under the hood and never mentioned ("pipette loaded" reads as "a
-tip is on"). A `Routine` is a **plate plan** (the Plate plan tab). Stored
+tip is on"). A `Routine` is a **plate plan**, "Plan" on screen (Auto
+pick's Plan step, `pages.routine`: the plate from the MiniDeckDropdown,
+the wells on the PlateGrid, one Cuboids per well, Fill order as two
+tiles; done while the plan made by Use this plan is the session's). A
+**template** is a named plan file (`config.templates`):
+`Outputs/templates/plate-plans/` (the old `plate_plan_presets` moved there
+when first listed); Save as template makes a new file under a name not
+in use, Save changes to "<name>" writes over the open one, no "are you
+sure". The run's own file (`Outputs/routines`) is never shown. Stored
 poses are set with **Set position** / **Set shake position**; the pipette
 calibration's way back is **Go to saved position**, the Picking page's **Go to
 picking position**.

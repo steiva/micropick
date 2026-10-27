@@ -333,6 +333,21 @@ QSpinBox, QDoubleSpinBox, QLineEdit {
     border-radius: 8px;
 }
 
+/* A choice drawn as a tile (the Plan step's Start from and Fill order):
+   taller than a button, its text left, the chosen one outlined. */
+QPushButton#tile {
+    background: transparent;
+    border: 1px solid @control-border;
+    border-radius: 10px;
+    padding: 8px 14px;
+    color: @text;
+    font-weight: 600;
+    text-align: left;
+}
+QPushButton#tile:hover { background: @hover; }
+QPushButton#tile:checked { background: @selected-bg; border-color: @accent; }
+QPushButton#tile:disabled { color: @faint; border-color: @line; }
+
 QFrame#segmented {
     background: @bar;
     border: 1px solid @control-border;
