@@ -1310,18 +1310,23 @@ hand.
   Robot setup, Platforms: a sheet with the deck as 3×4 big slots (10 11 12
   at the back), slot 12 gray. Click slot 5, "What stands in this slot?":
   Picking platform; slot 8 the same; slot 9 Calibration module. A slot
-  with a platform has a dashed border. Done: "Platforms saved.", the row
-  "Picking platform in 5 and 8 · Calibration module in 9" with a ✓.
-  Reopen, set slot 5 to Nothing, Cancel: slot 5 still has its platform.
+  with a platform has a dashed border. Save changes (gray before the first
+  choice): "Saved: slot 5 · Picking platform, slot 8 · Picking platform,
+  slot 9 · Calibration module" under it, Save changes gray again; Done
+  closes without a question, the row "Picking platform in 5 and 8 ·
+  Calibration module in 9" with a ✓. Reopen (no Cancel), set slot 5 to
+  Nothing, ×: "Save the changes?" - Discard: slot 5 still has its
+  platform. Again with Done and Save: slot 5 has nothing.
   Expected failure if wrong: a plate in slot 8 drawn in the hazard color
-  on the Deck step after Done.
+  on the Deck step after Save changes.
 
 - [ ] **Platform types.**
-  Slot 5's Height to 63.9 mm, Done: the Deck step's plate in slot 5 is
-  loaded at that height. New type "Tall platform", 80 mm, Add type: it is
-  in the list; put it in slot 4, Done. Delete type on slot 9's Calibration
-  module, Done: slot 9 keeps it, the list no longer offers it. A name
-  already there (any case): "There is a type of that name."
+  Slot 5's Height to 63.9 mm, Save changes: the Deck step's plate in slot
+  5 is loaded at that height. New type "Tall platform", 80 mm, Add type:
+  it is in the list; put it in slot 4, Save changes. Delete type on slot
+  9's Calibration module, Save changes: slot 9 keeps it, the list no
+  longer offers it. A name already there (any case): "There is a type of
+  that name."
 
 - [ ] **Position over the dish.**
   "Where will the dish with cuboids stand?", Slot 8 chosen. Move camera
