@@ -118,7 +118,11 @@ RUNS = {
     "camera calibration sweep": (CALIBRATION_SHEET,
                                  "Calibrating the camera"),
     "pipette calibration": ("tip_calibration", "Calibrating the tip"),
+    position_sheet.SHAKE_HOLDER: (POSITION_SHEET, "Calibrating the tip"),
 }
+
+# The Robot setup item a run on a sheet shared by several is gone back to.
+RUN_ITEMS = {position_sheet.SHAKE_HOLDER: "shake_position"}
 
 # The pill for a run's page's `run_activity`: its text and tone.
 RUN_ACTIVITY = {
@@ -677,7 +681,8 @@ class MainWindow(QMainWindow):
         page = RUNS.get(holder, (None, ""))[0]
         if task is not None and self.task != task:
             self._set_task(task)
-        item = next((i for i, p in SETUP_PAGES.items() if p == page), None)
+        item = RUN_ITEMS.get(holder) or next(
+            (i for i, p in SETUP_PAGES.items() if p == page), None)
         if task is not None and step is not None:
             self.show_step(step)
             if page in SHEETS:

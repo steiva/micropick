@@ -176,7 +176,9 @@ class TipOnBlock(QObject):
 
     def _build(self, parent) -> QWidget:
         box = card(parent)
-        box.layout().addWidget(heading("Put a tip on", 2))
+        # A host whose own step card names it hides this one.
+        self.heading = heading("Put a tip on", 2)
+        box.layout().addWidget(self.heading)
         self.no_rack = Banner(NO_RACK, tone="warn", parent=box)
         self.back_to_deck = self.no_rack.add_action("Back to Deck")
         self.back_to_deck.clicked.connect(
@@ -432,7 +434,8 @@ class TipCalibrationBlock(QObject):
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        column.addWidget(heading("Calibrate the tip", 2))
+        self.heading = heading("Calibrate the tip", 2)
+        column.addWidget(self.heading)
 
         self.start_step = StepCard(box, 1, "Start")
         self.start_step.add(wrapped(

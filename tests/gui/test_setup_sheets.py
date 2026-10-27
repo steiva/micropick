@@ -389,23 +389,162 @@ def test_before_camera_calibration_a_click_on_the_picture_moves_nothing(
     assert not any(line.startswith("Click") for line in view.mouse_help)
 
 
-# -- shake -----------------------------------------------------------------------
+# -- shake: its tip box, tip and tip calibration inside (#34) ------------------
 
-def test_the_shake_position_is_saved_only_by_save_position(app, window):
+RACK = "opentrons_96_tiprack_300ul"
+
+
+def _racks(window):
+    state = window.session.run_state
+    return {slot: entry.load_name for slot, entry in state.labware.items()
+            if "tiprack" in entry.load_name}
+
+
+def test_the_shake_position_carries_its_prerequisites(app, window):
     _open(window, "shake_position")
     sheet = window.position_sheet
     assert window.top.path == ["Robot setup", "Shake position"]
     assert [title for title, _ in _steps(sheet)] == [
-        "1. Lower the tip into the hole", "2. Save position"]
+        "1. Put a tip box on the deck", "2. Put a tip on",
+        "3. Calibrate the tip", "4. Put the source dish in its holder",
+        "5. Which slot is the holder in?",
+        "6. Click the hole on the picture",
+        "7. Lower the tip into the hole", "8. Save position"]
+    assert [mark for _, mark in _steps(sheet)] == [
+        "todo"] + ["blocked"] * 7
+    assert not sheet.save_button.isEnabled()
+
+
+def test_a_slot_click_loads_the_tip_box_type_chosen(app, window):
+    window.session.settings = window.session.settings.model_copy(
+        update={"tip_cal_tip_type": RACK})
+    _open(window, "shake_position")
+    sheet = window.position_sheet
+    assert _racks(window) == {}
+    # The Settings' tip calibration type, chosen at first.
+    assert sheet.tipbox_type.currentData() == RACK
+    assert sheet.tipbox_slots.marked is None
+    sheet.tipbox_slots.button(10).click()
+    _wait(app, lambda: _racks(window) == {"10": RACK})
+    _wait(app, lambda: sheet.cards["tipbox"].state == "ok")
+    assert sheet.tipbox_line.text() == "Tip box in slot 10."
+    assert sheet.cards["tip"].state == "todo"
+
+
+def test_a_tip_box_on_the_deck_is_done_at_once(app, window):
+    from micropick.config.labware import resolve_definition
+    window.session.load_labware(resolve_definition(RACK), 7)
+    _open(window, "shake_position")
+    sheet = window.position_sheet
+    assert sheet.cards["tipbox"].state == "ok"
+    assert sheet.tipbox_line.text() == "Tip box in slot 7."
+    assert sheet.tipbox_slots.isHidden()
+
+
+W, H = 2592, 1944
+
+
+@pytest.fixture
+def calibrates(window, monkeypatch):
+    """A toy pixel map, a calibration position, and the tip calibration's
+    routine replaced by one that saves an offset for the tip on."""
+    from types import SimpleNamespace
+    from micropick.config.schema import PipetteOffset
+    from micropick.config.schema import PixelMap as PixelMapConfig
+    from micropick.gui.pages import calibration_pipette as tip_page
+    session = window.session
+    s, k = W / 2, 0.026
+    session.profile.calibration.pixel_map = PixelMapConfig(
+        degree=1, cu=W / 2, cv=H / 2, s=s,
+        coef=[[0.0, k * s], [k * s, 0.0]], zero=[0.0, 0.0],
+        ref=[W / 2, H / 2], bounds=[100.0, 100.0, W - 100.0, H - 100.0],
+        image_size=[W, H], sweep_z=0.0)
+    session.remember("tip_calib", (150.0, 150.0, 80.0))
+
+    def calibrate(robot, over, under, detector, pmap, *, profile,
+                  robot_session, tip_pickup, **_kw):
+        offset = PipetteOffset(dx=1.5, dy=-2.5, robot_session=robot_session,
+                               tip_pickup=tip_pickup)
+        profile.calibration.pipette_offset = offset
+        return SimpleNamespace(offset=offset)
+
+    monkeypatch.setattr(tip_page, "calibrate_pipette_offset", calibrate)
+    monkeypatch.setattr(tip_page, "load_tip_detector",
+                        lambda *a, **k: object())
+
+
+def _calibrated_tip_on(app, window, monkeypatch):
+    """Through the shake sheet's first three steps."""
+    sheet = window.position_sheet
+    sheet.tipbox_type.setCurrentIndex(sheet.tipbox_type.findData(RACK))
+    sheet.tipbox_slots.button(10).click()
+    _wait(app, lambda: sheet.cards["tip"].state == "todo")
+    sheet.tip_on.take_button.click()
+    _wait(app, lambda: window.session.tip.attached is True
+          and not window.session.robot_lease.busy)
+    _wait(app, lambda: sheet.cards["calibrate"].state == "todo")
+    calibration = sheet.tip_calibration
+    monkeypatch.setattr(calibration, "_readiness", lambda: [])
+    calibration.refresh()
+    calibration.start_button.click()
+    lease = window.session.robot_lease
+    # A run of its own, with the pill.
+    assert lease.holding_run and lease.holder == "shake tip calibration"
+    _wait(app, lambda: calibration.disc_button.isEnabled())
+    assert sheet.run_activity() == "waiting"
+    calibration.disc_button.click()
+    calibration.calibrate_button.click()
+    _wait(app, lambda: not lease.busy)
+    _wait(app, lambda: sheet.cards["holder"].state == "todo")
+
+
+def test_the_shake_position_from_a_tip_box_to_save(app, window, calibrates,
+                                                   monkeypatch):
+    session = window.session
+    _open(window, "shake_position")
+    sheet = window.position_sheet
+    _calibrated_tip_on(app, window, monkeypatch)
+    assert [mark for _, mark in _steps(sheet)][:4] == [
+        "ok", "ok", "ok", "todo"]
+    sheet.buttons["holder"].click()
+    sheet.slots.button(4).click()
+    _wait(app, lambda: sheet.slots.marked == 4)
+    _wait(app, lambda: sheet.cards["hole"].state == "todo")
+    assert "Click   move the tip there" in sheet.view.mouse_help
+    # The middle of the picture is where the camera is: the tip goes
+    # there, the tip offset (1.5, -2.5) away, at the travel height.
+    x, y, _z = xyz(session.robot)
+    sheet.view.clicked.emit(W / 2, H / 2)
+    _wait(app, lambda: sheet.cards["hole"].state == "ok")
+    tx, ty, tz = xyz(session.robot)
+    assert (tx, ty) == pytest.approx((x + 1.5, y - 2.5), abs=0.05)
+    assert tz == pytest.approx(session.motion.travel_z, abs=0.01)
     assert sheet.note.label.text() == (
         "The camera can't see this. Watch the robot itself.")
-    assert not sheet.jog.isHidden()
     assert not sheet.save_button.isEnabled()
-    sheet.done_button.click()
-    assert "shake" not in window.session.profile.positions
-    _open(window, "shake_position")
     sheet.buttons["lower"].click()
     _wait(app, lambda: sheet.save_button.isEnabled())
+    where = xyz(session.robot)
     sheet.save_button.click()
     _saved(app, window, "shake")
+    assert session.profile.positions["shake"] == pytest.approx(where,
+                                                              abs=0.01)
+    assert sheet.saved_note.text().startswith("Saved: slot 4 · X ")
+    assert session.tip.attached is True          # the tip stays on
     assert _row(window, "shake_position")[0]
+
+
+def test_a_calibrated_tip_on_makes_the_first_three_steps_done(
+        app, window, calibrates, monkeypatch):
+    _open(window, "shake_position")
+    sheet = window.position_sheet
+    _calibrated_tip_on(app, window, monkeypatch)
+    sheet.done_button.click()
+    _open(window, "shake_position")
+    assert [mark for _, mark in _steps(sheet)][:5] == [
+        "ok", "ok", "ok", "todo", "blocked"]
+    assert sheet.buttons["holder"].isEnabled()
+    # Dropped, the tip is to put on again.
+    sheet.tip_on.drop_button.click()
+    _wait(app, lambda: sheet.cards["tip"].state == "todo")
+    assert sheet.cards["calibrate"].state == "blocked"

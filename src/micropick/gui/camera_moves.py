@@ -15,6 +15,12 @@ bring the slot into view.
 calibration a pixel has no direction on the deck, so a click moves
 nothing and the panel says to use the arrows.
 
+**The tip onto a click** (the shake position's hole) is the camera's
+target plus the measured tip offset, as Manual pick's Work moves the tip
+from the picture, and only inside the calibrated area: outside it the map
+extrapolates. The gantry at the travel height is the tip at it, so the
+move is a camera move to the tip's target.
+
 A target the gantry cannot reach at the height it crosses the deck at (or
 where it is, while that is not measured) is not moved to; the panel says
 why under the position.
@@ -29,10 +35,10 @@ import numpy as np
 from ..core.calibration.pixel_map import PixelMap
 from ..core.deck import slot_center
 from ..hardware.protocols import xyz
-from ..workflows.manual import camera_target
+from ..workflows.manual import camera_target, tip_target
 
-__all__ = ["camera_offset", "move_over_slot", "move_to_pixel",
-           "out_of_reach"]
+__all__ = ["camera_offset", "move_over_slot", "move_tip_to_pixel",
+           "move_to_pixel", "out_of_reach"]
 
 log = logging.getLogger(__name__)
 
@@ -97,3 +103,36 @@ def move_to_pixel(session, jog, u: float, v: float, *,
         return None
 
     return jog.run_job(job, what="centering the camera")
+
+
+def move_tip_to_pixel(session, jog, u: float, v: float, *, no_map: str,
+                      then=None) -> bool:
+    """The tip over pixel (u, v) of the picture at the travel height,
+    through the pixel map and the measured tip offset; `then(said)` once
+    there. Without a map or a tip calibration, said and nothing moves."""
+    profile, robot = session.profile, session.robot
+    if profile is None or profile.pixel_map is None:
+        jog.tell(no_map)
+        return False
+    offset = profile.calibration.pipette_offset
+    if offset is None:
+        jog.tell("Refused: no tip calibration.")
+        return False
+    if robot is None:
+        return False
+    pmap = PixelMap.from_config(profile.pixel_map)
+    if not pmap.covers(u, v):
+        jog.tell("Refused: outside the calibrated area.")
+        return False
+    xy = tip_target(pmap, u, v, xyz(robot)[:2], offset)
+    if out_of_reach(session, jog, xy, "That point"):
+        return False
+    motion = session.motion
+
+    def job(log_):
+        motion.camera_to(xy, log=log_)
+        return "Tip over the point clicked."
+
+    log.info("tip to (%.2f, %.2f) at the travel height", xy[0], xy[1])
+    return jog.run_job(job, what="moving the tip over the point clicked",
+                       then=then)

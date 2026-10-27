@@ -138,7 +138,19 @@ thing that stores the robot's pose under the stored name (`tip_calib`,
 `shake`, `observe`; no new pose) and says "Saved: slot N · X Y Z". Done
 and × only close (no Cancel), storing nothing. A saved position shows
 its line on top with Go to saved position (`Motion.tip_to`, no higher
-than the travel height), which marks the steps before Save done. While a Robot setup sheet is open the page
+than the travel height), which marks the steps before Save done. The
+shake position carries its prerequisites as steps: a tip box (a type
+from the drop-down, Settings' tip calibration type first; a mini deck
+click loads it there through `Session.load_labware`, as the Deck step
+does), put a tip on and calibrate the tip (the Tip step's
+`TipOnBlock` and `TipCalibrationBlock`, made once and kept, the run's
+holder `SHAKE_HOLDER` in `shell.RUNS`, its way back `shell.RUN_ITEMS`),
+the source dish in its holder, the holder's slot, a click on the hole
+(the tip over it at the travel height through the pixel map and the
+measured offset, `camera_moves.move_tip_to_pixel`), lower it with the pad
+(It is in the hole), Save position; the tip stays on. Those first three
+are done by fact (`Built.done`): with a calibrated tip on the sheet opens
+on the fourth. While a Robot setup sheet is open the page
 under it is disabled, so its keys are the sheet's. Reset setup asks (Keep setup primary),
 then `Session.reset_setup` zips the profile folder beside it, dated, and
 clears the cameras, the pixel map, the deck modules and those three
@@ -361,7 +373,7 @@ tiles; done while the plan made by Use this plan is the session's). A
 when first listed); Save as template makes a new file under a name not
 in use, Save changes to "<name>" writes over the open one, no "are you
 sure". The run's own file (`Outputs/routines`) is never shown. Stored
-poses are set with **Set position** / **Set shake position**; the pipette
+poses are set with **Save position** (the shake position's too); the pipette
 calibration's way back is **Go to saved position**, the Picking page's
 **Camera to dish center**.
 

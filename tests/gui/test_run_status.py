@@ -98,6 +98,7 @@ def test_a_short_job_shows_neither(app, window, what):
     ("liquid run", "Handling liquid"),
     ("camera calibration sweep", "Calibrating the camera"),
     ("pipette calibration", "Calibrating the tip"),
+    ("shake tip calibration", "Calibrating the tip"),
 ])
 def test_a_run_shows_the_pill_and_stop(app, window, holder, text):
     _connect(app, window)
@@ -157,6 +158,27 @@ def test_a_run_started_out_of_a_task_is_gone_back_to_on_its_page(app,
         assert not window.calibration_sheet.isHidden()
         assert window.current_page() is window.robot_setup_page
         assert window.top.path == ["Robot setup", "Camera calibration"]
+    finally:
+        lease.release()
+
+
+def test_the_shake_tip_calibration_is_gone_back_to_in_its_sheet(app,
+                                                                 window):
+    _connect(app, window)
+    window.open_home()
+    window.open_setup_item("shake_position")
+    sheet = window.position_sheet
+    lease = window.session.robot_lease.claim("shake tip calibration",
+                                             run=True)
+    try:
+        app.processEvents()
+        sheet.close_button.click()
+        window.open_home()
+        assert sheet.isHidden()
+        window.top.status_clicked.emit()
+        assert not sheet.isHidden()
+        assert sheet.item == "shake_position"
+        assert window.top.path == ["Robot setup", "Shake position"]
     finally:
         lease.release()
 
