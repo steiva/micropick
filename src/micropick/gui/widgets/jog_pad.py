@@ -22,14 +22,15 @@ from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QPushButton, QVBoxLayout, QWidget)
 
+from ...workflows.jog import DEFAULT_STEPS
 from .. import keys as key_actions
 from ..theme import COLORS, SIZES, mono_font
 from ..theme.icons import icon
 
 __all__ = ["STEPS", "JogPad", "step_label"]
 
-# The carousel's sizes, mm (§8.11).
-STEPS = (0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10)
+# The carousel's sizes, mm (§8.11): the jog controller's own.
+STEPS = tuple(DEFAULT_STEPS)
 VISIBLE = 3
 
 _BUTTONS = (  # action id, grid cell or None for Z, icon or text

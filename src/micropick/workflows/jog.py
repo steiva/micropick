@@ -31,7 +31,8 @@ from ..viz import window as window_fit
 __all__ = ["Limits", "MoveResult", "JogController", "jog_in_window",
            "jog_with_hotkeys", "DEFAULT_STEPS", "Key", "LAYOUT", "help_lines"]
 
-DEFAULT_STEPS = [0.01, 0.05, 0.1, 0.5, 1, 3, 5, 10, 30, 50]
+# Ten sizes, the same on the GUI's step carousel (`gui.widgets.jog_pad`).
+DEFAULT_STEPS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10]
 AXES = "xyz"
 
 
