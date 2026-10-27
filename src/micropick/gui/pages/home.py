@@ -295,10 +295,10 @@ class HomePage(QWidget):
                 if session.adopt_refused is not None else
                 "The robot has no robot session to carry on with.")
         elif session.released is not None:
-            self.robot_title.setText("Robot not connected")
-            self.robot_text.setText("Robot session disconnected.")
+            self.robot_title.setText("Robot session disconnected")
+            self.robot_text.setText("Nothing is sent to the robot.")
         elif session.robot_answers and session.robot is None:
-            self.robot_title.setText("Robot not connected")
+            self.robot_title.setText("Connecting to the robot…")
             self.robot_text.setText("Continuing the robot's session.")
         else:
             self.robot_title.setText("Connecting to the robot…")

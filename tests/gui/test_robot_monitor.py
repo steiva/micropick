@@ -253,6 +253,23 @@ def test_home_says_homing_while_it_homes(app, window, monkeypatch):
     _until(app, lambda: not window.session.robot_lease.busy)
 
 
+def test_home_never_says_not_connected(app, window, monkeypatch):
+    home, session = window.home, window.session
+    _until(app, lambda: session.robot is not None)
+    window.monitor.stop()
+    # Answering, its session being carried on with.
+    monkeypatch.setattr(session, "robot", None)
+    monkeypatch.setattr(session, "robot_answers", True)
+    home.refresh()
+    assert home.robot_title.text() == "Connecting to the robot…"
+    assert home.robot_text.text() == "Continuing the robot's session."
+    # Its session let go.
+    monkeypatch.setattr(session, "released", "run-1")
+    home.refresh()
+    assert home.robot_title.text() == "Robot session disconnected"
+    assert "not connected" not in home.robot_text.text().lower()
+
+
 def test_a_look_is_not_work_that_stop_waits_for(app, window, monkeypatch):
     from micropick.gui.workers import any_running
     session = window.session
