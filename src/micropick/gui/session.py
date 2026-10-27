@@ -61,6 +61,7 @@ from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..hardware.robot_lease import RobotLease       # noqa: E402
+from ..workflows import manual as moves             # noqa: E402
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
 from .tasks import SETUP_POSITIONS                  # noqa: E402
@@ -336,6 +337,8 @@ class Session(QObject):
     # from a notebook is in that log too, and a tip nobody knows about is
     # the first way the robot crashes.
     tip_changed = Signal(object)
+    # What is in the tip, in µl, counted here (`in_tip`); carries the count.
+    in_tip_changed = Signal(float)
     # The rail lights, as last read from the robot; carries bool or None.
     lights_changed = Signal(object)
     # The routine a run would deliver into, or None. Set by the Plate plan page
@@ -396,6 +399,9 @@ class Session(QObject):
         self.run_generation = 0
         self.routine = None                      # see routine_changed
         self.tip = Tip.unknown()                 # see tip_changed
+        # What is in the tip, in µl, from `aspirate` and `dispense`; see
+        # "liquid in the tip".
+        self.in_tip = 0.0
         # The wells taken from each rack, by its labware id: a rack loaded
         # again, or a new robot session, is a new id and starts full.
         self._used_tips: dict[str, set[str]] = {}
@@ -1352,7 +1358,11 @@ class Session(QObject):
                      else "unknown")
         if tip != self.tip:
             log.info("robot reports: %s", tip.describe())
+        same = (tip.attached and self.tip.attached
+                and tip.pickup == self.tip.pickup)
         self.tip = tip
+        if not same:
+            self._set_in_tip(0.0)
         self.motion.tip_changed(tip)
         self.tip_changed.emit(tip)
         return tip
@@ -1457,8 +1467,63 @@ class Session(QObject):
 
     def _forget_tip(self) -> None:
         self.tip = Tip.unknown()
+        self._set_in_tip(0.0)
         self.motion.tip_changed(self.tip)
         self.tip_changed.emit(self.tip)
+
+    # -- liquid in the tip ---------------------------------------------------
+    #
+    # In place, where the tip is: Manual Work's Aspirate and Dispense, which
+    # move it there first. Blocking, and moving nothing but the plunger.
+    # What is in the tip is counted from these two, not read: the robot
+    # keeps no such record. Another tip holds nothing; the same tip read
+    # again keeps its count (`read_tip`).
+
+    def aspirate(self, volume: float, flow_rate: float) -> float:
+        """Aspirate `volume` µl at `flow_rate` µl/s; returns what is in the
+        tip now. Refused unless the robot reports a tip on."""
+        self._require_tip("aspirate")
+        moves.aspirate(self.robot, volume, flow_rate)
+        log.info("aspirated %g µl at %g µl/s", volume, flow_rate)
+        self._set_in_tip(self.in_tip + float(volume))
+        return self.in_tip
+
+    def dispense(self, flow_rate: float, volume: float | None = None) -> float:
+        """Dispense `volume` µl - all that is in the tip when None - at
+        `flow_rate` µl/s; returns the volume dispensed.
+
+        Refused with nothing in the tip, and for a part larger than what is
+        in it: the plunger would push out air, and the count would go below
+        nothing."""
+        self._require_tip("dispense")
+        held = self.in_tip
+        amount = held if volume is None else float(volume)
+        if held <= 0:
+            raise SessionError("nothing is in the tip to dispense")
+        if amount <= 0:
+            raise SessionError("a dispense needs a volume above 0 µl")
+        if amount > held + 1e-6:
+            raise SessionError(f"the tip holds {held:g} µl, less than "
+                               f"{amount:g} µl")
+        moves.dispense(self.robot, amount, flow_rate)
+        log.info("dispensed %g µl at %g µl/s", amount, flow_rate)
+        self._set_in_tip(held - amount)
+        return amount
+
+    def _require_tip(self, what: str) -> None:
+        self._require_robot()
+        if self.tip.attached is not True:
+            state = ("none" if self.tip.attached is False
+                     else "that it cannot tell")
+            raise SessionError(f"{what} needs a tip on the pipette, and the "
+                               f"robot reports {state}")
+
+    def _set_in_tip(self, ul: float) -> None:
+        ul = round(max(0.0, float(ul)), 3)
+        if ul == self.in_tip:
+            return
+        self.in_tip = ul
+        self.in_tip_changed.emit(ul)
 
     # -- lights --------------------------------------------------------------
 
