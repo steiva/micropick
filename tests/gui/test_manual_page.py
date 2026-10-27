@@ -181,9 +181,13 @@ def test_a_right_click_marks_a_point_drawn_only_while_points_are_shown(
     assert _xy(session) == pytest.approx(before)        # marking moves nothing
     # Marked to be seen: the points open.
     assert page.points_shown
+    assert page.source.current() == 1                  # At a point
     assert len(_points_drawn(page)) == 1
-    page.show_points(False)
+    page.source.buttons[0].click()                     # In a well
     assert _points_drawn(page) == []
+    page.target.buttons[1].click()                     # Dispense: At a point
+    page.dispense_card.set_open(True)
+    assert len(_points_drawn(page)) == 1
 
 
 def test_a_point_is_deleted_by_its_cross(app, page, session):
@@ -212,7 +216,7 @@ def test_look_at_moves_the_camera_over_the_slot(app, page, session):
     assert _xy(session) == pytest.approx((x - 10.0, y + 5.0), abs=0.05)
 
 
-def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
+def _tip_on(session):
     from micropick.config.labware import LabwareDefinition
     rack = LabwareDefinition(load_name="opentrons_96_tiprack_300ul",
                              namespace="opentrons", version=1,
@@ -221,19 +225,142 @@ def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
     session.load_labware(rack, 10)
     session.pick_up_tip(10, "A1")
     assert session.tip.attached is True
+
+
+def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
+    _tip_on(session)
     page.volume.setValue(15.0)
-    page._aspirate()
+    page._aspirate_here()
     _wait(app, page)
     assert page.gauge.volume.text() == "15 µl"
     session.read_tip()                       # the same tip, read again
     assert page.gauge.volume.text() == "15 µl"
-    page._dispense()
+    page._dispense_here()
     _wait(app, page)
     assert page.gauge.volume.text() == "0 µl"
-    page._aspirate()
+    page._aspirate_here()
     _wait(app, page)
     session.drop_tip_in_trash()
+    app.processEvents()
     assert page.gauge.volume.text() == "0 µl"           # dropped with the tip
+
+
+def test_the_aspirate_settings_are_one_line_and_change_unfolds_them(page):
+    page.above_bottom.setValue(0.5)
+    page.volume.setValue(15.0)
+    page.flow_rate.setValue(50.0)
+    assert page.settings_line.text() == (
+        "0.5 mm above the bottom · 15 µl · 50 µl/s")
+    assert not page.settings_box.isVisibleTo(page)
+    page.change_button.click()
+    assert page.settings_box.isVisibleTo(page)
+
+
+def _ready_by_hand(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _tip_on(session)
+    _over_the_deck(app, page, session)
+    page.source.buttons[2].click()                     # By hand
+    page.snap.setChecked(False)
+    page.volume.setValue(15.0)
+    page.above_bottom.setValue(0.5)
+
+
+def test_by_hand_a_click_chooses_the_spot_and_aspirate_goes_there(
+        app, page, session):
+    _ready_by_hand(app, page, session)
+    assert not page.aspirate_button.isEnabled()         # no source yet
+    before = _xy(session)
+    _left_click(app, page, W / 2 + 100, H / 2)
+    assert _xy(session) == pytest.approx(before)        # choosing moves nothing
+    assert page.hand_hint.text() == "Spot selected. Press Aspirate."
+    assert page.aspirate_button.isEnabled()
+    page.aspirate_button.click()
+    _wait(app, page)
+    pos = session.robot.get_position(verbose=False)[0]
+    assert (pos["x"], pos["y"]) == pytest.approx(
+        (150.0 + 100 * K + 10.0, 145.0), abs=0.05)
+    bottom = session.profile.picking.dish_bottom
+    assert pos["z"] == pytest.approx(bottom + 0.5, abs=0.05)
+    assert session.in_tip == pytest.approx(15.0)
+    assert page.gauge.volume.text() == "15 µl"
+    assert len(page._picks) == 1                         # a past pick
+
+
+def test_by_hand_aspirate_as_soon_as_i_click(app, page, session):
+    _ready_by_hand(app, page, session)
+    page.aspirate_on_click.setChecked(True)
+    _left_click(app, page, W / 2 + 100, H / 2)
+    assert session.in_tip == pytest.approx(15.0)
+
+
+def test_dispense_opens_by_itself_and_gives_back_part_then_all(
+        app, page, session):
+    _tip_on(session)
+    assert not page.dispense_card.is_open()
+    assert not page.dispense_button.isEnabled()         # the tip is empty
+    page.volume.setValue(15.0)
+    page._aspirate_here()
+    _wait(app, page)
+    assert page.dispense_card.is_open()
+    page.target.buttons[2].click()                       # Here
+    assert page.dispense_button.text() == "Dispense here"
+    assert page.dispense_button.isEnabled()
+    page.amount.buttons[1].click()                       # Part
+    page.part.setValue(6.0)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(9.0)
+    page.amount.buttons[0].click()                       # All
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert not page.dispense_button.isEnabled()
+
+
+def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
+    from micropick.config.labware import resolve_definition
+    plate = session.load_labware(
+        resolve_definition("corning_96_wellplate_360ul_flat"), 5)
+    _tip_on(session)
+    page._aspirate_here()
+    _wait(app, page)
+    page.target.buttons[0].click()                       # In a well
+    page.target_wells.well.setCurrentText("A7")
+    assert page.dispense_button.text() == "Go to A7 and dispense"
+    page.dispense_button.click()
+    _wait(app, page)
+    calls = session.robot.calls
+    lid = session.run_state.labware["5"].labware_id
+    assert ("move_to_well", lid, "A7", "bottom") in calls
+    assert calls[-1][0] == "dispense_in_place"
+    assert session.in_tip == 0.0
+    del plate
+
+
+def test_the_plan_map_chooses_the_well_to_dispense_into(app, page, session):
+    from micropick.config.labware import resolve_definition
+    from micropick.core.routine import Destination, Routine
+    definition = resolve_definition("corning_96_wellplate_360ul_flat")
+    session.load_labware(definition, 5)
+    destination = Destination.from_definition(definition, 5)
+    session.set_routine(Routine(destination, {"A7": 1, "B7": 1}, name="t"))
+    page.target.buttons[0].click()
+    page.plan_map.well_clicked.emit("B7")
+    assert page.target_wells.chosen()[3] == "B7"
+    assert page.dispense_button.text() == "Go to B7 and dispense"
+
+
+def test_no_counter_finish_or_step_numbers(page):
+    import re
+    from PySide6.QtWidgets import QAbstractButton, QLabel
+    texts = [w.text() for w in page.findChildren(QLabel)
+             + page.findChildren(QAbstractButton)]
+    assert not [t for t in texts
+                if "Finish" in t or "moved" in t
+                or re.match(r"^\s*\d+\s*/\s*\d+", t)]
 
 
 def test_past_picks_are_drawn_while_shown(app, page, session):

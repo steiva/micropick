@@ -18,7 +18,7 @@ point**.
   approximately.
 * **A click on a detected cuboid sends the tip to it**, at the profile's
   pickup height (dish bottom + pickup offset), one number shared with the
-  run.
+  run - unless Aspirate is choosing its spot by hand (see "Aspirate").
 
 Every click-move is checked against the jog envelope first
 (`Motion.refused`: the soft limits and the deck modules' tops) and refused
@@ -32,19 +32,21 @@ Beside the segmented choice, **Camera back to center** puts the camera over
 the dish again (the position over the dish, `observe`), and **Tip back to
 center** puts the tip over that same spot at the travel height.
 
-Over the top left is the **TipGauge**: what is in the tip, counted here
-from the page's aspirates and dispenses and emptied when the tip changes,
-with the robot's X, Y and Z under it.
+Over the top left is the **TipGauge**: what is in the tip, as the session
+counts it (`Session.in_tip`, from aspirates and dispenses, emptied when the
+tip changes), with the robot's X, Y and Z under it. It is the answer to
+Aspirate: there is no "Aspirated 15 µl" besides.
 
 Memo points
 -----------
 A right click on the picture marks a point where the tip would go down
 there (`Session.memo_points`, named with the lowest free number, M1, M2
-...), listed in the Points card, where X, Y and Z are edited and the ×
-deletes one (`Session.delete_memo_point`). They are drawn on the picture
-only while the points are shown (the Points card open; REDESIGN §6.6 ties
-it to "At a point"), and marking one opens them. The tip goes to one only
-by its Go to. They last until the program closes; a point to keep is a
+...), listed under Aspirate's "At a point", where X, Y and Z are edited and
+the × deletes one (`Session.delete_memo_point`), and under Dispense's. They
+are drawn on the picture only while "At a point" is chosen in an open
+Aspirate or Dispense card, and marking one chooses it in Aspirate when
+neither shows them. The tip goes to one by Go to, or by Aspirate or
+Dispense from it. They last until the program closes; a point to keep is a
 position (the jog panel's Positions). Marking moves nothing.
 
 A point the tip cannot go to is said where it is made and shown in red,
@@ -78,27 +80,57 @@ tip's: the camera goes to it less the pipette offset. Nothing is aspirated.
 Only the upper camera is shown: the pixel map is its, and a point on the
 lower camera's picture is not a place on the deck.
 
-Aspirate and dispense in place, with a volume and a flow rate, are on the
-page and on A and D - the in-place commands the run uses, for trying a
-pickup by hand. They are refused unless the robot reports a tip on.
+Aspirate
+--------
+The operator composes the work from Aspirate and Dispense; nothing is a
+script. Aspirate's settings are one line, "0.5 mm above the bottom · 15 µl
+· 50 µl/s", and Change unfolds them. The height is above the bottom of
+where the tip goes down: the measured dish bottom (`PickingConfig.
+dish_bottom`) by hand, the well's bottom in a well. From:
 
-A cuboid picked by hand needs somewhere to go, so a well of any plate the
-run holds can be driven to: the robot's own `move_to_well`, to the top,
-center or bottom of the well with an offset from it. Two switches make the
-pair a pickup: aspirate as soon as the tip reaches a clicked cuboid, and
-dispense as soon as it reaches the well.
+* **In a well** - a plate the robot session holds and its well.
+* **At a point** - a memo point, at its own Z.
+* **By hand** - a click on the picture chooses the spot, and moves
+  nothing. With Snap to found cuboids on, a click on a detected cuboid
+  chooses that cuboid, and a click beside every cuboid moves as any click
+  does; off, the clicked point itself is the spot, which is how plain
+  liquid is taken. With Aspirate as soon as I click, the choice is the
+  go-ahead.
+
+Aspirate is enabled once there is a source. It goes there (through the
+jog panel's `run_job`, after the jog envelope's check) and aspirates
+(`Session.aspirate`); the spot is a past pick. Refused unless the robot
+reports a tip on.
+
+Dispense
+--------
+Under Aspirate, opening by itself when the tip comes to hold something:
+All or Part (µl, no more than is in the tip: `Session.dispense`), where:
+
+* **In a well** - the plate and well, and a mini map of the plate plan's
+  plate (filled and still planned wells; a click chooses that well), so
+  the wells a run left empty can be filled by hand. The tip goes to the
+  well's bottom plus the picking settings' deposit offset, from the
+  plate's well center, as a run deposits.
+* **At a point** - a memo point.
+* **Here** - where the tip is.
+
+Its button says what it does - "Go to A7 and dispense", "Dispense here" -
+and is gray while the tip is empty. A and D aspirate and dispense where
+the tip is, with Aspirate's volume and speed and Dispense's amount.
 
 The well center
 ---------------
-Go to well is measured from the plate's measured well center where there
-is one (`config.schema.WellCenter`, per slot and plate type): its x and y
-are added to the profile's well offsets, as a picking run adds them to its
-deposit, and the level keeps the robot's own heights. It is the same
+Dispense into a well goes from the plate's measured well center where
+there is one (`config.schema.WellCenter`, per slot and plate type): its x
+and y are added to the profile's well offsets, as a picking run adds them
+to its deposit, and the level keeps the robot's own heights. It is the same
 measurement as the Liquid handling page's, and is taken here the same
-way: Go to well top puts the tip where the robot thinks the chosen well's
-top center is, the jog panel walks it onto the real center level with the
-rim, and Set well center stores the difference. Forget well center drops
-it, and the wells are where the labware definition puts them again.
+way, in the folded Well center card: Go to well top puts the tip where the
+robot thinks the chosen well's top center is, the jog panel walks it onto
+the real center level with the rim, and Set well center stores the
+difference. Forget well center drops it, and the wells are where the
+labware definition puts them again.
 
 Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
@@ -120,10 +152,10 @@ import time
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
-                               QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QShortcut
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
+                               QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
 from ...core.calibration.pixel_map import PixelMap
@@ -132,25 +164,25 @@ from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
 from ...workflows import well_center
-from ...workflows.motion import WELL_LEVELS
 from .. import keys
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
 from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
 from ..session import Session
-from ..theme import SPACING
+from ..theme import COLORS, SPACING
 from ..theme.factory import (Section, card, combo_box, compact,
-                             double_spin_box, heading, muted_label,
-                             primary_button, scroll_column, secondary_button)
+                             double_spin_box, muted_label, primary_button,
+                             scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.controls import Segmented
+from ..widgets.controls import Segmented, Switch
 from ..widgets.feed_row import FeedRow
 from ..widgets.fold_card import FoldCard
 from ..position_marks import PositionMarks
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
+from ..widgets.plate_grid import PlateGrid
 from ..widgets.tip_gauge import TipGauge
 from ..widgets.memo_points import TRAVEL_TEXT, MemoTable, Z_TOP_MM
 from ..widgets.size_histogram import SizeHistogram
@@ -173,13 +205,27 @@ CUBOID_SNAP_PX = 6.0
 VOLUME_RANGE = (0.1, 1000.0)
 FLOW_RANGE = (0.1, 1000.0)
 
+# Aspirate's height above the bottom where the tip goes down.
+ABOVE_BOTTOM_RANGE = (0.0, 30.0)
+
 # (action in `gui.keys`, what it does, handler name). One list, so the
 # jog pad's key list cannot offer a key that is not bound.
-KEYS = (("aspirate", "aspirate", "_aspirate"),
-        ("dispense", "dispense", "_dispense"))
+KEYS = (("aspirate", "aspirate here", "_aspirate_here"),
+        ("dispense", "dispense here", "_dispense_here"))
 
-# How far the tip may be sent from the chosen well level, either way.
-WELL_OFFSET_RANGE = (-50.0, 50.0)
+# Aspirate from, Dispense how much and where: the segmented choices.
+FROM = ("In a well", "At a point", "By hand")
+AMOUNT = ("All", "Part")
+WHERE = ("In a well", "At a point", "Here")
+
+# By hand, what to do next.
+HAND_HINT = "Click the spot to aspirate from on the picture."
+HAND_CUBOID = "Cuboid selected. Press Aspirate."
+HAND_SPOT = "Spot selected. Press Aspirate."
+
+# The spot chosen by hand, when it is not a cuboid: a ring, BGR.
+SPOT_COLOR = (0, 220, 255)
+SPOT_RADIUS_PX = 18
 
 # What the mouse does on the picture, its row along the bottom (§3).
 MOUSE_HELP = ("Left click   move", "Right click   mark a point",
@@ -222,15 +268,92 @@ def _row(box, label: str, widget) -> None:
     box.layout().addLayout(row)
 
 
+class _WellPicker(QWidget):
+    """Plate and Well: a plate the robot session holds and one of its
+    wells. `changed` when either does."""
+
+    changed = Signal()
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.plate = combo_box(self)
+        self.plate.currentIndexChanged.connect(lambda _i: self._show_wells())
+        self.well = combo_box(self)
+        # Typed as well as chosen: "H12" is quicker than scrolling to it,
+        # and the completer the editable box brings finds it either way.
+        self.well.setEditable(True)
+        self.well.setInsertPolicy(self.well.InsertPolicy.NoInsert)
+        self.well.currentTextChanged.connect(lambda _t: self.changed.emit())
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        for label, widget in (("Plate", self.plate), ("Well", self.well)):
+            row = QHBoxLayout()
+            name = QLabel(label)
+            name.setMinimumWidth(90)
+            row.addWidget(name)
+            row.addWidget(widget, 1)
+            layout.addLayout(row)
+
+    def set_plates(self, plates) -> None:
+        """`Session.plates()` in the combo, the one in hand kept."""
+        chosen = self.plate.currentData()
+        chosen_slot = chosen[0] if chosen else None
+        self.plate.blockSignals(True)
+        self.plate.clear()
+        for slot, entry, definition in plates:
+            self.plate.addItem(f"slot {slot} - {definition.display_name}",
+                               (slot, entry.labware_id, definition))
+        slots = [self.plate.itemData(i)[0] for i in range(self.plate.count())]
+        if chosen_slot in slots:
+            self.plate.setCurrentIndex(slots.index(chosen_slot))
+        self.plate.blockSignals(False)
+        self._show_wells()
+
+    def _show_wells(self) -> None:
+        """The chosen plate's wells, row by row, the one typed kept."""
+        typed = self.well.currentText()
+        data = self.plate.currentData()
+        wells = []
+        if data is not None:
+            ordering = data[2].ordering
+            for row in range(max((len(c) for c in ordering), default=0)):
+                wells += [column[row] for column in ordering
+                          if row < len(column)]
+        self.well.blockSignals(True)
+        self.well.clear()
+        self.well.addItems(wells)
+        if typed in wells:
+            self.well.setCurrentIndex(wells.index(typed))
+        self.well.blockSignals(False)
+        self.changed.emit()
+
+    def chosen(self):
+        """(slot, labware id, definition, well), or None while the well
+        typed is not one of the plate's."""
+        data = self.plate.currentData()
+        if data is None:
+            return None
+        well = self.well.currentText().strip().upper()
+        return (*data, well) if well in data[2].wells else None
+
+    def choose(self, slot, well: str) -> None:
+        """The plate in `slot` and its `well`, if the session holds it."""
+        for i in range(self.plate.count()):
+            if str(self.plate.itemData(i)[0]) == str(slot):
+                self.plate.setCurrentIndex(i)
+                self.well.setCurrentText(well)
+                return
+
+
 class ManualPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        # What is in the tip, counted from this page's aspirates and
-        # dispenses; emptied when the tip changes.
-        self._in_tip = 0.0
-        self._tip = session.tip              # the tip it is counted for
+        # The spot Aspirate takes from by hand: the tip's (x, y), and the
+        # pixel it was clicked at when it is not a cuboid (drawn as a ring).
+        self._spot = None
+        self._spot_px = None
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
         # The last Go to well top: the robot's own idea of that well's top
@@ -262,8 +385,8 @@ class ManualPage(QWidget):
 
         self.marks = PositionMarks.on(session, self.view)
         panel = CardColumns([self._tools_card(), self._sizes_card(),
-                             self._liquid_card(), self._well_card(),
-                             self._memo_card(), self.jog], self)
+                             self._aspirate_card(), self._dispense_card(),
+                             self._center_card(), self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -277,7 +400,9 @@ class ManualPage(QWidget):
 
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
-        session.tip_changed.connect(self._tip_changed)
+        session.in_tip_changed.connect(self._in_tip_changed)
+        session.tip_changed.connect(lambda _t: self._refresh())
+        session.routine_changed.connect(lambda _r: self._show_plan())
         session.robot_state_changed.connect(self._robot_changed)
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._reload_plates())
@@ -288,7 +413,10 @@ class ManualPage(QWidget):
         session.settings_changed.connect(lambda _s: self._rebind())
         self._reload_plates()
         self._on_profile_changed()
-        self.show_points(False)
+        self._show_plan()
+        self.gauge.set_volume(session.in_tip)
+        self._source_changed()
+        self._target_changed()
         self._show_camera()
 
     # -- construction --------------------------------------------------------
@@ -342,30 +470,60 @@ class ManualPage(QWidget):
         box.layout().addWidget(self.state)
         return box
 
-    def _memo_card(self) -> QWidget:
-        """The memo points; drawn on the picture while this is open."""
-        self.points_card = FoldCard("Points", parent=self)
-        self.points_card.toggled.connect(lambda _open: self._points_toggled())
-        body = self.points_card.body.layout()
+    def _aspirate_card(self) -> QWidget:
+        """The settings as one line, From, and Aspirate; see "Aspirate"."""
+        self.aspirate_card = FoldCard("Aspirate", open=True, parent=self)
+        self.aspirate_card.toggled.connect(lambda _open: self._source_changed())
+        body = self.aspirate_card.body.layout()
+
+        row = QHBoxLayout()
+        self.settings_line = muted_label("", self)
+        self.settings_line.setWordWrap(True)
+        self.change_button = compact(secondary_button("Change", self))
+        self.change_button.setCheckable(True)
+        self.change_button.toggled.connect(
+            lambda on: self.settings_box.setVisible(on))
+        row.addWidget(self.settings_line, 1)
+        row.addWidget(self.change_button)
+        body.addLayout(row)
+        self.settings_box = QWidget(self)
+        QVBoxLayout(self.settings_box).setContentsMargins(0, 0, 0, 0)
+        self.above_bottom = _number_box(self, 0.5, ABOVE_BOTTOM_RANGE, " mm")
+        self.above_bottom.setToolTip(
+            "Above the dish bottom, or the well's bottom.")
+        self.volume = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
+        self.flow_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1, 1.0)
+        for label, box in (("Height", self.above_bottom),
+                           ("Volume", self.volume),
+                           ("Speed", self.flow_rate)):
+            _row(self.settings_box, label, box)
+            box.valueChanged.connect(lambda _v: self._show_settings_line())
+        self.settings_box.setVisible(False)
+        body.addWidget(self.settings_box)
+
+        self.source = Segmented(list(FROM), current=FROM.index("By hand"),
+                                parent=self)
+        self.source.changed.connect(lambda _i: self._source_changed())
+        body.addWidget(self.source)
+
+        self.source_wells = _WellPicker(self)
+        self.source_wells.changed.connect(self._refresh)
+        body.addWidget(self.source_wells)
+
+        self.point_box = QWidget(self)
+        points = QVBoxLayout(self.point_box)
+        points.setContentsMargins(0, 0, 0, 0)
         self.memo_table = MemoTable(self.session, self)
         self.memo_table.setToolTip("Double-click X, Y or Z to change it.")
         self.memo_table.chosen.connect(self._memo_chosen)
         self.memo_table.z_typed.connect(self._memo_z_typed)
-        body.addWidget(self.memo_table)
-        body.addWidget(muted_label("Right-click the picture to add a point.",
-                                   self))
-
+        points.addWidget(self.memo_table)
+        points.addWidget(muted_label("Right-click the picture to add a point.",
+                                     self))
         self.new_z = _number_box(self, 0.0, (0.0, Z_TOP_MM), " mm")
         self.new_z.setSpecialValueText(TRAVEL_TEXT)
         self.new_z.setToolTip("Z of a new point: the last Z set.")
-        row = QHBoxLayout()
-        name = QLabel("New point Z")
-        name.setMinimumWidth(90)
-        row.addWidget(name)
-        row.addWidget(self.new_z)
-        row.addStretch(1)
-        body.addLayout(row)
-
+        _row(self.point_box, "New point Z", self.new_z)
         self.memo_go = secondary_button("Go to", self)
         self.memo_go.setToolTip("Move the tip to the chosen point.")
         self.memo_go.clicked.connect(self._go_to_memo)
@@ -375,11 +533,78 @@ class ManualPage(QWidget):
         row = QHBoxLayout()
         for button in (self.memo_go, self.memo_z):
             row.addWidget(button)
-        body.addLayout(row)
+        points.addLayout(row)
+        body.addWidget(self.point_box)
         self.session.memo_points_changed.connect(self._refresh_memo_buttons)
         self.jog.pose_changed.connect(lambda _p: self._refresh_memo_buttons())
-        self._refresh_memo_buttons()
-        return self.points_card
+
+        self.hand_box = QWidget(self)
+        hand = QVBoxLayout(self.hand_box)
+        hand.setContentsMargins(0, 0, 0, 0)
+        self.snap = Switch("Snap to found cuboids", checked=True,
+                           parent=self.hand_box)
+        self.snap.setToolTip("A click on a found cuboid chooses it.")
+        self.aspirate_on_click = Switch("Aspirate as soon as I click",
+                                        parent=self.hand_box)
+        self.hand_hint = muted_label(HAND_HINT, self.hand_box)
+        self.hand_hint.setWordWrap(True)
+        for widget in (self.snap, self.aspirate_on_click, self.hand_hint):
+            hand.addWidget(widget)
+        body.addWidget(self.hand_box)
+
+        self.aspirate_button = primary_button("Aspirate", self)
+        self.aspirate_button.clicked.connect(self._aspirate_from_source)
+        body.addWidget(self.aspirate_button)
+        self._show_settings_line()
+        return self.aspirate_card
+
+    def _dispense_card(self) -> QWidget:
+        """How much and where, and a button that says it; see "Dispense"."""
+        self.dispense_card = FoldCard("Dispense", parent=self)
+        self.dispense_card.toggled.connect(lambda _open: self._target_changed())
+        body = self.dispense_card.body.layout()
+
+        row = QHBoxLayout()
+        self.amount = Segmented(list(AMOUNT), parent=self)
+        self.amount.changed.connect(lambda _i: self._target_changed())
+        self.part = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
+        self.part.valueChanged.connect(lambda _v: self._refresh())
+        row.addWidget(self.amount)
+        row.addWidget(self.part)
+        row.addStretch(1)
+        body.addLayout(row)
+
+        self.target = Segmented(list(WHERE), parent=self)
+        self.target.changed.connect(lambda _i: self._target_changed())
+        body.addWidget(self.target)
+
+        self.target_wells = _WellPicker(self)
+        self.target_wells.changed.connect(self._refresh)
+        body.addWidget(self.target_wells)
+        # The plate plan's plate: what a run filled and what it left.
+        self.plan_box = QWidget(self)
+        plan = QVBoxLayout(self.plan_box)
+        plan.setContentsMargins(0, 0, 0, 0)
+        self.plan_map = PlateGrid(mini=True, parent=self.plan_box)
+        self.plan_map.well_clicked.connect(self._plan_well_clicked)
+        plan.addWidget(self.plan_map)
+        legend = QHBoxLayout()
+        for name, color in (("Filled", "plate"), ("Planned", "planned")):
+            legend.addWidget(QLabel(f'<span style="color: {COLORS[color]}">'
+                                    f'&#9632;</span> {name}', self.plan_box))
+        legend.addStretch(1)
+        plan.addLayout(legend)
+        body.addWidget(self.plan_box)
+
+        self.target_points = MemoTable(self.session, self)
+        self.target_points.setToolTip("Double-click X, Y or Z to change it.")
+        self.target_points.chosen.connect(lambda _name: self._refresh())
+        body.addWidget(self.target_points)
+
+        self.dispense_button = primary_button("Dispense here", self)
+        self.dispense_button.clicked.connect(self._dispense_to_target)
+        body.addWidget(self.dispense_button)
+        return self.dispense_card
 
     def _sizes_card(self) -> QWidget:
         """Folded: the sizes are a second look at a detection, not the
@@ -391,77 +616,19 @@ class ManualPage(QWidget):
         self.sizes.body.layout().addWidget(self.histogram)
         return self.sizes
 
-    def _liquid_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Liquid", 2))
-        self.volume = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
-        self.flow_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1, 1.0)
-        _row(box, "Volume", self.volume)
-        _row(box, "Flow rate", self.flow_rate)
-        row = QHBoxLayout()
-        # The keys are in the box on the picture; in the label they cut the
-        # button's text off in a column half the panel wide.
-        self.aspirate_button = secondary_button("Aspirate", self)
-        self.aspirate_button.setToolTip("Aspirate at the tip position.")
-        self.aspirate_button.clicked.connect(self._aspirate)
-        self.dispense_button = secondary_button("Dispense", self)
-        self.dispense_button.setToolTip("Dispense at the tip position.")
-        self.dispense_button.clicked.connect(self._dispense)
-        row.addWidget(self.aspirate_button)
-        row.addWidget(self.dispense_button)
-        box.layout().addLayout(row)
-
-        # The two halves of a pickup, made automatic. Both use the volume
-        # and flow rate above.
-        self.auto_aspirate = QCheckBox("Aspirate at a cuboid", self)
-        self.auto_aspirate.setToolTip(
-            "Aspirate when the tip reaches a clicked cuboid.")
-        self.auto_dispense = QCheckBox("Dispense at a well", self)
-        self.auto_dispense.setToolTip(
-            "Dispense when the tip reaches the chosen well.")
-        box.layout().addWidget(self.auto_aspirate)
-        box.layout().addWidget(self.auto_dispense)
-        return box
-
-    def _well_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Well", 2))
-        self.plate_choice = combo_box(self)
-        self.plate_choice.currentIndexChanged.connect(lambda _i: self._show_wells())
-        self.well_choice = combo_box(self)
-        # Typed as well as chosen: "H12" is quicker than scrolling to it,
-        # and the completer the editable box brings finds it either way.
-        self.well_choice.setEditable(True)
-        self.well_choice.setInsertPolicy(self.well_choice.InsertPolicy.NoInsert)
-        self.well_choice.currentTextChanged.connect(lambda _t: self._refresh())
-        self.well_level = combo_box(self)
-        self.well_level.addItems(WELL_LEVELS)
-        self.well_offset = _number_box(self, 0.0, WELL_OFFSET_RANGE, " mm")
-        self.well_offset.setToolTip(
-            "Z from the chosen level (+ up). X and Y: the profile's well "
-            "offsets.")
-        for label, widget in (("Plate", self.plate_choice),
-                              ("Well", self.well_choice),
-                              ("Level", self.well_level)):
-            row = QHBoxLayout()
-            name = QLabel(label)
-            name.setMinimumWidth(90)
-            row.addWidget(name)
-            row.addWidget(widget, 1)
-            box.layout().addLayout(row)
-        _row(box, "Offset Z", self.well_offset)
-
-        self.well_button = secondary_button("Go to well", self)
-        self.well_button.setToolTip(
-            "Move the tip into the chosen well (measured center if set).")
-        self.well_button.clicked.connect(self._go_to_well)
-        box.layout().addWidget(self.well_button)
+    def _center_card(self) -> QWidget:
+        """Folded: the plate's measured well center, the same one the Liquid
+        handling page sets: see "The well center" in the module docstring."""
+        self.center_card = FoldCard("Well center", parent=self)
+        box = self.center_card.body
+        self.center_wells = _WellPicker(self)
+        self.center_wells.changed.connect(self._refresh)
+        self.plate_choice = self.center_wells.plate
+        self.well_choice = self.center_wells.well
+        box.layout().addWidget(self.center_wells)
         self.well_state = QLabel()
         self.well_state.setWordWrap(True)
         box.layout().addWidget(self.well_state)
-
-        # The plate's measured well center, the same one the Liquid handling
-        # page sets: see "The well center" in the module docstring.
         self.center_state = QLabel()
         self.center_state.setWordWrap(True)
         box.layout().addWidget(self.center_state)
@@ -485,7 +652,7 @@ class ManualPage(QWidget):
             row.addWidget(button, 1)
         box.layout().addLayout(row)
         box.layout().addWidget(self.forget_center_button)
-        return box
+        return self.center_card
 
     def _install_shortcuts(self) -> None:
         """A and D, window-wide while this page is showing - the jog panel's
@@ -517,11 +684,211 @@ class ManualPage(QWidget):
 
     # -- liquid ------------------------------------------------------------------
 
-    def _aspirate(self) -> None:
-        self._liquid("aspirate", "aspirated", moves.aspirate, +1)
+    def _show_settings_line(self) -> None:
+        self.settings_line.setText(
+            f"{self.above_bottom.value():g} mm above the bottom · "
+            f"{self.volume.value():g} µl · {self.flow_rate.value():g} µl/s")
 
-    def _dispense(self) -> None:
-        self._liquid("dispense", "dispensed", moves.dispense, -1)
+    def _source_changed(self) -> None:
+        """From's own controls under it; the points drawn or not."""
+        chosen = FROM[self.source.current()]
+        self.source_wells.setVisible(chosen == "In a well")
+        self.point_box.setVisible(chosen == "At a point")
+        self.hand_box.setVisible(chosen == "By hand")
+        if chosen != "By hand" and self._spot is not None:
+            self._forget_spot()
+        self._points_toggled()
+        self._refresh()
+
+    def _target_changed(self) -> None:
+        """Where's own controls under it, Part's field; the points drawn or
+        not."""
+        chosen = WHERE[self.target.current()]
+        well = chosen == "In a well"
+        self.target_wells.setVisible(well)
+        self.plan_box.setVisible(well and bool(self.plan_map.wells))
+        self.target_points.setVisible(chosen == "At a point")
+        self.part.setVisible(AMOUNT[self.amount.current()] == "Part")
+        self._points_toggled()
+        self._refresh()
+
+    def _by_hand(self) -> bool:
+        """Aspirate is choosing its spot from the picture."""
+        return (self.aspirate_card.is_open()
+                and FROM[self.source.current()] == "By hand")
+
+    def _source(self):
+        """("well", (slot, labware id, definition, well)), ("point",
+        MemoPoint) or ("hand", xy): what Aspirate takes from; None while
+        nothing is chosen."""
+        chosen = FROM[self.source.current()]
+        if chosen == "In a well":
+            well = self.source_wells.chosen()
+            return None if well is None else ("well", well)
+        if chosen == "At a point":
+            point = self.session.memo_point(self.memo_table.chosen_name or "")
+            return None if point is None else ("point", point)
+        return None if self._spot is None else ("hand", self._spot)
+
+    def _target(self):
+        """("well", ...), ("point", MemoPoint) or ("here", None): where
+        Dispense gives back; None while nothing is chosen."""
+        chosen = WHERE[self.target.current()]
+        if chosen == "In a well":
+            well = self.target_wells.chosen()
+            return None if well is None else ("well", well)
+        if chosen == "At a point":
+            point = self.session.memo_point(
+                self.target_points.chosen_name or "")
+            return None if point is None else ("point", point)
+        return ("here", None)
+
+    def _dispense_text(self, target) -> str:
+        if target is None:
+            return ("Go to the well and dispense"
+                    if WHERE[self.target.current()] == "In a well"
+                    else "Go to the point and dispense")
+        kind, what = target
+        if kind == "well":
+            return f"Go to {what[3]} and dispense"
+        if kind == "point":
+            return f"Go to {what.name} and dispense"
+        return "Dispense here"
+
+    def _well_offset(self, slot, definition, z: float):
+        """(x, y, z) from a well's bottom: the plate's well center and the
+        profile's well offsets, as a run deposits (`deposit_offset`)."""
+        center = self._well_center(slot, definition.load_name)
+        dx, dy = well_center.deposit_offset(self.session.profile.picking,
+                                            well_center.xy(center))
+        return (dx, dy, float(z))
+
+    def _go_to(self, target, z: float | None):
+        """The move to `target` - a well (`z` above its bottom), a point
+        (its own Z), the tip's spot by hand (at `z`) - as a job's first part,
+        and what to call it; (None, "here") for no move. Raises ValueError
+        with the reason when it is out of reach."""
+        kind, what = target
+        motion = self.session.motion
+        if kind == "well":
+            slot, labware_id, definition, well = what
+            offset = self._well_offset(slot, definition, z)
+
+            def go(log):
+                motion.to_well(labware_id, well, "bottom", offset, log=log)
+            return go, f"{well} of slot {slot}"
+        if kind == "point":
+            point = what
+            xy = np.array([point.x, point.y])
+            pose = self.jog.pose
+            check_z = point.z if point.z is not None else (
+                pose[2] if pose is not None else 0.0)
+            why = motion.refused((point.x, point.y, check_z))
+            if why:
+                raise ValueError(f"UNREACHABLE: tip to {point.name} - {why}")
+            # No Z: as high as a move may go, which is the travel height.
+            to_z = float("inf") if point.z is None else point.z
+
+            def go(log):
+                motion.tip_to(xy, to_z, log=log)
+            return go, point.name
+        if kind == "hand":
+            xy = np.asarray(what, dtype=float)
+            why = motion.refused((xy[0], xy[1], z))
+            if why:
+                raise ValueError(f"UNREACHABLE: tip to ({xy[0]:.2f}, "
+                                 f"{xy[1]:.2f}) at z {z:g} - {why}")
+
+            def go(log):
+                motion.tip_to(xy, z, log=log)
+            return go, f"({xy[0]:.2f}, {xy[1]:.2f})"
+        return None, "here"
+
+    def _aspirate_from_source(self) -> None:
+        """Aspirate: to the source, then aspirate there."""
+        source = self._source()
+        if source is None:
+            return
+        above = float(self.above_bottom.value())
+        z = (float(self.session.profile.picking.dish_bottom) + above
+             if source[0] == "hand" else above)
+        self._aspirate(source, z)
+
+    def _aspirate_here(self) -> None:
+        self._aspirate(("here", None), None)
+
+    def _aspirate(self, source, z) -> None:
+        """Aspirate's volume and speed at `source` (see `_go_to`); the
+        spot is a past pick, and one by hand is taken."""
+        problem = self._tip_problem("aspirate")
+        if problem:
+            self.jog.tell(problem)
+            return
+        try:
+            go, where = self._go_to(source, z)
+        except ValueError as exc:
+            self.jog.tell(str(exc))
+            return
+        session, robot = self.session, self.session.robot
+        volume, rate = self._liquid_amount()
+
+        def job(log):
+            if go is not None:
+                go(log)
+            log(f"aspirate {volume:g} µl at {rate:g} µl/s")
+            session.aspirate(volume, rate)
+            return xyz(robot)[:2]
+
+        def then(at):
+            self.record_pick(at)
+            if source[0] == "hand":
+                self._forget_spot()
+            return f"aspirated {volume:g} µl at {rate:g} µl/s, {where}"
+
+        # In place nothing moves: what is detected on the picture stands.
+        if not self.jog.run_job(job, moves=go is not None, then=then):
+            self.jog.tell(self.session.robot_lease.refusal)
+
+    def _dispense_to_target(self) -> None:
+        target = self._target()
+        if target is not None:
+            self._dispense(target)
+
+    def _dispense_here(self) -> None:
+        self._dispense(("here", None))
+
+    def _dispense(self, target) -> None:
+        """All or Part at `target` (see `_go_to`); a well is given into at
+        the deposit's height above its bottom."""
+        problem = self._tip_problem("dispense")
+        held = self.session.in_tip
+        volume = (None if AMOUNT[self.amount.current()] == "All"
+                  else float(self.part.value()))
+        if not problem and held <= 0:
+            problem = "REFUSED: nothing is in the tip."
+        elif not problem and volume is not None and volume > held + 1e-6:
+            problem = f"REFUSED: the tip holds {held:g} µl."
+        if problem:
+            self.jog.tell(problem)
+            return
+        z = (self.session.profile.picking.deposit_offset_z
+             if target[0] == "well" else None)
+        try:
+            go, where = self._go_to(target, z)
+        except ValueError as exc:
+            self.jog.tell(str(exc))
+            return
+        session = self.session
+        rate = float(self.flow_rate.value())
+
+        def job(log):
+            if go is not None:
+                go(log)
+            amount = session.dispense(rate, volume)
+            return f"dispensed {amount:g} µl at {rate:g} µl/s, {where}"
+
+        if not self.jog.run_job(job, moves=go is not None):
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
         """Why `what` (aspirate, dispense) cannot happen now, or ""."""
@@ -538,49 +905,33 @@ class ManualPage(QWidget):
     def _liquid_amount(self) -> tuple[float, float]:
         return float(self.volume.value()), float(self.flow_rate.value())
 
-    def _liquid(self, what: str, done: str, command, sign: int) -> None:
-        """Aspirate (`sign` +1) or dispense (-1) where the tip is, through
-        the jog queue; the gauge follows once it is done."""
-        problem = self._tip_problem(what)
-        if problem:
-            self.jog.tell(problem)
-            return
-        robot = self.session.robot
-        volume, rate = self._liquid_amount()
-        note = f"{done} {volume:g} µl at {rate:g} µl/s"
+    def _in_tip_changed(self, ul: float) -> None:
+        """The gauge; Dispense opens once the tip holds something."""
+        self.gauge.set_volume(ul)
+        if ul > 0 and not self.dispense_card.is_open():
+            self.dispense_card.set_open(True)
+        self._refresh()
 
-        def job(log):
-            log(f"{what} {volume:g} µl at {rate:g} µl/s")
-            command(robot, volume, rate)
-            return xyz(robot)[:2]
+    # -- the plan's plate ------------------------------------------------------
 
-        def then(at):
-            self._liquid_done(sign * volume, at)
-            return note
+    def _show_plan(self) -> None:
+        """Dispense's mini map: the plate plan's plate, its filled and still
+        planned wells."""
+        routine = self.session.routine
+        destination = getattr(routine, "destination", None)
+        if destination is None or not getattr(destination, "is_plate", False):
+            self.plan_map.set_ordering([])
+        else:
+            self.plan_map.set_ordering(destination.ordering)
+            self.plan_map.set_fills({
+                well: COLORS["planned" if routine.remaining(well) else "plate"]
+                for well in routine.plan})
+        self._target_changed()
 
-        # Nothing moves: what is detected on the picture still stands.
-        if not self.jog.run_job(job, moves=False, then=then):
-            self.jog.tell(self.session.robot_lease.refusal)
-
-    def _liquid_done(self, change: float, at) -> None:
-        """`change` µl more in the tip (less, when negative); an aspirate
-        at `at`, the tip's (x, y), is a past pick."""
-        self._set_in_tip(self._in_tip + change)
-        if change > 0 and at is not None:
-            self.record_pick(at)
-
-    def _tip_changed(self, tip) -> None:
-        """Another tip, or none: nothing is in it. The tip read again and
-        found the same (`Session.read_tip` says so too) keeps the count."""
-        same = (tip.attached and self._tip.attached
-                and tip.pickup == self._tip.pickup)
-        self._tip = tip
-        if not same:
-            self._set_in_tip(0.0)
-
-    def _set_in_tip(self, ul: float) -> None:
-        self._in_tip = max(0.0, ul)
-        self.gauge.set_volume(round(self._in_tip, 3))
+    def _plan_well_clicked(self, well: str) -> None:
+        destination = getattr(self.session.routine, "destination", None)
+        if destination is not None:
+            self.target_wells.choose(destination.slot, well)
 
     # -- past picks ------------------------------------------------------------
 
@@ -681,6 +1032,8 @@ class ManualPage(QWidget):
             return
         if self._busy() or self.jog.busy:
             return
+        if self._by_hand() and self._hand_click(u, v):
+            return
         profile, robot = self.session.profile, self.session.robot
         motion = self.session.motion
         pmap = PixelMap.from_config(profile.pixel_map)
@@ -695,14 +1048,6 @@ class ManualPage(QWidget):
                 return
             xy = np.asarray(world) + np.array([offset.dx, offset.dy])
             z = float(profile.picking.pickup_height)
-            # Checked before anything moves: a pickup that goes to the
-            # cuboid and then cannot aspirate has disturbed the dish for
-            # nothing.
-            pick = self.auto_aspirate.isChecked()
-            if pick and self._tip_problem("aspirate"):
-                self.jog.tell(self._tip_problem("aspirate"))
-                return
-            volume, rate = self._liquid_amount()
             self._chosen = index
             self._redraw()
             what = f"tip to cuboid ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}"
@@ -710,16 +1055,8 @@ class ManualPage(QWidget):
 
             def job(log):
                 motion.tip_to(xy, z, log=log)
-                if pick:
-                    log(f"aspirate {volume:g} µl at {rate:g} µl/s")
-                    moves.aspirate(robot, volume, rate)
-                    return f"aspirated {volume:g} µl at {rate:g} µl/s"
                 return None
-
-            def then(done):
-                if pick:
-                    self._liquid_done(volume, xy)
-                return "; ".join(notes + ([done] if done else []))
+            then = None
         elif self._tip_moves():
             # Inside the map only: outside it the map extrapolates, and a
             # camera a few hundred microns off is imprecise where a tip there
@@ -770,6 +1107,49 @@ class ManualPage(QWidget):
         if not self.jog.run_job(run, then=then):
             self.jog.tell(self.session.robot_lease.refusal)
 
+    def _hand_click(self, u: float, v: float) -> bool:
+        """By hand: the click chooses the spot to aspirate from, and moves
+        nothing. False when it is not one - snapping, and no cuboid there -
+        and the click moves as any does."""
+        snap = self.snap.isChecked()
+        target = self._target_at(u, v) if snap else None
+        if snap and target is None:
+            return False
+        profile = self.session.profile
+        offset = profile.calibration.pipette_offset
+        if offset is None:
+            self.jog.tell("Refused: no tip calibration.")
+            return True
+        if target is not None:
+            index, world = target
+            xy = np.asarray(world) + np.array([offset.dx, offset.dy])
+            pixel = None
+        else:
+            pmap = PixelMap.from_config(profile.pixel_map)
+            pose = self.jog.pose
+            if not pmap.covers(u, v):
+                self.jog.tell("Refused: outside the calibrated area.")
+                return True
+            if pose is None:
+                self.jog.tell("Robot busy.")
+                return True
+            xy = moves.tip_target(pmap, u, v, np.asarray(pose[:2]), offset)
+            index, pixel = None, (u, v)
+        self._spot = np.asarray(xy, dtype=float)
+        self._spot_px = pixel
+        self._chosen = index
+        self._redraw()
+        self._refresh()
+        if self.aspirate_on_click.isChecked():
+            self._aspirate_from_source()
+        return True
+
+    def _forget_spot(self) -> None:
+        self._spot = self._spot_px = None
+        self._chosen = None
+        self._redraw()
+        self._refresh()
+
     def _back_to_center(self) -> None:
         """The camera over the dish again (the position over the dish), or
         the tip over that same spot at the travel height."""
@@ -809,12 +1189,11 @@ class ManualPage(QWidget):
 
     @property
     def points_shown(self) -> bool:
-        return self.points_card.is_open()
-
-    def show_points(self, shown: bool) -> None:
-        """The memo points on the picture, and their list, or neither."""
-        self.points_card.set_open(bool(shown))
-        self._points_toggled()
+        """"At a point" chosen in an open Aspirate or Dispense card."""
+        return ((self.aspirate_card.is_open()
+                 and FROM[self.source.current()] == "At a point")
+                or (self.dispense_card.is_open()
+                    and WHERE[self.target.current()] == "At a point"))
 
     def _points_toggled(self) -> None:
         self.marks.show_memo(self.points_shown)
@@ -842,8 +1221,11 @@ class ManualPage(QWidget):
         xy = moves.tip_target(pmap, u, v, np.asarray(pose[:2]), offset)
         point = self.session.add_memo_point(xy[0], xy[1], self._new_z())
         self.memo_table.choose(point.name)
-        # Marked to be seen.
-        self.show_points(True)
+        # Marked to be seen: Aspirate from it, unless a card shows them.
+        if not self.points_shown:
+            self.aspirate_card.set_open(True)
+            self.source.set_current(FROM.index("At a point"))
+            self._source_changed()
         if self.view.marks_box.isVisible():
             self.view.marks_box.setChecked(True)
         problem = self.session.memo_problem(point)
@@ -871,7 +1253,8 @@ class ManualPage(QWidget):
 
     def _memo_chosen(self, name) -> None:
         self.marks.choose_memo(name)
-        self._refresh_memo_buttons()
+        # Aspirate's source, when it is At a point.
+        self._refresh()
 
     def _refresh_memo_buttons(self) -> None:
         chosen = self.memo_table.chosen_name is not None
@@ -999,79 +1382,13 @@ class ManualPage(QWidget):
     # -- the well ------------------------------------------------------------------
 
     def _reload_plates(self) -> None:
-        """The run's plates in the combo, the one in hand kept; the deck map
-        with them."""
+        """The run's plates in every Plate choice, the one in hand kept; the
+        deck map with them."""
         self._show_deck()
-        chosen = self.plate_choice.currentData()
-        chosen_slot = chosen[0] if chosen else None
-        self.plate_choice.blockSignals(True)
-        self.plate_choice.clear()
-        for slot, entry, definition in self.session.plates():
-            self.plate_choice.addItem(f"slot {slot} - {definition.display_name}",
-                                      (slot, entry.labware_id, definition))
-        slots = [self.plate_choice.itemData(i)[0]
-                 for i in range(self.plate_choice.count())]
-        if chosen_slot in slots:
-            self.plate_choice.setCurrentIndex(slots.index(chosen_slot))
-        self.plate_choice.blockSignals(False)
-        self._show_wells()
-
-    def _show_wells(self) -> None:
-        """The chosen plate's wells, row by row, the one typed kept."""
-        typed = self.well_choice.currentText()
-        data = self.plate_choice.currentData()
-        wells = []
-        if data is not None:
-            ordering = data[2].ordering
-            for row in range(max((len(c) for c in ordering), default=0)):
-                wells += [column[row] for column in ordering
-                          if row < len(column)]
-        self.well_choice.blockSignals(True)
-        self.well_choice.clear()
-        self.well_choice.addItems(wells)
-        if typed in wells:
-            self.well_choice.setCurrentIndex(wells.index(typed))
-        self.well_choice.blockSignals(False)
-        self._refresh()
-
-    def _go_to_well(self) -> None:
-        data = self.plate_choice.currentData()
-        robot = self.session.robot
-        if data is None or robot is None or self.jog.busy:
-            return
-        slot, labware_id, definition = data
-        well = self.well_choice.currentText().strip().upper()
-        if well not in definition.wells:
-            self.jog.tell(f"REFUSED: {definition.display_name} in slot {slot} "
-                          f"has no well {well!r}.")
-            return
-        drop = self.auto_dispense.isChecked()
-        if drop and self._tip_problem("dispense"):
-            self.jog.tell(self._tip_problem("dispense"))
-            return
-        level = self.well_level.currentText()
-        # From the measured center where there is one, as a picking run
-        # deposits: its x and y only, the level keeps the robot's heights.
-        center = self._well_center(slot, definition.load_name)
-        dx, dy = well_center.deposit_offset(self.session.profile.picking,
-                                            well_center.xy(center))
-        offset = (dx, dy, float(self.well_offset.value()))
-        volume, rate = self._liquid_amount()
-
-        def job(log):
-            self.session.motion.to_well(labware_id, well, level, offset,
-                                        log=log)
-            said = f"tip in {well} of slot {slot} ({level} {offset[2]:+g} mm)"
-            if center is not None:
-                said += ", from the measured center"
-            if drop:
-                log(f"dispense {volume:g} µl at {rate:g} µl/s")
-                moves.dispense(robot, volume, rate)
-                said += f"; dispensed {volume:g} µl"
-            return said
-
-        log.info("going to well %s in slot %s", well, slot)
-        self.jog.run_job(job)
+        plates = self.session.plates()
+        for picker in (self.source_wells, self.target_wells,
+                       self.center_wells):
+            picker.set_plates(plates)
 
     # -- the well center ----------------------------------------------------------
 
@@ -1081,13 +1398,9 @@ class ManualPage(QWidget):
                 if profile is not None else None)
 
     def _chosen_well(self):
-        """(slot, labware id, definition, well) chosen in the Well card, or
-        None while the well typed is not one of the plate's."""
-        data = self.plate_choice.currentData()
-        if data is None:
-            return None
-        well = self.well_choice.currentText().strip().upper()
-        return (*data, well) if well in data[2].wells else None
+        """(slot, labware id, definition, well) chosen in the Well center
+        card, or None while the well typed is not one of the plate's."""
+        return self.center_wells.chosen()
 
     def _run_using(self, slot, load_name: str) -> str | None:
         """The run going into this plate now, if any
@@ -1247,6 +1560,8 @@ class ManualPage(QWidget):
         self._cuboid_covered = np.empty(0, dtype=bool)
         self._frame_shape = None
         self._chosen = None
+        # The spot was chosen on that picture: its ring would sit elsewhere.
+        self._spot = self._spot_px = None
         if redraw:
             self._show_sizes()
             self._redraw()
@@ -1264,6 +1579,11 @@ class ManualPage(QWidget):
             if self._chosen is not None:
                 row = detection.df.iloc[[self._chosen]]
                 items += overlays.items(self._frame_shape, chosen=row)
+        if self._spot_px is not None:
+            u, v = self._spot_px
+            items.append(overlays.Circle(color=SPOT_COLOR,
+                                         center=(int(round(u)), int(round(v))),
+                                         radius=SPOT_RADIUS_PX))
         self.view.set_overlay_items(items)
 
     def _refresh(self) -> None:
@@ -1272,11 +1592,16 @@ class ManualPage(QWidget):
         self.cuboid_button.setEnabled(not busy and not problems)
         self._refresh_memo_buttons()
         has_robot = self.session.robot is not None
-        self.aspirate_button.setEnabled(has_robot)
-        self.dispense_button.setEnabled(has_robot)
+        self.aspirate_button.setEnabled(has_robot
+                                        and self._source() is not None)
+        target = self._target()
+        self.dispense_button.setText(self._dispense_text(target))
+        self.dispense_button.setEnabled(has_robot and target is not None
+                                        and self.session.in_tip > 0)
+        self.hand_hint.setText(
+            HAND_HINT if self._spot is None
+            else HAND_SPOT if self._spot_px is not None else HAND_CUBOID)
         has_plate = self.plate_choice.count() > 0
-        self.well_button.setEnabled(has_robot and has_plate
-                                    and self.well_choice.count() > 0)
         self.well_state.setText(
             "" if has_plate else
             "No plate loaded.")
@@ -1320,8 +1645,10 @@ class ManualPage(QWidget):
             if profile is not None:
                 # The run's own numbers as the starting point; what is typed
                 # here afterwards stays while this profile is loaded.
+                self.above_bottom.setValue(profile.picking.pickup_offset)
                 self.volume.setValue(profile.picking.vol)
                 self.flow_rate.setValue(profile.picking.flow_rate)
+                self.part.setValue(profile.picking.vol)
             self._forget_targets()
         else:
             self._refresh()
@@ -1356,6 +1683,8 @@ class ManualPage(QWidget):
         # a jog pad over a blank rectangle.
         self.opener.ensure(self.session.upper_camera_label)
         self._show_camera()
+        # A run fills the plan's wells without a word to this page.
+        self._show_plan()
 
     def hideEvent(self, event) -> None:
         for shortcut in self._shortcuts:

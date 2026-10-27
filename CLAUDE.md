@@ -202,7 +202,10 @@ left** click moves - the camera or the tip, as "A click moves the [Camera
 | Tip]" over the picture's top right says, beside Camera / Tip back to
 center (the dish center, `observe`) - checked against the jog envelope
 (`Motion.refused`) and through `JogPanel.run_job`; a click on a detected
-cuboid sends the tip down to it at the pickup height. A double click
+cuboid sends the tip down to it at the pickup height - except while the
+Aspirate card takes its spot By hand: then a click chooses the spot (a
+cuboid with Snap to found cuboids, else the point itself) and moves
+nothing, a click beside every cuboid with Snap on still moves. A double click
 moves nothing. A **right** click (`CameraView.right_clicked`) marks a
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
@@ -213,9 +216,19 @@ a deck module's top is flagged (`Session.memo_problem`, the jog
 envelope's floors, `Motion.envelope`: the profile's modules over the deck
 definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Drawn in cyan
 on the "points" layer (`position_marks.memo_items`); on Work only while
-the points are shown (`PositionMarks.show_memo`: the Points card open,
-until "At a point" takes it over) and listed there
-(`widgets.memo_points.MemoTable`). A new point takes New point Z, the
+"At a point" is chosen in an open Aspirate or Dispense card
+(`PositionMarks.show_memo`), and listed there
+(`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
+settings as one line with Change (height above the dish bottom, or a
+well's bottom; volume; speed), From In a well / At a point / By hand,
+enabled once a source is chosen, the TipGauge its answer. Dispense opens
+by itself when the tip holds something: All | Part, In a well (a mini map
+of the plan's plate; a well's bottom plus the deposit offset, from its
+well center) / At a point / Here, its button saying what it does ("Go
+to A7 and dispense", "Dispense here"), gray while the tip is empty. What
+is in the tip is the session's count (`Session.in_tip`,
+`Session.aspirate`, `Session.dispense`: all or a part no larger than it;
+another tip holds nothing). A new point takes New point Z, the
 last Z given (typed into a point, or Z from tip); "travel height" (no Z)
 until one is given, so a first click never sends the tip down. Over the
 picture's top left is the `TipGauge` (`CameraView.add_top_left_widget`,
@@ -268,9 +281,9 @@ does not. The plate map spans both card columns (`CardColumns(wide=...)`),
 names the well under the pointer, and opens in its own window as a
 `PlateMirror` - the same scene, never a copy. A plate's measured well
 center (`WellCenter`) is one per slot and plate type, set on Liquid
-handling or on Manual control's Well card (Go to well top, jog, Set well
-center); Manual control's Go to well and a picking deposit add its x
-and y, Liquid handling's steps all of it. It is the plate's, wherever it
+handling or on Manual Work's folded Well center card (Go to well top, jog,
+Set well center); Manual Work's Aspirate and Dispense in a well and a
+picking deposit add its x and y, Liquid handling's steps all of it. It is the plate's, wherever it
 was measured, and every page reads it the same way:
 `workflows.well_center` holds the measurement both pages take
 (`Measurement`, `go_to_top`), the deposit's offset (`deposit_offset`) and

@@ -1575,3 +1575,40 @@ tip box and a 384 plate at hand.
   picture; a click on a cuboid sends the tip down to it at the pickup
   height. Look at: the dropdown shows the whole deck with what is on it;
   a slot chosen sends the camera over its center (check slot 8 by eye).
+
+## Redesign — Manual Work: Aspirate and Dispense (#19)
+
+- [ ] **Aspirate's settings line.**
+  Manual pick › Work: the Aspirate card reads "0.5 mm above the bottom ·
+  10 µl · 50 µl/s" (the profile's pickup offset, volume and flow rate);
+  Change unfolds Height, Volume and Speed, and the line follows them. No
+  step numbers on the cards, no moved-cuboids counter, no Finish.
+
+- [ ] **By hand.**
+  From: By hand, Snap to found cuboids on. Analyze the dish, click a
+  cuboid: it is ringed, "Cuboid selected. Press Aspirate.", nothing moves.
+  Aspirate: the tip goes down to it at the dish bottom + the height and
+  aspirates; the gauge is the only answer. Snap off: a click anywhere
+  marks a yellow ring, "Spot selected. Press Aspirate." Aspirate as soon
+  as I click: one click goes and aspirates. With Snap on, a click beside
+  every cuboid moves the camera as before.
+
+- [ ] **In a well, At a point.**
+  In a well: Plate and Well; Aspirate goes to the well's bottom + the
+  height (watch it, it must not hit the bottom). At a point: the points
+  list (drawn on the picture only now), × deletes; Aspirate goes to the
+  chosen point at its Z. Aspirate is gray until a well or a point is
+  chosen.
+
+- [ ] **Dispense.**
+  Empty tip: Dispense folded, its button gray. After an aspirate it opens
+  by itself. Here: "Dispense here"; Part 6 µl of 15: the gauge reads 9 µl;
+  All: 0 µl and the button grays. In a well: with a plate plan made, the
+  mini map shows Filled / Planned; a click on a well chooses it and the
+  button reads "Go to A7 and dispense"; the tip goes into that well at
+  the deposit height. At a point: "Go to M1 and dispense".
+
+- [ ] **Well center.**
+  The folded Well center card measures a plate as before (Go to well top,
+  jog, Set well center) and Dispense in a well then goes to the measured
+  center.
