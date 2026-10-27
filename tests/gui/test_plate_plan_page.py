@@ -82,7 +82,28 @@ def test_use_this_plan_makes_the_plan_ready(page, session):
     page.plate.set_selection({"A1"})                  # changed after use
     assert page.use_button.isEnabled()
     assert page.ready.isHidden()
-    assert session.routine is routine                  # Picking runs this
+    assert session.routine is None                     # Plan not done
+    assert not _plan_done(session)
+
+
+def test_a_change_during_a_picking_run_keeps_the_plan_in_use(page, session):
+    page.plate.set_selection({"A1", "A2"})
+    page.use_button.click()
+    routine = session.routine
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        page.plate.set_selection({"A1"})
+        assert session.routine is routine
+    finally:
+        lease.release()
+
+
+def test_another_plate_reloaded_keeps_the_plan_in_use(page, session):
+    page.plate.set_selection({"A1", "A2"})
+    page.use_button.click()
+    routine = session.routine
+    session.labware_changed.emit(session)            # the page reloads plates
+    assert session.routine is routine
 
 
 def test_the_grid_undoes_and_redoes_the_wells_chosen(page):

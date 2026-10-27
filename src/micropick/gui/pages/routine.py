@@ -27,8 +27,12 @@ progress, and hands it to the session (`Session.set_routine`): Plan is
 done while it is the session's (`tasks.step_state`). Its file - the run's
 progress, which lets a run carry on after a restart - is written under
 `Outputs/routines` by itself and never shown here: an unfinished run is
-for Picking to offer. A plan changed after Use this plan is shown with
-Use this plan again; until then Picking runs the one used.
+for Picking to offer. A change to the plan after Use this plan - the
+wells, the count, the order, the plate, a template opened - lets the
+session's go (`Session.set_routine(None)`): Plan is not done until Use
+this plan again, so Picking never runs a plan other than the one shown.
+Not while a picking run has the robot, and not for what the page shows by
+itself (a plate reloaded, the plan in use put back on screen).
 
 Ctrl+Z / Ctrl+Y undo and redo a change of the wells chosen, Ctrl+A chooses
 them all.
@@ -116,9 +120,12 @@ class RoutinePage(QWidget):
         # docstring).
         self._counts: dict[str, int] = {}
         self.strategy = "by_column"
+        # Above 0 while the page puts a plan on screen by itself: not a
+        # change of the plan in use.
+        self._quiet = 0
 
         self.plate = PlateGrid(parent=self)
-        self.plate.selection_changed.connect(lambda _s: self._refresh())
+        self.plate.selection_changed.connect(lambda _s: self._touched())
         self.dropdown = MiniDeckDropdown(self, placeholder="Choose the plate")
         self.dropdown.slot_chosen.connect(self._choose_slot)
         self.tools = PlateTools(self.plate, self)
@@ -312,6 +319,13 @@ class RoutinePage(QWidget):
         """The plates the robot session holds, in the dropdown. The plate
         chosen stays while it is there; else the plan in use, else the
         first plate."""
+        self._quiet += 1
+        try:
+            self._show_plates()
+        finally:
+            self._quiet -= 1
+
+    def _show_plates(self) -> None:
         plates = self.session.plates()
         self.dropdown.set_tiles([
             DeckTile(int(slot), name=definition.display_name,
@@ -355,7 +369,7 @@ class RoutinePage(QWidget):
             # Another kind: the wells chosen mean nothing on it.
             self._close_template()
             self._set_destination(destination)
-        self._refresh()
+        self._touched()
 
     def _loaded_plates_by_slot(self) -> list[tuple[str, str]]:
         return [(slot, load_name)
@@ -364,11 +378,16 @@ class RoutinePage(QWidget):
     def _set_destination(self, destination: Destination | None,
                          wells=()) -> None:
         """A plate, with `wells` chosen. Undo starts again on it."""
-        self.destination = destination
-        self.dropdown.set_slot(destination.slot if destination else None)
-        self.plate.set_ordering(destination.ordering if destination else [])
-        self.plate.set_selection(wells, record=False)
-        self._counts = {}
+        self._quiet += 1
+        try:
+            self.destination = destination
+            self.dropdown.set_slot(destination.slot if destination else None)
+            self.plate.set_ordering(destination.ordering if destination
+                                    else [])
+            self.plate.set_selection(wells, record=False)
+            self._counts = {}
+        finally:
+            self._quiet -= 1
 
     # -- the plan ------------------------------------------------------------
 
@@ -379,22 +398,36 @@ class RoutinePage(QWidget):
 
     def _per_well_changed(self, _value: int) -> None:
         self._counts = {}
-        self._refresh()
+        self._touched()
 
     def _set_strategy(self, strategy: str) -> None:
         self.strategy = strategy
+        self._touched()
+
+    def _touched(self) -> None:
+        """The plan on screen changed: the session's lets go once it
+        differs (see the module docstring)."""
+        if (not self._quiet and self.session.routine is not None
+                and self.session.robot_lease.holder != "picking run"
+                and not self._in_use()):
+            log.info("plan changed after Use this plan: not in use any more")
+            self.session.set_routine(None)
         self._refresh()
 
     def _show_plan(self, plan: dict[str, int], strategy: str) -> None:
         """`plan` as the stepper and the wells chosen: the stepper at its
         most common count, the others kept."""
         common = Counter(plan.values()).most_common(1)[0][0] if plan else 1
-        self.per_well.blockSignals(True)
-        self.per_well.setValue(common)
-        self.per_well.blockSignals(False)
-        self.plate.set_selection(set(plan))
-        self._counts = {w: n for w, n in plan.items() if n != common}
-        self.strategy = strategy
+        self._quiet += 1
+        try:
+            self.per_well.blockSignals(True)
+            self.per_well.setValue(common)
+            self.per_well.blockSignals(False)
+            self.plate.set_selection(set(plan))
+            self._counts = {w: n for w, n in plan.items() if n != common}
+            self.strategy = strategy
+        finally:
+            self._quiet -= 1
 
     def _show_routine(self, routine: Routine) -> None:
         """The plan in use, as it was used."""
@@ -504,7 +537,7 @@ class RoutinePage(QWidget):
         self._opened = (self.plan(), self.strategy)
         self._say("")
         log.info("plan from template %r on slot %s", template.name, slot)
-        self._refresh()
+        self._touched()
 
     def _close_template(self) -> None:
         self.template = None
