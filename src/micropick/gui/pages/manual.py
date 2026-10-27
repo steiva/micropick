@@ -403,6 +403,7 @@ class ManualPage(QWidget):
         session.in_tip_changed.connect(self._in_tip_changed)
         session.tip_changed.connect(lambda _t: self._refresh())
         session.routine_changed.connect(lambda _r: self._show_plan())
+        session.task_requested.connect(self._task_requested)
         session.robot_state_changed.connect(self._robot_changed)
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._reload_plates())
@@ -927,6 +928,23 @@ class ManualPage(QWidget):
                 well: COLORS["planned" if routine.remaining(well) else "plate"]
                 for well in routine.plan})
         self._target_changed()
+
+    def _task_requested(self, task: str, step: str) -> None:
+        """Picking's Finish by hand: Dispense open on In a well, the first
+        well the run left short chosen, the plan's map showing the rest."""
+        if (task, step) != ("manual", "work"):
+            return
+        routine = self.session.routine
+        destination = getattr(routine, "destination", None)
+        if destination is None or not getattr(destination, "is_plate", False):
+            return
+        self.dispense_card.set_open(True)
+        self.target.set_current(WHERE.index("In a well"))
+        self._show_plan()
+        short = [w for c in destination.ordering for w in c
+                 if w in routine.plan and routine.remaining(w)]
+        if short:
+            self.target_wells.choose(destination.slot, short[0])
 
     def _plan_well_clicked(self, well: str) -> None:
         destination = getattr(self.session.routine, "destination", None)

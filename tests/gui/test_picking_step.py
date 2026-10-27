@@ -243,3 +243,36 @@ def test_camera_to_dish_center_waits_for_a_pause(app, window, monkeypatch):
     page.pause_button.click()
     app.processEvents()
     assert page.center_button.text() == "Camera to dish center"
+
+
+def test_and_list_names_the_wells():
+    assert picking_page.and_list(["A7"]) == "A7"
+    assert picking_page.and_list(["A7", "A18"]) == "A7 and A18"
+    assert picking_page.and_list(["A1", "A2", "A3"]) == "A1, A2 and A3"
+    assert picking_page.and_list([f"A{i}" for i in range(1, 11)], most=3) \
+        == "A1, A2, A3 and 7 more"
+
+
+def test_wells_left_empty_are_finished_by_hand_on_manual_work(
+        app, window, monkeypatch):
+    _ready(window, monkeypatch)
+    page = window.picking_page
+    assert page.unfilled.isHidden()                # no run yet
+    _start(app, window)
+    page.stop_button.click()
+    assert _until(app, lambda: not page._running())
+    assert not page.unfilled.isHidden()
+    assert page.unfilled_title.text() == "2 wells were not filled"
+    assert page.unfilled_wells.text() == "A1 and A2."
+
+    routine = window.session.routine
+    page.finish_button.click()
+    app.processEvents()
+    assert (window.task, window.step) == ("manual", "work")
+    assert window.current_page() is window.manual_page
+    manual = window.manual_page
+    assert window.session.routine is routine       # the plan carried over
+    assert manual.dispense_card.is_open()
+    assert manual.target.current() == 0            # In a well
+    assert not manual.plan_box.isHidden()
+    assert manual.target_wells.chosen()[-1] == "A1"

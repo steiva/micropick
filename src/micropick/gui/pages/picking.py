@@ -146,9 +146,9 @@ from ..detector import wanted_model
 from ..readiness import DISH_POSITION, SHAKE_POSITION, readiness_checks
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (compact, danger_button, muted_label,
-                             primary_button, quiet_button, scroll_column,
-                             secondary_button)
+from ..theme.factory import (card, compact, danger_button, heading,
+                             muted_label, primary_button, quiet_button,
+                             scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO, Check
 from ..widgets.controls import Switch
@@ -186,6 +186,26 @@ CENTER = "Camera to dish center"
 CENTER_WAIT = "Pause to move the camera"
 
 
+def unfilled_wells(routine) -> list[str]:
+    """The plan's wells still short of their cuboids, in the plate's order;
+    none for a destination that is not a plate."""
+    destination = routine.destination
+    if not getattr(destination, "is_plate", False):
+        return []
+    return [w for column in destination.ordering for w in column
+            if w in routine.plan and routine.remaining(w)]
+
+
+def and_list(names: list[str], most: int = 8) -> str:
+    """"A7", "A7 and A18", "A1, A2 and A3"; past `most`, "A1, ..., H1
+    and 5 more"."""
+    if len(names) > most:
+        return f"{', '.join(names[:most])} and {len(names) - most} more"
+    if len(names) < 2:
+        return "".join(names)
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
 class PickingPage(QWidget):
     # Emitted from the run's thread for every transition. A signal, so the
     # widgets are touched by the thread that owns them.
@@ -221,6 +241,8 @@ class PickingPage(QWidget):
         self._shake_asked = False
         # The last run filled the plate plan: DONE until the next.
         self._filled = False
+        # The plan the last run ended on, for "N wells were not filled".
+        self._ended_on = None
         # Where the current or last run put its clips, if it recorded any.
         self._clip_dir = None
         # Why the lower camera did not open for the clips, until retried.
@@ -251,6 +273,7 @@ class PickingPage(QWidget):
         column.addWidget(self._sizes_card(panel))
         column.addWidget(self._plate_card(panel))
         self.folds = FoldGroup([self.sizes, self.plate_card])
+        column.addWidget(self._unfilled_card(panel))
 
         # Off unless asked for: see "Pickup clips".
         self.clips_box = Switch("Save pickup clips", parent=panel)
@@ -342,6 +365,36 @@ class PickingPage(QWidget):
         legend.addStretch(1)
         body.addLayout(legend)
         return self.plate_card
+
+    def _unfilled_card(self, parent: QWidget) -> QWidget:
+        """After a run that left wells of its plan empty: which, and Finish
+        by hand - Manual pick's Work, the session as it is (plate, plan,
+        dish bottom, tip), Dispense on those wells."""
+        self.unfilled = card(parent)
+        self.unfilled_title = heading("", 2, parent=self.unfilled)
+        self.unfilled_wells = muted_label("", self.unfilled)
+        self.unfilled_wells.setWordWrap(True)
+        self.finish_button = primary_button("Finish by hand", self.unfilled)
+        self.finish_button.clicked.connect(
+            lambda: self.session.task_requested.emit("manual", "work"))
+        layout = self.unfilled.layout()
+        layout.addWidget(self.unfilled_title)
+        layout.addWidget(self.unfilled_wells)
+        layout.addWidget(self.finish_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.unfilled.hide()
+        return self.unfilled
+
+    def _show_unfilled(self) -> None:
+        routine = self.session.routine
+        wells = (unfilled_wells(routine)
+                 if routine is not None and routine is self._ended_on
+                 and not self._running() else [])
+        self.unfilled.setVisible(bool(wells))
+        if wells:
+            self.unfilled_title.setText(
+                "1 well was not filled" if len(wells) == 1
+                else f"{len(wells)} wells were not filled")
+            self.unfilled_wells.setText(f"{and_list(wells)}.")
 
     def _jog_section(self) -> QWidget:
         self.jog = JogPanel(self.session, shortcut_host=self,
@@ -747,6 +800,7 @@ class PickingPage(QWidget):
         self._status = "Starting."
         self._stopping = False
         self._filled = False
+        self._ended_on = None
         self._run_worker = Worker(job, what="picking run", lease=lease)
         self._run_worker.finished.connect(self._run_finished)
         self._run_worker.failed.connect(self._run_failed)
@@ -834,6 +888,7 @@ class PickingPage(QWidget):
         self._back_to_live()
 
     def _end_run(self) -> None:
+        self._ended_on = self.session.routine
         self._run_worker = None
         self._session = None
         self._shake_asked = False
@@ -1218,6 +1273,7 @@ class PickingPage(QWidget):
         self.clips_state.setVisible(self.clips_box.isChecked())
 
         self._show_plate()
+        self._show_unfilled()
         problems = self._run_problems()
         self.start_button.setEnabled(movable and not busy and not running
                                      and not problems and self._need is None)

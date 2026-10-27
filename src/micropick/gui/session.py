@@ -363,6 +363,9 @@ class Session(QObject):
     # A page asks for another to be shown, by its name in `shell.PAGES`:
     # the checklist before a run sends the operator where a step is done.
     page_requested = Signal(str)
+    # A page asks for a step of another task, (task, step): Picking's
+    # Finish by hand opens Manual pick's Work.
+    task_requested = Signal(str, str)
     # A memo point was added, changed or removed; see `memo_points`.
     memo_points_changed = Signal()
     # What now holds the robot (`robot_lease`), in a few words, or None.

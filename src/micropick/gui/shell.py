@@ -279,6 +279,7 @@ class MainWindow(QMainWindow):
             lambda: self._set_locked(False))
         session.lock_changed.connect(self._show_lock)
         session.page_requested.connect(self.show_page)
+        session.task_requested.connect(self.open_task_step)
 
         for signal in (session.profile_changed, session.robot_state_changed,
                        session.labware_changed, session.tip_changed,
@@ -439,6 +440,11 @@ class MainWindow(QMainWindow):
                       if not tasks.step_state(self.session, task, s).done),
                      steps[-1])
         self.show_step(first)
+
+    def open_task_step(self, task: str, step: str) -> None:
+        """`task` on `step`, done or not (`Session.task_requested`)."""
+        self._set_task(task)
+        self.show_step(step)
 
     def show_step(self, step: str) -> None:
         # Liquid's Tip step has no calibration.

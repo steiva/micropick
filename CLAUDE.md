@@ -428,7 +428,10 @@ one open at a time - Cuboid sizes (the histogram whose window is dragged
 and saved like the settings' Save, the pickup line, More settings, All
 measures: `widgets.cuboid_stats`) before a run, Plate · slot N (mini
 `PlateGrid`, Filled / Planned, current well ringed) during it - then Save
-pickup clips and the jog panel, folded. The positions are Robot setup's.
+pickup clips and the jog panel, folded. After a run that left wells of
+the plan short, "N wells were not filled" with Finish by hand
+(`Session.task_requested`: Manual pick's Work, Dispense on In a well and
+the first of them). The positions are Robot setup's.
 The footer is the run's status: the page's `run_status` and
 `footer_buttons`, read by the shell for any step page that has them -
 READY / PICKING / PAUSED / WAITING FOR YOU / DONE / NOT READY and one
