@@ -125,7 +125,8 @@ height, New type and Delete type - all a draft until Save changes
 (`Session.set_module_types`, `Session.set_deck_modules`), gray while
 nothing differs from what is saved, then "Saved: slot 9 · Calibration
 module"; Done and × only close (no Cancel), and with unsaved changes ask
-Save / Discard first. The three positions share
+Save / Discard first - so does going elsewhere (a crumb, Home, a task),
+asked over what is shown next (`PlatformsSheet.discard`). The three positions share
 one (`pages.position_sheet.PositionSheet`, `open_for(item)`): the upper
 camera with the pad, a click moves the camera through the pixel map
 (`gui.camera_moves`, also the camera calibration's), and the position's
@@ -135,10 +136,12 @@ confirmed: the crosshair disc / the source dish placed (It is there),
 which slot (the mini deck `widgets.slot_chooser`, a click moves the
 camera there), centered (It is centered), then Save position - the only
 thing that stores the robot's pose under the stored name (`tip_calib`,
-`shake`, `observe`; no new pose) and says "Saved: slot N · X Y Z". Done
+`shake`, `observe`; no new pose) and says "Saved: slot N · X Y Z" (the
+slot clicked; else "≈ slot N", the nearest). Done
 and × only close (no Cancel), storing nothing. A saved position shows
 its line on top with Go to saved position (`Motion.tip_to`, no higher
-than the travel height), which marks the steps before Save done. The
+than the travel height), which marks the steps before Save done and
+the nearest slot on the mini deck. The
 shake position carries its prerequisites as steps: a tip box (a type
 from the drop-down, Settings' tip calibration type first; a mini deck
 click loads it there through `Session.load_labware`, as the Deck step
