@@ -84,12 +84,15 @@ _ROBOT = Need("robot", "robot", "The robot is not connected.")
 # The Robot setup items that are a stored position, and its name in the
 # profile: on screen by slot and coordinates, cleared by Reset setup.
 SETUP_POSITIONS = {
-    "dish_position": DISH_POSITION,
-    "shake_position": SHAKE_POSITION,
     "calibration_position": CALIBRATION_POSITION,
+    "shake_position": SHAKE_POSITION,
+    "dish_position": DISH_POSITION,
 }
 
-# The Robot setup items, in the order of its page (REDESIGN §5): the
+# The Robot setup items, in the order of its page (REDESIGN §5, #33: each
+# position's prerequisites set by the one before it - the tip calibration
+# starts at the calibration position, the shake position needs a calibrated
+# tip): the
 # sentence a step's banner says when it needs one, and whether it is set,
 # from the session (its profile is loaded).
 SETUP = {
@@ -101,13 +104,13 @@ SETUP = {
                      lambda s: s.lower_camera_label is not None),
     "platforms": ("Set the platforms first.",
                   lambda s: bool(s.profile.deck.modules)),
-    "dish_position": ("Set the position over the dish first.",
-                      lambda s: DISH_POSITION in s.profile.positions),
-    "shake_position": ("Set the shake position first.",
-                       lambda s: SHAKE_POSITION in s.profile.positions),
     "calibration_position": ("Set the calibration position first.",
                              lambda s: CALIBRATION_POSITION
                              in s.profile.positions),
+    "shake_position": ("Set the shake position first.",
+                       lambda s: SHAKE_POSITION in s.profile.positions),
+    "dish_position": ("Set the position over the dish first.",
+                      lambda s: DISH_POSITION in s.profile.positions),
 }
 
 # Each Robot setup item's name on screen.
@@ -116,9 +119,9 @@ SETUP_TITLES = {
     "camera_calibration": "Camera calibration",
     "lower_camera": "Lower camera",
     "platforms": "Platforms",
-    "dish_position": "Position over the dish",
-    "shake_position": "Shake position",
     "calibration_position": "Calibration position",
+    "shake_position": "Shake position",
+    "dish_position": "Position over the dish",
 }
 
 
@@ -150,7 +153,7 @@ _NEEDS = {
     "plan": (False, ("deck",), ()),
     "dish_bottom": (True, ("tip",), ("dish_position",)),
     "picking": (True, ("deck", "tip", "plan", "dish_bottom"),
-                ("dish_position", "shake_position")),
+                ("shake_position", "dish_position")),
     "work": (True, ("deck", "tip", "dish_bottom"), ()),
     "well_center": (True, ("deck", "tip"), ()),
     "liquid_plan": (False, ("deck",), ()),

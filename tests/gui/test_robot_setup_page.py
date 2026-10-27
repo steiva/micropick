@@ -72,10 +72,14 @@ def test_home_opens_robot_setup_with_its_rows(app, window):
         ("Camera calibration", False, "Not set."),
         ("Lower camera", True, "mock-under"),
         ("Platforms", False, "Not set."),
-        ("Position over the dish", False, "Not set."),
-        ("Shake position", False, "Not set."),
         ("Calibration position", False, "Not set."),
+        ("Shake position", False, "Not set."),
+        ("Position over the dish", False, "Not set."),
     ]
+    window.open_home()
+    assert home.setup_text.text() == (
+        "5 steps left: camera calibration, platforms, calibration position, "
+        "shake position, position over the dish.")
 
 
 def test_positions_read_as_a_slot_and_coordinates(app, window):

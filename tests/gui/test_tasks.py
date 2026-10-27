@@ -214,3 +214,22 @@ def test_nothing_is_confirmed_without_a_robot_session(session):
     session.confirm("dish_bottom")
     _connect(session)
     assert not tasks.step_state(session, "auto", "dish_bottom").done
+
+
+def test_positions_come_in_the_order_they_can_be_set():
+    """The calibration position before the shake position (which needs a
+    calibrated tip), the position over the dish last (#33)."""
+    assert list(tasks.SETUP) == [
+        "upper_camera", "camera_calibration", "lower_camera", "platforms",
+        "calibration_position", "shake_position", "dish_position"]
+
+
+def test_picking_names_the_shake_position_before_the_dish(session):
+    _connect(session)
+    session.load_profile("mock")
+    session.confirm("deck")
+    need = tasks.step_state(session, "auto", "picking").need
+    assert need.key == "tip"
+    picking = tasks._needs("auto", "picking")
+    assert [n.key for n in picking if n.kind == "setup"] == [
+        "shake_position", "dish_position"]

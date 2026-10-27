@@ -2,8 +2,8 @@
 
 The title, and **Reset setup** on its right; no description. Three
 blocks of rows - Cameras (the upper camera, the camera calibration, a
-divider, the lower camera), Platforms, Positions (over the dish, shake,
-calibration) - each row a mark (a green ✓, or a yellow ring while not
+divider, the lower camera), Platforms, Positions (calibration, shake,
+over the dish) - each row a mark (a green ✓, or a yellow ring while not
 set), its label, its value and a ›. A row is clicked as a whole and
 `item_chosen(item)` names it (`tasks.SETUP`); the shell opens its sheet.
 
@@ -49,8 +49,8 @@ BLOCKS = (
     ("Cameras", ("upper_camera", "camera_calibration", None,
                  "lower_camera")),
     ("Platforms", ("platforms",)),
-    ("Positions", ("dish_position", "shake_position",
-                   "calibration_position")),
+    ("Positions", ("calibration_position", "shake_position",
+                   "dish_position")),
 )
 
 
