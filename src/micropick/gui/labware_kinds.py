@@ -12,9 +12,14 @@ Read from the definition as the robot has it, so a custom one in
 
 from __future__ import annotations
 
-from ..config.labware import LabwareDefinition
+import logging
 
-__all__ = ["CHIPS", "facts", "in_chip", "kind"]
+from ..config.labware import (LabwareDefinition, LabwareError,
+                              local_definitions, shared_definitions)
+
+__all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind"]
+
+log = logging.getLogger(__name__)
 
 # The catalogue's chips, in order; "Frequent" is the profile's recently
 # used and the custom definitions.
@@ -67,3 +72,22 @@ def facts(definition: LabwareDefinition) -> str:
     if len(bottoms) == 1 and (bottom := bottoms.pop()) in _BOTTOMS:
         out.append(_BOTTOMS[bottom])
     return " · ".join(out)
+
+
+def catalogue() -> tuple[dict[str, LabwareDefinition],
+                         dict[str, LabwareDefinition]]:
+    """(the custom definitions, every definition), by load name: custom
+    first, a stock one of the same name left out. A list that cannot be
+    read is logged and taken as empty."""
+    try:
+        custom = local_definitions()
+    except LabwareError as exc:
+        log.error("custom labware: %s", exc)
+        custom = {}
+    try:
+        stock = shared_definitions()
+    except LabwareError as exc:
+        log.error("stock labware: %s", exc)
+        stock = {}
+    known = {**custom, **{n: d for n, d in stock.items() if n not in custom}}
+    return custom, known

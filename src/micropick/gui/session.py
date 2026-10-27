@@ -1507,6 +1507,20 @@ class Session(QObject):
         finally:
             self.read_tip()
 
+    def tip_box_slots(self) -> list[int]:
+        """The slots the robot session holds a tip box in, in order."""
+        state = self.run_state
+        if self.robot is None or state is None:
+            return []
+        out = []
+        for slot, entry in state.labware.items():
+            try:
+                if resolve_definition(entry.load_name).is_tiprack:
+                    out.append(int(slot))
+            except (LabwareError, ValueError):
+                continue
+        return sorted(out)
+
     def used_tips(self, slot) -> set[str]:
         """The wells of the rack in `slot` a tip was taken from here and not
         put back. What this program saw: a tip taken by a notebook or the

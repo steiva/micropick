@@ -73,7 +73,8 @@ class PlatformsSheet(SheetWindow):
     said = Signal(str)
 
     def __init__(self, session: Session, host: QWidget):
-        super().__init__(host, TITLE)
+        # Done only closes; Save changes is the panel's one action.
+        super().__init__(host, TITLE, done_closes=True)
         self.session = session
         self.slot: int | None = None
         # slot -> the module standing there, as it will be saved.
@@ -145,11 +146,6 @@ class PlatformsSheet(SheetWindow):
         row.addWidget(holder)
         self.body.addLayout(row, 1)
 
-        # Done only closes; Save changes is the panel's one action.
-        self.cancel_button.hide()
-        self.done_button.setObjectName("secondary")
-        self.done_button.setDefault(False)
-        self.close_button.setToolTip("Close")
         session.robot_busy_changed.connect(lambda _h: self._show_save())
 
     def _types_box(self) -> QVBoxLayout:

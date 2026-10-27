@@ -71,12 +71,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QFrame, QLabel, QPushButton, QVBoxLayout,
                                QWidget)
 
-from ...config.labware import (LabwareError, local_definitions,
-                               resolve_definition, shared_definitions)
 from ...core.deck import nearest_slot
 from ...hardware.protocols import xyz
 from ..auto_camera import CameraOpener
 from ..camera_moves import move_over_slot, move_tip_to_pixel, move_to_pixel
+from ..labware_kinds import catalogue
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
@@ -194,34 +193,9 @@ def tip_box_types() -> tuple:
     """Every tip box definition the Deck step knows, custom first then
     stock, by display name. Read once: neither list changes while the
     program runs."""
-    try:
-        custom = local_definitions()
-    except LabwareError as exc:
-        log.error("custom labware: %s", exc)
-        custom = {}
-    try:
-        stock = shared_definitions()
-    except LabwareError as exc:
-        log.error("stock labware: %s", exc)
-        stock = {}
-    known = {**custom, **{n: d for n, d in stock.items() if n not in custom}}
+    _custom, known = catalogue()
     return tuple(sorted((d for d in known.values() if d.is_tiprack),
                         key=lambda d: d.display_name))
-
-
-def tip_box_slots(session) -> list[int]:
-    """The slots the robot session holds a tip box in, in order."""
-    state = session.run_state
-    if session.robot is None or state is None:
-        return []
-    out = []
-    for slot, entry in state.labware.items():
-        try:
-            if resolve_definition(entry.load_name).is_tiprack:
-                out.append(int(slot))
-        except (LabwareError, ValueError):
-            continue
-    return sorted(out)
 
 
 def _slots_text(slots: list[int]) -> str:
@@ -238,7 +212,8 @@ class PositionSheet(SheetWindow):
     said = Signal(str)
 
     def __init__(self, session: Session, host: QWidget):
-        super().__init__(host, "")
+        # Done only closes, as × does; Save position is the one action.
+        super().__init__(host, "", done_closes=True)
         self.session = session
         self.item = "calibration_position"
         self.steps: tuple[Step, ...] = ()
@@ -299,11 +274,6 @@ class PositionSheet(SheetWindow):
         self.body.addWidget(
             FeedRow(self.view, scroll_column(column, PANEL_WIDTH)), 1)
 
-        # Done only closes, as × does; Save position is the one action.
-        self.cancel_button.hide()
-        self.done_button.setObjectName("secondary")
-        self.done_button.setDefault(False)
-        self.close_button.setToolTip("Close")
         self.done.connect(self._let_go)
         self.canceled.connect(self._let_go)
         self.jog.pose_changed.connect(lambda _p: self._refresh())
@@ -449,7 +419,7 @@ class PositionSheet(SheetWindow):
         card.add(slots)
 
         def refresh(reached: bool, free: bool) -> None:
-            on = tip_box_slots(self.session)
+            on = self.session.tip_box_slots()
             line.setText(_slots_text(on) if on else "")
             line.setVisible(bool(on))
             for widget in (hint, kinds, slots):
@@ -459,7 +429,7 @@ class PositionSheet(SheetWindow):
                              is not None)
 
         return Built(card, refresh,
-                     done=lambda: bool(tip_box_slots(self.session)))
+                     done=lambda: bool(self.session.tip_box_slots()))
 
     def _load_tipbox(self, slot: int) -> None:
         """The tip box type chosen into `slot`, as the Deck step loads it:
@@ -482,10 +452,9 @@ class PositionSheet(SheetWindow):
             self._refresh()
             return said
 
-        if not self.jog.run_job(job, moves=False, then=loaded,
-                                what=f"loading {name} into slot {slot}"):
-            self.jog.tell(session.robot_lease.refusal
-                          if session.robot_lease.busy else "Robot busy.")
+        # Refused, run_job says why on the picture.
+        self.jog.run_job(job, moves=False, then=loaded,
+                         what=f"loading {name} into slot {slot}")
 
     def _tip_blocks(self) -> tuple[TipOnBlock, TipCalibrationBlock]:
         """The Tip step's two blocks, made once, on this sheet's picture

@@ -84,9 +84,12 @@ class SheetWindow(_Cover):
     canceled = Signal()
 
     def __init__(self, host: QWidget, title: str, *, done_text: str = "Done",
-                 buttons: bool = True):
+                 buttons: bool = True, done_closes: bool = False):
         """`buttons` False: no Cancel and Done, for a sheet that saves with
-        buttons of its own (Settings); × still closes it."""
+        buttons of its own (Settings); × still closes it. `done_closes`:
+        Done only closes, as × does - no Cancel, Done a secondary button -
+        for a sheet whose one action is a Save of its own (the platforms,
+        the positions)."""
         super().__init__(host, 0.72)
         self.title = title
         outer = QVBoxLayout(self)
@@ -136,6 +139,11 @@ class SheetWindow(_Cover):
         button_row.addWidget(self.cancel_button)
         button_row.addWidget(self.done_button)
         column.addLayout(button_row)
+        if done_closes:
+            self.cancel_button.hide()
+            self.done_button.setObjectName("secondary")
+            self.done_button.setDefault(False)
+            close.setToolTip("Close")
         if not buttons:
             self.cancel_button.hide()
             self.done_button.hide()

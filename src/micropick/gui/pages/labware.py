@@ -65,10 +65,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QButtonGroup, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout, QWidget)
 
-from ...config.labware import (LabwareDefinition, LabwareError,
-                               local_definitions,
-                               shared_definitions)
-from ..labware_kinds import CHIPS, facts, in_chip, kind
+from ...config.labware import LabwareDefinition
+from ..labware_kinds import CHIPS, catalogue, facts, in_chip, kind
 from ...hardware.labware import LoadedLabware
 from ..session import Session
 from ..theme import COLORS, SIZES, SPACING
@@ -292,20 +290,7 @@ class LabwarePage(QWidget):
     def _reload_definitions(self) -> None:
         """Read the catalogue, once: neither list changes while the
         application runs, short of editing labware/ underneath it."""
-        try:
-            self._custom = local_definitions()
-        except LabwareError as exc:
-            self._custom = {}
-            log.error("custom labware: %s", exc)
-        try:
-            stock = shared_definitions()
-        except LabwareError as exc:
-            stock = {}
-            log.error("stock labware: %s", exc)
-        # Every definition by load name, custom first.
-        self._known = {**self._custom,
-                       **{n: d for n, d in stock.items()
-                          if n not in self._custom}}
+        self._custom, self._known = catalogue()
 
     def listed(self) -> list[LabwareDefinition]:
         """What the list offers now: the search's matches while something
