@@ -1328,28 +1328,41 @@ hand.
   longer offers it. A name already there (any case): "There is a type of
   that name."
 
-- [ ] **Position over the dish.**
-  "Where will the source dish stand?", Slot 8 chosen. Move camera
-  to slot 8: the camera goes over slot 8, the dish in the picture.
-  Somewhere else hides the button. With a pixel map, a click on the
-  picture centers the camera there; without one it says to use the
-  arrows. Done: the row "≈ slot 8 · X … Y … Z …" with a ✓.
-
-- [ ] **Shake position.**
-  The two numbered instructions, the yellow "The camera can't see this.
-  Watch the robot itself.", the pad over the picture. Jog the tip into
-  the holder's hole, Done: the row has a ✓. Go to saved position from a
-  fresh home: the tip goes back there, and never asks the robot for a
-  height above its top.
+- [ ] **Order.** Positions read Calibration position, Shake position,
+  Position over the dish, on the page, in Home's "N steps left" and in a
+  step's banner.
 
 - [ ] **Calibration position.**
-  Put the disc on the calibration module, Move camera to the calibration
-  module, center the crosshair, Done. The Tip page's disc position (Go to
-  saved position) goes to the same pose: it is `tip_calib`.
+  Four numbered cards; only "It is there" is active. It is there: the
+  mini deck lights up. Click the calibration module's slot: the camera
+  goes over it, the slot is marked, "It is centered" lights up. Center
+  the crosshair (a click on the picture with a pixel map, else the
+  arrows), It is centered, Save position: "Saved: slot 9 · X … Y … Z …",
+  the sheet stays open. The Tip page's disc position (Go to saved
+  position) goes to the same pose: it is `tip_calib`.
+
+- [ ] **Position over the dish.**
+  "Place the source dish" (It is there), the mini deck with nothing
+  chosen, "Center the dish rim around the crosshair" (It is centered),
+  Save position. Done: the row "≈ slot 8 · X … Y … Z …" with a ✓.
+
+- [ ] **Shake position.**
+  "Lower the tip into the hole", the yellow "The camera can't see this.
+  Watch the robot itself.", the pad over the picture. Jog the tip into
+  the holder's hole, It is in the hole, Save position: the row has a ✓.
+
+- [ ] **Only Save position stores.**
+  Open a saved position, move the robot, Done or ×: the row's value is
+  unchanged, nothing asked. No Cancel button.
+
+- [ ] **Saved position on top.**
+  A saved position shows "Saved: slot …" and Go to saved position. From a
+  fresh home it goes back there, never asking the robot for a height
+  above its top, and marks the steps before Save done.
 
 - [ ] **Busy.**
-  While a liquid run has the robot, Done and the move buttons on these
-  sheets are gray, the tooltip naming the run.
+  While a liquid run has the robot, Save position, the mini deck and Go
+  to saved position are gray, the mini deck's tooltip naming the run.
 
 ## Redesign — Deck step and Deck confirmation (#13)
 

@@ -88,7 +88,8 @@ again so a platform's height attaches - or the platforms) clears that
 (`Session._deck_changed`). The Deck step is `pages.labware`: the tiles
 of `widgets.deck_tiles`, kind and facts from `gui.labware_kinds`. Robot setup (`pages.robot_setup`, from Home's
 Setup card; the one page with a title, REDESIGN §5) is one page of rows - the cameras, camera calibration,
-platforms, the three positions (each `≈ slot n · X Y Z`, never its stored
+platforms, the three positions in the order they can be set - calibration,
+shake, over the dish (each `≈ slot n · X Y Z`, never its stored
 name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
 and Home's "N steps left" read. A row, or a Robot setup item needed by a
 step, opens its page as `Home › Robot setup › <item>` or `Home › <task> ›
@@ -127,10 +128,17 @@ module"; Done and × only close (no Cancel), and with unsaved changes ask
 Save / Discard first. The three positions share
 one (`pages.position_sheet.PositionSheet`, `open_for(item)`): the upper
 camera with the pad, a click moves the camera through the pixel map
-(`gui.camera_moves`, also the camera calibration's), Move camera to slot
-8 / to the calibration module, Go to saved position (`Motion.tip_to`, no
-higher than the travel height), Done saves the panel's pose under the
-stored name - `observe`, `shake`, `tip_calib`; no new pose. While a Robot setup sheet is open the page
+(`gui.camera_moves`, also the camera calibration's), and the position's
+numbered step cards (`position_sheet.STEPS`, built by kind through
+`PositionSheet.builders`), each button gray until the step before is
+confirmed: the crosshair disc / the source dish placed (It is there),
+which slot (the mini deck `widgets.slot_chooser`, a click moves the
+camera there), centered (It is centered), then Save position - the only
+thing that stores the robot's pose under the stored name (`tip_calib`,
+`shake`, `observe`; no new pose) and says "Saved: slot N · X Y Z". Done
+and × only close (no Cancel), storing nothing. A saved position shows
+its line on top with Go to saved position (`Motion.tip_to`, no higher
+than the travel height), which marks the steps before Save done. While a Robot setup sheet is open the page
 under it is disabled, so its keys are the sheet's. Reset setup asks (Keep setup primary),
 then `Session.reset_setup` zips the profile folder beside it, dated, and
 clears the cameras, the pixel map, the deck modules and those three

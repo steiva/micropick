@@ -226,38 +226,152 @@ def test_delete_type_keeps_what_stands(app, window):
     assert deck.module_for(9).name == "Calibration module"
 
 
-# -- the position over the dish ------------------------------------------------
+# -- the positions: numbered steps, Save position (#33) ------------------------
 
-def test_the_dish_position_starts_on_slot_8(app, window):
-    _open(window, "dish_position")
+def _steps(sheet):
+    """Each card's heading and mark, in order."""
+    return [(card.heading.text(), card.state)
+            for card in sheet.cards.values()]
+
+
+def _calibration_module(window, slot=9):
+    from micropick.config.schema import DeckModule
+    window.session.set_deck_modules(
+        [DeckModule(slots=[slot], offset=[0, 0, 64], name="Calibration module")])
+
+
+def _over_slot(app, window, slot):
+    """The camera over `slot`'s center: the tip there less the offset."""
     sheet = window.position_sheet
-    assert sheet.isVisible()
-    assert window.top.path == ["Robot setup", "Position over the dish"]
-    assert sheet.slot_8.isChecked() and not sheet.elsewhere.isChecked()
-    assert sheet.move_button.text() == "Move camera to slot 8"
-    assert not sheet.move_button.isHidden()
-    sheet.elsewhere.click()
-    assert sheet.move_button.isHidden()
-
-
-def test_move_camera_to_slot_8_and_done_saves_the_position(app, window):
-    _open(window, "dish_position")
-    sheet = window.position_sheet
-    sheet.move_button.click()
     dx, dy = window.session.settings.tip_cal_start_offset
-    cx, cy = slot_center(8)
+    cx, cy = slot_center(slot)
     _wait(app, lambda: sheet.jog.pose is not None
           and sheet.jog.pose[:2] == pytest.approx((cx - dx, cy - dy),
                                                   abs=0.01))
-    _wait(app, lambda: sheet.done_button.isEnabled())
-    where = xyz(window.session.robot)
+    _wait(app, lambda: sheet.slots.marked == slot)
+
+
+def test_the_calibration_position_is_steps_one_after_another(app, window):
+    _calibration_module(window)
+    _open(window, "calibration_position")
+    sheet = window.position_sheet
+    assert window.top.path == ["Robot setup", "Calibration position"]
+    assert [title for title, _ in _steps(sheet)] == [
+        "1. Place the crosshair disc", "2. Which slot is it in?",
+        "3. Center the crosshair", "4. Save position"]
+    assert [mark for _, mark in _steps(sheet)] == [
+        "todo", "blocked", "blocked", "blocked"]
+    assert sheet.buttons["place"].text() == "It is there"
+    # Each step waits for the one before it.
+    assert not sheet.slots.isEnabled()
+    assert not sheet.buttons["center"].isEnabled()
+    assert not sheet.save_button.isEnabled()
+    sheet.buttons["place"].click()
+    _wait(app, lambda: sheet.slots.isEnabled())
+    assert not sheet.buttons["center"].isEnabled()
+    sheet.slots.button(9).click()
+    _over_slot(app, window, 9)
+    _wait(app, lambda: sheet.buttons["center"].isEnabled())
+    assert not sheet.save_button.isEnabled()
+    sheet.buttons["center"].click()
+    _wait(app, lambda: sheet.save_button.isEnabled())
+    assert "tip_calib" not in window.session.profile.positions
+    x, y, z = xyz(window.session.robot)
+    sheet.save_button.click()
+    _saved(app, window, "tip_calib")
+    assert window.session.profile.positions["tip_calib"] == pytest.approx(
+        (x, y, z), abs=0.01)
+    # Saved, said, and the sheet stays open.
+    assert sheet.isVisible()
+    assert sheet.saved_note.text() == (
+        f"Saved: slot 9 · X {x:.1f} Y {y:.1f} Z {z:.1f}")
+    assert [mark for _, mark in _steps(sheet)] == ["ok"] * 4
+    assert set(window.session.profile.positions) == {"tip_calib"}
     sheet.done_button.click()
+    assert not sheet.isVisible()
+    assert _row(window, "calibration_position")[0]
+    assert window.top.path == ["Robot setup"]
+
+
+def test_the_dish_position_is_the_source_dish_on_its_platform(app, window):
+    _open(window, "dish_position")
+    sheet = window.position_sheet
+    assert window.top.path == ["Robot setup", "Position over the dish"]
+    assert [title for title, _ in _steps(sheet)] == [
+        "1. Place the source dish", "2. Which slot is it in?",
+        "3. Center the dish rim around the crosshair", "4. Save position"]
+    # Nothing chosen for the operator.
+    assert sheet.slots.marked is None
+    sheet.buttons["place"].click()
+    sheet.slots.button(8).click()
+    _over_slot(app, window, 8)
+    _wait(app, lambda: sheet.buttons["center"].isEnabled())
+    sheet.buttons["center"].click()
+    _wait(app, lambda: sheet.save_button.isEnabled())
+    where = xyz(window.session.robot)
+    sheet.save_button.click()
     _saved(app, window, "observe")
     assert window.session.profile.positions["observe"] == pytest.approx(
         where, abs=0.01)
+    assert sheet.saved_note.text().startswith("Saved: slot 8 · X ")
     done, value = _row(window, "dish_position")
     assert done and value.startswith("≈ slot ")
+
+
+def test_done_and_close_only_close(app, window):
+    """No Cancel; Done and × store nothing, and a saved pose stays."""
+    _open(window, "dish_position")
+    sheet = window.position_sheet
+    assert sheet.cancel_button.isHidden()
+    assert sheet.done_button.isEnabled()
+    _wait(app, lambda: sheet.jog.pose is not None)
+    sheet.done_button.click()
+    assert not sheet.isVisible()
+    assert "observe" not in window.session.profile.positions
+    assert _row(window, "dish_position") == (False, "Not set.")
+
+    window.session.remember("observe", (200.0, 150.0, 110.0))
+    _open(window, "dish_position")
+    sheet.buttons["place"].click()
+    sheet.slots.button(5).click()
+    _over_slot(app, window, 5)
+    sheet.close_button.click()
+    assert not sheet.isVisible()
+    assert window.session.profile.positions["observe"] == pytest.approx(
+        (200.0, 150.0, 110.0))
     assert window.top.path == ["Robot setup"]
+
+
+def test_a_saved_position_is_on_top_and_go_to_marks_the_steps(app, window):
+    session = window.session
+    motion = session.motion
+    motion.raise_tip()
+    top = motion.travel_z
+    x, y, _z = xyz(session.robot)
+    # Taught after a retract: higher than the robot can be sent to.
+    session.remember("tip_calib", (x + 10.0, y, top + 1.0))
+    _open(window, "calibration_position")
+    sheet = window.position_sheet
+    assert not sheet.saved_line.isHidden()
+    assert sheet.saved_line.text().startswith("Saved: slot ")
+    assert not sheet.goto_button.isHidden()
+    assert not sheet.save_button.isEnabled()
+    _wait(app, lambda: sheet.goto_button.isEnabled())
+    sheet.goto_button.click()
+    _wait(app, lambda: sheet.jog.pose is not None
+          and sheet.jog.pose[0] == pytest.approx(x + 10.0, abs=0.01))
+    assert xyz(session.robot)[2] <= top + 1e-6
+    # The slot and the centering are done: saving again is one click.
+    _wait(app, lambda: sheet.save_button.isEnabled())
+    assert [mark for _, mark in _steps(sheet)] == [
+        "ok", "ok", "ok", "todo"]
+
+
+def test_a_position_not_saved_has_no_line_on_top(app, window):
+    _open(window, "dish_position")
+    sheet = window.position_sheet
+    assert sheet.saved_line.isHidden()
+    assert sheet.goto_button.isHidden()
 
 
 def test_before_camera_calibration_a_click_on_the_picture_moves_nothing(
@@ -269,75 +383,29 @@ def test_before_camera_calibration_a_click_on_the_picture_moves_nothing(
     help_ = window.position_sheet.view.mouse_help
     assert "Use the arrows to move the camera." in help_
     assert not any(line.startswith("Click") for line in help_)
-    window.position_sheet.cancel_button.click()
+    window.position_sheet.close_button.click()
     view = window.calibration_sheet.view
     assert "Use the arrows to move the camera." in view.mouse_help
     assert not any(line.startswith("Click") for line in view.mouse_help)
 
 
-def test_cancel_saves_no_position(app, window):
-    _open(window, "dish_position")
-    sheet = window.position_sheet
-    _wait(app, lambda: sheet.done_button.isEnabled())
-    sheet.cancel_button.click()
-    assert "observe" not in window.session.profile.positions
-    assert _row(window, "dish_position") == (False, "Not set.")
+# -- shake -----------------------------------------------------------------------
 
-
-# -- shake and calibration -----------------------------------------------------
-
-def test_the_shake_position_says_to_watch_the_robot(app, window):
+def test_the_shake_position_is_saved_only_by_save_position(app, window):
     _open(window, "shake_position")
     sheet = window.position_sheet
     assert window.top.path == ["Robot setup", "Shake position"]
-    assert not sheet.note.isHidden()
+    assert [title for title, _ in _steps(sheet)] == [
+        "1. Lower the tip into the hole", "2. Save position"]
     assert sheet.note.label.text() == (
         "The camera can't see this. Watch the robot itself.")
-    assert sheet.slot_8.isHidden() and sheet.move_button.isHidden()
-    assert "hole of the holder" in sheet.instructions.text()
     assert not sheet.jog.isHidden()
-    _wait(app, lambda: sheet.done_button.isEnabled())
+    assert not sheet.save_button.isEnabled()
     sheet.done_button.click()
+    assert "shake" not in window.session.profile.positions
+    _open(window, "shake_position")
+    sheet.buttons["lower"].click()
+    _wait(app, lambda: sheet.save_button.isEnabled())
+    sheet.save_button.click()
     _saved(app, window, "shake")
     assert _row(window, "shake_position")[0]
-
-
-def test_the_calibration_position_is_tip_calib(app, window):
-    from micropick.config.schema import DeckModule
-    window.session.set_deck_modules(
-        [DeckModule(slots=[9], offset=[0, 0, 64], name="Calibration module")])
-    _open(window, "calibration_position")
-    sheet = window.position_sheet
-    assert sheet.note.isHidden()
-    assert sheet.move_button.text() == "Move camera to the calibration module"
-    sheet.move_button.click()
-    dx, dy = window.session.settings.tip_cal_start_offset
-    cx, cy = slot_center(9)
-    _wait(app, lambda: sheet.jog.pose is not None
-          and sheet.jog.pose[:2] == pytest.approx((cx - dx, cy - dy),
-                                                  abs=0.01))
-    _wait(app, lambda: sheet.done_button.isEnabled())
-    sheet.done_button.click()
-    _saved(app, window, "tip_calib")
-    positions = window.session.profile.positions
-    assert set(positions) == {"tip_calib"}
-    assert _row(window, "calibration_position")[0]
-
-
-def test_go_to_saved_position_is_no_higher_than_the_travel_height(
-        app, window):
-    session = window.session
-    motion = session.motion
-    motion.raise_tip()
-    top = motion.travel_z
-    x, y, _z = xyz(session.robot)
-    # Taught after a retract: higher than the robot can be sent to.
-    session.remember("shake", (x + 10.0, y, top + 1.0))
-    _open(window, "shake_position")
-    sheet = window.position_sheet
-    assert not sheet.goto_button.isHidden()
-    _wait(app, lambda: sheet.goto_button.isEnabled())
-    sheet.goto_button.click()
-    _wait(app, lambda: sheet.jog.pose is not None
-          and sheet.jog.pose[0] == pytest.approx(x + 10.0, abs=0.01))
-    assert xyz(session.robot)[2] <= top + 1e-6
