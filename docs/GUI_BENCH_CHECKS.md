@@ -1116,17 +1116,17 @@ Start the program normally (no `--mock`) on the bench machine.
   robot homes at start.
 
 - [ ] **Robot off: Home looks for it.**
-  Switch the robot off. Within ten seconds Home says "Robot not
-  connected", "Looking for the robot. Is it switched on?", and the setup
+  Switch the robot off. Within ten seconds Home says "Connecting to the
+  robot…", "This can take a few minutes after it is switched on.", and the setup
   and task cards are dimmed under "Waiting for the robot.". No Connect,
   Disconnect or Start new robot session button anywhere.
 
 - [ ] **Robot on again: it asks to home, and only then moves.**
   Switch it on; once its light stops blinking Home says "Robot needs to
   home", "The robot was restarted. Labware and the tip are unknown." The
-  gantry does not move. Home the robot: the dialog says "Keep hands out of
-  the robot. The gantry will move."; Cancel - nothing moves. Home the
-  robot again, Home: the robot homes, then "Robot connected". In Auto
+  gantry does not move. Home and connect: the dialog says "Keep hands out of
+  the robot. The gantry will move."; Cancel - nothing moves. Home and
+  connect again, Home: "Homing…" while the robot homes, then "Robot connected". In Auto
   pick, Deck is no longer ✓ and the tip is unknown until read again.
 
 - [ ] **A cable blip loses nothing.**
@@ -1329,7 +1329,7 @@ hand.
   that name."
 
 - [ ] **Position over the dish.**
-  "Where will the dish with cuboids stand?", Slot 8 chosen. Move camera
+  "Where will the source dish stand?", Slot 8 chosen. Move camera
   to slot 8: the camera goes over slot 8, the dish in the picture.
   Somewhere else hides the button. With a pixel map, a click on the
   picture centers the camera there; without one it says to use the
@@ -1486,7 +1486,7 @@ tip box and a 384 plate at hand.
   With a dish bottom measured before: "Last time: Z 66.40 mm" over
   "3 days ago" (today, yesterday) and Use it. Use it: a toast "Using the
   last dish bottom.", the green "Dish bottom: Z 66.40 mm", the step gets
-  its ✓. Home the robot (a new robot session): the ✓ is gone, the value
+  its ✓. Home and connect (a new robot session): the ✓ is gone, the value
   stays. On a profile that never measured it, no Last time card.
 
 - [ ] **Measure.**

@@ -5,7 +5,7 @@ A look is a read on a worker (`Session.look_at_robot`); what it changes is
 taken on the GUI thread (`Session.robot_seen`). A session the robot holds
 and can carry on with is carried on with at once (`Session.adopt_run`,
 under the robot's lease): it moves nothing. A robot with no such session
-waits for the operator's Home the robot on Home (`Session.needs_home`),
+waits for the operator's Home and connect on Home (`Session.needs_home`),
 because a new session homes, and a hand may be in the robot.
 
 Started by `app.run` once the window is up, not by the window itself: a
@@ -81,7 +81,7 @@ class RobotMonitor(QObject):
         if self._stopped:
             return
         if self.session.run_generation != self._generation:
-            # Home the robot ended while it looked: what it saw is gone.
+            # Home and connect ended while it looked: what it saw is gone.
             return
         if not self.session.robot_seen(state):
             return

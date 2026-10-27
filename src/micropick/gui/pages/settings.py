@@ -821,13 +821,13 @@ class SettingsPage(QWidget):
             self.robot_state.setText(
                 f"Connected to {self.session.robot_address}.")
         elif not self.robot_state.text():
-            self.robot_state.setText(f"Looking for the robot at "
+            self.robot_state.setText(f"Connecting to the robot at "
                                      f"{self.session.robot_address}.")
 
 
 class AdvancedPanel(QWidget):
     """The robot session, by hand: Start new robot session (it homes, so
-    it asks, as Home the robot does) and Disconnect robot session, which
+    it asks, as Home and connect does) and Disconnect robot session, which
     lets the session go and keeps the connection monitor off it until
     Continue robot session (`Session.release_run`). Both claim the robot's
     lease and are refused while it is held."""
@@ -932,7 +932,7 @@ class AdvancedPanel(QWidget):
         what = "new robot session, then home"
         lease = self._claim(what)
         if lease is not None:
-            self.state.setText("Homing.")
+            self.state.setText("Homing…")
             self._run(self.session.new_run, name, what=what, lease=lease,
                       done="New robot session started.")
 
