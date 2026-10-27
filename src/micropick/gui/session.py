@@ -729,6 +729,25 @@ class Session(QObject):
         """`preset` written over `template`, which keeps its name."""
         return templates.save_plate_template(preset, over=template)
 
+    def liquid_templates(self) -> list[templates.Template]:
+        return templates.liquid_templates()
+
+    def save_liquid_template(self, program, name: str) -> templates.Template:
+        """`program` as a new liquid plan template called `name`, refused as
+        `save_plate_template` refuses. The program itself is not renamed."""
+        name = " ".join(str(name).split())
+        if not name:
+            raise SessionError("Name the template.")
+        if templates.name_in_use(name, templates.LIQUID_PLANS):
+            raise SessionError(f'A template is already called "{name}".')
+        return templates.save_liquid_template(
+            program.model_copy(update={"name": name}))
+
+    def save_liquid_template_changes(self, template: templates.Template,
+                                     program) -> templates.Template:
+        """`program` written over `template`, which keeps its name."""
+        return templates.save_liquid_template(program, over=template)
+
     def remember(self, name: str, position) -> None:
         if self.profile is None:
             raise SessionError("no profile is loaded, so there is nowhere to "

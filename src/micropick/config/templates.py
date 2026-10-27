@@ -14,7 +14,8 @@ sure": what is overwritten is only ever the template that is open.
 
 The plate plan presets saved before templates (`Outputs/plate_plan_presets`)
 are moved here the first time templates are listed; a file there that is
-not a preset is left where it is.
+not a preset is left where it is. So are the liquid programs saved with
+Save as… (`Outputs/liquid`), all but the page's own `current.json`.
 """
 
 from __future__ import annotations
@@ -27,18 +28,23 @@ from datetime import datetime
 from pathlib import Path
 
 from .. import paths
+from ..core.liquid import Program, ProgramError
 from ..core.routine import PlanPreset, RoutineError
 
 __all__ = ["PLATE_PLANS", "LIQUID_PLANS", "Template", "templates_dir",
-           "plate_templates", "save_plate_template", "name_in_use"]
+           "plate_templates", "save_plate_template", "name_in_use",
+           "liquid_templates", "liquid_template", "save_liquid_template"]
 
 log = logging.getLogger(__name__)
 
 PLATE_PLANS = "plate-plans"
 LIQUID_PLANS = "liquid-plans"
 
-# Where Save plan as preset… put its files.
+# Where Save plan as preset… put its files, and the liquid page's Save as….
 _OLD_PRESETS = "plate_plan_presets"
+_OLD_PROGRAMS = "liquid"
+# The liquid page's program as it is edited: not a template.
+_CURRENT = "current.json"
 
 
 @dataclass(frozen=True)
@@ -47,10 +53,16 @@ class Template:
     path: Path
     wells: int
     saved: datetime
+    groups: int | None = None          # a liquid plan's
 
     def facts(self) -> str:
-        """The line under its name in the list: "24 wells · saved Oct 20"."""
+        """The line under its name in the list: "24 wells · saved Oct 20",
+        a liquid plan's "2 groups · 24 wells · saved Oct 20"."""
         wells = f"{self.wells} well" if self.wells == 1 else f"{self.wells} wells"
+        if self.groups is not None:
+            groups = ("1 group" if self.groups == 1
+                      else f"{self.groups} groups")
+            wells = f"{groups} · {wells}"
         return f"{wells} · saved {self.saved:%b} {self.saved.day}"
 
 
@@ -101,8 +113,9 @@ def _key(name: str) -> str:
     return " ".join(name.split()).casefold()
 
 
-def name_in_use(name: str) -> bool:
-    return any(_key(t.name) == _key(name) for t in plate_templates())
+def name_in_use(name: str, kind: str = PLATE_PLANS) -> bool:
+    listed = plate_templates() if kind == PLATE_PLANS else liquid_templates()
+    return any(_key(t.name) == _key(name) for t in listed)
 
 
 def _free_path(directory: Path, name: str) -> Path:
@@ -127,3 +140,67 @@ def save_plate_template(preset: PlanPreset, *,
     log.info("plate plan template %r saved: %s, %d wells, %s", preset.name,
              preset.load_name, len(preset.plan), path)
     return _template(path)
+
+
+# -- liquid plans --------------------------------------------------------------
+
+def _move_old_programs(directory: Path) -> None:
+    old = paths.outputs_dir(create=False) / _OLD_PROGRAMS
+    if not old.is_dir():
+        return
+    for path in sorted(old.glob("*.json")):
+        if path.name == _CURRENT:
+            continue
+        try:
+            program = Program.load(path)
+        except (ProgramError, OSError, ValueError):
+            continue
+        if not program.name:
+            program.name = path.stem
+            program.save(path)
+        target = _free_path(directory, program.name)
+        shutil.move(str(path), target)
+        log.info("liquid program %s moved to %s", path, target)
+
+
+def liquid_template(path: Path) -> Template:
+    """The template in the file at `path`, as the list names it. Raises
+    ProgramError or OSError for a file that is not one."""
+    program = Program.load(path)
+    return Template(program.name or path.stem, path,
+                    sum(len(g.wells) for g in program.groups),
+                    datetime.fromtimestamp(path.stat().st_mtime),
+                    groups=len(program.groups))
+
+
+def _liquid_template(path: Path) -> Template | None:
+    try:
+        return liquid_template(path)
+    except (ProgramError, OSError, ValueError) as exc:
+        log.warning("not a liquid plan template: %s (%s)", path, exc)
+        return None
+
+
+def liquid_templates() -> list[Template]:
+    """The liquid plan templates, the last saved first."""
+    directory = templates_dir(LIQUID_PLANS)
+    _move_old_programs(directory)
+    found = [t for t in map(_liquid_template, sorted(directory.glob("*.json")))
+             if t is not None]
+    return sorted(found, key=lambda t: t.saved, reverse=True)
+
+
+def save_liquid_template(program: Program, *,
+                         over: Template | None = None) -> Template:
+    """`program` as a new template under `program.name`, or written over
+    the template `over` (its name kept)."""
+    program = program.model_copy(deep=True)
+    if over is not None:
+        program.name = over.name
+        path = over.path
+    else:
+        path = _free_path(templates_dir(LIQUID_PLANS), program.name)
+    program.save(path)
+    log.info("liquid plan template %r saved: %d groups, %s", program.name,
+             len(program.groups), path)
+    return liquid_template(path)
