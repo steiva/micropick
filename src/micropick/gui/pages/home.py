@@ -59,8 +59,8 @@ MARK_PX = 44
 
 
 def new_session_dialog(session: Session, parent: QWidget, *,
-                       title: str = "Home the robot") -> QInputDialog:
-    """The question a new robot session asks - Home the robot here, Start
+                       title: str = "Home and connect") -> QInputDialog:
+    """The question a new robot session asks - Home and connect here, Start
     new robot session in Settings (`title`) - with the new session's
     name. It homes either way, so the button says Home."""
     profile = session.profile
@@ -211,7 +211,7 @@ class HomePage(QWidget):
         self.error.hide()
         text.addWidget(self.error)
         row.addLayout(text, 1)
-        self.home_button = primary_button("Home the robot", box)
+        self.home_button = primary_button("Home and connect", box)
         self.home_button.setToolTip(
             "Start a new robot session with an empty deck. The robot homes "
             "first.")
@@ -284,8 +284,8 @@ class HomePage(QWidget):
             self.robot_title.setText("Robot connected")
             self.robot_text.setText("Ready to work.")
         elif busy:
-            self.robot_title.setText("Robot not connected")
-            self.robot_text.setText("Homing.")
+            self.robot_title.setText("Homing…")
+            self.robot_text.setText("Keep hands out of the robot.")
         elif session.needs_home:
             self.robot_title.setText("Robot needs to home")
             self.robot_text.setText(
@@ -301,9 +301,9 @@ class HomePage(QWidget):
             self.robot_title.setText("Robot not connected")
             self.robot_text.setText("Continuing the robot's session.")
         else:
-            self.robot_title.setText("Robot not connected")
+            self.robot_title.setText("Connecting to the robot…")
             self.robot_text.setText(
-                "Looking for the robot. Is it switched on?")
+                "This can take a few minutes after it is switched on.")
         self.home_button.setVisible(session.needs_home)
         self.continue_button.setVisible(session.released is not None
                                         and not ready)
@@ -364,7 +364,7 @@ class HomePage(QWidget):
             self.robot_setup_requested.emit()
 
     def _new_run(self) -> None:
-        """Home the robot: a new robot session, which ends in a home, so it
+        """Home and connect: a new robot session, which ends in a home, so it
         asks. The gantry travels to its limits on every axis, and a hand in
         the deck is the failure this dialog is for; Cancel moves nothing."""
         dialog = self.home_dialog()
@@ -387,7 +387,7 @@ class HomePage(QWidget):
         self.refresh()
 
     def home_dialog(self) -> QInputDialog:
-        """The question Home the robot asks, with the new session's name."""
+        """The question Home and connect asks, with the new session's name."""
         return new_session_dialog(self.session, self)
 
     def _worker_done(self, _result=None) -> None:

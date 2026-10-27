@@ -15,8 +15,8 @@ Home (Robot & Deck is the Deck step, Tip calibration the Tip step, Plate
 plan the Plan step, Manual control Manual pick's Work), the profile's
 settings are Robot setup's rows and the Settings sheet's second column,
 the status bar's light is Light in the top bar, its tip button the Tip
-step, and a camera's own window opens from Focus in Robot setup's camera
-sheet.
+step, and a camera's focus is set under the picture in Robot setup's
+camera sheet.
 
 ---
 
@@ -1116,17 +1116,17 @@ Start the program normally (no `--mock`) on the bench machine.
   robot homes at start.
 
 - [ ] **Robot off: Home looks for it.**
-  Switch the robot off. Within ten seconds Home says "Robot not
-  connected", "Looking for the robot. Is it switched on?", and the setup
+  Switch the robot off. Within ten seconds Home says "Connecting to the
+  robot…", "This can take a few minutes after it is switched on.", and the setup
   and task cards are dimmed under "Waiting for the robot.". No Connect,
   Disconnect or Start new robot session button anywhere.
 
 - [ ] **Robot on again: it asks to home, and only then moves.**
   Switch it on; once its light stops blinking Home says "Robot needs to
   home", "The robot was restarted. Labware and the tip are unknown." The
-  gantry does not move. Home the robot: the dialog says "Keep hands out of
-  the robot. The gantry will move."; Cancel - nothing moves. Home the
-  robot again, Home: the robot homes, then "Robot connected". In Auto
+  gantry does not move. Home and connect: the dialog says "Keep hands out of
+  the robot. The gantry will move."; Cancel - nothing moves. Home and
+  connect again, Home: "Homing…" while the robot homes, then "Robot connected". In Auto
   pick, Deck is no longer ✓ and the tip is unknown until read again.
 
 - [ ] **A cable blip loses nothing.**
@@ -1310,21 +1310,26 @@ hand.
   Robot setup, Platforms: a sheet with the deck as 3×4 big slots (10 11 12
   at the back), slot 12 gray. Click slot 5, "What stands in this slot?":
   Picking platform; slot 8 the same; slot 9 Calibration module. A slot
-  with a platform has a dashed border. Done: "Platforms saved.", the row
-  "Picking platform in 5 and 8 · Calibration module in 9" with a ✓.
-  Reopen, set slot 5 to Nothing, Cancel: slot 5 still has its platform.
+  with a platform has a dashed border. Save changes (gray before the first
+  choice): "Saved: slot 5 · Picking platform, slot 8 · Picking platform,
+  slot 9 · Calibration module" under it, Save changes gray again; Done
+  closes without a question, the row "Picking platform in 5 and 8 ·
+  Calibration module in 9" with a ✓. Reopen (no Cancel), set slot 5 to
+  Nothing, ×: "Save the changes?" - Discard: slot 5 still has its
+  platform. Again with Done and Save: slot 5 has nothing.
   Expected failure if wrong: a plate in slot 8 drawn in the hazard color
-  on the Deck step after Done.
+  on the Deck step after Save changes.
 
 - [ ] **Platform types.**
-  Slot 5's Height to 63.9 mm, Done: the Deck step's plate in slot 5 is
-  loaded at that height. New type "Tall platform", 80 mm, Add type: it is
-  in the list; put it in slot 4, Done. Delete type on slot 9's Calibration
-  module, Done: slot 9 keeps it, the list no longer offers it. A name
-  already there (any case): "There is a type of that name."
+  Slot 5's Height to 63.9 mm, Save changes: the Deck step's plate in slot
+  5 is loaded at that height. New type "Tall platform", 80 mm, Add type:
+  it is in the list; put it in slot 4, Save changes. Delete type on slot
+  9's Calibration module, Save changes: slot 9 keeps it, the list no
+  longer offers it. A name already there (any case): "There is a type of
+  that name."
 
 - [ ] **Position over the dish.**
-  "Where will the dish with cuboids stand?", Slot 8 chosen. Move camera
+  "Where will the source dish stand?", Slot 8 chosen. Move camera
   to slot 8: the camera goes over slot 8, the dish in the picture.
   Somewhere else hides the button. With a pixel map, a click on the
   picture centers the camera there; without one it says to use the
@@ -1481,7 +1486,7 @@ tip box and a 384 plate at hand.
   With a dish bottom measured before: "Last time: Z 66.40 mm" over
   "3 days ago" (today, yesterday) and Use it. Use it: a toast "Using the
   last dish bottom.", the green "Dish bottom: Z 66.40 mm", the step gets
-  its ✓. Home the robot (a new robot session): the ✓ is gone, the value
+  its ✓. Home and connect (a new robot session): the ✓ is gone, the value
   stays. On a profile that never measured it, no Last time card.
 
 - [ ] **Measure.**
@@ -1744,3 +1749,26 @@ On the bench's profile, both cameras attached.
   In the Upper camera sheet, choose a device the profile does not have
   (after Reset setup, say): Focus is gray. Cancel closes the focus window
   with the sheet.
+
+  (Both checks above are replaced by #31's below: no Focus button, no
+  focus window.)
+
+## Robot setup walk-through — camera sheet opening and focus (#31)
+
+- [ ] **Opening camera.**
+  Robot setup, Lower camera: until the first picture, a turning bar and
+  "Opening camera…" in the middle of the picture, never "no camera".
+  Choose the other device: the same while it opens.
+
+- [ ] **Focus under the picture.**
+  On the lower camera's picture, the Focus row (slider, number, Default
+  (960)) is under it as soon as the picture shows; none on the upper
+  camera. Move the slider: the picture sharpens and blurs live. ×, then
+  open the sheet again: the focus is the saved one. Move it again, Done;
+  close the program and start it again: the lower camera opens at that
+  focus.
+
+- [ ] **Focus for a device only previewed.**
+  After Reset setup, Lower camera: the focus row shows on the lower
+  device's picture before anything is saved; Done saves the camera and
+  that focus.

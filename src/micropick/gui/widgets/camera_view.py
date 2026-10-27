@@ -54,14 +54,28 @@ begins with a click. So `clicked` is sent a double-click interval after the
 release, and a double click in that time cancels it: resetting the zoom
 never sends the gantry anywhere.
 
+A press on anything floating over the picture - the jog pad's card, the
+TipGauge, a page's button - is that widget's, even beside its buttons: the
+press is taken here and no click, right click or double click is sent for
+it. A plain card ignores a press, and Qt then hands it to the parent, this
+view, which would otherwise read it as a click on the picture under it.
+
+A click moves the robot only through a pixel map
+------------------------------------------------
+A page whose click moves something says so with `set_click_to_move`: its
+line in the mouse row and when it can (the profile has a pixel map). Until
+it can, the row says to use the arrows instead and a left click is not
+sent: before the first camera calibration a pixel has no direction on the
+deck.
+
 On the picture, two small controls
 ----------------------------------
 A crosshair toggle, on by default for a camera whose label does not say
 "under" and off for one that does: the crosshair marks the reference pixel of
 the upper camera, and on the lower camera it sits over the crosshair disc the
 operator is trying to see. And focus tools, only where asked for
-(`enable_focus_tools`: the camera's own window from Robot setup's camera
-sheet, not the pages) and only for a camera whose driver took a `focus` control at open -
+(`enable_focus_tools`, off on the pages: a focus is set in Robot setup's
+camera sheet, `pages.camera_sheet`) and only for a camera whose driver took a `focus` control at open -
 the lower camera has a motorised lens and its focus is set from the profile,
 which is the wrong place to be tuning it by trial. A slider and a number
 field set it on the device live and read it back; "default" puts back
@@ -158,6 +172,8 @@ MOUSE_GAP = 22
 # with clicks of its own puts them before ZOOM_AND_PAN.
 ZOOM_AND_PAN = ("Wheel   zoom", "Middle-drag   pan")
 MOUSE_HELP = (*ZOOM_AND_PAN, "Double-click   fit")
+# In the click-to-move line's place while a click cannot move anything.
+NO_CLICK_MOVE = "Use the arrows to move the camera."
 # The axes box: arrow length, the margin around the arrows and their
 # letters, and a colour per axis - red and green, as X and Y are drawn in
 # most software that draws them.
@@ -249,6 +265,9 @@ class CameraView(QWidget):
         self._position: list[str] = []
         self._status: list[str] = []
         self._mouse_help: list[str] = list(MOUSE_HELP)
+        self._click_line: str | None = None       # see set_click_to_move
+        self._click_moves = lambda: True
+        self._press_on_widget = False             # see the module notes
         self._lost: str | None = None             # the camera's `lost`
 
         # Zoom about a point: the view pixel that sits at the widget's center.
@@ -772,7 +791,16 @@ class CameraView(QWidget):
         self.update()
         event.accept()
 
+    def _over_widget(self, position: QPointF) -> bool:
+        """Whether a widget floats at this point over the picture: a press
+        there is the widget's, never a click on the picture."""
+        return self.childAt(position.toPoint()) is not None
+
     def mousePressEvent(self, event) -> None:
+        self._press_on_widget = self._over_widget(event.position())
+        if self._press_on_widget:
+            event.accept()
+            return
         if (event.button() == Qt.MouseButton.MiddleButton
                 and self._image is not None and self._zoom != ZOOM_MIN):
             self._pan_from = event.position()
@@ -802,6 +830,11 @@ class CameraView(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton and self._pan_from is not None:
             self._pan_from = None
             self.unsetCursor()
+            event.accept()
+            return
+        if self._press_on_widget or self._over_widget(event.position()):
+            self._press_on_widget = False
+            self._after_double = False
             event.accept()
             return
         if event.button() == Qt.MouseButton.RightButton:
@@ -834,7 +867,7 @@ class CameraView(QWidget):
 
     def _send_click(self) -> None:
         click, self._pending_click = self._pending_click, None
-        if click is not None:
+        if click is not None and self._click_moves():
             self.clicked.emit(*click)
 
     def mouseDoubleClickEvent(self, event) -> None:
@@ -842,6 +875,10 @@ class CameraView(QWidget):
         self._click_timer.stop()
         self._pending_click = None
         self._after_double = True
+        if self._over_widget(event.position()):
+            self._press_on_widget = True
+            event.accept()
+            return
         if (event.button() == Qt.MouseButton.LeftButton
                 and self._image is not None
                 and self._shown.contains(event.position().toPoint())):
@@ -916,6 +953,26 @@ class CameraView(QWidget):
         self._mouse_help = [str(line) for line in lines or ()]
         self._place_controls()
         self.update()
+
+    def set_click_to_move(self, line: str, available) -> None:
+        """A left click on this picture moves the robot: `line` ("gesture
+        what it does") leads the mouse row while `available()` - the
+        profile has a pixel map - and a click is sent only then; until it
+        is, the row says to use the arrows. Asked at each paint and click,
+        so a calibration saved meanwhile is seen at once."""
+        self._click_line = str(line)
+        self._click_moves = available
+        self._place_controls()
+        self.update()
+
+    @property
+    def mouse_help(self) -> list[str]:
+        """The mouse row as shown: the click-to-move line, or what to do
+        instead, then the page's own items."""
+        if self._click_line is None:
+            return list(self._mouse_help)
+        first = self._click_line if self._click_moves() else NO_CLICK_MOVE
+        return [first, *self._mouse_help]
 
     def set_status(self, lines) -> None:
         """Lines of text under the position: what a page is doing - found
@@ -1308,7 +1365,7 @@ class CameraView(QWidget):
     def _mouse_rect(self) -> QRect | None:
         """Where the mouse row goes: the bottom-left corner, clear of the
         focus row, or None when there is nothing to say."""
-        if not self._mouse_help:
+        if not self.mouse_help:
             return None
         height = QFontMetrics(QFont(self.font().family(), 9)).height() + 8
         return QRect(8, self._free_bottom() - height, self.width() - 16,
@@ -1329,7 +1386,7 @@ class CameraView(QWidget):
         bold.setWeight(QFont.Weight.DemiBold)
         items = []                       # [(text, font, ink)] per item
         x = row.left() + CAPTION_PAD
-        for line in self._mouse_help:
+        for line in self.mouse_help:
             gesture, sep, what = line.partition(MOUSE_SPLIT)
             pieces = [(gesture.strip(), bold, CAPTION_FG)]
             if sep:

@@ -324,3 +324,81 @@ def test_abort_waits_for_a_touch_up_step_still_moving(app, page):
     assert _until(app, lambda: not page.touch_jog.busy)
     page._abort()
     assert _until(app, lambda: not session.robot_lease.busy)
+
+
+# -- the cards as blocks in another widget ------------------------------------
+
+def test_the_two_cards_work_embedded_in_another_widget(app, tmp_path,
+                                                        monkeypatch):
+    """What a Robot setup sheet does with them (#34): a plain widget, its
+    own picture and jog panel, the blocks' boxes in its layout."""
+    from PySide6.QtWidgets import QVBoxLayout, QWidget
+    from micropick.gui.widgets.camera_view import CameraView
+    from micropick.gui.widgets.jog_panel import JogPanel
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    session = Session(Options(mock=True))
+    session.load_profile("mock")
+    session.probe_robot()
+    session.new_run()
+    host = QWidget()
+    view = CameraView(host)
+    jog = JogPanel(session, shortcut_host=host, machine_controls=False,
+                   parent=host)
+    calibration = tip_page.TipCalibrationBlock(
+        session, jog, view, holder="shake tip calibration", parent=host)
+    tip = tip_page.TipOnBlock(session, jog, calibration=calibration,
+                              parent=host)
+    layout = QVBoxLayout(host)
+    for widget in (view, tip.box, calibration.box, jog):
+        layout.addWidget(widget)
+    changes = []
+    tip.changed.connect(lambda: changes.append("tip"))
+    calibration.calibrated.connect(lambda: changes.append("calibrated"))
+    try:
+        assert not tip.done and not calibration.done
+        assert not calibration.box.isEnabled()
+        session.load_labware(resolve_definition(RACK), 10)
+        assert tip.take_button.text() == "Take tip A1"
+        tip.take_button.click()
+        assert _until(app, lambda: tip.done and not jog.busy)
+        assert "tip" in changes
+        assert calibration.box.isEnabled()
+
+        session.remember(CALIBRATION_POSITION, (150.0, 150.0, 80.0))
+        _fake_routine(monkeypatch)
+        monkeypatch.setattr(calibration, "_readiness", lambda: [])
+        calibration.refresh()
+        calibration.start_button.click()
+        # A run under its own holder's name, from Start to the end.
+        assert session.robot_lease.holding_run
+        assert session.robot_lease.holder == "shake tip calibration"
+        assert not tip.take_button.isEnabled()
+        assert _until(app, lambda: calibration.disc_button.isEnabled())
+        assert calibration.run_activity() == "waiting"
+        calibration.disc_button.click()
+        calibration.calibrate_button.click()
+        assert _until(app, lambda: not session.robot_lease.busy)
+        assert calibration.done
+        assert "calibrated" in changes
+        assert not calibration.calibrated_banner.isHidden()
+    finally:
+        host.deleteLater()
+        session.shutdown()
+
+
+def _fake_routine(monkeypatch):
+    """The routine replaced by one that saves an offset for this tip,
+    with no detector and no pixel map."""
+    def calibrate(robot, over, under, detector, pmap, *, profile,
+                  current_offset, manual_touch_up, robot_session,
+                  tip_pickup, **_kw):
+        offset = PipetteOffset(dx=1.5, dy=-2.5, robot_session=robot_session,
+                               tip_pickup=tip_pickup)
+        profile.calibration.pipette_offset = offset
+        return SimpleNamespace(offset=offset)
+
+    monkeypatch.setattr(tip_page, "calibrate_pipette_offset", calibrate)
+    monkeypatch.setattr(tip_page, "load_tip_detector",
+                        lambda *a, **k: object())
+    monkeypatch.setattr(tip_page.PixelMap, "from_config",
+                        staticmethod(lambda _config: None))

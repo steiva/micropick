@@ -12,10 +12,13 @@ other role's device swapped in, a camera added to a profile without
 one); Cancel and × save nothing. `said(text)` is the answer, for the
 window's toast.
 
-Focus opens the camera's own window (`widgets.feed_window.FeedWindow`),
-the one place a focus is tuned and saved to the profile: only for a
-camera the profile has, since the window saves under its label; a device
-not chosen yet is only a preview. The window goes with the sheet.
+While the chosen camera opens, a spinner and "Opening camera..." stand
+over the picture until its first frame. A camera whose device took a
+focus at open - the profile's or a device only previewed - then shows the
+focus under the picture: a slider, a typed number and Default (960),
+tried on the device live. Done writes it into the profile
+(`Session.save_camera_focus`); × saves nothing and puts back the focus
+the profile's open camera had.
 
 One preview opens at a time: a choice made while one opens is opened
 after it, and Done waits for the picture of what it saves. Done is gray
@@ -26,14 +29,16 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
+                               QSlider, QVBoxLayout, QWidget)
 
 from ..session import OTHER_ROLE, Session
 from ..tasks import SETUP_TITLES
-from ..theme.factory import heading, muted_label, secondary_button, select
-from ..widgets.camera_view import CameraView
-from ..widgets.feed_window import FeedWindow
+from ...hardware.camera import DEFAULT_FOCUS
+from ..theme.factory import (heading, muted_label, secondary_button, select,
+                             spin_box)
+from ..widgets.camera_view import FOCUS_RANGE, FOCUS_SETTLE_MS, CameraView
 from ..widgets.overlays import SheetWindow
 from ..workers import Worker, describe_error
 
@@ -45,6 +50,7 @@ PANEL_WIDTH = 320
 NOT_ATTACHED = "{} (not attached)"
 HINT = ("The picture on the left is live. Pick the camera whose picture "
         "matches.")
+OPENING = "Opening camera…"
 
 
 class CameraSheet(SheetWindow):
@@ -63,8 +69,15 @@ class CameraSheet(SheetWindow):
 
         row = QHBoxLayout()
         row.setSpacing(24)
+        left = QVBoxLayout()
+        left.setSpacing(8)
         self.view = CameraView(self.body_widget)
-        row.addWidget(self.view, 1)
+        self.view.frame_shown.connect(self._first_frame)
+        left.addWidget(self.view, 1)
+        self._make_opening()
+        self._make_focus_row()
+        left.addWidget(self.focus_row)
+        row.addLayout(left, 1)
         panel = QVBoxLayout()
         panel.setSpacing(8)
         self.question = heading("", 3, self.body_widget)
@@ -79,13 +92,6 @@ class CameraSheet(SheetWindow):
         self.state = muted_label("", self.body_widget)
         self.state.setWordWrap(True)
         panel.addWidget(self.state)
-        self.focus_button = secondary_button("Focus", self.body_widget)
-        self.focus_button.setToolTip("Open the camera's own window to set "
-                                     "its focus.")
-        self.focus_button.clicked.connect(self._open_focus)
-        panel.addWidget(self.focus_button)
-        # Made on the first Focus; hidden, not destroyed, with the sheet.
-        self.feed_window: FeedWindow | None = None
         panel.addStretch(1)
         holder = QWidget(self.body_widget)
         holder.setLayout(panel)
@@ -96,6 +102,62 @@ class CameraSheet(SheetWindow):
         self.done.connect(self._save)
         self.canceled.connect(self._let_go)
         session.robot_busy_changed.connect(lambda _h: self._show_done())
+
+    def _make_opening(self) -> None:
+        """The spinner and "Opening camera..." over the picture's middle."""
+        self.opening = QFrame(self.view)
+        self.opening.setObjectName("opening")
+        self.opening.setStyleSheet(
+            "QFrame#opening { background: rgb(24,24,26); }"
+            "QLabel { color: rgb(200,200,206); }")
+        box = QVBoxLayout(self.opening)
+        box.setContentsMargins(16, 12, 16, 12)
+        box.setSpacing(8)
+        spinner = QProgressBar(self.opening)
+        spinner.setRange(0, 0)                   # turning, no amount
+        spinner.setTextVisible(False)
+        spinner.setFixedSize(160, 6)
+        box.addWidget(spinner, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.opening_label = QLabel(OPENING, self.opening)
+        self.opening_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        box.addWidget(self.opening_label)
+        self.opening.hide()
+        self._centerer = _Centerer(self.opening, self.view)
+
+    def _make_focus_row(self) -> None:
+        """Focus under the picture: slider, number, Default."""
+        self.focus_row = QWidget(self.body_widget)
+        line = QHBoxLayout(self.focus_row)
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(8)
+        line.addWidget(QLabel("Focus", self.focus_row))
+        self.focus_slider = QSlider(Qt.Orientation.Horizontal, self.focus_row)
+        self.focus_slider.setRange(*FOCUS_RANGE)
+        self.focus_slider.setPageStep(10)
+        self.focus_slider.valueChanged.connect(self._focus_moved)
+        line.addWidget(self.focus_slider, 1)
+        self.focus_number = spin_box(self.focus_row)
+        self.focus_number.setRange(*FOCUS_RANGE)
+        self.focus_number.setKeyboardTracking(False)
+        self.focus_number.setToolTip("Focus value; Enter applies.")
+        self.focus_number.valueChanged.connect(self.focus_slider.setValue)
+        line.addWidget(self.focus_number)
+        self.focus_default = secondary_button(f"Default ({DEFAULT_FOCUS})",
+                                              self.focus_row)
+        self.focus_default.setToolTip(f"Set the focus to {DEFAULT_FOCUS}.")
+        self.focus_default.clicked.connect(
+            lambda: self.focus_slider.setValue(DEFAULT_FOCUS))
+        line.addWidget(self.focus_default)
+        self.focus_row.hide()
+        self._focus_timer = QTimer(self)
+        self._focus_timer.setSingleShot(True)
+        self._focus_timer.setInterval(FOCUS_SETTLE_MS)
+        self._focus_timer.timeout.connect(self._apply_focus)
+        # The camera the row tunes, the focus it had when shown, and
+        # whether the operator moved it since.
+        self._focus_camera = None
+        self._focus_was: int | None = None
+        self._focus_touched = False
 
     # -- opening -------------------------------------------------------
 
@@ -139,39 +201,72 @@ class CameraSheet(SheetWindow):
         self.done_button.setToolTip(
             f"Robot busy: {lease.holder}." if lease.busy else "")
 
-    def _profile_label(self) -> str | None:
-        """The profile's label of the camera on the picture, or None while
-        it is a preview of a device the profile does not have."""
+    # -- focus ---------------------------------------------------------
+
+    def _first_frame(self) -> None:
+        """The picture is up: the opening goes, the focus comes."""
         camera = self.view.camera
+        if camera is None or self._focus_camera is camera:
+            return
+        self.opening.hide()
+        self._focus_camera = camera
+        controls = getattr(camera, "controls", None)
+        applied = getattr(controls, "applied", {}) or {}
+        if "focus" not in applied or not hasattr(camera, "set_controls"):
+            return                               # looked at: no focus
+        current = camera.get_control("focus")
+        value = int(round(current if current is not None
+                          else applied["focus"]))
+        value = max(FOCUS_RANGE[0], min(FOCUS_RANGE[1], value))
+        self._focus_was, self._focus_touched = value, False
+        self._show_focus_value(value)
+        self.focus_row.show()
+
+    def _show_focus_value(self, value: int) -> None:
+        for widget in (self.focus_slider, self.focus_number):
+            widget.blockSignals(True)
+            widget.setValue(int(value))
+            widget.blockSignals(False)
+
+    def _focus_moved(self, value: int) -> None:
+        """Coalesced: a drag gives dozens of values a second, the device
+        takes one control transfer at a time."""
+        self._show_focus_value(value)
+        self._focus_touched = True
+        self._focus_timer.start()
+
+    def _apply_focus(self) -> None:
+        self._focus_timer.stop()
+        camera = self._focus_camera
+        if camera is None or not self._focus_touched:
+            return
+        try:
+            camera.set_controls({"focus": self.focus_slider.value()})
+        except Exception as exc:                     # noqa: BLE001
+            log.error("focus not set: %s", exc)
+
+    def _drop_focus(self, put_back: bool = True) -> None:
+        """The row goes; a focus tried on the profile's open camera is put
+        back as it was, a preview's goes with the preview."""
+        self._focus_timer.stop()
+        camera = self._focus_camera
+        if (put_back and camera is not None and self._focus_touched
+                and self._focus_was is not None
+                and self._profile_label(camera) is not None):
+            try:
+                camera.set_controls({"focus": self._focus_was})
+            except Exception as exc:                 # noqa: BLE001
+                log.error("focus not put back: %s", exc)
+        self._focus_camera = None
+        self._focus_was, self._focus_touched = None, False
+        self.focus_row.hide()
+
+    def _profile_label(self, camera) -> str | None:
+        """The profile's label of `camera`, or None for a preview."""
         label = getattr(camera, "label", None)
         if camera is None or self.session.camera(label) is not camera:
             return None
         return label
-
-    def _show_focus(self) -> None:
-        """Focus for a camera the profile has; the focus window goes when
-        the picture is another camera's."""
-        self.focus_button.setEnabled(self._profile_label() is not None)
-        feed = self.feed_window
-        if (feed is not None and not feed.isHidden()
-                and feed.view.camera is not self.view.camera):
-            feed.view.set_camera(None)
-            feed.hide()
-
-    def _open_focus(self) -> None:
-        label = self._profile_label()
-        if label is None:
-            return
-        if self.feed_window is None or self.feed_window.label != label:
-            if self.feed_window is not None:
-                self.feed_window.hide()
-                self.feed_window.deleteLater()
-            self.feed_window = FeedWindow(
-                label, self.window(),
-                save_controls=self.session.save_camera_controls)
-            self.feed_window.setWindowTitle(
-                SETUP_TITLES[f"{self.role}_camera"])
-        self.feed_window.show_camera(self.view.camera)
 
     def _wanted(self, worker: Worker) -> bool:
         """The worker opened what is chosen now, for this role."""
@@ -182,11 +277,13 @@ class CameraSheet(SheetWindow):
         """Show the device chosen: open it, unless one is opening."""
         name = self.select.currentData()
         self._opening = name is not None
+        self._drop_focus()
+        self._shown = None
+        self.view.set_camera(None)
+        self.opening.setVisible(name is not None)
+        self._centerer.place()
         self._show_done()
         if name is None:
-            self._shown = None
-            self.view.set_camera(None)
-            self._show_focus()
             self.session.close_preview()
             return
         if self._worker is not None and self._worker.running:
@@ -211,7 +308,6 @@ class CameraSheet(SheetWindow):
         self.view.set_camera(camera)
         self.state.setText("")
         self._show_done()
-        self._show_focus()
 
     def _failed(self, reason: str) -> None:
         worker = self.sender()
@@ -223,26 +319,33 @@ class CameraSheet(SheetWindow):
             return
         self._shown, self._opening = None, False
         self.view.set_camera(None)
+        self.opening.hide()
         self.state.setText(reason)
         self._show_done()
-        self._show_focus()
 
     # -- closing -------------------------------------------------------
 
-    def _let_go(self) -> None:
+    def _let_go(self, put_back: bool = True) -> None:
         """The picture off, and the camera opened only for it closed; a
-        profile's camera stays open for the pages."""
+        profile's camera stays open for the pages, its focus as saved."""
+        self._drop_focus(put_back)
+        self.opening.hide()
         self.view.set_camera(None)
-        self._show_focus()                       # the focus window goes too
         self.session.close_preview()
 
     def _save(self) -> None:
         name = self._shown
-        self._let_go()
+        focus = None
+        if self._focus_camera is not None and self._focus_touched:
+            self._apply_focus()
+            focus = self.focus_slider.value()
+        self._let_go(put_back=False)
         if name is None:
             return
         try:
             swapped = self.session.choose_camera(self.role, name)
+            if focus is not None:
+                self.session.save_camera_focus(self.role, focus)
         except Exception as exc:                     # noqa: BLE001
             log.error("camera not chosen: %s", exc)
             self.said.emit(describe_error(exc))
@@ -257,3 +360,24 @@ class CameraSheet(SheetWindow):
         if not self.isHidden():
             self.hide()
             self._let_go()
+
+
+class _Centerer(QObject):
+    """Keeps `widget` in the middle of `host` as the host is resized."""
+
+    def __init__(self, widget: QWidget, host: QWidget):
+        super().__init__(host)
+        self.widget, self.host = widget, host
+        host.installEventFilter(self)
+
+    def place(self) -> None:
+        size = self.widget.sizeHint()
+        self.widget.setGeometry((self.host.width() - size.width()) // 2,
+                                (self.host.height() - size.height()) // 2,
+                                size.width(), size.height())
+        self.widget.raise_()
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.Resize:
+            self.place()
+        return False
