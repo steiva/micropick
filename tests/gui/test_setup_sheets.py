@@ -116,6 +116,68 @@ def test_nothing_takes_a_platform_away_and_cancel_saves_nothing(app, window):
     assert _row(window, "platforms") == (False, "Not set.")
 
 
+def test_a_slots_height_is_changed_and_saved_by_done(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    sheet.tiles[5].click()
+    sheet.kind.setCurrentText("Picking platform")
+    assert sheet.height.value() == pytest.approx(64.2)    # the type's own
+    sheet.height.setValue(63.9)
+    sheet.done_button.click()
+    deck = window.session.profile.deck
+    assert deck.module_for(5).height_mm == pytest.approx(63.9)
+    # The type keeps its usual height.
+    assert deck.module_type("Picking platform").height_mm == pytest.approx(64.2)
+
+
+def test_a_new_type_is_offered_and_saved_by_done(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    sheet.new_name.setText("Tall platform")
+    sheet.new_height.setValue(80.0)
+    sheet.add_type()
+    sheet.tiles[4].click()
+    sheet.kind.setCurrentText("Tall platform")
+    assert sheet.height.value() == pytest.approx(80.0)
+    sheet.done_button.click()
+    deck = window.session.profile.deck
+    assert deck.module_type("Tall platform").height_mm == pytest.approx(80.0)
+    assert deck.module_for(4).name == "Tall platform"
+
+
+def test_a_type_of_that_name_is_not_added_twice(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    sheet.new_name.setText("picking platform")
+    sheet.add_type()
+    names = [sheet.kind.itemText(i) for i in range(sheet.kind.count())]
+    assert names == ["Picking platform", "Calibration module", "Nothing"]
+    assert sheet.type_note.text() == "There is a type of that name."
+
+
+def test_delete_type_keeps_what_stands_and_cancel_keeps_the_type(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    sheet.tiles[9].click()
+    sheet.kind.setCurrentText("Calibration module")
+    sheet.done_button.click()
+    _open(window, "platforms")
+    sheet.tiles[9].click()
+    sheet.delete_type()
+    sheet.cancel_button.click()
+    deck = window.session.profile.deck
+    assert deck.module_type("Calibration module") is not None
+    _open(window, "platforms")
+    sheet.tiles[9].click()
+    sheet.delete_type()
+    # Still standing in slot 9, under its own name.
+    assert sheet.kind.currentText() == "Calibration module"
+    sheet.done_button.click()
+    deck = window.session.profile.deck
+    assert deck.module_type("Calibration module") is None
+    assert deck.module_for(9).name == "Calibration module"
+
+
 # -- the position over the dish ------------------------------------------------
 
 def test_the_dish_position_starts_on_slot_8(app, window):

@@ -8,7 +8,8 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 
 - Interpreter: conda env `lab` (`conda run -n lab python ...`); the bare
   `python` on PATH is the Windows Store stub.
-- Tests: `conda run -n lab python -m pytest -q` (whole suite, ~20 s).
+- Tests: `conda run -n lab python -m pytest -q tests` (whole suite, ~3-4 min:
+  most of it is a `MainWindow` built per GUI test, ~1.3 s each).
 - GUI: `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
 - `lab` has an unrelated package named `tests` installed, so
   `python -m tests.…` resolves to it, not to this repository's `tests/`.
@@ -109,8 +110,9 @@ waits ("Not accurate enough: the marker was off center.", Redo
 calibration, Save anyway). × closes
 it and a sweep carries on. The platforms have theirs
 (`pages.platforms_sheet.PlatformsSheet`): the 3×4 deck, a slot clicked,
-"What stands in this slot?" (the profile's module types or Nothing), a
-draft until Done (`Session.set_deck_modules`). The three positions share
+"What stands in this slot?" (the profile's module types or Nothing), its
+height, New type and Delete type - all a draft until Done
+(`Session.set_module_types`, `Session.set_deck_modules`). The three positions share
 one (`pages.position_sheet.PositionSheet`, `open_for(item)`): the upper
 camera with the pad, a click moves the camera through the pixel map
 (`gui.camera_moves`, also the camera calibration's), Move camera to slot

@@ -1306,6 +1306,13 @@ hand.
   Expected failure if wrong: a plate in slot 8 drawn in the hazard color
   on the Deck step after Done.
 
+- [ ] **Platform types.**
+  Slot 5's Height to 63.9 mm, Done: the Deck step's plate in slot 5 is
+  loaded at that height. New type "Tall platform", 80 mm, Add type: it is
+  in the list; put it in slot 4, Done. Delete type on slot 9's Calibration
+  module, Done: slot 9 keeps it, the list no longer offers it. A name
+  already there (any case): "There is a type of that name."
+
 - [ ] **Position over the dish.**
   "Where will the dish with cuboids stand?", Slot 8 chosen. Move camera
   to slot 8: the camera goes over slot 8, the dish in the picture.
