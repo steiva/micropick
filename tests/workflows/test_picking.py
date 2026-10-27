@@ -589,3 +589,45 @@ def test_recording_without_homography_has_no_box(tmp_path):
         session.close()
         under.close()
         camera.close()
+
+
+# ---------------------------------------------------------------------------
+# 5. what the run says
+# ---------------------------------------------------------------------------
+
+def test_the_shakes_reported_are_the_shakes_done():
+    """max_shake_retries=3 is three shakes, and the hand-back says three."""
+    dish = Dish()                                   # empty: nothing to pick
+    routine = Routine(Destination.coordinates([(200.0, 200.0)]),
+                      {(200.0, 200.0): 1})
+    session, robot, camera = make_session(dish, routine)
+    try:
+        events = drive(session)
+        shaken = [ev for ev in events if ev.kind == "shaken"]
+        assert len(shaken) == 3
+        assert events[-1].kind == "needs_operator"
+        assert events[-1].data["retries"] == 3
+        assert session.status == ("No cuboids found after 3 shakes. Add "
+                                  "cuboids, or finish by hand.")
+        assert events[-1].status == session.status
+    finally:
+        camera.close()
+
+
+def test_every_state_says_a_sentence():
+    dish = Dish()
+    dish.add(1, (300, 350))
+    routine = Routine(Destination.coordinates([(200.0, 200.0)]),
+                      {(200.0, 200.0): 1})
+    session, robot, camera = make_session(dish, routine)
+    try:
+        events = drive(session)
+        assert session.state is RobotState.COMPLETED
+        for ev in events:
+            assert ev.status and ev.status[0].isupper(), ev
+        said = {ev.state: ev.status for ev in events}
+        assert said[RobotState.PICKUP_SAMPLE] == ("Point 1 of 1 · taking a "
+                                                  "cuboid")
+        assert said[RobotState.COMPLETED] == "The plate plan is filled."
+    finally:
+        camera.close()

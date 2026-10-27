@@ -55,7 +55,8 @@ What this fixes from the old `TissuePickerFSM` (DESIGN section 11):
   `self.current_well` that drifts from it;
 - `self.routine`, never a module-level `routine`;
 - no infinite ANALYZE -> SHAKE loop: `max_shake_retries` hands back to the
-  operator (`NEEDS_OPERATOR`);
+  operator (`NEEDS_OPERATOR`) - after that many shakes, counted as they are
+  done: an earlier count of empty looks said "3 shakes" after 2;
 - the shake pose and the batch cap live in the profile and the config, not in
   the code;
 - idle no longer runs YOLO in a tight loop;
@@ -199,6 +200,17 @@ class RobotState(Enum):
 
 _TERMINAL = {RobotState.COMPLETED, RobotState.CANCELED}
 
+# What `PickingSession.status` says in the states that need no well or count.
+_STATUS = {
+    RobotState.IDLE: "Waiting for the go-ahead.",
+    RobotState.DETECT_FLOATERS: "Watching the dish settle.",
+    RobotState.CAPTURE_FRAME: "Taking a picture of the dish.",
+    RobotState.ANALYZE_FRAME: "Finding cuboids.",
+    RobotState.DEPOSIT_BACK: "Putting the liquid back into the dish.",
+    RobotState.COMPLETED: "The plate plan is filled.",
+    RobotState.CANCELED: "Stopped.",
+}
+
 # States whose picture is worth watching live rather than frozen: the operator is
 # looking at the dish itself, either while waiting to be let on with the run or
 # while the floater measurement watches for movement. Everywhere else the stream
@@ -273,6 +285,9 @@ class PickEvent:
     message: str
     data: dict = field(default_factory=dict)
     view: PickView | None = None
+    # `PickingSession.status` as the state was entered: what an operator
+    # reads, where `message` is the log's.
+    status: str = ""
 
     def __str__(self) -> str:
         # the view is deliberately absent: a frame and three detection tables
@@ -358,7 +373,10 @@ class PickingSession:
         self._boxes_seen = 0
         self._choice: pd.DataFrame | None = None
         self._world: list[tuple[float, float]] = []
+        # Shakes done since cuboids were last found (AUTO_SHAKE's, not one
+        # asked for), and why the run waits for the operator, in words.
         self._shake_retries = 0
+        self._waiting_why = ""
         # A shake asked for from another thread, and how many cuboids the
         # pickup under way has drawn: see "A shake on request".
         self._shake_asked = False
@@ -670,7 +688,44 @@ class PickingSession:
         # `self.state` is already the state being entered, so the view on the
         # event is the picture to show while that state runs, not the one that
         # was up while the transition happened.
-        return PickEvent(self.state, kind, message, data, self.view)
+        return PickEvent(self.state, kind, message, data, self.view,
+                         self.status)
+
+    @property
+    def status(self) -> str:
+        """One short sentence of what the run does in the state it is in,
+        for an operator reading it from across the room: the well, what is
+        happening to it, why it waits. Read from the worker's thread with the
+        event, or between steps."""
+        state = self.state
+        if state is RobotState.NEEDS_OPERATOR:
+            return self._waiting_why or "Waiting for you."
+        if state in (RobotState.APPROACH_TARGET, RobotState.PICKUP_SAMPLE):
+            n = 0 if self._choice is None else len(self._choice)
+            doing = "taking a cuboid" if n <= 1 else f"taking {n} cuboids"
+            return f"{self._target_words()} · {doing}"
+        if state is RobotState.VERIFY_PICKUP:
+            return f"{self._target_words()} · checking the tip"
+        if state is RobotState.TRANSFER_TO_WELL:
+            held = self._held
+            doing = ("putting the cuboid in" if held <= 1 else
+                     f"putting {held} cuboids in")
+            return f"{self._target_words()} · {doing}"
+        if state is RobotState.AUTO_SHAKE:
+            return (f"No cuboids found. Shaking the dish "
+                    f"({self._shake_retries + 1} of "
+                    f"{self.config.max_shake_retries}).")
+        return _STATUS[state]
+
+    def _target_words(self) -> str:
+        """"Well A13 of 24", or "Point 3 of 5" for coordinates."""
+        routine = self.routine
+        current, total = routine.current, len(routine.plan)
+        if current is None:
+            return "Next well"
+        if routine.destination.is_plate:
+            return f"Well {current} of {total}"
+        return f"Point {list(routine.plan).index(current) + 1} of {total}"
 
     def _log(self, message: str) -> None:
         if self.logger is not None:
@@ -796,14 +851,16 @@ class PickingSession:
             self._gate(pause, stop)
             time.sleep(_IDLE_POLL_S)
 
-    def _hand_to_operator(self) -> None:
-        """Enter the waiting state, clearing the go-ahead it waits for.
+    def _hand_to_operator(self, why: str) -> None:
+        """Enter the waiting state, clearing the go-ahead it waits for;
+        `why` is what `status` says while it waits.
 
         Cleared here rather than in the handler: between this transition and the
         next `step()` the operator can already have pressed the key, and a
         handler that cleared the flag on the way in would swallow it.
         """
         self._started = False
+        self._waiting_why = why
         self.state = RobotState.NEEDS_OPERATOR
 
     def _fresh_frame(self):
@@ -1210,11 +1267,16 @@ class PickingSession:
                                **summary)
 
         if len(self.isolated) == 0:
-            self._shake_retries += 1
             self._log("no isolated cuboids in the working region")
             self._show_analysis()
+            # Counted as the shakes are done (`_state_auto_shake`), so the
+            # number said is the number of times the dish was stirred.
             if self._shake_retries >= self.config.max_shake_retries:
-                self._hand_to_operator()
+                shakes = self._shake_retries
+                self._hand_to_operator(
+                    f"No cuboids found after {shakes} "
+                    f"shake{'' if shakes == 1 else 's'}. Add cuboids, or "
+                    f"finish by hand.")
                 return self._event("needs_operator",
                                    "no isolated cuboids after "
                                    f"{self._shake_retries} shakes",
@@ -1281,8 +1343,10 @@ class PickingSession:
 
     def _state_auto_shake(self, pause, stop) -> PickEvent:
         self._stir_dish(lambda: self._gate(pause, stop))
+        self._shake_retries += 1
         self.state = RobotState.DETECT_FLOATERS
-        return self._event("shaken", "shook the dish")
+        return self._event("shaken", "shook the dish",
+                           retries=self._shake_retries)
 
     def _state_approach_target(self, pause, stop) -> PickEvent:
         self._world = []
@@ -1481,7 +1545,10 @@ class PickingSession:
         elif self._empty_pickups >= self.config.max_empty_pickups:
             # Cuboids keep being detected and keep not being caught: something
             # is wrong with the dish or the tip, and repeating cannot fix it.
-            self._hand_to_operator()
+            empty = self._empty_pickups
+            self._hand_to_operator(
+                f"{empty} pickup{'' if empty == 1 else 's'} in a row held "
+                f"nothing. Check the tip and the dish.")
             return self._event("needs_operator",
                                "returned the volume; "
                                f"{self._empty_pickups} pickups in a row held "
