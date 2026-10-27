@@ -284,7 +284,9 @@ class CameraView(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(max(1, 1000 // REFRESH_HZ))
         self._timer.timeout.connect(self._tick)
-        self._timer.start()
+        # Started by showEvent, never here: a page built but never shown gets
+        # no hideEvent either, so a timer started here read and rescaled
+        # every frame for nobody, beside the view on screen (#36).
 
     def _build_controls(self) -> None:
         """The two controls that sit on the picture. Children of the widget,

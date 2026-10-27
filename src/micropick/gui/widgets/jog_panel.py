@@ -201,6 +201,14 @@ def home_robot(robot) -> str:
 POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
 OUT = re.compile(r"\b([xyz]) OUT by ([\d.]+)")
 
+
+def _stepped(controller, result) -> tuple:
+    """A step's result and its status line, from the pose the step read
+    after it: each pose read is a robot command a step waits on (#36), and
+    reading it again here made one more."""
+    return result, controller.status(result.position)
+
+
 def action_id(key) -> str:
     """The `gui.keys` action of a `jog.LAYOUT` entry: "x+" for a move, the
     command's name otherwise."""
@@ -470,12 +478,8 @@ class JogPanel(QWidget):
         controller = self.controller
         axis, direction = view_move(self._view_axes, axis, direction)
 
-        def job():
-            # status() re-reads the pose, so a step costs one extra GET. At a
-            # key press per step that is nothing.
-            return controller.move(axis, direction), controller.status()
-
-        self._run(Worker(job))
+        self._run(Worker(lambda: _stepped(controller,
+                                          controller.move(axis, direction))))
 
     def _command(self, command: str) -> None:
         if command == "help":
@@ -500,7 +504,8 @@ class JogPanel(QWidget):
             # generated name, which is the list nothing else could see.
             self._remember()
         elif command == "undo":
-            self._run(Worker(lambda: (controller.undo(), controller.status())))
+            self._run(Worker(lambda: _stepped(controller,
+                                              controller.undo())))
         else:                                  # _check_layout rules this out
             raise RuntimeError(f"unhandled jog command {command!r}")
 

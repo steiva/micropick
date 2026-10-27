@@ -86,7 +86,8 @@ class MoveResult:
     requested: float
     performed: float = 0.0
     reason: str = ""
-    position: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # The pose after the step as read, or None when none was read.
+    position: tuple[float, float, float] | None = None
 
     @property
     def clamped(self) -> bool:
@@ -186,13 +187,15 @@ class JogController:
         if self._busy:
             return MoveResult(False, axis, 0.0, reason="a move is already running")
 
+        # One read before the move and one after: each is a robot command
+        # waited for, and a step waits on every one of them (#36).
+        pos = self.position
         requested = (self.step if distance is None else distance) * direction
-        allowed, reason = self.allowed(axis, requested)
+        allowed, reason = self.allowed(axis, requested, pos)
         if allowed == 0.0:
             return MoveResult(False, axis, requested, reason=reason,
-                              position=self.position)
+                              position=pos)
 
-        pos = self.position
         top = self.limits.z[1]
         if pos[2] > top + self.limits.tol and (axis in "xy" or allowed < 0):
             return self._from_the_top(axis, requested, allowed, pos, top,
@@ -293,8 +296,10 @@ class JogController:
 
     # -- display ------------------------------------------------------------
 
-    def status(self) -> str:
-        x, y, z = self.position
+    def status(self, position=None) -> str:
+        """The pose and the step in a line; `position`, a pose just read
+        (a step's `MoveResult.position`), saves reading it again."""
+        x, y, z = self.position if position is None else position
         out = self.limits.excursion((x, y, z))
         warn = "".join(f"  {a} OUT by {d:.2f}" for a, d in out.items() if d > 0)
         return (f"({x:8.2f}, {y:8.2f}, {z:7.2f})   step {self.step:g} mm"

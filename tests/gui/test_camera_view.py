@@ -310,3 +310,41 @@ def test_without_a_pixel_map_a_click_moves_nothing(app):
     _click(app, view, point)
     assert len(seen) == 1
     view.close()
+
+
+def test_a_view_not_on_screen_reads_no_frames(app):
+    """Every page is built at start and most are never shown: a view that
+    read its camera from construction rescaled every frame for nobody,
+    beside the one on screen (#36)."""
+    import time
+
+    class _Counting(_Camera):
+        reads = 0
+
+        def read(self):
+            self.reads += 1
+            return super().read()
+
+    def pump():
+        end = time.monotonic() + 0.2
+        while time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.005)
+
+    camera = _Counting("over")
+    view = CameraView()
+    view.resize(400, 300)
+    view.set_camera(camera)
+    pump()
+    assert camera.reads == 0
+
+    view.show()
+    pump()
+    assert camera.reads > 0
+
+    view.hide()
+    pump()
+    seen = camera.reads
+    pump()
+    assert camera.reads == seen
+    view.deleteLater()
