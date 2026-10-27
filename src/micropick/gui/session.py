@@ -397,7 +397,7 @@ class Session(QObject):
         self.robot_answers: bool | None = None
         self.restarted = False
         # The robot session whose carrying on failed (`adopt_failed`): not
-        # tried again; Home the robot is the way on.
+        # tried again; Home and connect is the way on.
         self.adopt_refused: str | None = None
         # The robot session let go on the operator's word (`release_run`):
         # no session is carried on with until `continue_run` or a new one
@@ -1734,7 +1734,7 @@ class Session(QObject):
     def connect_robot(self):
         """The whole sequence with the default decision made: carry on with a
         reusable run, otherwise start one - which homes. For callers with no
-        operator to ask, such as a test; the window asks (Home the robot)."""
+        operator to ask, such as a test; the window asks (Home and connect)."""
         state = self.probe_robot()
         return self.adopt_run() if state.reusable else self.new_run()
 
