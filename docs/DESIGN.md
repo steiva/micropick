@@ -920,7 +920,8 @@ them.
 Undo moved to the Move section and is called "Undo step". Under a list of
 saved poses, a button marked "Undo" reads as undoing the saving; it
 reverses the last jog step, and next to the D-pad that is what it looks
-like.
+like. (Later, #27: the Move and Positions sections are gone altogether;
+Undo step is on the pad itself.)
 
 ### Sections fold, and each page says which
 

@@ -47,7 +47,7 @@ are drawn on the picture only while "At a point" is chosen in an open
 Aspirate or Dispense card, and marking one chooses it in Aspirate when
 neither shows them. The tip goes to one by Go to, or by Aspirate or
 Dispense from it. They last until the program closes; a point to keep is a
-position (the jog panel's Positions). Marking moves nothing.
+saved position (`profile.positions`). Marking moves nothing.
 
 A point the tip cannot go to is said where it is made and shown in red,
 on the picture and in its Z (`Session.memo_problem`): the jog envelope's

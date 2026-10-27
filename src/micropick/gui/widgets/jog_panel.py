@@ -18,35 +18,21 @@ The arrows, Z Up / Down and the step carousel are `widgets.jog_pad.JogPad`
 (REDESIGN §3), the same everywhere. It only says what was pressed; this
 panel does what it did for its own buttons - the lease, the envelope,
 `run_job`. On a page with a picture (`show_position_on`) the pad floats
-over the picture's bottom-right corner, shown while this panel is, Move
-folded or not (folding is for the side panel's height); without one it
-sits in the Move section. Grayed while
-the robot is not free, the reason in each button's tooltip. Its steps are
-the controller's (`jog.DEFAULT_STEPS`).
+over the picture's bottom-right corner, shown while this panel is; without
+one it sits at the top of the panel. Grayed while the robot is not free,
+the reason in each button's tooltip. Its steps are the controller's
+(`jog.DEFAULT_STEPS`); its Undo step undoes the last of them.
 
-Two sections of it fold
------------------------
-Not every page that needs the panel needs all of it. Centering a marker is
-the pad and nothing else; the tip calibration usually drives to a stored
-position and never jogs at all; the check page wants the stored positions
-above everything. So Move and Positions are `theme.factory.Section`s and
-each page says which of them start folded, rather than four panels or one
-panel that guesses. A folded section is hidden, not merely empty, so it
-costs no height on a short screen.
-
-Positions are the profile's
----------------------------
-There was a second, parallel store: `JogController.saved`, in memory, with
-generated names, emptied on every disconnect - and beside it a "Remember in
-profile" button writing to `profile.positions`, which is what everything
-else reads. Two lists, one visible and one useful. The visible one is gone:
-this list is `profile.positions`, with its coordinates beside each name,
-and saving, renaming and deleting all write to the profile. `tip_calib`
-taught by the pipette calibration, or by the notebook, appears here and can
-be driven to, which is the point of having named a pose at all. What is
-saved here is a pipette point; the camera poses (`observe`, `tip_calib`:
-`position_marks.CAMERA_POSITIONS`) are only taught on their own pages, so
-saving or renaming to one of those names is refused.
+No sections
+-----------
+The old GUI's folded Move and Positions sections are gone (#27): nobody
+used the list of saved poses beside the pad, and the poses a page needs
+are set and gone to on that page (Robot setup's sheets). The saved
+positions are still the profile's, drawn on the picture's "points" layer
+(see the end of this note). The save key still names the pose and stores
+it in `profile.positions` - a pipette point; the camera poses (`observe`,
+`tip_calib`: `position_marks.CAMERA_POSITIONS`) are only taught on their
+own pages, so saving under one of those names is refused.
 
 `shortcut_host` is the widget the key bindings are registered on, normally the
 page. They are `WindowShortcut`: while the panel is on screen the keys reach
@@ -143,20 +129,18 @@ import re
 from dataclasses import replace
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QFontDatabase, QShortcut
+from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,
-                               QHBoxLayout, QInputDialog, QLabel, QLineEdit,
-                               QListWidget, QListWidgetItem, QMessageBox,
-                               QPlainTextEdit, QTextEdit, QVBoxLayout,
-                               QWidget)
+                               QHBoxLayout, QInputDialog, QLineEdit,
+                               QMessageBox, QPlainTextEdit, QTextEdit,
+                               QVBoxLayout, QWidget)
 
 from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
 from .. import keys
 from ..position_marks import CAMERA_POSITIONS, PositionMarks
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (Section, card, heading, primary_button,
-                             secondary_button)
+from ..theme.factory import card, heading, secondary_button
 from .jog_pad import JogPad
 
 # What the picture says while there is no robot to ask.
@@ -179,23 +163,10 @@ def _input_field(widget) -> QWidget | None:
     return None
 from ..workers import Worker
 
-__all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "SECTIONS", "HOME_TITLE",
+__all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "HOME_TITLE",
            "HOME_DETAIL", "home_robot", "view_move", "check_view_axes"]
 
 log = logging.getLogger(__name__)
-
-# The position's name rides on its row, so the text can carry coordinates
-# without the name having to be parsed back out of it.
-POSITION_ROLE = Qt.ItemDataRole.UserRole
-
-
-def _position_row(name: str, where) -> str:
-    return f"{name:<14} {where[0]:8.2f} {where[1]:8.2f} {where[2]:7.2f}"
-
-
-# Over the list, in the same columns as `_position_row`.
-POSITION_HEADER = f"{'':<14} {'X':>8} {'Y':>8} {'Z':>7}"
-
 
 def camera_name_refusal(name: str) -> str | None:
     """Why `name` cannot be given here, or None. A camera pose is taught on
@@ -226,9 +197,6 @@ def home_robot(robot) -> str:
 # its "x OUT by 0.30" for each axis out of the envelope.
 POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
 OUT = re.compile(r"\b([xyz]) OUT by ([\d.]+)")
-
-# The sections a page may ask to start folded, by name.
-SECTIONS = ("move", "positions")
 
 def action_id(key) -> str:
     """The `gui.keys` action of a `jog.LAYOUT` entry: "x+" for a move, the
@@ -329,26 +297,16 @@ class JogPanel(QWidget):
     def __init__(self, session: Session, *,
                  shortcut_host: QWidget | None = None,
                  machine_controls: bool = True,
-                 collapsed: tuple[str, ...] = (),
                  view_axes=None,
                  xy_only: bool = False,
                  parent: QWidget | None = None):
-        """`collapsed` names the sections that start folded; see SECTIONS.
-
-        A name that is not a section is a caller's typo rather than a new
-        section, so it is refused here instead of quietly doing nothing.
-
-        `view_axes`, a 2x2 matrix from picture pixels to robot XY, makes the
+        """`view_axes`, a 2x2 matrix from picture pixels to robot XY, makes the
         arrows move the tip as on a turned or mirrored picture; see "Arrows
         as on the picture". `set_view_axes` changes it later.
 
         `xy_only` hides Z and unbinds PgUp and PgDn; see "XY only".
         """
         super().__init__(parent)
-        unknown = [name for name in collapsed if name not in SECTIONS]
-        if unknown:
-            raise ValueError(f"no such jog panel section(s): "
-                             f"{', '.join(unknown)}; have {', '.join(SECTIONS)}")
         self.session = session
         self.controller: JogController | None = None
         self._worker: Worker | None = None
@@ -358,7 +316,6 @@ class JogPanel(QWidget):
         self._shortcuts: list[QShortcut] = []
         self._all_shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
-        self._collapsed = tuple(collapsed)
         self._status = NO_ROBOT
         self._message = ""
         self._job_moves = True
@@ -379,8 +336,7 @@ class JogPanel(QWidget):
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        column.addWidget(self._move_card())
-        column.addWidget(self._positions_card())
+        column.addWidget(self._make_pad())
         if machine_controls:
             # Off during a calibration: homing halfway through centering the
             # marker throws away the pose the whole sweep is planned around.
@@ -408,28 +364,17 @@ class JogPanel(QWidget):
 
     # -- construction --------------------------------------------------------
 
-    def _move_card(self) -> QWidget:
-        box = Section("Move", collapsed="move" in self._collapsed, parent=self)
-        self.move_section = box
-
+    def _make_pad(self) -> QWidget:
         self.pad = JogPad(steps=DEFAULT_STEPS,
-                          bindings=self.session.settings.keys, parent=box.body)
+                          bindings=self.session.settings.keys, parent=self)
         self.pad.jog.connect(self._move)
+        self.pad.undo.connect(lambda: self._command("undo"))
         self.pad.step_changed.connect(self._pad_step)
         self.pad.set_xy_only(self._xy_only)
-        box.body.layout().addWidget(self.pad)
-
-        # Undo belongs with the steps it undoes. It sat under Positions,
-        # where "Undo" beside a list of saved poses read as if it would undo
-        # the saving; here, next to the pad, and named for what it does.
-        self.undo_button = secondary_button("Undo step", self)
-        self.undo_button.setToolTip(
-            "Undo the last jog step.")
-        self.undo_button.clicked.connect(lambda: self._command("undo"))
-        self._movers.append(self.undo_button)
-        box.body.layout().addWidget(self.undo_button)
+        # Grayed with the pad's moves (`JogPad.set_enabled_reason`).
+        self.undo_button = self.pad.undo_button
         self._label_pad()
-        return box
+        return self.pad
 
     def _label_pad(self) -> None:
         """Each arrow's robot axis in its tooltip when the arrows mean the
@@ -442,59 +387,6 @@ class JogPanel(QWidget):
                 hints[action] = (f"Robot {'+' if direction > 0 else '-'}"
                                  f"{axis.upper()}.")
         self.pad.set_hints(hints)
-
-    def _positions_card(self) -> QWidget:
-        """The profile's named poses: what is stored, where, and how to go.
-
-        Double click drives to one, because that is what a list of places
-        invites; the button is there for anyone who does not try it.
-        """
-        box = Section("Positions", collapsed="positions" in self._collapsed,
-                      parent=self)
-        self.positions_section = box
-
-        fixed = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        header = QLabel(POSITION_HEADER, self)
-        header.setFont(fixed)
-        # The list's frame and its items' padding, so the letters sit over
-        # the numbers' last digits.
-        header.setContentsMargins(4, 0, 0, 0)
-        box.body.layout().addWidget(header)
-
-        self.saved = QListWidget(self)
-        # PageUp and PageDown belong to the Z axis on this page, and a list
-        # with focus would scroll on them instead.
-        self.saved.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.saved.setMinimumHeight(110)
-        self.saved.setFont(fixed)
-        self.saved.itemDoubleClicked.connect(lambda _item: self._goto())
-        self.saved.currentItemChanged.connect(lambda *_: self._refresh_buttons())
-        box.body.layout().addWidget(self.saved)
-
-        row = QHBoxLayout()
-        self.goto_button = secondary_button("Go to", self)
-        self.goto_button.clicked.connect(self._goto)
-        self.rename_button = secondary_button("Rename…", self)
-        self.rename_button.clicked.connect(self._rename)
-        self.delete_button = secondary_button("Delete", self)
-        self.delete_button.clicked.connect(self._delete)
-        for button in (self.goto_button, self.rename_button,
-                       self.delete_button):
-            row.addWidget(button)
-        self._movers.append(self.goto_button)
-        box.body.layout().addLayout(row)
-
-        self.remember_button = primary_button("Save this position…", self)
-        self.remember_button.setToolTip(
-            "Save the current position to the profile.")
-        self.remember_button.clicked.connect(self._remember)
-        self._movers.append(self.remember_button)
-        box.body.layout().addWidget(self.remember_button)
-
-        self.positions_note = QLabel()
-        self.positions_note.setWordWrap(True)
-        box.body.layout().addWidget(self.positions_note)
-        return box
 
     def _machine_card(self) -> QWidget:
         """Home and retract, kept apart from the jogging controls.
@@ -609,82 +501,6 @@ class JogPanel(QWidget):
         else:                                  # _check_layout rules this out
             raise RuntimeError(f"unhandled jog command {command!r}")
 
-    def _chosen_position(self) -> str | None:
-        item = self.saved.currentItem()
-        return None if item is None else item.data(POSITION_ROLE)
-
-    def _select_position(self, name: str) -> None:
-        """Leave the row for `name` chosen. After a rename or a save the
-        position the operator was working with is still the one in hand;
-        losing the selection there means the next click is on whatever the
-        sorting put in its place."""
-        for index in range(self.saved.count()):
-            if self.saved.item(index).data(POSITION_ROLE) == name:
-                self.saved.setCurrentRow(index)
-                return
-
-    def _goto(self) -> None:
-        name = self._chosen_position()
-        if name is None or self.controller is None or self._busy():
-            return
-        where = (self.session.profile.positions or {}).get(name)
-        if where is None:
-            return
-        why = self.session.motion.refused(where)
-        if why:
-            self._say(f"{name!r} is outside the soft limits: {why}", firm=True)
-            return
-        controller, motion = self.controller, self.session.motion
-
-        # Motion, not the controller's move_to: a pose taught at the top of
-        # Z is out of bounds for the robot, and one moveToCoordinates from
-        # wherever the tip is drags it across the deck. See
-        # `workflows.motion`.
-        def job():
-            motion.tip_to(where[:2], where[2])
-            return f"at {name!r}", controller.status()
-
-        self._run(Worker(job))
-
-    def _rename(self) -> None:
-        name = self._chosen_position()
-        if name is None or self.session.profile is None or self._busy():
-            return
-        new, ok = QInputDialog.getText(self, "Rename position",
-                                       f"New name for {name!r}:", text=name)
-        new = new.strip()
-        if not ok or not new or new == name:
-            return
-        why = camera_name_refusal(new)
-        if why is not None:
-            self._say(why, firm=True)
-            return
-        try:
-            self.session.rename_position(name, new)
-        except Exception as exc:                 # noqa: BLE001
-            self._say(str(exc), firm=True)
-            return
-        self._select_position(new)
-
-    def _delete(self) -> None:
-        name = self._chosen_position()
-        if name is None or self.session.profile is None or self._busy():
-            return
-        where = self.session.profile.positions.get(name, ())
-        answer = QMessageBox.question(
-            self, "Delete position",
-            f"Delete {name!r} "
-            f"({', '.join(f'{v:.2f}' for v in where)}) from profile "
-            f"{self.session.profile.name!r}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self.session.forget(name)
-        except Exception as exc:                 # noqa: BLE001
-            self._say(str(exc), firm=True)
-
     def _remember(self) -> None:
         if self.controller is None or self._busy():
             return
@@ -708,9 +524,6 @@ class JogPanel(QWidget):
             return None, controller.status()
 
         self._run(Worker(job), moves=False, robot_work=False)
-        # The pose just saved is the one in hand; Go to should need no
-        # further aiming.
-        self._select_position(name)
 
     def _home(self) -> None:
         if not self._confirm(HOME_TITLE, HOME_DETAIL):
@@ -886,7 +699,6 @@ class JogPanel(QWidget):
             return
         result, status = payload
         self._set_status(status)
-        self._refresh_saved()
         then, self._then = self._then, None
         if then is not None:
             result = then(result)
@@ -939,7 +751,7 @@ class JogPanel(QWidget):
 
     def _sync_pad(self) -> None:
         """Over the picture, the pad is shown while this panel is; in the
-        Move section it simply goes with it."""
+        panel it simply goes with it."""
         if self._pad_view is None:
             return
         self.pad.setVisible(self.isVisible())
@@ -1089,31 +901,9 @@ class JogPanel(QWidget):
         if self.controller is not None:
             self.controller.step = mm
 
-    def _refresh_saved(self) -> None:
-        """The profile's positions, name and coordinates, selection kept."""
-        profile = self.session.profile
-        positions = dict(profile.positions) if profile is not None else {}
-        rows = [(name, positions[name]) for name in sorted(positions)]
-        wanted = [_position_row(name, where) for name, where in rows]
-        if [self.saved.item(i).text() for i in range(self.saved.count())] == wanted:
-            return
-        chosen = self._chosen_position()
-        self.saved.clear()
-        for (name, where), text in zip(rows, wanted):
-            item = QListWidgetItem(text)
-            item.setData(POSITION_ROLE, name)
-            self.saved.addItem(item)
-            if name == chosen:
-                self.saved.setCurrentItem(item)
-        self.positions_note.setText(
-            "" if rows else
-            "No saved positions.")
-
     def _on_profile_changed(self, _profile) -> None:
         if self.controller is not None:
             self.controller.limits = self.session.motion.envelope
-        self._refresh_saved()
-        self._refresh_buttons()
 
     def _on_tip_changed(self, _tip) -> None:
         """Another tip, or none: the Z top follows it (`Motion.envelope`),
@@ -1133,9 +923,6 @@ class JogPanel(QWidget):
             self._status = NO_ROBOT
             self._say("")
             self._set_enabled(False)
-            # The list outlives the connection: it is the profile's, and
-            # tidying it up is exactly what happens with the robot off.
-            self._refresh_saved()
             return
 
         self.controller = JogController(robot,
@@ -1143,10 +930,6 @@ class JogPanel(QWidget):
                                         steps=list(DEFAULT_STEPS),
                                         step=self.pad.step)
         self._set_enabled(True)
-        # Now, not when the first pose read comes back: the list is the
-        # profile's and needs no robot, and an empty one for the second it
-        # takes to answer is a list that looks lost.
-        self._refresh_saved()
         # The first pose read is HTTP like any other.
         controller = self.controller
         self._run(Worker(lambda: (None, controller.status())),
@@ -1192,18 +975,6 @@ class JogPanel(QWidget):
                                 and not (self._xy_only
                                          and shortcut in self._z_shortcuts))
         self._enabled = usable
-        self._refresh_buttons()
-
-    def _refresh_buttons(self) -> None:
-        """The three that need a position chosen, and not only a robot."""
-        chosen = self._chosen_position() is not None
-        usable = getattr(self, "_enabled", False)
-        self.goto_button.setEnabled(usable and chosen)
-        # Renaming and deleting touch the profile, not the robot: they work
-        # with nothing connected, which is when tidying up happens.
-        editable = self.session.profile is not None and not self._busy()
-        self.rename_button.setEnabled(editable and chosen)
-        self.delete_button.setEnabled(editable and chosen)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)

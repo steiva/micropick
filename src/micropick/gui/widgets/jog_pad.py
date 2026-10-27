@@ -3,9 +3,10 @@
 XY arrows and Z Up / Down, all one size, labeled "XY" and "Z"; over them
 the step size as a carousel - three sizes in view, ‹ › to slide - and a
 **Keys** toggle that puts each button's key on it as a keycap, so the
-shortcuts are learned from the buttons (§1.9).
+shortcuts are learned from the buttons (§1.9). Beside Keys, **Undo step**:
+it undoes the last step, so it sits with the steps.
 
-Only the face. It emits `jog(axis, sign)` and `step_changed(mm)`; what a
+Only the face. It emits `jog(axis, sign)`, `undo()` and `step_changed(mm)`; what a
 step does - the robot's lease, the jog envelope, the travel height - stays
 `JogPanel`'s (`run_job`), which drives this pad the way it drove its own
 buttons. The keycaps name the keys as bound (`gui.keys`), so a key rebound
@@ -180,6 +181,7 @@ class StepCarousel(QWidget):
 
 class JogPad(QFrame):
     jog = Signal(str, int)          # axis "x" / "y" / "z", sign +1 / -1
+    undo = Signal()                 # Undo step
     step_changed = Signal(float)
 
     def __init__(self, *, steps=STEPS, step: float = 1.0,
@@ -198,6 +200,13 @@ class JogPad(QFrame):
         title = QLabel("MOVE THE ROBOT", self)
         title.setObjectName("caption")
         head.addWidget(title, 1)
+        self.undo_button = QPushButton("Undo step", self)
+        self.undo_button.setObjectName("secondary")
+        self.undo_button.setProperty("compact", True)
+        self.undo_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.undo_button.setToolTip("Undo the last jog step.")
+        self.undo_button.clicked.connect(self.undo)
+        head.addWidget(self.undo_button)
         self.keys = QPushButton("Keys", self)
         self.keys.setObjectName("secondary")
         self.keys.setProperty("compact", True)
@@ -335,6 +344,9 @@ class JogPad(QFrame):
         for button in self.buttons.values():
             button.setEnabled(enabled)
             button.setToolTip(button.hint if enabled else reason)
+        self.undo_button.setEnabled(enabled)
+        self.undo_button.setToolTip("Undo the last jog step." if enabled
+                                    else reason)
 
 
 def _keycap(bindings: dict, action: str) -> str:

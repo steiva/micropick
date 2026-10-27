@@ -165,10 +165,12 @@ its holder in `RUNS` and gives its page a `run_activity`.
 Every jog panel's face is the `widgets.jog_pad.JogPad` (XY arrows, Z Up /
 Down, the step carousel of `jog.DEFAULT_STEPS`, the one list of step
 sizes): it floats over the picture's bottom-right
-(`CameraView.add_corner_widget`) while its panel is shown (Move folded
-or not), and only says what was pressed - the panel moves as before
-(lease, envelope, `run_job`), the pad grayed with the reason while the
-robot is not free. There is no keys box: the pad's Keys toggle (H) puts
+(`CameraView.add_corner_widget`) while its panel is shown, and only
+says what was pressed - the panel moves as before (lease, envelope,
+`run_job`), the pad grayed with the reason while the robot is not free.
+Undo step is on the pad. A jog panel has no Move or Positions section
+(removed, #27; do not bring them back): saved positions are drawn on the
+picture's "points" layer (`show_position_on`) and set on their own pages. There is no keys box: the pad's Keys toggle (H) puts
 the keys as bound on its buttons and lists the step keys, the panel's
 other keys and the page's own (`add_help`) under it. A key added to a page
 belongs in that list too; what the mouse does goes in the picture's mouse
@@ -454,7 +456,7 @@ one open at a time - Cuboid sizes (the histogram whose window is dragged
 and saved like the settings' Save, the pickup line, More settings, All
 measures: `widgets.cuboid_stats`) before a run, Plate · slot N (mini
 `PlateGrid`, Filled / Planned, current well ringed) during it - then Save
-pickup clips and the jog panel, folded. After a run that left wells of
+pickup clips and the jog panel (its pad over the picture). After a run that left wells of
 the plan short, "N wells were not filled" with Finish by hand
 (`Session.task_requested`: Manual pick's Work, Dispense on In a well and
 the first of them). The positions are Robot setup's.

@@ -19,7 +19,8 @@ On the right, top to bottom and with no scrolling:
    ringed.
 
 One card is open at a time: Sizes before a run, Plate during it. Under
-them Save pickup clips, and the jog panel last, folded.
+them Save pickup clips, and the jog panel last (its pad floats over the
+picture).
 
 The footer is the run's status (`run_status`, `footer_buttons`, read by
 the shell): a CAPS tag - READY, PICKING, PAUSED, WAITING FOR YOU, DONE,
@@ -399,7 +400,7 @@ class PickingPage(QWidget):
     def _jog_section(self) -> QWidget:
         self.jog = JogPanel(self.session, shortcut_host=self,
                             machine_controls=False,
-                            collapsed=("move", "positions"), parent=self)
+                            parent=self)
         self.jog.show_position_on(self.view)
         self.jog.add_help([f"{key.lower()}   {what}"
                            for key, what, _ in KEYS])
