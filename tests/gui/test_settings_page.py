@@ -231,6 +231,9 @@ def test_connect_goes_to_the_saved_address_or_the_command_lines(
             raise ConnectionError("no robot in a test")
 
     monkeypatch.setattr(ot2_api, "OpentronsAPI", Refusing)
+    # The clock is set over the network too, and no robot answers here.
+    monkeypatch.setattr("micropick.gui.session.robot_clock.sync_clock",
+                        lambda api: "clock not set in a test")
     for options, url in ((Options(), "http://10.0.0.5:31951"),
                          (Options(robot_host="192.168.1.9:31950"),
                           "http://192.168.1.9:31950")):
