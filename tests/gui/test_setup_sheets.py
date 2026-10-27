@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
-from micropick.core.deck import slot_center                      # noqa: E402
+from micropick.core.deck import nearest_slot, slot_center        # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
 from micropick.hardware.protocols import xyz                     # noqa: E402
@@ -387,7 +387,8 @@ def test_a_saved_position_is_on_top_and_go_to_marks_the_steps(app, window):
     _open(window, "calibration_position")
     sheet = window.position_sheet
     assert not sheet.saved_line.isHidden()
-    assert sheet.saved_line.text().startswith("Saved: slot ")
+    # No slot was chosen for it: the slot is the nearest, a guess.
+    assert sheet.saved_line.text().startswith("Saved: ≈ slot ")
     assert not sheet.goto_button.isHidden()
     assert not sheet.save_button.isEnabled()
     _wait(app, lambda: sheet.goto_button.isEnabled())
@@ -399,6 +400,12 @@ def test_a_saved_position_is_on_top_and_go_to_marks_the_steps(app, window):
     _wait(app, lambda: sheet.save_button.isEnabled())
     assert [mark for _, mark in _steps(sheet)] == [
         "ok", "ok", "ok", "todo"]
+    # The slot it is over is marked on the deck, as the nearest one.
+    slot = nearest_slot(x + 10.0, y)
+    assert sheet.slots.marked == slot
+    sheet.save_button.click()
+    _wait(app, lambda: sheet.saved_note.text().startswith("Saved:"))
+    assert sheet.saved_note.text().startswith(f"Saved: ≈ slot {slot} · X ")
 
 
 def test_a_position_not_saved_has_no_line_on_top(app, window):

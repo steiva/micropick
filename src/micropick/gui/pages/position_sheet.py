@@ -45,7 +45,9 @@ theirs: the lower camera while the tip is measured.
 **Save position** is the only thing that stores: where the robot is,
 read from it through the jog panel's `run_job`, under the position's
 stored name (`Session.remember`), then "Saved: slot N · X Y Z" - the
-slot chosen on the mini deck, else the nearest. **Done** and × only
+slot clicked on the mini deck, else "≈ slot N", the nearest, as Robot
+setup's rows say it. Go to saved position marks that nearest slot on the
+mini deck. **Done** and × only
 close: closing without Save stores nothing and asks nothing.
 
 A position already saved shows its line on top and **Go to saved
@@ -66,7 +68,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QFrame, QLabel, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from ...config.labware import (LabwareError, local_definitions,
                                resolve_definition, shared_definitions)
@@ -77,9 +80,8 @@ from ..camera_moves import move_over_slot, move_tip_to_pixel, move_to_pixel
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
-from ..theme.factory import muted_label, primary_button, quiet_button, \
-    scroll_column, select
-from .calibration_pipette import TipCalibrationBlock, TipOnBlock
+from ..theme.factory import (muted_label, primary_button, quiet_button,
+                             scroll_column, select)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import ZOOM_AND_PAN, CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
@@ -89,6 +91,7 @@ from ..widgets.overlays import SheetWindow
 from ..widgets.slot_chooser import SlotChooser
 from ..widgets.step_card import StepCard, wrapped
 from ..workers import describe_error
+from .calibration_pipette import TipCalibrationBlock, TipOnBlock
 
 __all__ = ["Built", "PositionSheet", "SHAKE_HOLDER", "STEPS", "Step",
            "saved_text", "tip_box_types"]
@@ -179,11 +182,12 @@ STEPS: dict[str, tuple[Step, ...]] = {
 
 
 def saved_text(pose, slot: int | None = None) -> str:
-    """`Saved: slot 8 · X 245.1 Y 132.4 Z 80.0`; the slot nearest the pose
-    unless `slot` is given."""
+    """`Saved: slot 8 · X 245.1 Y 132.4 Z 80.0` for the slot clicked; with
+    none, `Saved: ≈ slot 8 · …`, the slot nearest the pose."""
     x, y, z = pose
-    slot = nearest_slot(x, y) if slot is None else slot
-    return f"Saved: slot {slot} · X {x:.1f} Y {y:.1f} Z {z:.1f}"
+    where = (f"≈ slot {nearest_slot(x, y)}" if slot is None
+             else f"slot {slot}")
+    return f"Saved: {where} · X {x:.1f} Y {y:.1f} Z {z:.1f}"
 
 
 @functools.lru_cache(maxsize=1)
@@ -241,12 +245,14 @@ class PositionSheet(SheetWindow):
         self.steps: tuple[Step, ...] = ()
         self.step = 0
         self.cards: dict[str, StepCard] = {}
-        self.buttons: dict = {}
+        self.buttons: dict[str, QPushButton] = {}
         self._built: list[Built] = []
         self._refreshing = False
         self.slots: SlotChooser | None = None
         self.save_button = None
         self.saved_note: QLabel | None = None
+        # The slot marked is the nearest to a pose gone to, not one clicked.
+        self._slot_guessed = False
         # Kind -> fn(step, number) -> Built. A step list with kinds of its
         # own (the shake position's tip box, tip, ...) adds builders here.
         self.builders: dict[str, Callable[[Step, int], Built]] = {
@@ -354,6 +360,7 @@ class PositionSheet(SheetWindow):
         self.steps, self.step = steps, 0
         self.cards, self.buttons, self._built = {}, {}, []
         self.slots = self.save_button = self.saved_note = None
+        self._slot_guessed = False
         self.tipbox_type = self.tipbox_slots = self.tipbox_line = None
         for number, step in enumerate(steps, start=1):
             built = self.builders[step.kind](step, number)
@@ -541,6 +548,7 @@ class PositionSheet(SheetWindow):
 
         def moved(said):
             self.slots.set_marked(slot)
+            self._slot_guessed = False
             self.next_step(key)
             return said
 
@@ -573,7 +581,8 @@ class PositionSheet(SheetWindow):
 
     def _goto(self) -> None:
         """Back to the stored pose, no higher than the travel height; the
-        steps before Save are then done."""
+        steps before Save are then done, and the slot nearest the pose is
+        marked on the mini deck - a guess, said as "≈ slot N"."""
         where = self._stored()
         if where is None:
             return
@@ -584,6 +593,9 @@ class PositionSheet(SheetWindow):
             return "At the saved position."
 
         def there(said):
+            if self.slots is not None:
+                self.slots.set_marked(nearest_slot(*where[:2]))
+                self._slot_guessed = True
             self.step = max(self.step, len(self.steps) - 1)
             self._refresh()
             return said
@@ -610,7 +622,9 @@ class PositionSheet(SheetWindow):
                 self.saved_note.setText(said)
             self.said.emit(said)
             return said
-        marked = self.slots.marked if self.slots is not None else None
+        marked = (self.slots.marked
+                  if self.slots is not None and not self._slot_guessed
+                  else None)
         said = saved_text(pose, marked)
         log.info("%s saved: %s", self.name, said)
         if self.saved_note is not None:
