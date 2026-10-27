@@ -1,11 +1,11 @@
-"""The jog panel's positions are the profile's, and its sections fold.
+"""The jog panel has no Move or Positions section; the saved positions are
+the profile's and are drawn on the picture's "points" layer.
 
-Offscreen, with a mock session. What is checked is the part that used to be
-two stores pretending to be one: saving, renaming, deleting and driving to a
-named pose all go to `profile.positions`, and the list shows what is there.
+Offscreen, with a mock session.
 """
 
 import os
+import time
 
 import pytest
 
@@ -13,12 +13,15 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication                       # noqa: E402
+from PySide6.QtWidgets import (QApplication, QListWidget,        # noqa: E402
+                               QWidget)
 
 from micropick.gui.app import Options                            # noqa: E402
+from micropick.gui.position_marks import PositionMarks           # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
-from micropick.gui.widgets.jog_panel import (POSITION_ROLE,      # noqa: E402
-                                             SECTIONS, JogPanel)
+from micropick.gui.theme.factory import Section                  # noqa: E402
+from micropick.gui.widgets.camera_view import CameraView         # noqa: E402
+from micropick.gui.widgets.jog_panel import JogPanel             # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -37,41 +40,40 @@ def session(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
-def rows(panel):
-    return [panel.saved.item(i).data(POSITION_ROLE)
-            for i in range(panel.saved.count())]
+def _settle(app, panel):
+    deadline = time.monotonic() + 10
+    while panel.busy and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    app.processEvents()
 
 
-def test_the_list_is_the_profiles_positions(app, session):
-    session.profile.positions.clear()
+def test_the_panel_has_no_move_or_positions_section(app, session):
     panel = JogPanel(session)
-    assert rows(panel) == []
-    session.remember("dish", (10.0, 20.0, 30.0))
-    session.remember("plate", (40.0, 50.0, 60.0))
-    assert rows(panel) == ["dish", "plate"]
-    # The coordinates are on the row, which is the whole reason a name is
-    # worth having: "dish" alone says nothing about where it is.
-    assert "10.00" in panel.saved.item(0).text()
-    assert "30.00" in panel.saved.item(0).text()
+    assert panel.findChildren(Section) == []
+    # The list of saved positions is gone with its section.
+    assert panel.findChildren(QListWidget) == []
+    # The pad is still the panel's, outside any folding section.
+    assert panel.isAncestorOf(panel.pad)
     panel.deleteLater()
 
 
-def test_rename_and_delete_go_to_the_profile(app, session, tmp_path):
-    import json
-    session.profile.positions.clear()
+def test_no_page_can_ask_for_a_folded_section(app, session):
+    with pytest.raises(TypeError):
+        JogPanel(session, collapsed=("positions",))
+
+
+def test_the_points_layer_follows_the_panels_pose(app, session):
     session.remember("dish", (10.0, 20.0, 30.0))
-    panel = JogPanel(session)
-    panel.saved.setCurrentRow(0)
-
-    session.rename_position("dish", "dish A")
-    assert rows(panel) == ["dish A"]
-    on_disk = json.loads((session.profile.path / "positions.json").read_text())
-    assert on_disk == {"dish A": [10.0, 20.0, 30.0]}
-
-    session.forget("dish A")
-    assert rows(panel) == []
-    assert json.loads((session.profile.path / "positions.json").read_text()) == {}
-    panel.deleteLater()
+    host = QWidget()
+    view = CameraView(host)
+    panel = JogPanel(session, shortcut_host=host, parent=host)
+    panel.show_position_on(view)
+    _settle(app, panel)
+    marks = PositionMarks.on(session, view)
+    assert panel.pose is not None
+    assert marks.pose == panel.pose
+    host.deleteLater()
 
 
 def test_rename_refuses_to_collide(app, session):
@@ -81,87 +83,3 @@ def test_rename_refuses_to_collide(app, session):
     with pytest.raises(Exception, match="already has a position"):
         session.rename_position("a", "b")
     assert session.profile.positions["a"] == (1.0, 2.0, 3.0)
-
-
-def test_go_to_drives_to_the_named_pose(app, session):
-    session.profile.positions.clear()
-    session.remember("corner", (30.0, 40.0, 80.0))
-    panel = JogPanel(session)
-    panel.saved.setCurrentRow(0)
-    assert panel._chosen_position() == "corner"
-    # Straight to the controller, without the worker: what is being checked
-    # is that the pose comes from the profile.
-    panel.controller.move_to(session.profile.positions["corner"])
-    assert tuple(round(v, 2) for v in panel.controller.position) == (30.0, 40.0, 80.0)
-    panel.deleteLater()
-
-
-def _settle(app, panel):
-    import time
-    deadline = time.monotonic() + 10
-    while panel.busy and time.monotonic() < deadline:
-        app.processEvents()
-        time.sleep(0.01)
-    app.processEvents()
-
-
-def test_go_to_retracts_only_when_the_tip_is_below_the_travel_height(app,
-                                                                     session):
-    # The mock retracts to 100, so the travel height is 99.
-    session.profile.positions.clear()
-    session.remember("a", (30.0, 40.0, 99.0))
-    session.remember("b", (60.0, 70.0, 99.0))
-    session.remember("low", (60.0, 70.0, 20.0))
-    panel = JogPanel(session)
-    _settle(app, panel)                      # its first read of the pose
-    robot = session.robot
-
-    def go(name):
-        before = robot.calls.count(("retract_axis", "leftZ"))
-        panel._select_position(name)
-        panel._goto()
-        _settle(app, panel)
-        return robot.calls.count(("retract_axis", "leftZ")) - before
-
-    assert go("a") == 1                      # the top is not known yet
-    assert go("b") == 0                      # already at the travel height
-    assert go("low") == 0
-    assert go("a") == 1                      # from 20 mm: up first
-    assert tuple(round(v, 1) for v in panel.controller.position) == (30.0, 40.0, 99.0)
-    panel.deleteLater()
-
-
-def test_the_positions_outlive_the_robot(app, session):
-    session.profile.positions.clear()
-    session.remember("kept", (1.0, 2.0, 3.0))
-    panel = JogPanel(session)
-    session.disconnect_robot()
-    app.processEvents()
-    # The old in-memory list emptied here, which is what made it useless.
-    assert rows(panel) == ["kept"]
-    panel.deleteLater()
-
-
-def test_sections_fold_and_the_names_are_checked(app, session):
-    panel = JogPanel(session, collapsed=("positions",))
-    assert not panel.move_section.collapsed
-    assert panel.positions_section.collapsed
-    assert panel.positions_section.body.isHidden()
-    panel.positions_section.toggle.click()
-    assert not panel.positions_section.collapsed
-    assert not panel.positions_section.body.isHidden()
-    panel.deleteLater()
-
-    both = JogPanel(session, collapsed=SECTIONS)
-    assert both.move_section.collapsed and both.positions_section.collapsed
-    both.deleteLater()
-
-    with pytest.raises(ValueError, match="no such jog panel section"):
-        JogPanel(session, collapsed=("moove",))
-
-
-def test_undo_is_with_the_steps_it_undoes(app, session):
-    panel = JogPanel(session)
-    # It sat under Positions, where it read as undoing a save.
-    assert panel.undo_button.parent() is panel.move_section.body
-    panel.deleteLater()

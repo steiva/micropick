@@ -120,3 +120,31 @@ def test_the_pads_key_list_has_the_pages_keys(app, shown):
     panel.add_help(["A   aspirate"])
     assert any("aspirate" in line for line in panel.help_lines)
     assert any("aspirate" in line for line in panel.pad.key_lines)
+
+
+def test_undo_step_on_the_pad_undoes_the_last_jog_step(app, session, shown):
+    _host, _view, panel = shown
+    panel.pad.set_step(2, emit=True)
+    before = session.robot.get_position()[0]
+    panel.pad.buttons["x+"].click()
+    _settled(app, panel)
+    assert session.robot.get_position()[0]["x"] == pytest.approx(
+        before["x"] + 2, abs=0.05)
+    assert panel.pad.undo_button.text() == "Undo step"
+    panel.pad.undo_button.click()
+    _settled(app, panel)
+    after = session.robot.get_position()[0]
+    assert after["x"] == pytest.approx(before["x"], abs=0.05)
+
+
+def test_undo_step_is_grayed_while_the_robot_is_held(app, session, shown):
+    _host, _view, panel = shown
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        app.processEvents()
+        assert not panel.pad.undo_button.isEnabled()
+        assert "picking run" in panel.pad.undo_button.toolTip()
+    finally:
+        lease.release()
+    app.processEvents()
+    assert panel.pad.undo_button.isEnabled()

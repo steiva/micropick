@@ -97,7 +97,7 @@ class PositionSheet(SheetWindow):
 
         self.view = CameraView(self.body_widget)
         self.jog = JogPanel(session, shortcut_host=self,
-                            machine_controls=False, collapsed=("positions",),
+                            machine_controls=False,
                             parent=self.body_widget)
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(ZOOM_AND_PAN)

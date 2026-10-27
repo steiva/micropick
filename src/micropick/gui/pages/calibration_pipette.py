@@ -463,11 +463,10 @@ class TipCalibrationBlock(QObject):
         self.tune_step = StepCard(box, 4, "Fine-tune by hand")
         self.tune_text = wrapped()
         self.tune_step.add(self.tune_text)
-        # XY only: a Z step here pushes the tip into the disc. Positions
-        # folded: nothing here is a place to return to.
+        # XY only: a Z step here pushes the tip into the disc.
         self.touch_jog = JogPanel(self.session, shortcut_host=parent,
                                   machine_controls=False,
-                                  collapsed=("positions",), xy_only=True,
+                                  xy_only=True,
                                   parent=self.tune_step.box)
         self.touch_jog.show_position_on(self.view)
         self.touch_jog.hide()
@@ -940,7 +939,7 @@ class PipetteCalibration(QWidget):
         self.view = CameraView(self)
         self.jog = JogPanel(self.session, shortcut_host=self,
                             machine_controls=False,
-                            collapsed=("positions",), parent=self)
+                            parent=self)
         self.jog.show_position_on(self.view)
         self.calibration = TipCalibrationBlock(session, self.jog, self.view,
                                                parent=self)
