@@ -154,8 +154,10 @@ CAPTION_GAP = 6
 MOUSE_SPLIT = "   "
 MOUSE_WHAT = QColor(235, 235, 235, 170)
 MOUSE_GAP = 22
-# What the mouse does on any picture, until a page says otherwise.
-MOUSE_HELP = ("Wheel   zoom", "Middle-drag   pan", "Double-click   fit")
+# What the mouse does on any picture, until a page says otherwise; a page
+# with clicks of its own puts them before ZOOM_AND_PAN.
+ZOOM_AND_PAN = ("Wheel   zoom", "Middle-drag   pan")
+MOUSE_HELP = (*ZOOM_AND_PAN, "Double-click   fit")
 # The axes box: arrow length, the margin around the arrows and their
 # letters, and a colour per axis - red and green, as X and Y are drawn in
 # most software that draws them.
@@ -609,10 +611,14 @@ class CameraView(QWidget):
         if self.width() < 2 * width or self.height() < 2 * height:
             return None                           # no room on a small view
         mouse = self._mouse_rect()
-        bottom = (mouse.top() - 4 if mouse is not None
-                  else self.focus_row.geometry().top() - 8
-                  if self.focus_row.isVisible() else self.height() - 8)
+        bottom = mouse.top() - 4 if mouse is not None else self._free_bottom()
         return QRect(8, bottom - height, width, height)
+
+    def _free_bottom(self) -> int:
+        """The lowest y a box in the bottom-left corner may reach: over the
+        focus row while it is shown."""
+        return (self.focus_row.geometry().top() - 8
+                if self.focus_row.isVisible() else self.height() - 8)
 
     def add_corner_widget(self, widget: QWidget) -> None:
         """Float `widget` over the picture's bottom-right corner, at its own
@@ -1254,9 +1260,8 @@ class CameraView(QWidget):
         if not self._mouse_help:
             return None
         height = QFontMetrics(QFont(self.font().family(), 9)).height() + 8
-        bottom = (self.focus_row.geometry().top() - 8
-                  if self.focus_row.isVisible() else self.height() - 8)
-        return QRect(8, bottom - height, self.width() - 16, height)
+        return QRect(8, self._free_bottom() - height, self.width() - 16,
+                     height)
 
     def _draw_mouse_help(self, painter: QPainter) -> None:
         """One quiet row, "Wheel zoom   Middle-drag pan", on a translucent

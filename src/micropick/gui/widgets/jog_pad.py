@@ -188,11 +188,11 @@ class JogPad(QFrame):
         pads.addLayout(z)
         column.addLayout(pads)
 
-        self.step_keys = QLabel(self)
-        self.step_keys.setObjectName("faint")
-        self.step_keys.setTextFormat(Qt.TextFormat.RichText)
-        self.step_keys.hide()
-        column.addWidget(self.step_keys)
+        self.key_list = QLabel(self)
+        self.key_list.setObjectName("faint")
+        self.key_list.setTextFormat(Qt.TextFormat.RichText)
+        self.key_list.hide()
+        column.addWidget(self.key_list)
         # Whatever the toggle: the keys are a field's for now.
         self.note = QLabel(self)
         self.note.setObjectName("faint")
@@ -276,14 +276,14 @@ class JogPad(QFrame):
             rows.append(f'<span style="color:{ink}">{escape(keys.strip())}'
                         f'</span> {escape(what.strip())}' if sep
                         else escape(line))
-        self.step_keys.setText("<br>".join(rows))
+        self.key_list.setText("<br>".join(rows))
         self._show_keys(self.keys.isChecked())
 
     def _show_keys(self, on: bool) -> None:
         for action, button in self.buttons.items():
             button.keycap = _keycap(self._bindings, action) if on else ""
             button.update()
-        self.step_keys.setVisible(on)
+        self.key_list.setVisible(on)
 
     def set_xy_only(self, on: bool) -> None:
         for action in ("z+", "z-"):

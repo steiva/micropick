@@ -130,8 +130,8 @@ its holder in `RUNS` and gives its page a `run_activity`.
 Every jog panel's face is the `widgets.jog_pad.JogPad` (XY arrows, Z Up /
 Down, the step carousel of `jog.DEFAULT_STEPS`, the one list of step
 sizes): it floats over the picture's bottom-right
-(`CameraView.add_corner_widget`) while its panel and Move section are
-shown, and only says what was pressed - the panel moves as before
+(`CameraView.add_corner_widget`) while its panel is shown (Move folded
+or not), and only says what was pressed - the panel moves as before
 (lease, envelope, `run_job`), the pad grayed with the reason while the
 robot is not free. There is no keys box: the pad's Keys toggle (H) puts
 the keys as bound on its buttons and lists the step keys, the panel's

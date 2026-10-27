@@ -1260,9 +1260,9 @@ cameras.
 - [ ] **The pad is over the picture.**
   Manual control, Liquid handling, the camera calibration sheet's centering
   step, the tip calibration: MOVE THE ROBOT at the picture's bottom-right,
-  XY arrows, Up / Down, Step ‹ 0.5 1 2 ›. Picking: no pad until its Move
-  section is unfolded. Expected failure if wrong: two pads on one picture,
-  or a pad left over another page.
+  XY arrows, Up / Down, Step ‹ 0.5 1 2 ›; on Picking too, with Move folded.
+  Expected failure if wrong: two pads on one picture, or a pad left over
+  another page.
 
 - [ ] **A press moves one step.**
   At step 1 each arrow moves 1 mm, Up / Down 1 mm in Z; ‹ › and + / - walk
@@ -1272,7 +1272,8 @@ cameras.
 
 - [ ] **Gray while the robot is busy.**
   Start a liquid run: the pad's arrows are gray, the tooltip "Robot busy:
-  liquid run." Lock: gray too.
+  liquid run." During a long Go to the tooltip names that move. Lock: gray
+  too.
 
 - [ ] **Keys.**
   Keys (or H): ← ↑ → ↓ PgUp PgDn on the buttons, the step keys, Space, U,

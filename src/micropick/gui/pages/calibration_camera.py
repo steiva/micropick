@@ -80,7 +80,7 @@ from ..theme import SPACING
 from ..theme.factory import (muted_label, primary_button, quiet_button,
                              scroll_column, select)
 from ..widgets.banner import Banner
-from ..widgets.camera_view import CameraView
+from ..widgets.camera_view import ZOOM_AND_PAN, CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
@@ -245,7 +245,7 @@ class CameraCalibrationSheet(SheetWindow):
                             parent=self.body_widget)
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(["Click   center the camera there",
-                                  "Wheel   zoom", "Middle-drag   pan"])
+                                  *ZOOM_AND_PAN])
         self.view.clicked.connect(self._clicked)
 
         column = QWidget(self.body_widget)

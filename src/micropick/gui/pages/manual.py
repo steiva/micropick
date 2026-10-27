@@ -140,7 +140,7 @@ from ..theme.factory import (Section, card, combo_box, double_spin_box,
                              heading, primary_button, scroll_column,
                              secondary_button)
 from ..tip_detector import load_tip_detector
-from ..widgets.camera_view import CameraView
+from ..widgets.camera_view import ZOOM_AND_PAN, CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.deck_view import DeckView
 from ..widgets.feed_row import FeedRow
@@ -178,7 +178,7 @@ VOLUME_RANGE = (0.1, 1000.0)
 FLOW_RANGE = (0.1, 1000.0)
 
 # (action in `gui.keys`, what it does, handler name). One list, so the
-# picture's key box cannot offer a key that is not bound.
+# jog pad's key list cannot offer a key that is not bound.
 KEYS = (("aspirate", "aspirate", "_aspirate"),
         ("dispense", "dispense", "_dispense"))
 
@@ -193,8 +193,7 @@ LOWER_CAMERA_NOTE = "lower camera: clicks do not mark or move"
 
 # What the mouse does on the picture, its row along the bottom.
 MOUSE_HELP = ("Click   mark a point (Mark points on)",
-              "Double-click   move there (Click to move on)",
-              "Wheel   zoom", "Middle-drag   pan")
+              "Double-click   move there (Click to move on)", *ZOOM_AND_PAN)
 
 
 def _number_box(parent: QWidget, value: float, span, suffix: str,
@@ -1471,7 +1470,7 @@ class ManualPage(QWidget):
         # Disarmed on every entry, however it was left.
         self.armed.setChecked(False)
         # Jogging is done by eye through this camera; without it the page is
-        # a D-pad and a blank rectangle.
+        # a jog pad over a blank rectangle.
         self.opener.ensure(self.session.upper_camera_label)
         self._refresh_cameras()
 
