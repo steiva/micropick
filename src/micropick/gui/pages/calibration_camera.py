@@ -238,7 +238,7 @@ class CameraCalibrationSheet(SheetWindow):
         # No Home and no Retract here: homing halfway through centering the
         # marker throws away the pose the sweep is about to be planned around.
         self.jog = JogPanel(session, shortcut_host=self,
-                            machine_controls=False, collapsed=("positions",),
+                            machine_controls=False,
                             parent=self.body_widget)
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(["Click   center the camera there",

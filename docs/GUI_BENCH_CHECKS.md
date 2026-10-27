@@ -596,17 +596,10 @@ static until the session owns them.
   Driving to it from here should put the disc back under the camera - the
   same place "Go there" on the pipette tab goes.
 
-- [ ] **The check page can get back to the crosshairs.**
-  Detect, click a crosshair with "Click to move" on, look at the tip over
-  it. The crosshairs are now out of the camera's view, as they must be.
-  Double click the stored pose in Positions: the gantry returns and Detect
-  finds them again.
-
-- [ ] **The panels fold where they should.**
-  The pipette tab's step 1 shows Move and Positions folded; the camera
-  tab's step 1 shows Move open and Positions folded; the check tab the
-  other way round. Each opens on its triangle and stays open while the page
-  does.
+- [ ] **No Move or Positions section.**
+  No jog panel, on any page or sheet, has a folded Move or Positions
+  section. Undo step is on the pad, beside Keys: a step, then Undo step,
+  and the gantry is back where it was.
 
 ## Commit 19 — planning a plate with the mouse
 
@@ -1270,7 +1263,7 @@ cameras.
 - [ ] **The pad is over the picture.**
   Manual control, Liquid handling, the camera calibration sheet's centering
   step, the tip calibration: MOVE THE ROBOT at the picture's bottom-right,
-  XY arrows, Up / Down, Step ‹ 0.5 1 2 ›; on Picking too, with Move folded.
+  XY arrows, Up / Down, Step ‹ 0.5 1 2 ›; on Picking too.
   Expected failure if wrong: two pads on one picture, or a pad left over
   another page.
 

@@ -76,7 +76,7 @@ def test_a_liquid_run_keeps_another_pages_panel_off_the_robot(app, session):
     assert _until(app, lambda: page._pause.is_set())
     assert session.robot_lease.holder == "liquid run"
     assert session.robot_lease.holding_run
-    assert not other.goto_button.isEnabled()
+    assert not other.pad.undo_button.isEnabled()
     assert not any(s.isEnabled() for s in other._shortcuts)
     assert "liquid run" in other.toolTip()
     before = list(session.robot.calls)
