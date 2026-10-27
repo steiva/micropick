@@ -41,7 +41,7 @@ ACTIONS = (
     Action("step_up", "Larger step", (Qt.Key.Key_Plus, Qt.Key.Key_Equal)),
     Action("step_down", "Smaller step",
            (Qt.Key.Key_Minus, Qt.Key.Key_Underscore)),
-    Action("save", "Save position", (Qt.Key.Key_Space,)),
+    Action("save", "Save point", (Qt.Key.Key_Space,)),
     Action("undo", "Undo last step", (Qt.Key.Key_U,)),
     Action("help", "Show or hide the key list", (Qt.Key.Key_H,)),
     Action("aspirate", "Aspirate (Manual control)", (Qt.Key.Key_A,)),

@@ -29,10 +29,11 @@ The old GUI's folded Move and Positions sections are gone (#27): nobody
 used the list of saved poses beside the pad, and the poses a page needs
 are set and gone to on that page (Robot setup's sheets). The saved
 positions are still the profile's, drawn on the picture's "points" layer
-(see the end of this note). The save key still names the pose and stores
-it in `profile.positions` - a pipette point; the camera poses (`observe`,
-`tip_calib`: `position_marks.CAMERA_POSITIONS`) are only taught on their
-own pages, so saving under one of those names is refused.
+(see the end of this note). The save key, Save point, still names the
+pose and stores it in `profile.positions` - a point Liquid's steps go to;
+Robot setup's three positions (`observe`, `shake`, `tip_calib`:
+`tasks.SETUP_POSITIONS`) are only taught in their own sheets, so saving
+under one of those names is refused.
 
 `shortcut_host` is the widget the key bindings are registered on, normally the
 page. They are `WindowShortcut`: while the panel is on screen the keys reach
@@ -137,8 +138,9 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,
 
 from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
 from .. import keys
-from ..position_marks import CAMERA_POSITIONS, PositionMarks
+from ..position_marks import PositionMarks
 from ..session import Session
+from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
 from ..theme.factory import card, heading, secondary_button
 from .jog_pad import JogPad
@@ -168,15 +170,16 @@ __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "HOME_TITLE",
 
 log = logging.getLogger(__name__)
 
-def camera_name_refusal(name: str) -> str | None:
-    """Why `name` cannot be given here, or None. A camera pose is taught on
-    the page that uses it, with the camera on the spot; saved from this
-    panel it would be taken for one and drawn and driven to as one."""
-    item = CAMERA_POSITIONS.get(name)
+def setup_name_refusal(name: str) -> str | None:
+    """Why `name` cannot be given to a saved point, or None. Robot setup's
+    positions are taught in their sheets, the camera or the tip on the
+    spot; saved from this panel a point would be taken for one and driven
+    to as one."""
+    item = next((item for item, stored in SETUP_POSITIONS.items()
+                 if stored == name), None)
     if item is None:
         return None
-    return (f"{name!r} is where the camera looks from; set it in Robot "
-            f"setup, {item}")
+    return f"{name!r} is set in Robot setup, {SETUP_TITLES[item]}"
 
 
 PANEL_WIDTH = 400
@@ -508,12 +511,12 @@ class JogPanel(QWidget):
             self._say("no profile loaded", firm=True)
             return
         name, ok = QInputDialog.getText(
-            self, "Save this position",
-            f"Name this deck position in profile {self.session.profile.name!r}:")
+            self, "Save point",
+            f"Name this point in profile {self.session.profile.name!r}:")
         name = name.strip()
         if not ok or not name:
             return
-        why = camera_name_refusal(name)
+        why = setup_name_refusal(name)
         if why is not None:
             self._say(why, firm=True)
             return

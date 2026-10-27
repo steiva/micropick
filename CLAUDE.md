@@ -320,7 +320,9 @@ WAITING FOR YOU / DONE / NOT READY, the sentence the run's own,
 `LiquidState.status`), Back + Start (+ Continue after a stop), Pause /
 Resume + Stop run. A run to its end makes the step done
 (`confirm("liquid_run")`). Saved
-points are `profile.positions`, not a list of the page's own. The "points"
+points are `profile.positions`, not a list of the page's own, saved with
+a jog panel's **Save point** (Space, `jog_panel.setup_name_refusal`:
+never under Robot setup's `observe`, `shake`, `tip_calib`). The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing is a program written with these blocks
 (measured well center, auto empty, slow lift, pause after the first well),
