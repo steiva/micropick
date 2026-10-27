@@ -81,6 +81,17 @@ is_parent() {  # у issue есть sub-issues: это PRD, а не тикет
   [[ "$(gh api "repos/{owner}/{repo}/issues/$1" --jq '.sub_issues_summary.total // 0' 2>/dev/null)" != "0" ]]
 }
 
+is_ready() {  # открыт, с READY_LABEL и без меток итога - по REST, не по поиску:
+  # индекс поиска (gh issue list --label) отстаёт от смены меток на секунды,
+  # и только что сделанный тикет в нём ещё ready-for-agent.
+  [[ "$(gh api "repos/{owner}/{repo}/issues/$1" --jq "(.state==\"open\")
+       and any(.labels[]; .name==\"$READY_LABEL\")
+       and all(.labels[]; .name!=\"$DONE_LABEL\" and .name!=\"$HUMAN_LABEL\")" \
+       2>/dev/null)" == "true" ]]
+}
+
+TAKEN=" "   # тикеты, уже взятые этой ночью
+
 next_ticket() {  # печатает номер первого тикета на frontier
   local list n body ok b
   list="$(gh issue list --label "$READY_LABEL" --state open --limit 200 --json number,body \
@@ -88,6 +99,8 @@ next_ticket() {  # печатает номер первого тикета на 
   for row in $list; do
     n="$(base64 -d <<<"$row" | jq -r .number)"
     body="$(base64 -d <<<"$row" | jq -r .body)"
+    [[ "$TAKEN" == *" $n "* ]] && continue
+    is_ready "$n" || continue
     is_parent "$n" && continue
     ok=1
     for b in $(blockers_of "$n" "$body"); do
@@ -122,7 +135,7 @@ echo -e "\n## Ночь $(date +%F)" >> "$QUESTIONS"
 # ---------- тесты ----------
 failing_tests() {  # id упавших тестов, по одному в строке, отсортированы
   $TEST_CMD 2>&1 | tee "$LOGS/tests-last.log" \
-    | grep -E '^(FAILED|ERROR) ' | sed -E 's/^(FAILED|ERROR) //; s/ - .*$//' | sort -u
+    | grep -E '^(FAILED|ERROR) [^ ]+\.py' | sed -E 's/^(FAILED|ERROR) //; s/ - .*$//' | sort -u
 }
 
 say "базовый прогон тестов"
@@ -181,6 +194,7 @@ count=0
 while (( count < MAX_TICKETS )); do
   n="$(next_ticket)" || { say "больше нет готовых тикетов"; break; }
   count=$((count + 1))
+  TAKEN="$TAKEN$n "
   title="$(gh issue view "$n" --json title --jq .title)"
   log="$LOGS/issue-$n.json"
   say "▶ #$n $title"
