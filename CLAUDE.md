@@ -71,9 +71,18 @@ time, never from a visit; a step whose need is not met is dimmed
 (`overlays.DimCover`) and disabled - so its keys do nothing - under one
 banner naming that need with a button there. A task opens on its first
 step not done. Next is enabled when the step is done or optional; Deck is
-confirmed by its own Next. A Robot setup item needed by a step opens its
-page as `Home › <task> › <item>` (`shell.SETUP_PAGES`) until Robot setup
-has its own sheets. The last profile is loaded at start
+confirmed by its own Next. Robot setup (`pages.robot_setup`, from Home's
+Setup card) is one page of rows - the cameras, camera calibration,
+platforms, the three positions (each `≈ slot n · X Y Z`, never its stored
+name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
+and Home's "N steps left" read. A row, or a Robot setup item needed by a
+step, opens its page as `Home › Robot setup › <item>` or `Home › <task> ›
+<item>` (`shell.SETUP_PAGES`; the cameras: the Settings sheet) until
+Robot setup has its own sheets. Reset setup asks (Keep setup primary),
+then `Session.reset_setup` zips the profile folder beside it, dated, and
+clears the cameras, the pixel map, the deck modules and those three
+positions; the deck, the picking settings, the tip calibration and saved
+points stay. The last profile is loaded at start
 (`Session.load_last_profile`, `default` made if none); profiles are never
 chosen on screen. Settings is a sheet (`pages.settings.SettingsSheet`)
 over whatever is shown, the breadcrumb gaining "Settings": General (Save,

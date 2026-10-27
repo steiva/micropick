@@ -39,7 +39,8 @@ from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
 __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
-           "StepState", "skipped_plate", "step_state", "steps", "title"]
+           "StepState", "missing_setup", "setup_done", "skipped_plate",
+           "step_state", "steps", "title"]
 
 # task -> (its name on screen, its steps in order)
 TASKS = {
@@ -80,26 +81,48 @@ class StepState:
 
 _ROBOT = Need("robot", "robot", "The robot is not connected.")
 
-# Robot setup items a step can need: the sentence its banner says, and
-# whether it is set, from the profile.
+# The Robot setup items, in the order of its page (REDESIGN §5): the
+# sentence a step's banner says when it needs one, and whether it is set,
+# from the session (its profile is loaded).
 SETUP = {
+    "upper_camera": ("Choose the upper camera first.",
+                     lambda s: s.upper_camera_label is not None),
     "camera_calibration": ("Calibrate the camera first.",
-                           lambda p: p.pixel_map is not None),
-    "calibration_position": ("Set the calibration position first.",
-                             lambda p: CALIBRATION_POSITION in p.positions),
+                           lambda s: s.profile.pixel_map is not None),
+    "lower_camera": ("Choose the lower camera first.",
+                     lambda s: s.lower_camera_label is not None),
+    "platforms": ("Set the platforms first.",
+                  lambda s: bool(s.profile.deck.modules)),
     "dish_position": ("Set the position over the dish first.",
-                      lambda p: DISH_POSITION in p.positions),
+                      lambda s: DISH_POSITION in s.profile.positions),
     "shake_position": ("Set the shake position first.",
-                       lambda p: SHAKE_POSITION in p.positions),
+                       lambda s: SHAKE_POSITION in s.profile.positions),
+    "calibration_position": ("Set the calibration position first.",
+                             lambda s: CALIBRATION_POSITION
+                             in s.profile.positions),
 }
 
 # Each Robot setup item's name on screen.
 SETUP_TITLES = {
+    "upper_camera": "Upper camera",
     "camera_calibration": "Camera calibration",
-    "calibration_position": "Calibration position",
+    "lower_camera": "Lower camera",
+    "platforms": "Platforms",
     "dish_position": "Position over the dish",
     "shake_position": "Shake position",
+    "calibration_position": "Calibration position",
 }
+
+
+def setup_done(session, item: str) -> bool:
+    """Whether the Robot setup item is set now."""
+    return session.profile is not None and SETUP[item][1](session)
+
+
+def missing_setup(session) -> list[str]:
+    """The Robot setup items not set yet, in the page's order."""
+    return [item for item in SETUP if not setup_done(session, item)]
+
 
 # What a step says it needs from an earlier one.
 _STEP_NEEDS = {
@@ -142,8 +165,7 @@ def _met(session, task: str, need: Need) -> bool:
         return session.robot is not None
     if need.kind == "step":
         return _done(session, task, need.key)
-    profile = session.profile
-    return profile is not None and SETUP[need.key][1](profile)
+    return setup_done(session, need.key)
 
 
 def _done(session, task: str, step: str) -> bool:

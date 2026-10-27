@@ -7,8 +7,9 @@ Three cards, top to bottom, in one centered column:
    session to carry on with says "Robot needs to home", with Home the
    robot. Until the robot is connected, the cards below are dimmed under
    one line.
-2. **Robot setup**: "Setup is done", or "Complete the setup · N steps
-   left: …" with Complete setup, which opens the first item missing.
+2. **Robot setup**: "Setup is done", the whole card opening Robot setup,
+   or "Complete the setup · N steps left: …" with Complete setup, which
+   opens it too: its rows show what is missing.
 3. **What are we doing today?**: the three task tiles, words only;
    dimmed while a run has the robot, under a line naming where the run
    is (`show_run`, told by the shell).
@@ -33,8 +34,8 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout,
 
 from ...config import robot_sessions
 from ..session import Session
-from ..tasks import SETUP, SETUP_TITLES, TASKS
-from ..theme import COLORS
+from ..tasks import SETUP_TITLES, TASKS, missing_setup
+from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, card, muted_label, primary_button,
                              quiet_button)
 from ..theme.icons import pixmap
@@ -100,6 +101,27 @@ class TaskTile(QFrame):
         super().mouseReleaseEvent(event)
 
 
+class _ClickableCard(QFrame):
+    """A card (`theme.factory.card`) that is clicked as a whole."""
+
+    clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("card")
+        self.setFrameShape(QFrame.Shape.Panel)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
+                                  SPACING * 2)
+        layout.setSpacing(SPACING)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if (event.button() == Qt.MouseButton.LeftButton
+                and self.rect().contains(event.position().toPoint())):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
 def _mark(parent: QWidget) -> QLabel:
     mark = QLabel(parent)
     mark.setFixedSize(MARK_PX, MARK_PX)
@@ -124,11 +146,11 @@ def _title(text: str, parent: QWidget) -> QLabel:
 
 
 class HomePage(QWidget):
-    """`task_chosen(task)` on a tile; `setup_requested(item)` for a Robot
-    setup item (`tasks.SETUP`)."""
+    """`task_chosen(task)` on a tile; `robot_setup_requested` for the Robot
+    setup page."""
 
     task_chosen = Signal(str)
-    setup_requested = Signal(str)
+    robot_setup_requested = Signal()
 
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
@@ -201,7 +223,8 @@ class HomePage(QWidget):
         return box
 
     def _setup_card(self) -> QWidget:
-        box = card(self)
+        box = self.setup_card = _ClickableCard(self)
+        box.clicked.connect(self._setup_card_clicked)
         row = QHBoxLayout()
         row.setSpacing(20)
         self.setup_mark = _mark(box)
@@ -214,12 +237,9 @@ class HomePage(QWidget):
         text.addWidget(self.setup_text)
         row.addLayout(text, 1)
         self.complete_button = primary_button("Complete setup", box)
-        self.complete_button.clicked.connect(self._complete_setup)
+        self.complete_button.clicked.connect(self.robot_setup_requested)
         self.setup_link = quiet_button("Robot setup ›", box)
-        # Until Robot setup is a page of its own, the item that has no step
-        # to be reached from.
-        self.setup_link.clicked.connect(
-            lambda: self.setup_requested.emit("camera_calibration"))
+        self.setup_link.clicked.connect(self.robot_setup_requested)
         row.addWidget(self.complete_button)
         row.addWidget(self.setup_link)
         box.layout().addLayout(row)
@@ -249,12 +269,6 @@ class HomePage(QWidget):
         return box
 
     # -- display -------------------------------------------------------
-
-    def missing_setup(self) -> list[str]:
-        """The Robot setup items not set yet, in order."""
-        profile = self.session.profile
-        return [key for key, (_text, is_set) in SETUP.items()
-                if profile is None or not is_set(profile)]
 
     def refresh(self, _arg=None) -> None:
         session = self.session
@@ -298,10 +312,12 @@ class HomePage(QWidget):
         elif not self.below_dim.isVisible():
             self.below_dim.open()
 
-        missing = self.missing_setup()
+        missing = missing_setup(session)
         _set_mark(self.setup_mark, not missing)
         self.complete_button.setVisible(bool(missing))
         self.setup_link.setVisible(not missing)
+        self.setup_card.setCursor(Qt.CursorShape.ArrowCursor if missing
+                                  else Qt.CursorShape.PointingHandCursor)
         if missing:
             self.setup_title.setText("Complete the setup")
             names = ", ".join(SETUP_TITLES[k].lower() for k in missing)
@@ -337,10 +353,11 @@ class HomePage(QWidget):
 
     # -- actions -------------------------------------------------------
 
-    def _complete_setup(self) -> None:
-        missing = self.missing_setup()
-        if missing:
-            self.setup_requested.emit(missing[0])
+    def _setup_card_clicked(self) -> None:
+        """The whole card opens Robot setup once it is done; before, its
+        Complete setup does."""
+        if not missing_setup(self.session):
+            self.robot_setup_requested.emit()
 
     def _new_run(self) -> None:
         """Home the robot: a new robot session, which ends in a home, so it

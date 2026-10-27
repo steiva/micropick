@@ -1,7 +1,8 @@
 """The window everything else sits in (REDESIGN §4).
 
 The TopBar across the top, and under it one stack of screens: Home, and
-the pages that are a task's steps or a Robot setup item. While a step is
+the pages that are a task's steps or a Robot setup item, and Robot setup
+itself (`Home › Robot setup`, its rows' items under it). While a step is
 shown, the StepBar is over it and the Footer (Back, Next) under it; Home,
 Settings and a setup item have neither.
 
@@ -49,7 +50,7 @@ from .. import _version as version
 from .. import paths
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, home, labware,
-                    liquid, manual, picking, routine, settings)
+                    liquid, manual, picking, robot_setup, routine, settings)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -82,6 +83,7 @@ PAGES = (
      calibration_camera.CameraCalibration),
     ("liquid", liquid.TITLE, liquid.LiquidHandlingPage),
     ("manual", manual.TITLE, manual.ManualPage),
+    ("robot_setup", robot_setup.TITLE, robot_setup.RobotSetupPage),
 )
 
 # The page each step shows.
@@ -91,9 +93,13 @@ STEP_PAGES = {
     "well_center": "liquid", "liquid_plan": "liquid", "run": "liquid",
 }
 
-# The page each Robot setup item is set on, until Robot setup has its own.
+# The page each Robot setup item is set on, until Robot setup has its own
+# sheets: the cameras are chosen in the Settings sheet (`open_settings`).
 SETUP_PAGES = {
+    "upper_camera": "settings",
     "camera_calibration": "camera_calibration",
+    "lower_camera": "settings",
+    "platforms": "labware",
     "calibration_position": "tip_calibration",
     "dish_position": "picking",
     "shake_position": "picking",
@@ -199,6 +205,9 @@ class MainWindow(QMainWindow):
 
         # Where the window is: a task and its step, and the page shown.
         self.task: str | None = None
+        # The page shown is a Robot setup item opened from Robot setup:
+        # its first crumb goes back there.
+        self._from_setup = False
         self.step: str | None = None
         # The task's step to go back to from a page out of the steps.
         self._task_step: str | None = None
@@ -215,7 +224,10 @@ class MainWindow(QMainWindow):
         self.monitor = RobotMonitor(session, self)
         self.monitor.failed.connect(self.home.show_error)
         self.home.task_chosen.connect(self.open_task)
-        self.home.setup_requested.connect(self.open_setup_item)
+        self.home.robot_setup_requested.connect(self.open_robot_setup)
+        self.robot_setup_page.item_chosen.connect(
+            lambda item: self.open_setup_item(item, from_setup=True))
+        self.robot_setup_page.said.connect(self.say)
         self.step_bar.clicked.connect(
             lambda i: self.show_step(tasks.steps(self.task)[i]))
         self.footer.back_clicked.connect(self._back)
@@ -362,6 +374,7 @@ class MainWindow(QMainWindow):
         self.settings_sheet.discard()
         self.stack.setCurrentWidget(page)
         self._page = name
+        self._from_setup = False
         self.top.set_path(path)
         for widget in (self.step_bar, self.footer):
             widget.setVisible(in_task)
@@ -374,6 +387,11 @@ class MainWindow(QMainWindow):
         self.task = None
         self._show("home", [], in_task=False)
         self.home.refresh()
+
+    def open_robot_setup(self) -> None:
+        """Robot setup, out of any task: `Home › Robot setup`."""
+        self.task = None
+        self._show("robot_setup", [robot_setup.TITLE], in_task=False)
 
     def _set_task(self, task: str) -> None:
         self.task = task
@@ -396,13 +414,23 @@ class MainWindow(QMainWindow):
         self._navigation = None
         self._refresh()
 
-    def open_setup_item(self, item: str) -> None:
+    def open_setup_item(self, item: str, *, from_setup: bool = False) -> None:
         """The page a Robot setup item is set on, out of the steps; its
-        crumb back is the task's when one is open."""
+        crumb back is Robot setup's when it was opened there (`from_setup`),
+        else the task's when one is open. A camera is chosen in the
+        Settings sheet, over Robot setup."""
+        if SETUP_PAGES[item] == "settings":
+            if from_setup and self._page != "robot_setup":
+                self.open_robot_setup()
+            self.open_settings("general")
+            return
         path = [tasks.SETUP_TITLES[item]]
-        if self.task is not None:
+        if from_setup:
+            path.insert(0, robot_setup.TITLE)
+        elif self.task is not None:
             path.insert(0, tasks.TASKS[self.task][0])
         self._show(SETUP_PAGES[item], path, in_task=False)
+        self._from_setup = from_setup
 
     def show_page(self, name: str) -> None:
         """A page asked for by name (`Session.page_requested`): a step of
@@ -451,7 +479,9 @@ class MainWindow(QMainWindow):
             self._settings_closed()
             if index >= len(self._under_sheet) - 1:
                 return
-        if self.task is not None:
+        if self._from_setup:
+            self.open_robot_setup()
+        elif self.task is not None:
             self.show_step(self._task_step)
 
     # -- steps ----------------------------------------------------------------

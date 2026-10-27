@@ -1127,3 +1127,40 @@ Start the program normally (no `--mock`) on the bench machine.
   With the robot off, ⚙ Settings: change the address, Save. The log says
   "the robot is looked for at <address>"; set it back, Save, switch the
   robot on, and it is found.
+
+## Redesign — Robot setup page and Reset setup (#8)
+
+Start the program normally (no `--mock`) on the bench machine, on the
+bench's profile.
+
+- [ ] **Home's Setup card.**
+  With everything set, Home says "Setup is done" and a click anywhere on
+  the card opens `Home › Robot setup`. With something missing it says
+  "Complete the setup" and "N steps left: …", and Complete setup opens
+  Robot setup, where the same items have a yellow ring.
+
+- [ ] **The rows read as the bench is.**
+  Upper and lower camera name the attached cameras; Camera calibration
+  says "Done N days ago"; Platforms names each kind with its slots
+  ("Picking platform in 5 and 8 · Calibration module in 9"). Each position
+  reads `≈ slot <n> · X … Y … Z …`, and the slot is the one the camera is
+  over when the robot goes to that position. No "observe", "shake" or
+  "tip_calib" anywhere.
+
+- [ ] **A row opens where it is set.**
+  The cameras open Settings over Robot setup; Platforms opens the deck
+  page, Camera calibration its page, the positions the Picking page and
+  the tip calibration, each as `Home › Robot setup › <item>`. The
+  "Robot setup" crumb comes back to the rows.
+
+- [ ] **Keep setup changes nothing.**
+  Reset setup: "Reset the setup?" with Keep setup highlighted. Keep setup:
+  every row as it was, and no new zip beside the profile folder.
+
+- [ ] **Reset archives, then clears.**
+  Reset setup, Reset: a toast "Setup reset.", every row a yellow ring and
+  "Not set.". Beside the profile folder (`Documents\micropick\profiles`)
+  is `<profile>-<date>_<time>.zip` holding the folder as it was. The deck
+  page's labware, the plate plan, the picking settings (Settings) and the
+  dish bottom are as before. Set the cameras back from Settings to carry
+  on, or restore the zip by hand.
