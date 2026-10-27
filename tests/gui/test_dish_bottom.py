@@ -44,9 +44,11 @@ def session(app, tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def page(session):
+def page(app, session):
     p = DishBottomPage(session)
     p.show()
+    # Shown, it reads the pose; Move the tip stays gray until that is done.
+    assert _until(app, lambda: not p.jog.busy)
     yield p
     p.hide()
     p.deleteLater()
