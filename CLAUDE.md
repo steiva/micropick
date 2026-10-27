@@ -98,17 +98,20 @@ role's device swapped in, a camera added to a profile without one), gray
 while the robot is busy; Cancel and × save nothing. The camera
 calibration has its sheet too (`pages.calibration_camera.
 CameraCalibrationSheet`), the steps confirmed one after another: place
-the marker (It is in place); its slot, a platform's or any while none is
-set (Move the camera there: the slot's center less the measured tip
-offset, else Settings' start dx, dy); center it with the arrows - a click
+the marker (It is in place); its slot on the mini deck slot chooser
+(`widgets.slot_chooser.SlotChooser`: all 12 slots, nothing preselected,
+grayed while the robot is busy; a click moves the camera there at once,
+through `JogPanel.run_job`: the slot's center less the measured tip
+offset, else Settings' start dx, dy, and marks the slot once moved - the
+one way a Robot setup sheet chooses a slot); center it with the arrows - a click
 on the picture centers only through a pixel map there is, else it moves
 nothing - MARKER FOUND / NO MARKER IN VIEW on the picture, It is
 centered once within two of its sides of the middle; Start calibration,
 the sweep a run (its lease `run=True`: STOP, the pill, which reopens the
 sheet), "Don't touch the robot."; Stop goes back to centering. Good and
-Acceptable are saved at once ("Camera calibrated and saved."), Redo
-waits ("Not accurate enough: the marker was off center.", Redo
-calibration, Save anyway). × closes
+Acceptable are saved at once ("Camera calibrated and saved.", Done
+closes the sheet), Redo waits ("Not accurate enough: the marker was off
+center.", Redo calibration secondary, Save anyway quiet). × closes
 it and a sweep carries on. The platforms have theirs
 (`pages.platforms_sheet.PlatformsSheet`): the 3×4 deck, a slot clicked,
 "What stands in this slot?" (the profile's module types or Nothing), its
@@ -388,7 +391,7 @@ The lower camera's mode and crop for pickup clips are settings too
 mode, and the pipette calibration reopens it in the profile's own.
 The camera calibration sweep's parameters (marker side, dictionary, grid,
 degree) are settings too (`AppSettings.sweep_*`); the Camera calibration
-sheet shows them.
+sheet does not repeat them.
 So is where the models run (`AppSettings.inference_device`: Auto, CPU,
 GPU). A `.pt` is run as its ONNX export beside it (`name.onnx`, made by
 `python -m micropick.export_models`, checked against the `.pt`; the build

@@ -7,11 +7,13 @@ left, and on the right the steps, each a card with a mark
 (`widgets.step_card`), opened one after another by the operator's answer:
 
 1. **Place the marker** on a platform -> "It is in place".
-2. **Which slot is it in?** The platforms' slots (all of them while none
-   is set) -> "Move the camera there": the camera over the slot's center.
-   Before a tip calibration the camera's distance from the tip is the
-   start offset in Settings (`AppSettings.tip_cal_start_offset`): it only
-   has to bring the marker into view.
+2. **Which slot is it in?** The mini deck of all twelve slots
+   (`widgets.slot_chooser`), nothing chosen: a click moves the camera over
+   that slot's center at once, through the jog panel's `run_job`, and the
+   slot is marked once it went; grayed while the robot is busy. Before a
+   tip calibration the camera's distance from the tip is the start offset
+   in Settings (`AppSettings.tip_cal_start_offset`): it only has to bring
+   the marker into view.
 3. **Center the camera on the marker**, with the arrows, or with a click
    on the picture once a pixel map exists - before the first one a pixel
    has no direction on the deck, and a click moves nothing. The picture
@@ -23,12 +25,13 @@ left, and on the right the steps, each a card with a mark
    progress bar and "Don't touch the robot.". Stop (Esc, STOP) ends it at
    the next pose; the gantry has then moved, so the steps go back to 3.
 5. **The result.** Good and Acceptable are saved at once: "Camera
-   calibrated and saved.". Redo is not: "Not accurate enough: the marker
-   was off center." with Redo calibration and Save anyway.
+   calibrated and saved." with Done, which closes the sheet. Redo is not:
+   "Not accurate enough: the marker was off center." with Redo
+   calibration (secondary, not the accented one) and a quiet Save anyway.
 
 The sweep's parameters - marker side, dictionary, grid, degree - are the
-bench's and set in Settings (`AppSettings.sweep_*`); step 4 says which it
-will use. A marker printed in another dictionary is not in view.
+bench's and set in Settings (`AppSettings.sweep_*`); the sheet does not
+repeat them. A marker printed in another dictionary is not in view.
 
 The sweep is the upper camera's - the one Robot setup names - since the
 lower camera looks up at the tip and a map of it is used by nothing.
@@ -75,13 +78,14 @@ from ..session import Session
 from ..tasks import SETUP_TITLES
 from ..theme import SPACING
 from ..theme.factory import (muted_label, primary_button, quiet_button,
-                             scroll_column, select)
+                             scroll_column, secondary_button)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import ZOOM_AND_PAN, CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
 from ..widgets.overlays import SheetWindow
+from ..widgets.slot_chooser import SlotChooser
 from ..widgets.step_card import StepCard, wrapped
 from ..workers import Worker, describe_error
 
@@ -272,13 +276,11 @@ class CameraCalibrationSheet(SheetWindow):
 
         session.camera_opened.connect(self._refresh_camera)
         session.camera_closed.connect(self._refresh_camera)
-        session.profile_changed.connect(lambda _p: self._fill_slots())
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.settings_changed.connect(lambda _s: self._refresh())
         # The window's Stop: the sweep stops at its next pose.
         session.stop_requested.connect(self._stop)
-        self._fill_slots()
         self._refresh()
 
     # -- construction --------------------------------------------------------
@@ -293,11 +295,10 @@ class CameraCalibrationSheet(SheetWindow):
 
     def _slot_card(self, number: int) -> StepCard:
         step = StepCard(self.body_widget, number, "Which slot is it in?")
-        self.slot = select(self)
-        step.add(self.slot)
-        self.move_button = primary_button("Move the camera there", self)
-        self.move_button.clicked.connect(self._move)
-        step.add(self.move_button)
+        step.add(wrapped("Click the slot. The camera moves there."))
+        self.slots = SlotChooser(self)
+        self.slots.slot_clicked.connect(self._move)
+        step.add(self.slots)
         return step
 
     def _center_card(self, number: int) -> StepCard:
@@ -317,10 +318,6 @@ class CameraCalibrationSheet(SheetWindow):
         step = StepCard(self.body_widget, number, "Calibrate")
         step.add(wrapped("The robot moves the camera over the marker by "
                          "itself. About 2 min."))
-        # The parameters are Settings'; said here.
-        self.parameters = QLabel()
-        self.parameters.setWordWrap(True)
-        step.add(self.parameters)
         # What stops Start, or how the last sweep ended.
         self.camera_note = muted_label()
         self.camera_note.setWordWrap(True)
@@ -344,10 +341,14 @@ class CameraCalibrationSheet(SheetWindow):
         self.poor_banner = Banner(NOT_ACCURATE, tone="warn", parent=self)
         step.add(self.poor_banner)
         row = QHBoxLayout()
-        self.redo_button = primary_button("Redo calibration", self)
+        # Closes the sheet as × does; only after a result that was saved.
+        self.result_done_button = primary_button("Done", self)
+        self.result_done_button.clicked.connect(self._cancel)
+        self.redo_button = secondary_button("Redo calibration", self)
         self.redo_button.clicked.connect(self._redo)
         self.save_anyway_button = quiet_button("Save anyway", self)
         self.save_anyway_button.clicked.connect(self._save)
+        row.addWidget(self.result_done_button)
         row.addWidget(self.redo_button)
         row.addWidget(self.save_anyway_button)
         row.addStretch(1)
@@ -361,7 +362,6 @@ class CameraCalibrationSheet(SheetWindow):
         if not self._running():
             self._outcome = ""
             self._go(STEPS[0])
-        self._fill_slots()
         self.open()
         self.opener.ensure(self.session.upper_camera_label)
         self._refresh_camera()
@@ -392,27 +392,15 @@ class CameraCalibrationSheet(SheetWindow):
         if STEPS.index(step) < STEPS.index("result"):
             self._result = self._verdict = None
             self._saved, self._save_error = False, ""
+        if STEPS.index(step) <= STEPS.index("slot"):
+            self.slots.set_marked(None)
         self._refresh()
 
-    def _fill_slots(self) -> None:
-        """The platforms' slots; every slot while no platform is set."""
-        profile = self.session.profile
-        modules = profile.deck.modules if profile is not None else []
-        slots = sorted({s for m in modules for s in m.slots}) or range(1, 12)
-        chosen = self.slot.currentData()
-        self.slot.clear()
-        for slot in slots:
-            self.slot.addItem(f"Slot {slot}", slot)
-        index = self.slot.findData(chosen)
-        self.slot.setCurrentIndex(max(index, 0))
-
-    def _move(self) -> None:
-        """Step 2: the camera over the center of the slot chosen."""
-        slot = self.slot.currentData()
-        if slot is None:
-            return
+    def _move(self, slot: int) -> None:
+        """Step 2: the camera over the center of the slot clicked."""
 
         def moved(said):
+            self.slots.set_marked(slot)
             self._go("center")
             return said
 
@@ -648,9 +636,11 @@ class CameraCalibrationSheet(SheetWindow):
 
         self.jog.setVisible(not running)
         self.placed_button.setEnabled(not running)
-        self.slot.setEnabled(index >= 1 and not running)
-        self.move_button.setEnabled(index >= 1 and not running and free
-                                    and connected)
+        self.slots.setEnabled(index >= 1 and not running and free
+                              and connected)
+        self.slots.setToolTip(
+            "" if free or running else
+            f"Robot busy: {self.session.robot_lease.holder}.")
         self.centered_button.setEnabled(index >= 2 and not running
                                         and self._centered())
         problem = self._problem()
@@ -662,10 +652,6 @@ class CameraCalibrationSheet(SheetWindow):
         self.camera_note.setText("\n".join(
             line for line in (self._outcome, "" if running else problem)
             if line))
-        p = self._parameters()
-        self.parameters.setText(
-            f"Marker {p['marker_side_mm']:g} mm, {p['dictionary']}, grid "
-            f"{p['grid_n']}, degree {p['degree']}.")
         self._show_marker(running)
         profile = self.session.profile
         self.center_how.setText(
@@ -695,10 +681,12 @@ class CameraCalibrationSheet(SheetWindow):
             self.center_state.setText("")
 
     def _show_result(self) -> None:
-        """Saved, or why not, with Redo calibration and Save anyway."""
+        """Saved with Done, or why not with Redo calibration and Save
+        anyway."""
         verdict = self._verdict
         unsaved = verdict is not None and not self._saved
         self.saved_banner.setVisible(self._saved)
+        self.result_done_button.setVisible(self._saved)
         if unsaved:
             self.poor_banner.set_text(
                 self._save_error or NOT_ACCURATE)

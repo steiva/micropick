@@ -1,6 +1,6 @@
-"""Robot setup's camera calibration sheet (#10): place the marker, say its
-slot and move the camera there, center it, calibrate - the sweep a run
-with STOP and the pill - and the verdict."""
+"""Robot setup's camera calibration sheet (#10, #28): place the marker,
+click its slot on the mini deck (the camera goes there), center it,
+calibrate - the sweep a run with STOP and the pill - and the verdict."""
 
 import os
 import threading
@@ -63,8 +63,7 @@ def _open(app, window):
 def _at_the_marker(app, window, sheet):
     """Steps 1 and 2 done, and the camera over the marker."""
     sheet.placed_button.click()
-    sheet.slot.setCurrentIndex(sheet.slot.findText("Slot 5"))
-    sheet.move_button.click()
+    sheet.slots.button(5).click()
     _wait(app, lambda: sheet.step == "center")
     window.session.motion.camera_to(MARKER_XY)
     sheet.jog.refresh_position()
@@ -87,30 +86,27 @@ def test_the_row_opens_the_sheet_on_the_upper_camera(app, window):
 def test_the_steps_open_one_after_another(app, window):
     sheet = _open(app, window)
     assert sheet.step == "place"
-    assert not sheet.move_button.isEnabled()
+    assert not sheet.slots.isEnabled()
     sheet.placed_button.click()
     assert sheet.step == "slot"
-    assert sheet.move_button.isEnabled()
+    assert sheet.slots.isEnabled()
     assert not sheet.start_button.isEnabled()
 
 
-def test_the_slots_are_the_platforms(app, window):
-    sheet = _open(app, window)
-    slots = [sheet.slot.itemText(i) for i in range(sheet.slot.count())]
-    assert slots == [f"Slot {n}" for n in range(1, 12)]
-    sheet.close_button.click()
+def test_every_slot_is_offered_and_none_is_chosen(app, window):
     window.session.profile.deck.modules.append(
         DeckModule(slots=[5, 8], offset=[0, 0, 64]))
     sheet = _open(app, window)
-    assert [sheet.slot.itemText(i) for i in range(sheet.slot.count())] \
-        == ["Slot 5", "Slot 8"]
+    sheet.placed_button.click()
+    assert sheet.slots.slots == list(range(1, 13))
+    assert all(sheet.slots.button(n).isEnabled() for n in range(1, 13))
+    assert sheet.slots.marked is None
 
 
-def test_move_the_camera_there_puts_the_camera_over_the_slot(app, window):
+def test_a_slot_click_puts_the_camera_over_the_slot(app, window):
     sheet = _open(app, window)
     sheet.placed_button.click()
-    sheet.slot.setCurrentIndex(sheet.slot.findText("Slot 5"))
-    sheet.move_button.click()
+    sheet.slots.button(5).click()
     _wait(app, lambda: sheet.step == "center")
     # No tip calibration yet: the camera is that far from the tip by the
     # start offset in Settings.
@@ -118,6 +114,18 @@ def test_move_the_camera_there_puts_the_camera_over_the_slot(app, window):
     cx, cy = slot_center(5)
     x, y, _z = xyz(window.session.robot)
     assert (x, y) == pytest.approx((cx - dx, cy - dy), abs=0.01)
+    assert sheet.slots.marked == 5
+
+
+def test_the_chooser_is_gray_while_the_robot_is_busy(app, window):
+    sheet = _open(app, window)
+    sheet.placed_button.click()
+    lease = window.session.robot_lease.claim("something else")
+    app.processEvents()
+    assert not sheet.slots.isEnabled()
+    lease.release()
+    app.processEvents()
+    assert sheet.slots.isEnabled()
 
 
 def test_a_slot_out_of_reach_is_not_moved_to(app, window):
@@ -126,19 +134,18 @@ def test_a_slot_out_of_reach_is_not_moved_to(app, window):
     _wait(app, lambda: sheet.jog.pose is not None)
     before = xyz(window.session.robot)
     # Slot 1's center less the start offset is behind the deck.
-    sheet.slot.setCurrentIndex(sheet.slot.findText("Slot 1"))
-    sheet.move_button.click()
+    sheet.slots.button(1).click()
     app.processEvents()
     assert "out of reach" in sheet.jog.position_lines[-1]
     assert xyz(window.session.robot) == before
     assert sheet.step == "slot"
+    assert sheet.slots.marked is None
 
 
 def test_the_picture_says_whether_the_marker_is_in_view(app, window):
     sheet = _open(app, window)
     sheet.placed_button.click()
-    sheet.slot.setCurrentIndex(sheet.slot.findText("Slot 4"))
-    sheet.move_button.click()
+    sheet.slots.button(4).click()
     _wait(app, lambda: sheet.step == "center")
     _wait(app, lambda: sheet.marker_state == "NO MARKER IN VIEW")
     assert not sheet.centered_button.isEnabled()
@@ -216,11 +223,68 @@ def test_the_sweep_parameters_are_the_ones_in_settings(app, window):
                                                          sweep_parameters)
     session = window.session
     assert sweep_parameters(session.settings) == SWEEP_DEFAULTS
+
+
+def test_no_marker_line_only_how_long_it_takes(app, window):
+    from PySide6.QtWidgets import QLabel
     sheet = _open(app, window)
-    assert "6.8 mm" in sheet.parameters.text()
-    session.set_settings(session.settings.model_copy(
-        update={"sweep_grid_n": 9}))
-    assert "grid 9" in sheet.parameters.text()
+    texts = [label.text() for label in sheet.findChildren(QLabel)]
+    assert not any("6.8 mm" in t or "grid" in t for t in texts)
+    assert any("About 2 min" in t for t in texts)
+
+
+@pytest.fixture
+def fitted(monkeypatch):
+    """A sweep that ends at once with the report set in `fitted.report`."""
+    from micropick.config.schema import PixelMap as PixelMapConfig
+    from micropick.core.calibration.pixel_map import PixelMap
+
+    class Fitted:
+        report = None
+
+    def fake(robot, camera, detector, *, cancel, on_progress, log, **kw):
+        config = PixelMapConfig(
+            degree=1, cu=320.0, cv=240.0, s=320.0,
+            coef=[[0.0, 8.0], [8.0, 0.0]], zero=[0.0, 0.0],
+            ref=[320.0, 240.0], bounds=[10.0, 10.0, 630.0, 470.0],
+            image_size=[640, 480], sweep_z=0.0)
+        return PixelMap(config), Fitted.report, None
+
+    monkeypatch.setattr(calibration_camera, "calibrate_camera", fake)
+    return Fitted
+
+
+def _sweep_to_result(app, window, sheet):
+    _at_the_marker(app, window, sheet)
+    sheet.centered_button.click()
+    sheet.start_button.click()
+    _wait(app, lambda: sheet.step == "result"
+          and not window.session.robot_lease.busy)
+
+
+def test_done_after_a_good_fit_closes_the_sheet(app, window, fitted):
+    fitted.report = _report()
+    sheet = _open(app, window)
+    _sweep_to_result(app, window, sheet)
+    assert window.session.profile.pixel_map is not None
+    assert sheet.result_done_button.isVisible()
+    assert sheet.result_done_button.text() == "Done"
+    assert sheet.result_done_button.objectName() == "primary"
+    assert not sheet.redo_button.isVisible()
+    sheet.result_done_button.click()
+    assert not sheet.isVisible()
+    assert window.top.path == ["Robot setup"]
+
+
+def test_a_poor_fit_offers_redo_as_secondary(app, window, fitted):
+    fitted.report = _report(holdout=213.0)
+    sheet = _open(app, window)
+    _sweep_to_result(app, window, sheet)
+    assert window.session.profile.pixel_map is None
+    assert not sheet.result_done_button.isVisible()
+    assert sheet.redo_button.isVisible()
+    assert sheet.redo_button.objectName() == "secondary"
+    assert sheet.save_anyway_button.objectName() == "quiet"
 
 
 def _report(holdout=24.0, resid_max=60.0, side=6.772, frac=(0.9, 0.85)):
