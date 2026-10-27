@@ -11,7 +11,7 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication                     # noqa: E402
+from PySide6.QtWidgets import QApplication, QPushButton        # noqa: E402
 
 from micropick.gui.app import Options                          # noqa: E402
 from micropick.gui.shell import MainWindow                     # noqa: E402
@@ -121,37 +121,91 @@ def test_done_is_gray_while_the_robot_is_busy(app, window):
     assert sheet.done_button.isEnabled()
 
 
-def test_focus_opens_the_cameras_own_window_and_saves_to_the_profile(
-        app, window):
+def test_opening_camera_is_shown_until_the_first_frame(app, window):
+    window.open_robot_setup()
+    window.robot_setup_page.rows["upper_camera"].clicked.emit()
+    sheet = window.camera_sheet
+    assert sheet.opening.isVisible()
+    assert sheet.opening_label.text() == "Opening camera…"
+    _wait(app, lambda: not sheet.opening.isVisible())
+    assert sheet.view.camera is window.session.camera("over")
+
+
+def test_no_camera_attached_shows_no_opening(app, window, monkeypatch):
+    monkeypatch.setattr(window.session, "attached_cameras", lambda: [])
+    window.session.reset_setup()
+    window.open_robot_setup()
+    window.robot_setup_page.rows["upper_camera"].clicked.emit()
+    sheet = window.camera_sheet
+    app.processEvents()
+    assert not sheet.opening.isVisible()
+    assert sheet.state.text() == "No camera is attached."
+
+
+def _focus_shown(app, sheet):
+    _wait(app, lambda: sheet.focus_row.isVisible())
+
+
+def test_focus_is_inline_for_a_camera_with_focus(app, window):
+    sheet = _open(app, window, "lower_camera")
+    _focus_shown(app, sheet)
+    assert sheet.focus_slider.value() == 500
+    assert sheet.focus_default.text() == "Default (960)"
+    sheet.select.setCurrentIndex(sheet.select.findText("mock-over"))
+    _wait(app, lambda: sheet.view.camera is window.session.camera("over")
+          and sheet.view.camera is not None)
+    _wait(app, lambda: not sheet.opening.isVisible())
+    assert not sheet.focus_row.isVisible()         # this one has no focus
+
+
+def test_focus_is_inline_for_a_device_only_previewed(app, window):
+    window.session.reset_setup()
+    sheet = _open(app, window, "lower_camera")
+    sheet.select.setCurrentIndex(sheet.select.findText("mock-under"))
+    _wait(app, lambda: sheet.view.camera is not None
+          and sheet.view.camera.crop == 0.5)
+    _focus_shown(app, sheet)
+    sheet.focus_number.setValue(700)
+    _wait(app, lambda: sheet.view.camera.get_control("focus") == 700)
+    sheet.done_button.click()
+    label = window.session.lower_camera_label
+    assert window.session.profile.cameras[label].controls["focus"] == 700
+
+
+def test_focus_is_tried_live_and_saved_with_done(app, window):
     sheet = _open(app, window, "lower_camera")
     camera = window.session.camera("under")
-    assert sheet.view.camera is camera
-    assert sheet.focus_button.isEnabled()
-    sheet.focus_button.click()
-    feed = sheet.feed_window
-    assert feed.isVisible()
-    assert feed.view.camera is camera
-    camera.set_controls({"focus": 640})
-    feed.view.focus_save_requested.emit("under")
+    _focus_shown(app, sheet)
+    sheet.focus_slider.setValue(640)
+    _wait(app, lambda: camera.get_control("focus") == 640)
+    assert window.session.profile.cameras["under"].controls["focus"] == 500
+    sheet.done_button.click()
     assert window.session.profile.cameras["under"].controls["focus"] == 640
-    sheet.cancel_button.click()
-    assert not feed.isVisible()                    # goes with the sheet
 
 
-def test_focus_is_gray_on_a_camera_not_yet_chosen(app, window):
-    sheet = _open(app, window, "upper_camera")
-    sheet.select.setCurrentIndex(sheet.select.findText("mock-under"))
-    _wait(app, lambda: sheet.view.camera is window.session.camera("under"))
-    assert sheet.focus_button.isEnabled()          # the profile's, by device
-    window.session.reset_setup()
-    sheet = _open(app, window, "lower_camera")     # nothing saved: a preview
-    assert not sheet.focus_button.isEnabled()
-
-
-def test_the_focus_window_goes_when_another_camera_is_chosen(app, window):
+def test_default_puts_back_960(app, window):
     sheet = _open(app, window, "lower_camera")
-    sheet.focus_button.click()
-    assert sheet.feed_window.isVisible()
-    sheet.select.setCurrentIndex(sheet.select.findText("mock-over"))
-    _wait(app, lambda: sheet.view.camera is window.session.camera("over"))
-    assert not sheet.feed_window.isVisible()
+    camera = window.session.camera("under")
+    _focus_shown(app, sheet)
+    sheet.focus_default.click()
+    assert sheet.focus_number.value() == 960
+    _wait(app, lambda: camera.get_control("focus") == 960)
+
+
+def test_close_does_not_save_the_focus_and_puts_it_back(app, window):
+    sheet = _open(app, window, "lower_camera")
+    camera = window.session.camera("under")
+    _focus_shown(app, sheet)
+    sheet.focus_slider.setValue(640)
+    _wait(app, lambda: camera.get_control("focus") == 640)
+    sheet.close_button.click()
+    assert window.session.profile.cameras["under"].controls["focus"] == 500
+    assert camera.get_control("focus") == 500
+
+
+def test_there_is_no_focus_button_or_window(app, window):
+    sheet = _open(app, window, "lower_camera")
+    assert not hasattr(sheet, "focus_button")
+    assert not hasattr(sheet, "feed_window")
+    labels = {b.text() for b in sheet.findChildren(QPushButton)}
+    assert "Focus" not in labels

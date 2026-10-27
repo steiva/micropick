@@ -158,11 +158,14 @@ row. A text or number field with the keyboard keeps the keys it uses
 the pad then says so (`jog_panel.TYPING_HELP`), and Enter in the field or
 a click on the picture or the page gives them back.
 
-A camera's focus is tuned only in its own window
-(`widgets.feed_window.FeedWindow`), opened by Focus in Robot setup's
-camera sheet for a camera the profile has (a device only previewed has
-none) and hidden with the sheet: `CameraView.enable_focus_tools` -
-slider, typed number, default 960, save to profile - is off on the pages.
+A camera's focus is tuned only in Robot setup's camera sheet: while the
+chosen camera opens, a spinner and "Opening camera…" over the picture
+("No camera is attached." only when none is); from its first frame, for
+a device that took a focus - the profile's or one only previewed - the
+focus row under the picture (slider, typed number, Default (960)), tried
+on the device live. Done saves it (`Session.save_camera_focus`); × saves
+nothing and puts back the open camera's focus. No Focus button, no
+window of its own; `CameraView.enable_focus_tools` is off on the pages.
 
 ### Manual pick drives the robot from the picture
 

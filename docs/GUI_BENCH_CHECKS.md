@@ -15,8 +15,8 @@ Home (Robot & Deck is the Deck step, Tip calibration the Tip step, Plate
 plan the Plan step, Manual control Manual pick's Work), the profile's
 settings are Robot setup's rows and the Settings sheet's second column,
 the status bar's light is Light in the top bar, its tip button the Tip
-step, and a camera's own window opens from Focus in Robot setup's camera
-sheet.
+step, and a camera's focus is set under the picture in Robot setup's
+camera sheet.
 
 ---
 
@@ -1744,3 +1744,26 @@ On the bench's profile, both cameras attached.
   In the Upper camera sheet, choose a device the profile does not have
   (after Reset setup, say): Focus is gray. Cancel closes the focus window
   with the sheet.
+
+  (Both checks above are replaced by #31's below: no Focus button, no
+  focus window.)
+
+## Robot setup walk-through — camera sheet opening and focus (#31)
+
+- [ ] **Opening camera.**
+  Robot setup, Lower camera: until the first picture, a turning bar and
+  "Opening camera…" in the middle of the picture, never "no camera".
+  Choose the other device: the same while it opens.
+
+- [ ] **Focus under the picture.**
+  On the lower camera's picture, the Focus row (slider, number, Default
+  (960)) is under it as soon as the picture shows; none on the upper
+  camera. Move the slider: the picture sharpens and blurs live. ×, then
+  open the sheet again: the focus is the saved one. Move it again, Done;
+  close the program and start it again: the lower camera opens at that
+  focus.
+
+- [ ] **Focus for a device only previewed.**
+  After Reset setup, Lower camera: the focus row shows on the lower
+  device's picture before anything is saved; Done saves the camera and
+  that focus.
