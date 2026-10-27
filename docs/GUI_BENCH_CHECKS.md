@@ -1612,3 +1612,29 @@ tip box and a 384 plate at hand.
   The folded Well center card measures a plate as before (Go to well top,
   jog, Set well center) and Dispense in a well then goes to the measured
   center.
+
+## Redesign — Well center step and skipped plates (#21)
+
+- [ ] **The list.**
+  Two plates on the deck, Liquid › Well center: both "Not measured yet"
+  (gray ring), the first selected. The upper camera on the left, the jog
+  pad over it. With none on the deck: "No plate on the deck."
+
+- [ ] **Measure a plate.**
+  Choose a well, Move the tip: the tip goes to its top center as the
+  robot has it (watch it: no crash into the rim). It is centered and It
+  is level take turns with the arrows; Well depth reads "10.67 mm, from
+  the plate's drawing" (for a Corning 96). Save: "Well center saved.",
+  the row reads "Measured today" with a green ✓, the next plate is
+  selected. Liquid handling's groups on that plate now go to the measured
+  center.
+
+- [ ] **Skip.**
+  Skip this plate, use the drawing: "Not measured: using the drawing", a
+  yellow ✓; the step is ✓ once every plate is measured or skipped. Home
+  the robot (a new robot session): the skipped plate reads "Not measured
+  yet" again; a measured one stays measured.
+
+- [ ] **A run's plate.**
+  During a liquid run into a plate, its Save is gray, the tooltip naming
+  the run.

@@ -280,9 +280,15 @@ not a page of its own. Start blows the tip out over the program's trash
 does not. The plate map spans both card columns (`CardColumns(wide=...)`),
 names the well under the pointer, and opens in its own window as a
 `PlateMirror` - the same scene, never a copy. A plate's measured well
-center (`WellCenter`) is one per slot and plate type, set on Liquid
-handling or on Manual Work's folded Well center card (Go to well top, jog,
-Set well center); Manual Work's Aspirate and Dispense in a well and a
+center (`WellCenter`) is one per slot and plate type, set on Liquid's
+Well center step (`pages.well_center`, REDESIGN §6.7: the plates on the
+deck, "Measured today" / "Not measured: using the drawing" / "Not measured
+yet"; Move the tip, It is centered, It is level, the well depth from the
+drawing, Save; Skip this plate, use the drawing - `Session.skip_plate`,
+for the robot session only) or on Manual Work's folded Well center card
+(Go to well top, jog, Set well center); Liquid handling only reads it. The
+step is done when every plate is measured or skipped
+(`Session.well_center_status`). Manual Work's Aspirate and Dispense in a well and a
 picking deposit add its x and y, Liquid handling's steps all of it. It is the plate's, wherever it
 was measured, and every page reads it the same way:
 `workflows.well_center` holds the measurement both pages take

@@ -219,6 +219,9 @@ QLabel#homeTitle { font-size: 22px; font-weight: 600; }
 /* Robot setup's rows: the whole row is the button. */
 QFrame#setupRow { background: transparent; border: none; border-radius: 8px; }
 QFrame#setupRow:hover { background: @hover; }
+QFrame#plateRow { background: transparent; border: none; border-radius: 8px; }
+QFrame#plateRow:hover { background: @hover; }
+QFrame#plateRow[selected="true"] { background: @selected-bg; }
 QLabel#setupLabel { font-size: 15px; font-weight: 600; }
 QLabel#setupValue { color: @text-2; }
 QFrame#divider { background: @line; border: none; margin: 4px 12px; }

@@ -5,8 +5,8 @@ the plate on the deck sits a fraction of a millimetre off it. So the tip is
 taken to one well's top as the robot has it (`go_to_top`), the operator
 jogs it onto the real center level with the rim, and the difference is the
 plate's `config.schema.WellCenter`, saved per slot and plate type by
-`Session.set_well_center`. Manual control's Well card and Liquid handling
-measure it the same way, with this module; every page that goes into that
+`Session.set_well_center`. Manual control's Well card and Liquid's Well
+center step measure it the same way, with this module; every page that goes into that
 plate's wells uses it, wherever it was measured.
 
 No Qt: `go_to_top` blocks on the robot and runs in a worker; the rest is
