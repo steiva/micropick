@@ -209,6 +209,9 @@ class CameraView(QWidget):
     # A left double click on the picture, in sensor pixels as `clicked`. A
     # double click is never also a click.
     double_clicked = Signal(float, float)
+    # A right click on the picture, in sensor pixels as `clicked`: Manual
+    # Work marks a memo point with it.
+    right_clicked = Signal(float, float)
     # Another camera, or none, is now shown.
     camera_changed = Signal()
     # The "points" box was ticked or cleared.
@@ -275,6 +278,7 @@ class CameraView(QWidget):
         self._stats_enabled = False               # see enable_stats_button
         self._corner: list[QWidget] = []          # see add_corner_widget
         self._top: list[QWidget] = []             # see add_top_widget
+        self._top_left: QWidget | None = None     # see add_top_left_widget
         self._build_controls()
 
         self._timer = QTimer(self)
@@ -639,10 +643,20 @@ class CameraView(QWidget):
         self._top.append(widget)
         self._place_controls()
 
+    def add_top_left_widget(self, widget: QWidget) -> None:
+        """Float `widget` in the picture's top-left corner, the boxes of
+        `set_position` and `set_status` under it: Manual Work's TipGauge.
+        One per view."""
+        widget.setParent(self)
+        widget.installEventFilter(self)
+        self._top_left = widget
+        self._place_controls()
+
     def eventFilter(self, watched, event) -> bool:
         """A corner or top widget that changed its size or was shown is
         placed again."""
-        if (watched in self._corner or watched in self._top) \
+        if (watched in self._corner or watched in self._top
+                or watched is self._top_left) \
                 and event.type() in (QEvent.Type.LayoutRequest,
                                      QEvent.Type.Show):
             self._place_controls()
@@ -704,6 +718,10 @@ class CameraView(QWidget):
             size = widget.sizeHint()
             right -= margin + size.width()
             widget.setGeometry(right, margin, size.width(), size.height())
+        if self._top_left is not None:
+            size = self._top_left.sizeHint()
+            self._top_left.setGeometry(margin, margin, size.width(),
+                                       size.height())
         for widget in self._corner:
             size = widget.sizeHint()
             widget.setGeometry(self.width() - size.width() - margin,
@@ -786,6 +804,10 @@ class CameraView(QWidget):
             self.unsetCursor()
             event.accept()
             return
+        if event.button() == Qt.MouseButton.RightButton:
+            point = self._sensor_point(event.position())
+            if point is not None:
+                self.right_clicked.emit(*point)
         if event.button() == Qt.MouseButton.LeftButton and self._after_double:
             self._after_double = False
         elif event.button() == Qt.MouseButton.LeftButton and self._image is not None:
@@ -798,6 +820,17 @@ class CameraView(QWidget):
                     self._click_timer.start(
                         QApplication.doubleClickInterval())
         super().mouseReleaseEvent(event)
+
+    def _sensor_point(self, position: QPointF) -> tuple[float, float] | None:
+        """The sensor pixel under a widget position on the picture, or
+        None off it."""
+        if self._image is None or not self._shown.contains(position.toPoint()):
+            return None
+        inverse, ok = self._transform.inverted()
+        if not ok:
+            return None
+        point = inverse.map(position)
+        return point.x(), point.y()
 
     def _send_click(self) -> None:
         click, self._pending_click = self._pending_click, None
@@ -1215,6 +1248,8 @@ class CameraView(QWidget):
         mono.setPointSize(10)
         painter.setPen(QPen(CAPTION_FG))
         top = 8
+        if self._top_left is not None and self._top_left.isVisible():
+            top = self._top_left.geometry().bottom() + 1 + CAPTION_GAP
         for lines in groups:
             if lines:
                 painter.setFont(mono if lines is self._position else font)

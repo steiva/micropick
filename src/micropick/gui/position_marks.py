@@ -25,7 +25,13 @@ control's picture and kept until the program closes: a ring with a cross in
 it, in cyan, named with its Z when it has one. Tip points like most
 positions, drawn the same way; the one chosen in Manual control's list is
 drawn thicker, and one the tip cannot go to (`Session.memo_problem`: below
-a deck module's top, say) in red with a "!".
+a deck module's top, say) in red with a "!". A page may hide them
+(`PositionMarks.show_memo`): Manual Work draws them only while the points
+are shown there.
+
+And the past picks a page hands over (`PositionMarks.set_picks`): where the
+tip took something, a violet ring each, the last bright and the older ones
+faint (REDESIGN §6.6).
 
 Which is which is decided by the name, never by the operator: a camera pose
 is only taught by the button of the page that uses it, and the jog panel
@@ -52,8 +58,8 @@ from PySide6.QtCore import QObject
 from ..core.calibration.pixel_map import PixelMap
 from ..viz import overlays
 
-__all__ = ["MARK", "MEMO", "CAMERA_POSITIONS", "mark_items", "memo_items",
-           "axis_directions", "PositionMarks"]
+__all__ = ["MARK", "MEMO", "PICK", "CAMERA_POSITIONS", "mark_items",
+           "memo_items", "pick_items", "axis_directions", "PositionMarks"]
 
 # The camera poses, by name, with the Robot setup item that sets each. The
 # names are the workflows': `PickingSession` reads `observe`
@@ -69,6 +75,9 @@ MARK = (120, 255, 120)
 MEMO = (255, 220, 0)
 # A memo point the tip cannot go to.
 MEMO_BAD = (0, 0, 255)
+# The last past pick, and the older ones: the same violet, dimmed.
+PICK = (250, 155, 169)
+PICK_OLD = (120, 75, 80)
 RADIUS_PX = 22
 # Half the gap in the middle of each side of a camera pose's square.
 GAP_PX = 8
@@ -171,6 +180,25 @@ def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
     return out
 
 
+def pick_items(picks, pmap: PixelMap, pipette_offset, gantry_xy,
+               image_size) -> list:
+    """A ring at each past pick inside the frame, (x, y) of the tip in the
+    order taken: the last bright, the others faint."""
+    width, height = image_size
+    out = []
+    for i, (x, y) in enumerate(picks):
+        pixel = pmap.to_pixel(x - float(pipette_offset.dx),
+                              y - float(pipette_offset.dy), gantry_xy)
+        if pixel is None or not _inside(*pixel, width, height):
+            continue
+        last = i == len(picks) - 1
+        out.append(overlays.Circle(
+            center=(int(round(pixel[0])), int(round(pixel[1]))),
+            radius=RADIUS_PX, color=PICK if last else PICK_OLD,
+            thickness=3 if last else 2))
+    return out
+
+
 def axis_directions(pmap: PixelMap) -> dict | None:
     """Which way +X and +Y of the deck point in the picture, in pixels per
     millimetre: where a deck point 1 mm along each axis from the one at the
@@ -207,6 +235,8 @@ class PositionMarks(QObject):
         self.view = view
         self.pose = None
         self.memo_chosen: str | None = None      # drawn thicker
+        self.memo_shown = True
+        self.picks: list = []                    # see set_picks
         session.profile_changed.connect(lambda _p: self.update())
         session.memo_points_changed.connect(self.update)
         view.camera_changed.connect(self.update)
@@ -221,6 +251,16 @@ class PositionMarks(QObject):
 
     def choose_memo(self, name: str | None) -> None:
         self.memo_chosen = name
+        self.update()
+
+    def show_memo(self, shown: bool) -> None:
+        self.memo_shown = bool(shown)
+        self.update()
+
+    def set_picks(self, picks) -> None:
+        """The past picks to draw, (x, y) of the tip, oldest first; empty
+        draws none."""
+        self.picks = list(picks or ())
         self.update()
 
     def _set_pose(self, pose) -> None:
@@ -256,9 +296,11 @@ class PositionMarks(QObject):
         pmap, offset = found
         positions = dict(self.session.profile.positions or {})
         size = pmap.config.image_size
-        self.view.set_marks(
-            mark_items(positions, pmap, offset, pose[:2], size)
-            + memo_items(self.session.memo_points, pmap, offset, pose[:2],
-                         size, self.memo_chosen,
-                         {p.name for p in self.session.memo_points
-                          if self.session.memo_problem(p)}))
+        items = (mark_items(positions, pmap, offset, pose[:2], size)
+                 + pick_items(self.picks, pmap, offset, pose[:2], size))
+        if self.memo_shown:
+            items += memo_items(self.session.memo_points, pmap, offset,
+                                pose[:2], size, self.memo_chosen,
+                                {p.name for p in self.session.memo_points
+                                 if self.session.memo_problem(p)})
+        self.view.set_marks(items)

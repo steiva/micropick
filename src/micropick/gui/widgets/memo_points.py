@@ -6,7 +6,8 @@ list. A cell is edited by a double click, in a number box that takes Enter;
 Z's box goes down to "travel height", which is a point with no Z of its own
 (the tip stays at the travel height over it). A Z the tip cannot go to -
 below the top of a deck module there, say (`Session.memo_problem`) - is
-red, with the reason under the pointer.
+red, with the reason under the pointer. The × at the end of a row deletes
+that point (`Session.delete_memo_point`).
 
 The table takes no focus: the arrows and PageUp/PageDown are the robot's
 keys on this page, and a table with the keyboard would scroll on them
@@ -20,16 +21,17 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (QAbstractItemView, QHeaderView,
                                QStyledItemDelegate, QTableWidget,
-                               QTableWidgetItem)
+                               QTableWidgetItem, QToolButton)
 
 from ..session import Session
 from ..theme.factory import double_spin_box
 
 __all__ = ["MemoTable", "TRAVEL_TEXT", "Z_TOP_MM"]
 
-COLUMNS = ("Point", "X", "Y", "Z")
+COLUMNS = ("Point", "X", "Y", "Z", "")
 _KEYS = {1: "x", 2: "y", 3: "z"}
 Z_COLUMN = 3
+DELETE_COLUMN = 4
 
 # What a point with no Z shows, and the bottom of Z's box that means it.
 TRAVEL_TEXT = "travel height"
@@ -91,6 +93,8 @@ class MemoTable(QTableWidget):
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(DELETE_COLUMN,
+                                    QHeaderView.ResizeMode.ResizeToContents)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -112,6 +116,23 @@ class MemoTable(QTableWidget):
             return None
         item = self.item(rows[0].row(), 0)
         return None if item is None else item.text()
+
+    def delete_button(self, name: str) -> QToolButton | None:
+        """The × of the point named `name`."""
+        for row in range(self.rowCount()):
+            if self.item(row, 0).text() == name:
+                return self.cellWidget(row, DELETE_COLUMN)
+        return None
+
+    def _delete_button(self, name: str) -> QToolButton:
+        button = QToolButton(self)
+        button.setText("×")
+        button.setAutoRaise(True)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setToolTip(f"Delete {name}.")
+        button.clicked.connect(
+            lambda: self.session.delete_memo_point(name))
+        return button
 
     def choose(self, name: str | None) -> None:
         for row in range(self.rowCount()):
@@ -138,6 +159,8 @@ class MemoTable(QTableWidget):
                     name = QTableWidgetItem(point.name)
                     name.setFlags(name.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     self.setItem(row, 0, name)
+                    self.setCellWidget(row, DELETE_COLUMN,
+                                       self._delete_button(point.name))
                 for column, key in _KEYS.items():
                     value = getattr(point, key)
                     item = self.item(row, column) if same else None

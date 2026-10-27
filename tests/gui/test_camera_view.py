@@ -189,6 +189,31 @@ def test_a_click_outside_the_picture_is_not_a_click_on_it(app):
     view.close()
 
 
+def _right_click(app, view, point):
+    for kind, buttons in ((QMouseEvent.Type.MouseButtonPress,
+                           Qt.MouseButton.RightButton),
+                          (QMouseEvent.Type.MouseButtonRelease,
+                           Qt.MouseButton.NoButton)):
+        app.sendEvent(view, QMouseEvent(kind, point, view.mapToGlobal(point),
+                                        Qt.MouseButton.RightButton, buttons,
+                                        Qt.KeyboardModifier.NoModifier))
+    app.processEvents()
+
+
+def test_a_right_click_reports_the_sensor_pixel_and_is_not_a_click(app):
+    view = _view(app, _Camera("over", (800, 600)))
+    right, left = [], []
+    view.right_clicked.connect(lambda u, v: right.append((u, v)))
+    view.clicked.connect(lambda u, v: left.append((u, v)))
+    _right_click(app, view, view.transform.map(QPointF(120.0, 90.0)))
+    assert len(right) == 1
+    assert abs(right[0][0] - 120.0) < 2 and abs(right[0][1] - 90.0) < 2
+    view._click_timer.start(0)
+    app.processEvents()
+    assert left == []
+    view.close()
+
+
 def test_a_size_histogram_is_drawn_over_the_picture_without_failing(app):
     """Painted onto an offscreen widget with a frame: the drawing path runs
     end to end, and the toggle appears with the histogram."""

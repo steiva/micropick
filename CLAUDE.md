@@ -195,23 +195,34 @@ travel height (or the top is not measured yet), everywhere, the picking
 run included. A stored pose (`tip_calib`, `observe`, `shake`, the jog
 panel's Go to, and the picking run's own moves to them) is reached no
 higher than that travel height (`Motion.reachable`): taught after a
-retract, it is out of bounds for the robot. Click-to-move is off on every
-entry to the tab.
+retract, it is out of bounds for the robot.
 
-On Manual control a **double** click moves (`CameraView.double_clicked`,
-`double_click_fits` off there: the wheel zooms back out); with Mark points
-ticked (off by default) a click marks a **memo point** (`Session.memo_points`:
-tip XY and a Z or none, named with the lowest free number M1, M2 ...,
-in memory until the program closes, never in the profile). The tip goes
-to one only by the card's Go to, never by a double click. A point below
+On Manual pick's Work step (`pages.manual`, REDESIGN §6.6) a **single
+left** click moves - the camera or the tip, as "A click moves the [Camera
+| Tip]" over the picture's top right says, beside Camera / Tip back to
+center (the dish center, `observe`) - checked against the jog envelope
+(`Motion.refused`) and through `JogPanel.run_job`; a click on a detected
+cuboid sends the tip down to it at the pickup height. A double click
+moves nothing. A **right** click (`CameraView.right_clicked`) marks a
+**memo point** (`Session.memo_points`: tip XY and a Z or none, named with
+the lowest free number M1, M2 ..., in memory until the program closes,
+never in the profile); each is deleted by its × (`Session.delete_memo_point`).
+There is no Click to move and no Mark points. The tip goes to one only by
+the card's Go to. A point below
 a deck module's top is flagged (`Session.memo_problem`, the jog
 envelope's floors, `Motion.envelope`: the profile's modules over the deck
 definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Drawn in cyan
-on the "points" layer of every page (`position_marks.memo_items`; that
-layer is on by default on Manual control) and listed in the Memo points
-card (`widgets.memo_points.MemoTable`). A new point takes New point Z, the
+on the "points" layer (`position_marks.memo_items`); on Work only while
+the points are shown (`PositionMarks.show_memo`: the Points card open,
+until "At a point" takes it over) and listed there
+(`widgets.memo_points.MemoTable`). A new point takes New point Z, the
 last Z given (typed into a point, or Z from tip); "travel height" (no Z)
-until one is given, so a first click never sends the tip down.
+until one is given, so a first click never sends the tip down. Over the
+picture's top left is the `TipGauge` (`CameraView.add_top_left_widget`,
+X, Y, Z under it), the tip's volume counted from the page's aspirates and
+dispenses; Show past picks draws where it aspirated, the last bright
+(`PositionMarks.set_picks`); Look at (a `MiniDeckDropdown`) sends the
+camera over a slot. Work shows the upper camera only.
 
 The robot reports Z at the tip's end with a tip on and at the nozzle
 without one. There are two tops, kept apart in `workflows.motion`: the

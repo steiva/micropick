@@ -1,39 +1,51 @@
-"""Manual control: the robot by hand, from the keys and from the picture.
+"""Manual Work (REDESIGN §6.6): the robot by hand, from the picture.
 
-The jog panel drives the axes as before. What this page adds is the picture
-as a way of pointing. A click marks a memo point (below) while Mark points
-is ticked; a **double click** moves:
+The jog pad drives the axes as before. What this page adds is the picture
+as a way of pointing: a **left click moves**, a **right click marks a
+point**.
 
-* **A double click sends the camera there** - in Camera mode, the default. The
-  gantry travels so that the clicked point comes under the pixel map's
-  reference pixel - the crosshair in the middle of the upper camera's view.
-  Near the edge of the frame the map is extrapolating, and the move still
-  happens, with a note that it is approximate.
-* **Or the tip**, in Tip mode: the tip goes over the double-clicked point - the
-  pixel map, then the pipette offset (`workflows.manual.tip_target`) - and
-  stays at the travel height, so it shows where it would go down without
-  going down. Only inside the area the map was fitted over: outside it the
-  map is extrapolating, and a tip is not something to put somewhere
+* **A click moves the Camera** - the default, chosen over the picture's top
+  right ("A click moves the [Camera | Tip]"). The gantry travels so that
+  the clicked point comes under the pixel map's reference pixel - the
+  crosshair in the middle of the upper camera's view. Near the edge of the
+  frame the map is extrapolating, and the move still happens, with a note
+  that it is approximate.
+* **Or the Tip**: the tip goes over the clicked point - the pixel map, then
+  the pipette offset (`workflows.manual.tip_target`) - and stays at the
+  travel height, so it shows where it would go down without going down.
+  Only inside the area the map was fitted over: outside it the map is
+  extrapolating, and a tip is not something to put somewhere
   approximately.
-* **A double click on a detected crosshair sends the tip to it**, at the Crosshair
-  Z. This is what the Calibration tab's Check used to be, and it belongs
-  here: it is the same act as any other move by hand, and it needed the
-  same jog panel to get back to the disc afterwards.
-* **A double click on a detected cuboid sends the tip to it**, at the Cuboid Z -
-  the profile's pickup height, one number shared with the run.
+* **A click on a detected cuboid sends the tip to it**, at the profile's
+  pickup height (dish bottom + pickup offset), one number shared with the
+  run.
+
+Every click-move is checked against the jog envelope first
+(`Motion.refused`: the soft limits and the deck modules' tops) and refused
+on the picture when it falls outside, and goes through the jog panel's
+`run_job`, so it claims the robot's lease and cannot overlap a key press or
+another page's work. There is no Click to move switch any more (§12.7):
+the click itself is the deliberate act. A double click is not a click
+(`CameraView`): it moves nothing and, here, does not fit the picture.
+
+Beside the segmented choice, **Camera back to center** puts the camera over
+the dish again (the position over the dish, `observe`), and **Tip back to
+center** puts the tip over that same spot at the travel height.
+
+Over the top left is the **TipGauge**: what is in the tip, counted here
+from the page's aspirates and dispenses and emptied when the tip changes,
+with the robot's X, Y and Z under it.
 
 Memo points
 -----------
-With Mark points ticked (off to begin with), a click on the picture marks
-a point where the tip would go down there (`Session.memo_points`, named
-with the lowest free number, M1, M2 ...), drawn on the "points" layer -
-ticked on this page unless it was cleared - and listed in the Memo points
-card, where X, Y and Z are edited and a point is deleted. The tip goes to
-one only by its Go to: a double click on a point is a move like any other,
-to the pixel. They last until the program closes; a point to keep is a
-position (the jog panel's Positions). A click near a point chooses it
-instead of marking another one, ticked or not. Marking moves nothing, so
-it does not need Click to move.
+A right click on the picture marks a point where the tip would go down
+there (`Session.memo_points`, named with the lowest free number, M1, M2
+...), listed in the Points card, where X, Y and Z are edited and the ×
+deletes one (`Session.delete_memo_point`). They are drawn on the picture
+only while the points are shown (the Points card open; REDESIGN §6.6 ties
+it to "At a point"), and marking one opens them. The tip goes to one only
+by its Go to. They last until the program closes; a point to keep is a
+position (the jog panel's Positions). Marking moves nothing.
 
 A point the tip cannot go to is said where it is made and shown in red,
 on the picture and in its Z (`Session.memo_problem`): the jog envelope's
@@ -45,40 +57,30 @@ marked over a 64 mm platform at z 50 is known to be inside it.
 The height is the part a click cannot give. A new point takes New point Z,
 and New point Z is the last height given: typed into a point's Z, or taken
 from the tip with "Z from tip" after jogging it down to where it should
-be. A row of points at one depth is so one height set and the rest
-clicked; a point at another depth gets its own Z, and the points after it
-follow that one. Before any height is given New point Z is "travel
-height": a point with no Z is gone to at the travel height, so a first
-click never lowers the tip into anything.
+be. Before any height is given New point Z is "travel height": a point
+with no Z is gone to at the travel height, so a first click never lowers
+the tip into anything.
 
-**On the lower camera a click never marks or moves anything**, and the picture says
-so for as long as it is shown. The pixel map is the upper camera's; the
-lower one looks up at the tip, so a point on its picture is not a place on
-the deck, and a click there that moved the gantry would move it somewhere
-unrelated to what was clicked.
+Past picks
+----------
+Where the tip aspirated on this page, in the order taken, kept until the
+program closes. Show past picks (a toggle, filled while on) draws them: the
+last bright, the older ones faint (`position_marks.pick_items`), so the
+spots already taken from are visible.
 
-Tip moves are only made inside the area the map was fitted over; a camera
-move outside it is only imprecise, a tip move outside it could put the tip
-into the wrong thing.
+Look at
+-------
+A MiniDeckDropdown of the whole deck: choosing a slot sends the **camera**
+over that slot's center at the travel height (`core.deck.slot_center`, the
+deck definition's geometry). The definition is in the robot's frame, the
+tip's: the camera goes to it less the pipette offset. Nothing is aspirated.
 
-Every move across the deck starts with the tip at the top of its travel,
-measured once by retracting and checked before each move after that
-(`workflows.motion`). A target past the soft limits is refused on
-the picture, as a jog step past them is. And nothing moves at all until
-"Click to move" is on; it is off each time this tab is opened, and with it
-off a double click only says where it would go. Since a double click is a
-move here, it does not fit the picture: the wheel zooms back out.
+Only the upper camera is shown: the pixel map is its, and a point on the
+lower camera's picture is not a place on the deck.
 
 Aspirate and dispense in place, with a volume and a flow rate, are on the
 page and on A and D - the in-place commands the run uses, for trying a
 pickup by hand. They are refused unless the robot reports a tip on.
-
-A small deck map is the way across the deck: a click on a slot sends the
-camera or the tip, as "A click moves" says, over that slot's center at the
-travel height (`core.deck.slot_center`, the deck definition's geometry). The
-definition is in the robot's frame, the tip's: the tip goes to the center
-itself, the camera to it less the pipette offset. It obeys Click to move
-like the picture does, and goes through the same queue.
 
 A cuboid picked by hand needs somewhere to go, so a well of any plate the
 run holds can be driven to: the robot's own `move_to_well`, to the top,
@@ -102,13 +104,13 @@ Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
 detections are dropped: they were measured from where the camera was.
 
-After Detect cuboids, their sizes against the profile's size window are in
-a folded Sizes section: the Picking page's histogram (`widgets.size_histogram`),
-the same drawing, so the two pages cannot disagree about what a run would
-accept.
+After Analyze the dish, the cuboids' sizes against the profile's size
+window are in a folded Sizes section: the Picking page's histogram
+(`widgets.size_histogram`), the same drawing, so the two pages cannot
+disagree about what a run would accept.
 
-The keys - the jog panel's and these - and what the mouse does are listed
-on the picture, bottom right; H hides them.
+The keys - the jog panel's and these - are listed under the jog pad (its
+Keys toggle); what the mouse does is the picture's mouse row.
 """
 
 from __future__ import annotations
@@ -120,37 +122,41 @@ import cv2
 import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QButtonGroup, QCheckBox, QHBoxLayout, QLabel,
-                               QMessageBox, QRadioButton, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QMessageBox,
+                               QVBoxLayout, QWidget)
 
+from ...config.labware import LabwareError, resolve_definition
 from ...core.calibration.pixel_map import PixelMap
 from ...core.deck import slot_center
 from ...hardware.protocols import xyz
-from ...viz import markers, overlays
+from ...viz import overlays
 from ...workflows import manual as moves
 from ...workflows import well_center
 from ...workflows.motion import WELL_LEVELS
 from .. import keys
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
+from ..labware_kinds import facts, kind
+from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (Section, card, combo_box, double_spin_box,
-                             heading, primary_button, scroll_column,
-                             secondary_button)
-from ..tip_detector import load_tip_detector
-from ..widgets.camera_view import ZOOM_AND_PAN, CameraView
+from ..theme.factory import (Section, card, combo_box, compact,
+                             double_spin_box, heading, muted_label,
+                             primary_button, scroll_column, secondary_button)
+from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
-from ..widgets.deck_view import DeckView
+from ..widgets.controls import Segmented
 from ..widgets.feed_row import FeedRow
+from ..widgets.fold_card import FoldCard
 from ..position_marks import PositionMarks
 from ..widgets.jog_panel import JogPanel
+from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
+from ..widgets.tip_gauge import TipGauge
 from ..widgets.memo_points import TRAVEL_TEXT, MemoTable, Z_TOP_MM
 from ..widgets.size_histogram import SizeHistogram
 from ..workers import Worker
 
-__all__ = ["ManualPage", "SNAP_PX", "CROSSHAIR_Z_MM"]
+__all__ = ["ManualPage"]
 
 TITLE = "Manual control"
 
@@ -158,19 +164,9 @@ log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 400
 
-# A click further than this from any crosshair was meant for something else
-# and is a camera move, not a rounding to the nearest crosshair.
-SNAP_PX = 60.0
-
 # How far outside a cuboid's contour a click still counts as on it: the
 # outline is a line one pixel wide, and a cuboid is a small thing to hit.
 CUBOID_SNAP_PX = 6.0
-
-# The calibration check's z for a crosshair: just under the calibration
-# module's height, so the tip travels level with the disc.
-CROSSHAIR_Z_MM = 67.0
-
-Z_RANGE = (0.5, 150.0)
 
 # Liquid handling bounds: wide enough for any pipette on this robot, and a
 # typo of an extra digit still stops at the top of the range.
@@ -185,15 +181,17 @@ KEYS = (("aspirate", "aspirate", "_aspirate"),
 # How far the tip may be sent from the chosen well level, either way.
 WELL_OFFSET_RANGE = (-50.0, 50.0)
 
-# The deck map: enough to tell the slots apart, not a second Deck step.
-DECK_HEIGHT = 170
+# What the mouse does on the picture, its row along the bottom (§3).
+MOUSE_HELP = ("Left click   move", "Right click   mark a point",
+              "Wheel   zoom", "Middle-drag   pan")
 
-# On the picture while the lower camera is shown; see the module docstring.
-LOWER_CAMERA_NOTE = "lower camera: clicks do not mark or move"
+# "A click moves the [Camera | Tip]", in this order; the button beside it.
+CLICK_MOVES = ("Camera", "Tip")
+CENTER = ("Camera back to center", "Tip back to center")
 
-# What the mouse does on the picture, its row along the bottom.
-MOUSE_HELP = ("Click   mark a point (Mark points on)",
-              "Double-click   move there (Click to move on)", *ZOOM_AND_PAN)
+# A plate behind the picture's words, as the TipGauge's.
+OVER_PICTURE = ("color: #C9CED6; font-weight: 600; padding: 6px 8px; "
+                "border-radius: 6px; background: rgba(10, 12, 14, 0.84);")
 
 
 def _number_box(parent: QWidget, value: float, span, suffix: str,
@@ -208,10 +206,6 @@ def _number_box(parent: QWidget, value: float, span, suffix: str,
     box.setMinimumWidth(110)
     box.setValue(value)
     return box
-
-
-def _z_box(parent: QWidget, value: float):
-    return _number_box(parent, value, Z_RANGE, " mm")
 
 
 def _memo_z_text(z) -> str:
@@ -233,8 +227,12 @@ class ManualPage(QWidget):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        self._tip_detector = None
-        self._tip_device = None             # the setting it was loaded with
+        # What is in the tip, counted from this page's aspirates and
+        # dispenses; emptied when the tip changes.
+        self._in_tip = 0.0
+        self._tip = session.tip              # the tip it is counted for
+        # Where the tip aspirated, (x, y), oldest first: the past picks.
+        self._picks: list[tuple[float, float]] = []
         # The last Go to well top: the robot's own idea of that well's top
         # center, which Set well center measures the real one against.
         self._measurement = well_center.Measurement()
@@ -243,9 +241,14 @@ class ManualPage(QWidget):
         self.opener = CameraOpener(session, self)
         self.view = CameraView(self)
         self.view.marks_default = True      # the memo points are drawn there
+        # A double click moves nothing; it does not fit the picture either.
         self.view.double_click_fits = False
-        self.view.clicked.connect(self._mark)
-        self.view.double_clicked.connect(self._clicked)
+        self.view.clicked.connect(self._clicked)
+        self.view.right_clicked.connect(self._mark)
+        self.gauge = TipGauge(parent=self)
+        self.gauge.set_position(None)       # the view's X, Y, Z is under it
+        self.view.add_top_left_widget(self.gauge)
+        self.view.add_top_widget(self._click_row())
         # The host is this page: its shortcuts are window-wide while the page
         # is showing, and go quiet with it.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
@@ -258,11 +261,9 @@ class ManualPage(QWidget):
         self.jog.set_page_help(self._page_help())
 
         self.marks = PositionMarks.on(session, self.view)
-        panel = CardColumns([self._camera_card(), self._click_card(),
-                             self._memo_card(), self._deck_card(),
-                             self._targets_card(), self._sizes_card(),
-                             self._liquid_card(), self._well_card(), self.jog],
-                            self)
+        panel = CardColumns([self._tools_card(), self._sizes_card(),
+                             self._liquid_card(), self._well_card(),
+                             self._memo_card(), self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -274,88 +275,96 @@ class ManualPage(QWidget):
         layout.setSpacing(SPACING)
         layout.addLayout(body, 1)
 
-        session.camera_opened.connect(self._refresh_cameras)
-        session.camera_closed.connect(self._refresh_cameras)
+        session.camera_opened.connect(lambda _l: self._show_camera())
+        session.camera_closed.connect(lambda _l: self._show_camera())
+        session.tip_changed.connect(self._tip_changed)
         session.robot_state_changed.connect(self._robot_changed)
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._reload_plates())
+        session.labware_changed.connect(lambda _s: self._show_deck())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
         self._shortcuts = []
         self._install_shortcuts()
         session.settings_changed.connect(lambda _s: self._rebind())
         self._reload_plates()
         self._on_profile_changed()
-        self._refresh_cameras()
+        self.show_points(False)
+        self._show_camera()
 
     # -- construction --------------------------------------------------------
 
-    def _camera_card(self) -> QWidget:
+    def _click_row(self) -> QWidget:
+        """Over the picture's top right: "A click moves the [Camera | Tip]"
+        and the way back to the dish center for the one chosen."""
+        row = QWidget(self)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACING)
+        label = QLabel("A click moves the", row)
+        label.setStyleSheet(OVER_PICTURE)
+        self.click_mode = Segmented(list(CLICK_MOVES), parent=row)
+        self.click_mode.changed.connect(lambda _i: self._refresh())
+        self.center_button = compact(secondary_button(CENTER[0], row))
+        self.center_button.clicked.connect(self._back_to_center)
+        for widget in (label, self.click_mode, self.center_button):
+            layout.addWidget(widget)
+        return row
+
+    def _tip_moves(self) -> bool:
+        return self.click_mode.current() == CLICK_MOVES.index("Tip")
+
+    def _tools_card(self) -> QWidget:
+        """Analyze the dish and Show past picks, where Picking has Analyze
+        and Shake; Look at under them."""
         box = card(self)
         row = QHBoxLayout()
-        row.addWidget(QLabel("Camera"))
-        self.camera_choice = combo_box(self)
-        self.camera_choice.currentTextChanged.connect(self._show_camera)
-        row.addWidget(self.camera_choice, 1)
+        self.cuboid_button = primary_button("Analyze the dish", self)
+        self.cuboid_button.clicked.connect(self._detect_cuboids)
+        self.past_picks_button = secondary_button("Show past picks", self)
+        self.past_picks_button.setCheckable(True)
+        self.past_picks_button.toggled.connect(lambda _on: self._show_picks())
+        row.addWidget(self.cuboid_button, 1)
+        row.addWidget(self.past_picks_button, 1)
         box.layout().addLayout(row)
-        return box
-
-    def _click_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Click on the picture", 2))
-        # Off on every entry to the page: a click on a picture that moves
-        # the gantry is not something to be halfway into by accident.
-        self.armed = QCheckBox("Click to move", self)
-        self.armed.toggled.connect(lambda _on: self._refresh())
-        box.layout().addWidget(self.armed)
 
         row = QHBoxLayout()
-        row.addWidget(QLabel("A double click moves"))
-        self.click_camera = QRadioButton("Camera", self)
-        self.click_camera.setToolTip("Move the clicked point under the "
-                                     "crosshair.")
-        self.click_tip = QRadioButton("Tip", self)
-        self.click_tip.setToolTip(
-            "Move the tip over the clicked point (calibrated area only).")
-        self.click_camera.setChecked(True)
-        self._click_mode = QButtonGroup(self)
-        for button in (self.click_camera, self.click_tip):
-            # The keys over the picture are the robot's.
-            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            self._click_mode.addButton(button)
-            row.addWidget(button)
-        row.addStretch(1)
+        row.addWidget(QLabel("Look at"))
+        self.look_at = MiniDeckDropdown(self, placeholder="Choose a slot")
+        self.look_at.setToolTip("Move the camera over the slot.")
+        self.look_at.slot_chosen.connect(self._slot_clicked)
+        row.addWidget(self.look_at, 1)
         box.layout().addLayout(row)
 
-        note = QLabel("Camera: the double-clicked point moves under the "
-                      "crosshair. Tip: the tip moves over it at travel "
-                      "height. A double click on a detected crosshair or "
-                      "cuboid lowers the tip to it. Turns off when the tab "
-                      "is opened.")
-        note.setWordWrap(True)
-        box.layout().addWidget(note)
+        self.state = muted_label("", self)
+        self.state.setWordWrap(True)
+        self.state.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.layout().addWidget(self.state)
         return box
 
     def _memo_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Memo points", 2))
-        self.memo_on = QCheckBox("Mark points", self)
-        self.memo_on.setToolTip("A click on the picture marks a memo point.")
-        # The keys over the picture are the robot's.
-        self.memo_on.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        box.layout().addWidget(self.memo_on)
-        note = QLabel("Kept until the program closes.")
-        note.setWordWrap(True)
-        box.layout().addWidget(note)
+        """The memo points; drawn on the picture while this is open."""
+        self.points_card = FoldCard("Points", parent=self)
+        self.points_card.toggled.connect(lambda _open: self._points_toggled())
+        body = self.points_card.body.layout()
         self.memo_table = MemoTable(self.session, self)
         self.memo_table.setToolTip("Double-click X, Y or Z to change it.")
         self.memo_table.chosen.connect(self._memo_chosen)
         self.memo_table.z_typed.connect(self._memo_z_typed)
-        box.layout().addWidget(self.memo_table)
+        body.addWidget(self.memo_table)
+        body.addWidget(muted_label("Right-click the picture to add a point.",
+                                   self))
 
         self.new_z = _number_box(self, 0.0, (0.0, Z_TOP_MM), " mm")
         self.new_z.setSpecialValueText(TRAVEL_TEXT)
         self.new_z.setToolTip("Z of a new point: the last Z set.")
-        _row(box, "New point Z", self.new_z)
+        row = QHBoxLayout()
+        name = QLabel("New point Z")
+        name.setMinimumWidth(90)
+        row.addWidget(name)
+        row.addWidget(self.new_z)
+        row.addStretch(1)
+        body.addLayout(row)
 
         self.memo_go = secondary_button("Go to", self)
         self.memo_go.setToolTip("Move the tip to the chosen point.")
@@ -363,67 +372,14 @@ class ManualPage(QWidget):
         self.memo_z = secondary_button("Z from tip", self)
         self.memo_z.setToolTip("Set the chosen point's Z to the tip's Z now.")
         self.memo_z.clicked.connect(self._memo_z_from_tip)
-        self.memo_delete = secondary_button("Delete", self)
-        self.memo_delete.clicked.connect(self._delete_memo)
-        self.memo_clear = secondary_button("Delete all", self)
-        self.memo_clear.clicked.connect(self._delete_all_memos)
-        for pair in ((self.memo_go, self.memo_z),
-                     (self.memo_delete, self.memo_clear)):
-            row = QHBoxLayout()
-            for button in pair:
-                row.addWidget(button)
-            box.layout().addLayout(row)
+        row = QHBoxLayout()
+        for button in (self.memo_go, self.memo_z):
+            row.addWidget(button)
+        body.addLayout(row)
         self.session.memo_points_changed.connect(self._refresh_memo_buttons)
         self.jog.pose_changed.connect(lambda _p: self._refresh_memo_buttons())
         self._refresh_memo_buttons()
-        return box
-
-    def _deck_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Deck", 2))
-        note = QLabel("Click a slot to move the camera or tip over its "
-                      "center (with Click to move on).")
-        note.setWordWrap(True)
-        box.layout().addWidget(note)
-        self.deck = DeckView(self)
-        self.deck.setFixedHeight(DECK_HEIGHT)
-        self.deck.setToolTip("Move over the clicked slot's center.")
-        self.deck.slot_clicked.connect(self._slot_clicked)
-        box.layout().addWidget(self.deck)
-        return box
-
-    def _targets_card(self) -> QWidget:
-        box = card(self)
-        box.layout().addWidget(heading("Targets", 2))
-
-        # One above the other: side by side they are cut off in a column
-        # half the panel wide.
-        self.cross_button = secondary_button("Detect crosshairs", self)
-        self.cross_button.clicked.connect(self._detect_crosshairs)
-        self.cuboid_button = secondary_button("Detect cuboids", self)
-        self.cuboid_button.clicked.connect(self._detect_cuboids)
-        box.layout().addWidget(self.cross_button)
-        box.layout().addWidget(self.cuboid_button)
-
-        self.cross_z = _z_box(self, CROSSHAIR_Z_MM)
-        self.cuboid_z = _z_box(self, 0.5)
-        self.cuboid_z.setToolTip(
-            "Pickup height (dish_bottom + pickup_offset). Changes "
-            "pickup_offset.")
-        self.cuboid_z.editingFinished.connect(self._cuboid_z_edited)
-        _row(box, "Crosshair Z", self.cross_z)
-        _row(box, "Cuboid Z", self.cuboid_z)
-
-        self.clear_button = secondary_button("Clear", self)
-        self.clear_button.clicked.connect(lambda: self._forget_targets())
-        box.layout().addWidget(self.clear_button)
-
-        self.state = QLabel()
-        self.state.setWordWrap(True)
-        self.state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        box.layout().addWidget(self.state)
-        return box
+        return self.points_card
 
     def _sizes_card(self) -> QWidget:
         """Folded: the sizes are a second look at a detection, not the
@@ -562,10 +518,10 @@ class ManualPage(QWidget):
     # -- liquid ------------------------------------------------------------------
 
     def _aspirate(self) -> None:
-        self._liquid("aspirate", "aspirated", moves.aspirate)
+        self._liquid("aspirate", "aspirated", moves.aspirate, +1)
 
     def _dispense(self) -> None:
-        self._liquid("dispense", "dispensed", moves.dispense)
+        self._liquid("dispense", "dispensed", moves.dispense, -1)
 
     def _tip_problem(self, what: str) -> str:
         """Why `what` (aspirate, dispense) cannot happen now, or ""."""
@@ -582,8 +538,9 @@ class ManualPage(QWidget):
     def _liquid_amount(self) -> tuple[float, float]:
         return float(self.volume.value()), float(self.flow_rate.value())
 
-    def _liquid(self, what: str, done: str, command) -> None:
-        """Aspirate or dispense where the tip is, through the jog queue."""
+    def _liquid(self, what: str, done: str, command, sign: int) -> None:
+        """Aspirate (`sign` +1) or dispense (-1) where the tip is, through
+        the jog queue; the gauge follows once it is done."""
         problem = self._tip_problem(what)
         if problem:
             self.jog.tell(problem)
@@ -595,11 +552,47 @@ class ManualPage(QWidget):
         def job(log):
             log(f"{what} {volume:g} µl at {rate:g} µl/s")
             command(robot, volume, rate)
+            return xyz(robot)[:2]
+
+        def then(at):
+            self._liquid_done(sign * volume, at)
             return note
 
         # Nothing moves: what is detected on the picture still stands.
-        if not self.jog.run_job(job, moves=False):
+        if not self.jog.run_job(job, moves=False, then=then):
             self.jog.tell(self.session.robot_lease.refusal)
+
+    def _liquid_done(self, change: float, at) -> None:
+        """`change` µl more in the tip (less, when negative); an aspirate
+        at `at`, the tip's (x, y), is a past pick."""
+        self._set_in_tip(self._in_tip + change)
+        if change > 0 and at is not None:
+            self.record_pick(at)
+
+    def _tip_changed(self, tip) -> None:
+        """Another tip, or none: nothing is in it. The tip read again and
+        found the same (`Session.read_tip` says so too) keeps the count."""
+        same = (tip.attached and self._tip.attached
+                and tip.pickup == self._tip.pickup)
+        self._tip = tip
+        if not same:
+            self._set_in_tip(0.0)
+
+    def _set_in_tip(self, ul: float) -> None:
+        self._in_tip = max(0.0, ul)
+        self.gauge.set_volume(round(self._in_tip, 3))
+
+    # -- past picks ------------------------------------------------------------
+
+    def record_pick(self, xy) -> None:
+        """A past pick at the tip's (x, y): drawn, the last bright, while
+        Show past picks is on."""
+        self._picks.append((float(xy[0]), float(xy[1])))
+        self._show_picks()
+
+    def _show_picks(self) -> None:
+        self.marks.set_picks(self._picks
+                             if self.past_picks_button.isChecked() else [])
 
     # -- what the picture can be used for -------------------------------------
 
@@ -608,19 +601,15 @@ class ManualPage(QWidget):
         session, out = self.session, []
         profile = session.profile
         if session.robot is None:
-            out.append("no robot: connect it on the Profile page.")
+            out.append("Robot not connected.")
         if profile is None:
-            out.append("no profile loaded.")
+            out.append("No profile loaded.")
             return out
         if profile.pixel_map is None:
-            out.append("no pixel map: run the camera calibration.")
-        label = self.camera_choice.currentText()
+            out.append("Camera calibration: Not set.")
         camera = self._camera()
         if camera is None:
-            out.append("the camera is not open.")
-        elif label != session.upper_camera_label:
-            out.append(f"the pixel map is the upper camera's "
-                       f"({session.upper_camera_label}); this is {label}.")
+            out.append("Upper camera not open.")
         elif profile.pixel_map is not None:
             # A map fitted at one mode and applied at another misplaces
             # everything by a fraction of the field and says nothing.
@@ -628,50 +617,6 @@ class ManualPage(QWidget):
         return out
 
     # -- detecting ------------------------------------------------------------
-
-    def _detect_crosshairs(self) -> None:
-        if self._blocked():
-            return
-        session = self.session
-        profile, robot, camera = session.profile, session.robot, self._camera()
-        pmap = PixelMap.from_config(profile.pixel_map)
-        mock, detector = session.mock, self._tip_detector
-        device = session.settings.inference_device
-        if device != self._tip_device:
-            detector = None                  # loaded for another device
-
-        def job(log):
-            nonlocal detector
-            if detector is None:
-                log("loading the tip detector")
-                detector = load_tip_detector(profile, mock=mock, robot=robot,
-                                             device=device)
-            # The pose is read next to the frame, not after it: it is part
-            # of the conversion rather than a correction applied later.
-            gantry = np.array(xyz(robot)[:2])
-            frame = camera.read_after(time.monotonic())
-            found = [d.xy for d in detector.detect(frame)
-                     if getattr(d, "label", "point") == "point"]
-            inside = [p for p in found if pmap.covers(*p)]
-            outside = [p for p in found if not pmap.covers(*p)]
-            worlds = [pmap.to_robot(p[0], p[1], gantry) for p in inside]
-            return (detector, np.array(inside).reshape(-1, 2),
-                    np.array(worlds).reshape(-1, 2),
-                    np.array(outside).reshape(-1, 2))
-
-        self._run(Worker(job), "detecting crosshairs", self._crosshairs_found)
-
-    def _crosshairs_found(self, payload) -> None:
-        detector, points, worlds, outside = payload
-        self._tip_detector = detector
-        self._tip_device = self.session.settings.inference_device
-        self._cross = points
-        self._cross_worlds = worlds
-        self._cross_outside = outside
-        self._cross_standin = bool(getattr(detector, "is_standin", False))
-        self._chosen = None
-        self._redraw()
-        self._refresh()
 
     def _detect_cuboids(self) -> None:
         if self._blocked():
@@ -728,10 +673,8 @@ class ManualPage(QWidget):
     # -- clicking ---------------------------------------------------------------
 
     def _clicked(self, u: float, v: float) -> None:
-        """A click on the picture, in sensor pixels."""
-        if self._on_lower_camera():
-            self.jog.tell(LOWER_CAMERA_NOTE)
-            return
+        """A left click on the picture, in sensor pixels: the camera or the
+        tip there, or the tip down to a detected cuboid."""
         problems = self._map_problems()
         if problems:
             self.jog.tell("Click: " + problems[0])
@@ -745,25 +688,24 @@ class ManualPage(QWidget):
         notes = []
 
         if target is not None:
-            kind, index, world = target
+            index, world = target
             offset = profile.calibration.pipette_offset
             if offset is None:
                 self.jog.tell("Refused: no tip calibration.")
                 return
             xy = np.asarray(world) + np.array([offset.dx, offset.dy])
-            z = float((self.cross_z if kind == "crosshair"
-                       else self.cuboid_z).value())
+            z = float(profile.picking.pickup_height)
             # Checked before anything moves: a pickup that goes to the
             # cuboid and then cannot aspirate has disturbed the dish for
             # nothing.
-            pick = kind == "cuboid" and self.auto_aspirate.isChecked()
+            pick = self.auto_aspirate.isChecked()
             if pick and self._tip_problem("aspirate"):
                 self.jog.tell(self._tip_problem("aspirate"))
                 return
             volume, rate = self._liquid_amount()
-            self._chosen = (kind, index)
+            self._chosen = index
             self._redraw()
-            what = f"tip to {kind} ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}"
+            what = f"tip to cuboid ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}"
             position = (xy[0], xy[1], z)
 
             def job(log):
@@ -773,7 +715,12 @@ class ManualPage(QWidget):
                     moves.aspirate(robot, volume, rate)
                     return f"aspirated {volume:g} µl at {rate:g} µl/s"
                 return None
-        elif self.click_tip.isChecked():
+
+            def then(done):
+                if pick:
+                    self._liquid_done(volume, xy)
+                return "; ".join(notes + ([done] if done else []))
+        elif self._tip_moves():
             # Inside the map only: outside it the map extrapolates, and a
             # camera a few hundred microns off is imprecise where a tip there
             # is in the wrong thing.
@@ -794,6 +741,7 @@ class ManualPage(QWidget):
                 # move as a camera move, to the tip's target.
                 motion.camera_to(xy, log=log)
                 return None
+            then = None
         else:
             gantry = np.array(xyz(robot)[:2])
             xy = moves.camera_target(pmap, u, v, gantry)
@@ -805,39 +753,78 @@ class ManualPage(QWidget):
             def job(log):
                 motion.camera_to(xy, log=log)
                 return None
+            then = None
 
         why = motion.refused(position)
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
-        if not self.armed.isChecked():
-            self.jog.tell(f"{what} - switch on Click to move to go there")
-            return
         log.info("%s", "; ".join([what] + notes))
 
         def run(log_):
             done = job(log_)
+            if then is not None:
+                return done
             return "; ".join(notes + ([done] if done else []))
 
-        self.jog.run_job(run)
+        if not self.jog.run_job(run, then=then):
+            self.jog.tell(self.session.robot_lease.refusal)
+
+    def _back_to_center(self) -> None:
+        """The camera over the dish again (the position over the dish), or
+        the tip over that same spot at the travel height."""
+        where = self._stored_dish()
+        if where is None or self.jog.busy:
+            return
+        motion = self.session.motion
+        if self._tip_moves():
+            profile = self.session.profile
+            offset = profile.calibration.pipette_offset
+            if offset is None:
+                self.jog.tell("Refused: no tip calibration.")
+                return
+            xy = np.asarray(where[:2], dtype=float) + np.array(
+                [offset.dx, offset.dy])
+            why = motion.refused((xy[0], xy[1], where[2]))
+            if why:
+                self.jog.tell(f"UNREACHABLE: tip over the dish center - {why}")
+                return
+
+            def job(log):
+                motion.camera_to(xy, log=log)
+                return "tip over the dish center"
+        else:
+            def job(log):
+                motion.tip_to(where[:2], where[2], log=log)
+                return "camera over the dish center"
+
+        if not self.jog.run_job(job):
+            self.jog.tell(self.session.robot_lease.refusal)
+
+    def _stored_dish(self):
+        profile = self.session.profile
+        return None if profile is None else profile.positions.get(DISH_POSITION)
 
     # -- memo points -------------------------------------------------------------
 
+    @property
+    def points_shown(self) -> bool:
+        return self.points_card.is_open()
+
+    def show_points(self, shown: bool) -> None:
+        """The memo points on the picture, and their list, or neither."""
+        self.points_card.set_open(bool(shown))
+        self._points_toggled()
+
+    def _points_toggled(self) -> None:
+        self.marks.show_memo(self.points_shown)
+
     def _mark(self, u: float, v: float) -> None:
-        """A click on the picture: choose the memo point there, or mark a
-        new one where the tip would go down at this pixel."""
-        if self._on_lower_camera():
-            self.jog.tell(LOWER_CAMERA_NOTE)
-            return
+        """A right click on the picture: a new point where the tip would go
+        down at this pixel. Moves nothing."""
         problems = self._map_problems()
         if problems:
             self.jog.tell("Click: " + problems[0])
-            return
-        near = self._memo_near(u, v)
-        if near is not None:
-            self.memo_table.choose(near)
-            return
-        if not self.memo_on.isChecked():
             return
         profile = self.session.profile
         offset = profile.calibration.pipette_offset
@@ -856,35 +843,13 @@ class ManualPage(QWidget):
         point = self.session.add_memo_point(xy[0], xy[1], self._new_z())
         self.memo_table.choose(point.name)
         # Marked to be seen.
+        self.show_points(True)
         if self.view.marks_box.isVisible():
             self.view.marks_box.setChecked(True)
         problem = self.session.memo_problem(point)
         self.jog.tell(f"{point.name} at ({point.x:.2f}, {point.y:.2f}), "
                       f"z {_memo_z_text(point.z)}"
                       + (f" - NOT REACHABLE: {problem}" if problem else ""))
-
-    def _memo_pixels(self) -> list[tuple[str, float, float]]:
-        """(name, u, v) of each memo point on the picture now."""
-        profile, pose = self.session.profile, self.jog.pose
-        if (profile is None or pose is None or profile.pixel_map is None
-                or profile.calibration.pipette_offset is None):
-            return []
-        pmap = PixelMap.from_config(profile.pixel_map)
-        offset = profile.calibration.pipette_offset
-        out = []
-        for point in self.session.memo_points:
-            pixel = pmap.to_pixel(point.x - offset.dx, point.y - offset.dy,
-                                  np.asarray(pose[:2]))
-            if pixel is not None:
-                out.append((point.name, float(pixel[0]), float(pixel[1])))
-        return out
-
-    def _memo_near(self, u: float, v: float) -> str | None:
-        """The memo point within SNAP_PX of the pixel, the nearest."""
-        near = [(np.hypot(pu - u, pv - v), name)
-                for name, pu, pv in self._memo_pixels()]
-        near = [n for n in near if n[0] <= SNAP_PX]
-        return min(near)[1] if near else None
 
     def _new_z(self) -> float | None:
         value = float(self.new_z.value())
@@ -913,8 +878,6 @@ class ManualPage(QWidget):
         has_robot = self.session.robot is not None
         self.memo_go.setEnabled(chosen and has_robot)
         self.memo_z.setEnabled(chosen and self.jog.pose is not None)
-        self.memo_delete.setEnabled(chosen)
-        self.memo_clear.setEnabled(bool(self.session.memo_points))
 
     def _memo_z_from_tip(self) -> None:
         name, pose = self.memo_table.chosen_name, self.jog.pose
@@ -926,26 +889,8 @@ class ManualPage(QWidget):
         self.jog.tell(f"{name}: z {z:g}")
         self._say_memo_problem(name)
 
-    def _delete_memo(self) -> None:
-        name = self.memo_table.chosen_name
-        if name is not None:
-            self.session.delete_memo_point(name)
-
-    def _delete_all_memos(self) -> None:
-        points = self.session.memo_points
-        if not points:
-            return
-        answer = QMessageBox.question(
-            self, "Delete all memo points",
-            f"Delete all {len(points)} memo points?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer == QMessageBox.StandardButton.Yes:
-            for point in list(points):
-                self.session.delete_memo_point(point.name)
-
     def _go_to_memo(self) -> None:
-        """The button: no Click to move, as the jog panel's Go to."""
+        """The button: the only way to a point, as the jog panel's Go to."""
         point = self.session.memo_point(self.memo_table.chosen_name or "")
         if point is not None:
             self._drive_to_memo(point)
@@ -975,83 +920,81 @@ class ManualPage(QWidget):
         self.jog.run_job(job)
 
     def _target_at(self, u: float, v: float):
-        """(kind, index, deck xy) of the detection the click is on, or None.
+        """(index, deck xy) of the detected cuboid the click is on, or None.
 
-        A crosshair within SNAP_PX, or a cuboid whose outline the click is
-        inside (give or take CUBOID_SNAP_PX); the nearer center if both.
-        Detections outside the calibrated area are not targets.
+        A cuboid whose outline the click is inside (give or take
+        CUBOID_SNAP_PX), the nearest center if several. Cuboids outside the
+        calibrated area are not targets.
         """
-        click = np.array([u, v])
-        found = []
-        if len(self._cross):
-            distances = np.linalg.norm(self._cross - click, axis=1)
-            i = int(np.argmin(distances))
-            if distances[i] <= SNAP_PX:
-                found.append((float(distances[i]), "crosshair", i,
-                              self._cross_worlds[i]))
         detection = self._cuboids
-        if detection is not None and len(detection.df):
-            df = detection.df
-            for i, (contour, cx, cy) in enumerate(zip(df.contour, df.cX, df.cY)):
-                inside = cv2.pointPolygonTest(
-                    np.asarray(contour, dtype=np.float32), (float(u), float(v)),
-                    True)
-                if inside >= -CUBOID_SNAP_PX and self._cuboid_covered[i]:
-                    found.append((float(np.hypot(cx - u, cy - v)), "cuboid", i,
-                                  self._cuboid_worlds[i]))
+        if detection is None or not len(detection.df):
+            return None
+        found = []
+        df = detection.df
+        for i, (contour, cx, cy) in enumerate(zip(df.contour, df.cX, df.cY)):
+            inside = cv2.pointPolygonTest(
+                np.asarray(contour, dtype=np.float32), (float(u), float(v)),
+                True)
+            if inside >= -CUBOID_SNAP_PX and self._cuboid_covered[i]:
+                found.append((float(np.hypot(cx - u, cy - v)), i,
+                              self._cuboid_worlds[i]))
         if not found:
             return None
-        _, kind, index, world = min(found, key=lambda f: f[0])
-        return kind, index, world
+        _, index, world = min(found, key=lambda f: f[0])
+        return index, world
 
     # -- the deck ------------------------------------------------------------------
 
-    def _slot_clicked(self, slot: str) -> None:
-        """The camera or the tip over the slot's center, at the travel
-        height. The center is in the robot's frame, which is the tip's: the
-        camera is over it with the gantry a pipette offset short of it."""
+    def _slot_clicked(self, slot) -> None:
+        """Look at: the camera over the slot's center, at the travel height.
+        The center is in the robot's frame, which is the tip's: the camera
+        is over it with the gantry a pipette offset short of it."""
         robot = self.session.robot
         if robot is None or self.jog.busy:
             return
-        xy = np.asarray(slot_center(slot), dtype=float)
-        if self.click_tip.isChecked():
-            what = f"tip over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
-        else:
-            profile = self.session.profile
-            offset = (profile.calibration.pipette_offset
-                      if profile is not None else None)
-            if offset is None:
-                self.jog.tell("Refused: no tip calibration.")
-                return
-            xy = xy - np.array([offset.dx, offset.dy])
-            what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
+        profile = self.session.profile
+        offset = (profile.calibration.pipette_offset
+                  if profile is not None else None)
+        if offset is None:
+            self.jog.tell("Refused: no tip calibration.")
+            return
+        xy = (np.asarray(slot_center(slot), dtype=float)
+              - np.array([offset.dx, offset.dy]))
+        what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
         why = self.session.motion.refused((xy[0], xy[1], xyz(robot)[2]))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
-        if not self.armed.isChecked():
-            self.jog.tell(f"{what} - switch on Click to move to go there")
-            return
-        self.deck.select(slot)
         log.info("%s", what)
 
         def job(log_):
             self.session.motion.camera_to(xy, log=log_)
             return f"over slot {slot}"
 
-        self.jog.run_job(job)
+        if not self.jog.run_job(job):
+            self.jog.tell(self.session.robot_lease.refusal)
 
     def _show_deck(self) -> None:
+        """Look at's tiles: every slot, with what the run holds there."""
         state = self.session.run_state
         held = (state.labware if state is not None
                 and self.session.robot is not None else {})
-        self.deck.set_labware({slot: entry.load_name
-                               for slot, entry in held.items()})
-        profile = self.session.profile
-        modules = list(profile.deck.modules) if profile is not None else []
-        self.deck.set_modules({str(slot): f"+{m.height_mm:g} mm · "
-                                          f"{m.name or 'module'}"
-                               for m in modules for slot in m.slots})
+        tiles = []
+        for row in DECK_ROWS:
+            for slot in row:
+                entry = held.get(str(slot))
+                if entry is None:
+                    tiles.append(DeckTile(slot))
+                    continue
+                try:
+                    definition = resolve_definition(entry.load_name)
+                except LabwareError:
+                    tiles.append(DeckTile(slot, name=entry.load_name))
+                    continue
+                tiles.append(DeckTile(slot, name=definition.display_name,
+                                      kind=kind(definition),
+                                      facts=facts(definition)))
+        self.look_at.set_tiles(tiles)
 
     # -- the well ------------------------------------------------------------------
 
@@ -1255,24 +1198,6 @@ class ManualPage(QWidget):
         self.center_state.setText(text)
         self.center_state.setVisible(bool(text))
 
-    # -- the profile's number -----------------------------------------------------
-
-    def _cuboid_z_edited(self) -> None:
-        """Cuboid Z is pickup_height, which is derived: keep dish_bottom and
-        move pickup_offset, so the run picks at the height set here."""
-        profile = self.session.profile
-        if profile is None:
-            return
-        cfg = profile.picking
-        offset = round(float(self.cuboid_z.value()) - cfg.dish_bottom, 3)
-        if abs(offset - cfg.pickup_offset) < 1e-6:
-            return
-        cfg.pickup_offset = offset
-        profile.save_picking()
-        log.info("pickup_offset for %r: %g (pickup height %g)", profile.name,
-                 offset, cfg.pickup_height)
-        self.session.profile_changed.emit(profile)
-
     # -- the worker ----------------------------------------------------------------
 
     def _blocked(self) -> bool:
@@ -1317,9 +1242,6 @@ class ManualPage(QWidget):
     # -- display ---------------------------------------------------------------------
 
     def _forget_targets(self, redraw: bool = True) -> None:
-        self._cross = self._cross_worlds = np.empty((0, 2))
-        self._cross_outside = np.empty((0, 2))
-        self._cross_standin = False
         self._cuboids = None
         self._cuboid_worlds = np.empty((0, 2))
         self._cuboid_covered = np.empty(0, dtype=bool)
@@ -1331,7 +1253,6 @@ class ManualPage(QWidget):
             self._refresh()
 
     def _redraw(self) -> None:
-        profile = self.session.profile
         items = []
         detection = self._cuboids
         if detection is not None and self._frame_shape is not None:
@@ -1340,29 +1261,15 @@ class ManualPage(QWidget):
                 pickable=detection.pickable if detection.classified else None,
                 isolated=detection.isolated if detection.classified else None,
                 bubbles=detection.bubbles if detection.classified else None)
-        if len(self._cross) or len(self._cross_outside):
-            reference = (profile.pixel_map.ref
-                         if profile is not None and profile.pixel_map is not None
-                         else None)
-            chosen = (self._chosen[1] if self._chosen is not None
-                      and self._chosen[0] == "crosshair" else None)
-            items += markers.crosshairs(self._cross, reference=reference,
-                                        chosen=chosen,
-                                        outside=self._cross_outside)
-        if self._chosen is not None and self._chosen[0] == "cuboid":
-            row = detection.df.iloc[[self._chosen[1]]]
-            items += overlays.items(self._frame_shape, chosen=row)
+            if self._chosen is not None:
+                row = detection.df.iloc[[self._chosen]]
+                items += overlays.items(self._frame_shape, chosen=row)
         self.view.set_overlay_items(items)
 
     def _refresh(self) -> None:
         busy = self._busy()
         problems = self._map_problems()
-        for button in (self.cross_button, self.cuboid_button):
-            button.setEnabled(not busy and not problems)
-        self.clear_button.setEnabled(
-            len(self._cross) > 0 or len(self._cross_outside) > 0
-            or self._cuboids is not None)
-        self.cuboid_z.setEnabled(self.session.profile is not None)
+        self.cuboid_button.setEnabled(not busy and not problems)
         self._refresh_memo_buttons()
         has_robot = self.session.robot is not None
         self.aspirate_button.setEnabled(has_robot)
@@ -1375,44 +1282,41 @@ class ManualPage(QWidget):
             "No plate loaded.")
         self.well_state.setVisible(not has_plate)
         self._show_center(has_robot)
+        self._refresh_center_button()
+        # The found count is on the picture, as on Picking.
+        self.view.set_status(
+            [f"{len(self._cuboids.df)} cuboids found"]
+            if self._cuboids is not None else [])
         if busy:
             return
         if problems:
             self.state.setText("\n".join("• " + p for p in problems))
             return
-        parts = []
-        if len(self._cross) or len(self._cross_outside):
-            text = f"{len(self._cross)} crosshairs"
-            if len(self._cross_outside):
-                text += (f" (+{len(self._cross_outside)} outside the "
-                         f"calibrated area, gray)")
-            parts.append(text)
-        if self._cuboids is not None:
-            parts.append(self._cuboids.summary.replace("\n", "; "))
-        if not parts:
-            self.state.setText("Detect, then click a crosshair or cuboid.")
-            return
-        text = "\n".join(parts)
-        if self._cross_standin:
-            text += ("\nStand-in tip detector: the crosshairs are invented "
-                     "from the frame's center.")
+        text = ""
         if self._cuboids is not None and self._cuboids.standin:
-            text += "\nStand-in cuboid detector: bright blobs, not the model."
+            text = "Stand-in cuboid detector: bright blobs, not the model."
         self.state.setText(text)
+
+    def _refresh_center_button(self) -> None:
+        tip = self._tip_moves()
+        self.center_button.setText(CENTER[int(tip)])
+        if self._stored_dish() is None:
+            self.center_button.setEnabled(False)
+            self.center_button.setToolTip("Position over the dish: Not set.")
+        else:
+            self.center_button.setEnabled(self.session.robot is not None)
+            self.center_button.setToolTip(
+                "Move the tip over the dish center." if tip
+                else "Move the camera over the dish center.")
 
     def _on_profile_changed(self) -> None:
         profile = self.session.profile
-        self._show_deck()                     # the modules are the profile's
-        self.cuboid_z.blockSignals(True)
-        if profile is not None:
-            self.cuboid_z.setValue(profile.picking.pickup_height)
-        self.cuboid_z.blockSignals(False)
-        # The same profile saved again - a setting changed, Cuboid Z among
-        # them - keeps what was detected. A different profile is a different
-        # map, offset and model, and nothing measured belongs to it.
+        self._show_deck()
+        # The same profile saved again - a setting changed - keeps what was
+        # detected. A different profile is a different map, offset and
+        # model, and nothing measured belongs to it.
         if profile is not getattr(self, "_profile", None):
             self._profile = profile
-            self._tip_detector = None
             if profile is not None:
                 # The run's own numbers as the starting point; what is typed
                 # here afterwards stays while this profile is loaded.
@@ -1428,52 +1332,30 @@ class ManualPage(QWidget):
     def _robot_changed(self, _state: str) -> None:
         self._measurement.forget()
         self._reload_plates()
+        self._show_deck()
 
-    # -- cameras ----------------------------------------------------------------------
+    # -- the camera -------------------------------------------------------------------
 
     def _camera(self):
-        return self.session.camera(self.camera_choice.currentText())
+        """The upper camera: the pixel map is its."""
+        return self.session.camera(self.session.upper_camera_label)
 
-    def _on_lower_camera(self) -> bool:
-        label = self.camera_choice.currentText()
-        return bool(label) and label == self.session.lower_camera_label
-
-    def _refresh_cameras(self, _label: str = "") -> None:
-        labels = self.session.open_cameras
-        current = self.camera_choice.currentText()
-        self.camera_choice.blockSignals(True)
-        self.camera_choice.clear()
-        self.camera_choice.addItems(labels)
-        if current in labels:
-            self.camera_choice.setCurrentIndex(labels.index(current))
-        elif self.session.upper_camera_label in labels:
-            self.camera_choice.setCurrentIndex(
-                labels.index(self.session.upper_camera_label))
-        self.camera_choice.blockSignals(False)
-        self._show_camera(self.camera_choice.currentText())
-
-    def _show_camera(self, label: str) -> None:
-        camera = self.session.camera(label) if label else None
+    def _show_camera(self) -> None:
+        camera = self._camera()
         if camera is not self.view.camera:
-            # What was detected was the other camera's picture.
+            # What was detected was another picture.
             self._forget_targets()
         self.view.set_camera(camera)
-        # Said on the picture, not only when a click is refused: the
-        # operator should know before clicking.
-        self.view.set_status([LOWER_CAMERA_NOTE] if self._on_lower_camera()
-                             else [])
         self._refresh()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         for shortcut in self._shortcuts:
             shortcut.setEnabled(True)
-        # Disarmed on every entry, however it was left.
-        self.armed.setChecked(False)
         # Jogging is done by eye through this camera; without it the page is
         # a jog pad over a blank rectangle.
         self.opener.ensure(self.session.upper_camera_label)
-        self._refresh_cameras()
+        self._show_camera()
 
     def hideEvent(self, event) -> None:
         for shortcut in self._shortcuts:

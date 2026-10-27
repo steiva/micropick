@@ -1,5 +1,6 @@
-"""Manual control: click modes, the lower camera, the deck mini-map and the
-sizes after Detect cuboids."""
+"""Manual Work (REDESIGN §6.6, #18): a left click moves the camera or the
+tip, a right click marks a point, Look at, past picks, the tip gauge and
+the sizes after Analyze the dish."""
 
 import os
 
@@ -78,9 +79,9 @@ def _calibrate(session):
 
 
 def _open_upper(app, page, session):
+    page.show()                      # the picture's layers draw on screen
     session.open_camera(session.upper_camera_label)
     app.processEvents()
-    page._refresh_cameras()
 
 
 def _wait(app, page):
@@ -92,78 +93,171 @@ def _wait(app, page):
     app.processEvents()
 
 
-def test_tip_mode_sends_the_tip_over_the_clicked_point(app, page, session):
-    _calibrate(session)
-    _open_upper(app, page, session)
-    _wait(app, page)
-    page.armed.setChecked(True)
-    page.click_tip.setChecked(True)
+def _over_the_deck(app, page, session):
     session.robot.move_to_coordinates((150.0, 150.0, 90.0), verbose=False)
-    x0, y0, _ = session.robot.get_position(verbose=False)[0].values()
-    # 100 px right of the reference pixel is 2.6 mm in x; the tip is the
-    # pipette offset further.
-    page._clicked(W / 2 + 100, H / 2)
+    page.jog.refresh_position()
     _wait(app, page)
-    pos = session.robot.get_position()[0]
-    assert pos["x"] == pytest.approx(x0 + 100 * K + 10.0, abs=0.05)
-    assert pos["y"] == pytest.approx(y0 - 5.0, abs=0.05)
 
 
-def test_tip_mode_refuses_outside_the_map(app, page, session):
+def _left_click(app, page, u, v):
+    page.view.clicked.emit(u, v)
+    _wait(app, page)
+
+
+def _xy(session):
+    pos = session.robot.get_position(verbose=False)[0]
+    return pos["x"], pos["y"]
+
+
+def test_a_single_left_click_moves_the_camera_there(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
     _wait(app, page)
-    page.armed.setChecked(True)
-    page.click_tip.setChecked(True)
-    before = dict(session.robot.get_position()[0])
-    page._clicked(20, 20)                       # outside the bounds
-    _wait(app, page)
-    assert dict(session.robot.get_position()[0]) == pytest.approx(before)
-    assert "outside the calibrated area" in page.jog.position_lines[-1]
+    _over_the_deck(app, page, session)
+    # 100 px right of the reference pixel is 2.6 mm in x.
+    _left_click(app, page, W / 2 + 100, H / 2)
+    assert _xy(session) == pytest.approx((150.0 + 100 * K, 150.0), abs=0.05)
 
 
-def test_on_the_lower_camera_a_click_never_moves_and_the_picture_says_so(
+def test_in_tip_mode_a_click_sends_the_tip_over_the_clicked_point(
         app, page, session):
-    from micropick.gui.pages.manual import LOWER_CAMERA_NOTE
     _calibrate(session)
-    session.open_camera(session.lower_camera_label)
-    app.processEvents()
-    page._refresh_cameras()
-    page.camera_choice.setCurrentText(session.lower_camera_label)
-    app.processEvents()
-    assert page.view._status == [LOWER_CAMERA_NOTE]
-    page.armed.setChecked(True)
-    before = dict(session.robot.get_position(verbose=False)[0])
-    page._clicked(W / 2 + 100, H / 2)
+    _open_upper(app, page, session)
     _wait(app, page)
-    assert dict(session.robot.get_position(verbose=False)[0]) == \
-        pytest.approx(before)
-    assert page.jog.position_lines[-1] == LOWER_CAMERA_NOTE
+    page.click_mode.buttons[1].click()
+    assert page.center_button.text() == "Tip back to center"
+    _over_the_deck(app, page, session)
+    # The tip is the pipette offset further than the camera's point.
+    _left_click(app, page, W / 2 + 100, H / 2)
+    assert _xy(session) == pytest.approx((150.0 + 100 * K + 10.0, 145.0),
+                                         abs=0.05)
 
 
-def test_a_slot_on_the_deck_map_brings_the_camera_or_the_tip_over_its_center(
+def test_a_click_outside_the_jog_envelope_moves_nothing(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    session.robot.move_to_coordinates((20.0, 20.0, 90.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    before = _xy(session)
+    # Far to the left and up of the deck's corner: past the soft limits.
+    _left_click(app, page, 110.0, 110.0)
+    assert _xy(session) == pytest.approx(before)
+    assert "UNREACHABLE" in page.jog.position_lines[-1]
+
+
+def test_a_click_while_the_robot_is_busy_elsewhere_moves_nothing(
         app, page, session):
-    from micropick.gui.widgets.deck_view import slot_center
-    assert slot_center(1) == pytest.approx((63.88, 42.74))
-    assert slot_center(5) == pytest.approx((132.5 + 63.88, 90.5 + 42.74))
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    before = _xy(session)
+    lease = session.robot_lease.claim("someone else")
+    try:
+        _left_click(app, page, W / 2 + 100, H / 2)
+    finally:
+        lease.release()
+    assert _xy(session) == pytest.approx(before)
+
+
+def _points_drawn(page):
+    from micropick.viz import overlays
+    from micropick.gui.position_marks import MEMO
+    return [i for i in page.view._marks
+            if isinstance(i, overlays.Circle) and i.color == MEMO]
+
+
+def test_a_right_click_marks_a_point_drawn_only_while_points_are_shown(
+        app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    before = _xy(session)
+    page.view.right_clicked.emit(W / 2 + 100, H / 2)
+    _wait(app, page)
+    assert [p.name for p in session.memo_points] == ["M1"]
+    assert _xy(session) == pytest.approx(before)        # marking moves nothing
+    # Marked to be seen: the points open.
+    assert page.points_shown
+    assert len(_points_drawn(page)) == 1
+    page.show_points(False)
+    assert _points_drawn(page) == []
+
+
+def test_a_point_is_deleted_by_its_cross(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page.view.right_clicked.emit(W / 2 + 100, H / 2)
+    page.view.right_clicked.emit(W / 2 - 100, H / 2)
+    _wait(app, page)
+    assert [p.name for p in session.memo_points] == ["M1", "M2"]
+    page.memo_table.delete_button("M1").click()
+    assert [p.name for p in session.memo_points] == ["M2"]
+    assert len(_points_drawn(page)) == 1
+
+
+def test_look_at_moves_the_camera_over_the_slot(app, page, session):
+    from micropick.core.deck import slot_center
     _calibrate(session)
     _wait(app, page)
-    page._slot_clicked("5")                   # Click to move is off
+    page.look_at.slot_chosen.emit(5)
     _wait(app, page)
-    assert "switch on Click to move" in page.jog.position_lines[-1]
-    page.armed.setChecked(True)
-    # Camera: the slot's center is the tip's frame, so the gantry stops a
-    # pipette offset short of it.
-    page._slot_clicked("5")
-    _wait(app, page)
-    pos = session.robot.get_position(verbose=False)[0]
     x, y = slot_center(5)
-    assert (pos["x"], pos["y"]) == pytest.approx((x - 10.0, y + 5.0), abs=0.05)
-    page.click_tip.setChecked(True)
-    page._slot_clicked("5")
+    # The slot's center is the tip's frame: the gantry stops a pipette
+    # offset short of it.
+    assert _xy(session) == pytest.approx((x - 10.0, y + 5.0), abs=0.05)
+
+
+def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
+    from micropick.config.labware import LabwareDefinition
+    rack = LabwareDefinition(load_name="opentrons_96_tiprack_300ul",
+                             namespace="opentrons", version=1,
+                             display_name="tips", ordering=[["A1"]], data={},
+                             source="shared")
+    session.load_labware(rack, 10)
+    session.pick_up_tip(10, "A1")
+    assert session.tip.attached is True
+    page.volume.setValue(15.0)
+    page._aspirate()
     _wait(app, page)
-    pos = session.robot.get_position(verbose=False)[0]
-    assert (pos["x"], pos["y"]) == pytest.approx((x, y), abs=0.05)
+    assert page.gauge.volume.text() == "15 µl"
+    session.read_tip()                       # the same tip, read again
+    assert page.gauge.volume.text() == "15 µl"
+    page._dispense()
+    _wait(app, page)
+    assert page.gauge.volume.text() == "0 µl"
+    page._aspirate()
+    _wait(app, page)
+    session.drop_tip_in_trash()
+    assert page.gauge.volume.text() == "0 µl"           # dropped with the tip
+
+
+def test_past_picks_are_drawn_while_shown(app, page, session):
+    from micropick.viz import overlays
+    from micropick.gui.position_marks import PICK
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page.record_pick((150.0, 150.0))
+    page.record_pick((152.0, 150.0))
+
+    def rings():
+        return [i for i in page.view._marks
+                if isinstance(i, overlays.Circle) and i.color[0] > 0
+                and i.color != (255, 220, 0)]
+    assert rings() == []                                 # off to begin with
+    page.past_picks_button.click()
+    assert page.past_picks_button.isChecked()
+    drawn = rings()
+    assert len(drawn) == 2
+    # The last bright, the older faint.
+    assert sum(c.color[0] for c in drawn if c.color == PICK) > 0
+    assert {c.color for c in drawn} != {PICK}
 
 
 def test_the_same_sizes_are_drawn_over_the_picture(page):
