@@ -378,7 +378,7 @@ class ManualPage(QWidget):
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(MOUSE_HELP)
-        self.view.set_click_to_move(CLICK_HELP, self._mapped)
+        self.view.set_click_to_move(CLICK_HELP, self._click_reaches)
         self.jog.moved.connect(self._forget_targets)
         # Emitted whenever a job ends: Go to well top's nominal is in, and
         # the buttons greyed for the job come back.
@@ -1043,12 +1043,11 @@ class ManualPage(QWidget):
 
     # -- clicking ---------------------------------------------------------------
 
-    def _mapped(self) -> bool:
-        """Whether a click on the picture can move the robot: only through
-        the profile's pixel map, so not before the first camera
-        calibration."""
-        profile = self.session.profile
-        return profile is not None and profile.pixel_map is not None
+    def _click_reaches(self) -> bool:
+        """Whether a left click is sent to the page: one that moves only
+        through the pixel map; By hand's choice of a spot moves nothing,
+        so it is sent without one too, and the page says what is missing."""
+        return self.session.has_pixel_map() or self._by_hand()
 
     def _clicked(self, u: float, v: float) -> None:
         """A left click on the picture, in sensor pixels: the camera or the

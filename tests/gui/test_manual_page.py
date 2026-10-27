@@ -396,3 +396,57 @@ def test_the_same_sizes_are_drawn_over_the_picture(page):
     assert page.view.sizes_box.isChecked()
     page._forget_targets()
     assert page.view._histogram is None
+
+
+def _mouse_click(app, view, u, v):
+    """A real left click on the picture at sensor (u, v), the
+    double-click interval run out."""
+    import time
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QMouseEvent
+    end = time.monotonic() + 5
+    while view.held_frame is None and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    point = view.sensor_to_widget(u, v)
+    for kind, buttons in ((QMouseEvent.Type.MouseButtonPress,
+                           Qt.MouseButton.LeftButton),
+                          (QMouseEvent.Type.MouseButtonRelease,
+                           Qt.MouseButton.NoButton)):
+        app.sendEvent(view, QMouseEvent(kind, point, view.mapToGlobal(point),
+                                        Qt.MouseButton.LeftButton, buttons,
+                                        Qt.KeyboardModifier.NoModifier))
+    view._click_timer.setInterval(0)
+    if view._click_timer.isActive():
+        view._click_timer.start(0)
+    app.processEvents()
+
+
+def test_without_a_pixel_map_a_click_moves_nothing(app, page, session):
+    session.profile.calibration.pixel_map = None
+    _open_upper(app, page, session)
+    _over_the_deck(app, page, session)
+    page.source.buttons[0].click()                     # In a well
+    clicks = []
+    page.view.clicked.connect(lambda u, v: clicks.append((u, v)))
+    _mouse_click(app, page.view, 400, 300)
+    assert clicks == []
+    assert page.view.mouse_help[0] == "Use the arrows to move the camera."
+
+
+def test_without_a_pixel_map_by_hand_still_takes_the_click(
+        app, page, session):
+    # Choosing a spot moves nothing: the click reaches the page, which
+    # says why it cannot place the spot rather than ignoring it.
+    session.profile.calibration.pixel_map = None
+    _open_upper(app, page, session)
+    _over_the_deck(app, page, session)
+    page.source.buttons[2].click()                     # By hand
+    page.snap.setChecked(False)
+    before = _xy(session)
+    clicks = []
+    page.view.clicked.connect(lambda u, v: clicks.append((u, v)))
+    _mouse_click(app, page.view, 400, 300)
+    assert len(clicks) == 1
+    assert _xy(session) == pytest.approx(before)
+    assert "Camera calibration" in page.jog._message

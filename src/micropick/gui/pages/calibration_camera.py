@@ -247,7 +247,7 @@ class CameraCalibrationSheet(SheetWindow):
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(ZOOM_AND_PAN)
         self.view.set_click_to_move("Click   center the camera there",
-                                    self._mapped)
+                                    self.session.has_pixel_map)
         self.view.clicked.connect(self._clicked)
 
         column = QWidget(self.body_widget)
@@ -406,13 +406,6 @@ class CameraCalibrationSheet(SheetWindow):
             return said
 
         move_over_slot(self.session, self.jog, slot, then=moved)
-
-    def _mapped(self) -> bool:
-        """Whether a click on the picture can move the robot: only through
-        the profile's pixel map, so not before the first camera
-        calibration."""
-        profile = self.session.profile
-        return profile is not None and profile.pixel_map is not None
 
     def _clicked(self, u: float, v: float) -> None:
         """Step 3 by a click: the camera to the point clicked, through the

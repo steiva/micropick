@@ -558,6 +558,14 @@ class Session(QObject):
             return f"{base}, session {state.label} ({origin})"
         return base
 
+    def has_pixel_map(self) -> bool:
+        """Whether a click on a picture can move the robot: only through
+        the profile's pixel map, so not before the first camera
+        calibration. A method, so a page hands it to
+        `CameraView.set_click_to_move` as it is."""
+        profile = self.profile
+        return profile is not None and profile.pixel_map is not None
+
     @property
     def robot_address(self) -> str:
         """Where Connect goes, as shown: the command line's address, else the

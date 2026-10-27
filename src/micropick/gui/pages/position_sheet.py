@@ -269,7 +269,8 @@ class PositionSheet(SheetWindow):
                             parent=self.body_widget)
         self.jog.show_position_on(self.view)
         self.view.set_mouse_help(ZOOM_AND_PAN)
-        self.view.set_click_to_move(CLICK_CAMERA, self._mapped)
+        self.view.set_click_to_move(CLICK_CAMERA,
+                                    self.session.has_pixel_map)
         self.view.clicked.connect(self._clicked)
 
         self.column = column = QWidget(self.body_widget)
@@ -384,7 +385,8 @@ class PositionSheet(SheetWindow):
         def refresh(reached: bool, _free: bool) -> None:
             button.setEnabled(reached)
             if how is not None:
-                how.setText(BY_CLICK if self._mapped() else BY_ARROWS)
+                how.setText(BY_CLICK if self.session.has_pixel_map()
+                            else BY_ARROWS)
 
         return Built(card, refresh)
 
@@ -555,13 +557,6 @@ class PositionSheet(SheetWindow):
         profile = self.session.profile
         return None if profile is None else profile.positions.get(self.name)
 
-    def _mapped(self) -> bool:
-        """Whether a click on the picture can move the robot: only through
-        the profile's pixel map, so not before the first camera
-        calibration."""
-        profile = self.session.profile
-        return profile is not None and profile.pixel_map is not None
-
     def _clicked(self, u: float, v: float) -> None:
         """The camera onto the point clicked; on the shake position's hole
         step, the tip over it."""
@@ -677,7 +672,8 @@ class PositionSheet(SheetWindow):
         self._follow_facts()
         self.note.setVisible(self._at("lower"))
         self.view.set_click_to_move(
-            CLICK_TIP if self._at("hole") else CLICK_CAMERA, self._mapped)
+            CLICK_TIP if self._at("hole") else CLICK_CAMERA,
+            self.session.has_pixel_map)
         stored = self._stored()
         self.saved_line.setVisible(stored is not None)
         if stored is not None:
