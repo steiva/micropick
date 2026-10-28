@@ -1,6 +1,6 @@
 """Home: where the window opens (REDESIGN §4).
 
-Three cards, top to bottom, in one centered column:
+Two cards and the tiles, top to bottom, in one column centered both ways:
 
 1. **Robot**: whether it is connected, as a headline. The app connects
    by itself (`gui.robot_monitor`); there is no Connect. A robot with no
@@ -10,7 +10,9 @@ Three cards, top to bottom, in one centered column:
 2. **Robot setup**: "Setup is done", the whole card opening Robot setup,
    or "Complete the setup · N steps left: …" with Complete setup, which
    opens it too: its rows show what is missing.
-3. **What are we doing today?**: the three task tiles, words only;
+3. **What are we doing today?**: the three task tiles, words only, on
+   the page itself (no card behind them); every title on Home - the
+   cards' and the tiles' - is one size (`homeTitle`);
    dimmed while a run has the robot, under a line naming where the run
    is (`show_run`, told by the shell).
 
@@ -88,9 +90,8 @@ class TaskTile(QFrame):
         column = QVBoxLayout(self)
         column.setContentsMargins(24, 26, 24, 26)
         column.setSpacing(12)
-        name = QLabel(title, self)
-        name.setObjectName("tileTitle")
-        column.addWidget(name)
+        self.name = _title(title, self)
+        column.addWidget(self.name)
         column.addWidget(muted_label(text, self))
         column.addStretch(1)
 
@@ -163,7 +164,9 @@ class HomePage(QWidget):
 
         column = QVBoxLayout()
         column.setSpacing(16)
-        column.addWidget(self._robot_card())
+        column.addStretch(1)
+        self.robot_box = self._robot_card()
+        column.addWidget(self.robot_box)
         # Until the robot is connected: one line, and the rest dimmed.
         self.waiting = muted_label("Waiting for the robot.", self)
         column.addWidget(self.waiting)
@@ -176,11 +179,13 @@ class HomePage(QWidget):
         self.below_dim = DimCover(self.below)
         column.addWidget(self.below)
         column.addStretch(1)
-        holder = QWidget(self)
+        # As wide as the page up to COLUMN_WIDTH, centered by the layout;
+        # the stretches above and below center the cards in it.
+        holder = self.holder = QWidget(self)
         holder.setLayout(column)
         holder.setMaximumWidth(COLUMN_WIDTH)
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(24, 48, 24, 24)
+        outer.setContentsMargins(24, 24, 24, 24)
         outer.addWidget(holder)
 
         session.robot_state_changed.connect(self.refresh)
@@ -250,7 +255,8 @@ class HomePage(QWidget):
         return box
 
     def _tasks_card(self) -> QWidget:
-        box = card(self)
+        box = self.tasks_box = QWidget(self)
+        QVBoxLayout(box).setContentsMargins(0, 0, 0, 0)
         box.layout().setSpacing(16)
         box.layout().addWidget(caption("What are we doing today?", box))
         # During a run: one line, and the tiles dimmed under it.

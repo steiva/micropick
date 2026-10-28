@@ -60,6 +60,27 @@ def test_the_window_opens_on_home_with_the_three_tasks(window):
     assert tiles["liquid"].text == "Add or remove liquid in many wells at once."
 
 
+def test_homes_tiles_sit_on_no_card_and_the_column_is_centered(app, window):
+    home = window.home
+    assert home.tile_row.parentWidget() is home.tasks_box
+    assert home.tasks_box.objectName() != "card"
+    # One size for every title on Home: the tiles' and the cards'.
+    assert {t.name.objectName() for t in home.tiles.values()} == {
+        home.robot_title.objectName()}
+    window.resize(1600, 1200)
+    window.show()
+    app.processEvents()
+    try:
+        from PySide6.QtCore import QPoint
+        column = home.holder.geometry()
+        assert abs(column.center().x() - home.rect().center().x()) <= 2
+        top = home.robot_box.mapTo(home, QPoint(0, 0)).y()
+        bottom = home.below.mapTo(home, QPoint(0, home.below.height())).y()
+        assert abs(top - (home.height() - bottom)) <= 2
+    finally:
+        window.hide()
+
+
 def _chips(window):
     return [(chip.text(), chip.done) for chip in window.step_bar.chips]
 

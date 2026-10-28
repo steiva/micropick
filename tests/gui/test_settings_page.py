@@ -120,6 +120,9 @@ def test_the_log_is_read_in_the_sheet(app, window):
     logging.getLogger("micropick.test").warning("a line for the log")
     app.processEvents()
     assert "a line for the log" in window.log_page.view.toPlainText()
+    from PySide6.QtWidgets import QPushButton
+    assert [b.text() for b in window.log_page.findChildren(QPushButton)] == [
+        "Save report for help…"]                   # no Clear
     window.top.home_clicked.emit()
     assert not sheet.isVisibleTo(window) and window.top.path == []
 

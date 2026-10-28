@@ -260,6 +260,7 @@ class MainWindow(QMainWindow):
         self.robot_setup_page.item_chosen.connect(
             lambda item: self.open_setup_item(item, from_setup=True))
         self.robot_setup_page.said.connect(self.say)
+        self.robot_setup_page.done.connect(self.open_home)
         self.camera_sheet.said.connect(self.say)
         self.platforms_sheet.said.connect(self.say)
         self.position_sheet.said.connect(self.say)

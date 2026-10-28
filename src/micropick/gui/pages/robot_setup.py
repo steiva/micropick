@@ -10,6 +10,8 @@ set), its label, its value and a ›. A row is clicked as a whole and
 A position reads as the slot it is nearest to and its coordinates
 (`≈ slot 8 · X 245.1 Y 132.4 Z 80.0`), never the name it is stored under.
 
+**Done** at the bottom right goes back to Home (`done`).
+
 Reset setup asks "Reset the setup?" with Keep setup as the safe, primary
 choice; on Reset the session archives the profile and clears the setup
 (`Session.reset_setup`). `said(text)` is the answer, for the window's
@@ -29,7 +31,8 @@ from ...core.deck import nearest_slot
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES, setup_done
 from ..theme import COLORS
-from ..theme.factory import caption, card, heading, secondary_button
+from ..theme.factory import (caption, card, heading, primary_button,
+                             secondary_button)
 from ..theme.icons import pixmap
 from ..widgets.overlays import ConfirmDialog
 from ..workers import describe_error
@@ -128,10 +131,12 @@ def position_text(xyz) -> str:
 
 
 class RobotSetupPage(QWidget):
-    """`item_chosen(item)` on a row's click; `said(text)` after Reset."""
+    """`item_chosen(item)` on a row's click; `said(text)` after Reset;
+    `done` on Done."""
 
     item_chosen = Signal(str)
     said = Signal(str)
+    done = Signal()
 
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
@@ -169,6 +174,12 @@ class RobotSetupPage(QWidget):
             column.addWidget(box)
             column.addSpacing(16)
         column.addStretch(1)
+        bottom = QHBoxLayout()
+        bottom.addStretch(1)
+        self.done_button = primary_button("Done", self)
+        self.done_button.clicked.connect(self.done)
+        bottom.addWidget(self.done_button)
+        column.addLayout(bottom)
 
         holder = QWidget(self)
         holder.setLayout(column)

@@ -47,8 +47,6 @@ class LogPage(QWidget):
         self.view.setFont(
             QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
 
-        self.clear_button = secondary_button("Clear", self)
-        self.clear_button.clicked.connect(self.view.clear)
         # One file with the logs, the profile and the state, to send to
         # whoever can help (`gui.report`).
         self.report_button = secondary_button("Save report for help…", self)
@@ -60,7 +58,6 @@ class LogPage(QWidget):
         header.addWidget(where)
         header.addStretch(1)
         header.addWidget(self.report_button)
-        header.addWidget(self.clear_button)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)

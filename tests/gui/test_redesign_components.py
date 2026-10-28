@@ -58,6 +58,33 @@ def test_the_stylesheet_names_no_token_it_does_not_have(app):
     assert theme.accent() == theme.COLORS["accent"]
 
 
+def test_the_home_crumb_is_the_same_on_home_and_further_in(app):
+    from PySide6.QtWidgets import QPushButton
+    bar = TopBar()
+    clicks = []
+    bar.home_clicked.connect(lambda: clicks.append(1))
+
+    def home_crumb():
+        buttons = [b for b in bar.findChildren(QPushButton)
+                   if b.objectName() == "crumb" and not b.isHidden()]
+        return buttons[0]
+
+    bar.set_path([])
+    here = home_crumb()
+    assert here.text() == "Home" and not here.icon().isNull()
+    width = here.sizeHint().width()
+    here.click()
+    assert clicks == []                       # Home on Home goes nowhere
+    bar.set_path(["Auto pick"])
+    further = home_crumb()
+    assert further.text() == "Home" and not further.icon().isNull()
+    # The same button, so the same gap between the house and "Home".
+    assert further.sizeHint().width() == width
+    assert further.iconSize() == here.iconSize()
+    further.click()
+    assert clicks == [1]
+
+
 def test_top_bar_path_status_stop_and_toggles(app):
     bar = TopBar()
     homes = []

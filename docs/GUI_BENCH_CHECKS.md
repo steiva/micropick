@@ -1844,3 +1844,28 @@ plate at hand.
   proportions as the Deck step, a dashed border and chip on each platform,
   the trash striped. Choosing, Save changes and Save / Discard work as
   before.
+
+## Park, Home and the shell's look (#37, #38)
+
+- [ ] **Park does not home.**
+  With a calibrated tip on, the tip low over the dish: Park raises the
+  tip, then the head goes to the back right in one move, no question
+  asked. The Tip step stays done. Park again: one move, no retract.
+
+- [ ] **Home is in Settings › Advanced.**
+  Home, beside Start new robot session, asks "Home the robot?" with the
+  tip calibration to do again; Cancel moves nothing. Yes homes; the Tip
+  step is no longer done. Gray, with the holder named, during a run.
+
+- [ ] **Home looks settled.**
+  The three task tiles sit on the page, no dark card behind them. The
+  cards and tiles are centered both ways at any window size. Titles on
+  Home are one size.
+
+- [ ] **The breadcrumb.**
+  The gap between the house and "Home" is the same on Home, in a task and
+  in Robot setup.
+
+- [ ] **Robot setup's Done; the Log.**
+  Done at Robot setup's bottom right goes to Home. Settings › Log has Save
+  report for help… and no Clear.

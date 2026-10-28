@@ -100,7 +100,7 @@ Setup card; the one page with a title, REDESIGN §5) is one page of rows - the c
 platforms, the three positions in the order they can be set - calibration,
 shake, over the dish (each `≈ slot n · X Y Z`, never its stored
 name) - whose set/not set is `tasks.SETUP`, the same that a step's needs
-and Home's "N steps left" read. A row, or a Robot setup item needed by a
+and Home's "N steps left" read; Done at its bottom right goes to Home. A row, or a Robot setup item needed by a
 step, opens its page as `Home › Robot setup › <item>` or `Home › <task> ›
 <item>` (`shell.SETUP_PAGES`), each in its own sheet. The
 cameras have theirs (`pages.camera_sheet.CameraSheet`, over the screen,
@@ -172,7 +172,7 @@ points stay. The last profile is loaded at start
 chosen on screen. Settings is a sheet (`pages.settings.SettingsSheet`)
 over whatever is shown, the breadcrumb gaining "Settings": General (Save,
 Revert; closing it discards what was not saved), Advanced and the Log
-(over the lock: only Advanced is the robot's). Advanced's
+(Save report, no Clear; over the lock: only Advanced is the robot's). Advanced's
 Start new robot session, Home and Disconnect robot session claim the
 robot's lease; Home (`Session.home`) asks first, since the tip calibration
 is then to do again (`Session.homed_at`: the Tip step not done); Disconnect lets the session go (`Session.release_run`) and the

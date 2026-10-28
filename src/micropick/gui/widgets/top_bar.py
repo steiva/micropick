@@ -1,7 +1,8 @@
 """The bar across the top of every screen (REDESIGN §3, TopBar).
 
 Left, where the user is: `⌂ Home › Auto pick` (`› <sheet>` while a sheet
-is open). Every crumb but the last is a button back to it. No app name -
+is open). Every crumb but the last is a button back to it; Home is the
+same button on Home too, where it goes nowhere. No app name -
 the window's title bar has it - and no back arrow.
 
 Center right, the **StatusPill**: only while the robot is doing something
@@ -161,28 +162,32 @@ class TopBar(QFrame):
                 arrow.setPixmap(icon("chevron-right", COLORS["faint"], 14)
                                 .pixmap(14, 14))
                 self._crumbs.addWidget(arrow)
+            if i == 0:
+                # Home is the same button on every screen, so the gap
+                # between the house and "Home" never changes; on Home itself
+                # it is where you are, and goes nowhere.
+                button = QPushButton(name, self)
+                button.setObjectName("crumb")
+                button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                button.setProperty("here", last)
+                button.setIcon(icon("home", COLORS["text" if last
+                                                  else "text-2"], 18))
+                if not last:
+                    button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    button.clicked.connect(self.home_clicked)
+                self._crumbs.addWidget(button)
+                continue
             if last:
                 label = QLabel(name, self)
                 label.setObjectName("crumbHere")
-                if i == 0:
-                    label.setText(f"  {name}")
-                    home = QLabel(self)
-                    home.setPixmap(icon("home", COLORS["text"], 18)
-                                   .pixmap(18, 18))
-                    self._crumbs.addSpacing(8)
-                    self._crumbs.addWidget(home)
                 self._crumbs.addWidget(label)
                 continue
             button = QPushButton(name, self)
             button.setObjectName("crumb")
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            if i == 0:
-                button.setIcon(icon("home", COLORS["text-2"], 18))
-                button.clicked.connect(self.home_clicked)
-            else:
-                button.clicked.connect(
-                    lambda _=False, n=i - 1: self.crumb_clicked.emit(n))
+            button.clicked.connect(
+                lambda _=False, n=i - 1: self.crumb_clicked.emit(n))
             self._crumbs.addWidget(button)
         self.path = list(path)
 

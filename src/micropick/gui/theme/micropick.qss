@@ -125,6 +125,8 @@ QPushButton#crumb {
     font-size: 15px;
 }
 QPushButton#crumb:hover { background: @hover; color: @text; }
+QPushButton#crumb[here="true"],
+QPushButton#crumb[here="true"]:hover { background: transparent; color: @text; }
 QLabel#crumbHere { color: @text; font-weight: 600; font-size: 15px; }
 
 QPushButton#stopButton {
@@ -214,7 +216,6 @@ QFrame#taskTile {
     border-radius: 16px;
 }
 QFrame#taskTile:hover { background: @hover; border-color: @accent; }
-QLabel#tileTitle { font-size: 21px; font-weight: 600; }
 QLabel#homeTitle { font-size: 22px; font-weight: 600; }
 /* Robot setup's rows: the whole row is the button. */
 QFrame#setupRow { background: transparent; border: none; border-radius: 8px; }

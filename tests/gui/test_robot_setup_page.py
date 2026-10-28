@@ -82,6 +82,15 @@ def test_home_opens_robot_setup_with_its_rows(app, window):
         "shake position, position over the dish.")
 
 
+def test_done_goes_back_home(app, window):
+    window.open_robot_setup()
+    page = window.robot_setup_page
+    assert page.done_button.text() == "Done"
+    page.done_button.click()
+    assert window.current_page() is window.home
+    assert window.top.path == []
+
+
 def test_positions_read_as_a_slot_and_coordinates(app, window):
     _positions(window.session)
     window.session.set_deck_modules([
