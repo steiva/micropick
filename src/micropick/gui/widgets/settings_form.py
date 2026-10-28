@@ -28,19 +28,21 @@ from __future__ import annotations
 import logging
 import typing
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-                               QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-                               QMessageBox, QScrollArea, QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QHBoxLayout,
+                               QLabel, QLineEdit, QMessageBox, QScrollArea,
+                               QVBoxLayout, QWidget)
 
 from ...config.schema import PickingConfig
 from ..theme import SPACING
-from ..theme.factory import Section, double_spin_box, heading, spin_box
+from ..theme.factory import (Section, double_spin_box, heading, quiet_button,
+                             spin_box)
+from .overlays import SheetWindow
 from .picking_fields import (ADVANCED_GROUPS, BIG_CHANGE, BOUNDS, FIELDS,
                              FLOATER_MODE,
                              MAIN, MISS_POLICY, RUN, STEPS)
 
-__all__ = ["PickingSettingsDialog", "field_widget", "TROUBLE"]
+__all__ = ["PickingSettingsSheet", "field_widget", "TROUBLE"]
 
 # The settings behind most failed pickups and deposits. The status bar's
 # amber, for the same reason: it has to read as "look here" in either theme.
@@ -87,7 +89,7 @@ def _is_window(name: str) -> bool:
 
 def _range(kind: type, value, bounds) -> tuple:
     """The box's range: `bounds`, widened to take `value` - a stored value
-    is never clamped by opening the dialog - else the model's own."""
+    is never clamped by opening the sheet - else the model's own."""
     if bounds is None:
         return INT_RANGE if kind is int else FLOAT_RANGE
     lo, hi = min(bounds[0], value), max(bounds[1], value)
@@ -216,36 +218,42 @@ def field_widget(name: str, annotation, value, *, labels: dict | None = None,
     return _Row(name, annotation, value, labels=labels, unit=unit)
 
 
-class PickingSettingsDialog(QDialog):
-    """The whole of `PickingConfig`, editable, saved to the profile: the
-    settings a run is tuned with first, the technical ones folded under
-    Advanced (`picking_fields`)."""
+class PickingSettingsSheet(SheetWindow):
+    """The whole of `PickingConfig`, editable, as a sheet over `host` (#52):
+    the settings a run is tuned with first, the technical ones folded under
+    Advanced (`picking_fields`). Save (the sheet's Done) checks the values
+    and lists the changes before it closes, emitting `saved(config)`;
+    Cancel and × close with nothing kept."""
 
-    def __init__(self, config: PickingConfig, *, profile_name: str = "",
-                 previous: tuple[str, PickingConfig] | None = None,
-                 parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setWindowTitle("Picking settings")
-        self.resize(760, 820)
+    saved = Signal(object)
+
+    def __init__(self, host: QWidget, config: PickingConfig, *,
+                 profile_name: str = "",
+                 previous: tuple[str, PickingConfig] | None = None):
+        super().__init__(host, "Picking settings",
+                         done_text=(f"Save to {profile_name}" if profile_name
+                                    else "Save"))
         self._config = config
         self._rows: dict[str, _Row] = {}
         self._labels: dict[str, QLabel] = {}
+        self.result_config: PickingConfig | None = None
 
-        self.filter = QLineEdit(self)
+        self.filter = QLineEdit(self.body_widget)
         self.filter.setPlaceholderText("filter…")
         self.filter.setClearButtonEnabled(True)
         self.filter.textChanged.connect(self._apply_filter)
 
         forms = self._forms(config)
-        host = QWidget()
-        column = QVBoxLayout(host)
+        host_widget = QWidget()
+        column = QVBoxLayout(host_widget)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
         for title in (MAIN, RUN):
-            section = Section(title, parent=host)
+            section = Section(title, parent=host_widget)
             section.body.layout().addLayout(forms.pop(title))
             column.addWidget(section)
-        self.advanced = Section("Advanced", collapsed=True, parent=host)
+        self.advanced = Section("Advanced", collapsed=True,
+                                parent=host_widget)
         for title in (*ADVANCED_GROUPS, OTHER):
             form = forms.pop(title, None)
             if form is None:
@@ -255,12 +263,12 @@ class PickingSettingsDialog(QDialog):
         column.addWidget(self.advanced)
         column.addStretch(1)
 
-        area = QScrollArea(self)
+        area = QScrollArea(self.body_widget)
         area.setWidgetResizable(True)
         # Down only: the labels wrap to the width there is.
         area.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        area.setWidget(host)
+        area.setWidget(host_widget)
 
         legend = QLabel(
             f"Picking settings (picking.json). "
@@ -272,38 +280,27 @@ class PickingSettingsDialog(QDialog):
         self.message.setWordWrap(True)
         self.message.hide()
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel
-            | QDialogButtonBox.StandardButton.RestoreDefaults, self)
-        buttons.accepted.connect(self._accept)
-        buttons.rejected.connect(self.reject)
-        buttons.button(
-            QDialogButtonBox.StandardButton.RestoreDefaults
-        ).clicked.connect(self._restore_defaults)
-        buttons.button(QDialogButtonBox.StandardButton.Save).setText(
-            f"Save to {profile_name}" if profile_name else "Save")
+        # Beside Cancel and Save, on the left of the sheet's button row.
+        defaults = quiet_button("Restore defaults", self.frame)
+        defaults.clicked.connect(self._restore_defaults)
+        self.button_row.insertWidget(0, defaults)
         # The settings as they were before the last save (`Profile.
         # previous_picking`): a typo saved over a working value is one
         # click from undone, and still only in the form until Save.
         self._previous = previous
-        self.previous_button = buttons.addButton(
-            "Previous settings", QDialogButtonBox.ButtonRole.ResetRole)
+        self.previous_button = quiet_button("Previous settings", self.frame)
         self.previous_button.setEnabled(previous is not None)
         self.previous_button.setToolTip(
             f"Load the previous settings ({_when(previous)}) into the form."
             if previous is not None else "No previous settings.")
         self.previous_button.clicked.connect(self._restore_previous)
+        self.button_row.insertWidget(1, self.previous_button)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
-                                  SPACING * 2)
-        layout.setSpacing(SPACING)
-        layout.addWidget(legend)
-        layout.addWidget(self.filter)
-        layout.addWidget(area, 1)
-        layout.addWidget(self.message)
-        layout.addWidget(buttons)
+        self.body.setSpacing(SPACING)
+        self.body.addWidget(legend)
+        self.body.addWidget(self.filter)
+        self.body.addWidget(area, 1)
+        self.body.addWidget(self.message)
 
     def _forms(self, config: PickingConfig) -> dict[str, QFormLayout]:
         """A form per group, every field of the schema in one of them: the
@@ -327,7 +324,7 @@ class PickingSettingsDialog(QDialog):
                        bounds=BOUNDS.get(name), step=STEPS.get(name))
             label = QLabel(spec.label if spec else name)
             # Wrapped and capped, so a long name takes two lines rather
-            # than pushing the number off the dialog.
+            # than pushing the number off the sheet.
             label.setWordWrap(True)
             label.setFixedWidth(LABEL_WIDTH)
             if spec and spec.trouble:
@@ -430,7 +427,7 @@ class PickingSettingsDialog(QDialog):
         return box.clickedButton() is save
 
     def _restore_defaults(self) -> None:
-        """The model's own defaults, not this dialog's idea of them."""
+        """The model's own defaults, not this sheet's idea of them."""
         fresh = PickingConfig()
         for name, row in self._rows.items():
             row.set_value(getattr(fresh, name))
@@ -445,7 +442,9 @@ class PickingSettingsDialog(QDialog):
         values.update(self.values())
         return PickingConfig(**values)
 
-    def _accept(self) -> None:
+    def _done(self) -> None:
+        """Save: closed only once the model takes the values and the
+        changes are confirmed."""
         try:
             self.result_config = self.config()
         except Exception as exc:                     # noqa: BLE001
@@ -456,7 +455,8 @@ class PickingSettingsDialog(QDialog):
         changes = self.changes()
         if changes and not self._confirm(changes):
             return
-        self.accept()
+        super()._done()
+        self.saved.emit(self.result_config)
 
 
 def _when(previous) -> str:

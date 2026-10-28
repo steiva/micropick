@@ -493,12 +493,17 @@ The Picking step (`pages.picking`, REDESIGN §6.5): the dish picture with
 "N cuboids found" and Camera to dish center over its top right (during a
 run only while paused or waiting, under the run's lease lent to the jog
 panel, the tip empty; else "Pause to move the camera"); beside it, with
-no panel scroll, Analyze the dish and Shake the dish, then two FoldCards,
-one open at a time - Cuboid sizes (the histogram whose window is dragged
-and saved like the settings' Save, the pickup line, More settings, All
-measures: `widgets.cuboid_stats`) before a run, Plate · slot N (mini
-`PlateGrid`, Filled / Planned, current well ringed) during it - then Save
-pickup clips and the jog panel (its pad over the picture). After a run that left wells of
+no panel scroll, Analyze the dish and Shake the dish ("Lights go off
+while analyzing.": the lights off for its frame, back as they were
+after), then two cards shown together, neither folding
+(`FoldCard(fold=False)`) - Cuboid sizes (the histogram whose window is
+dragged and saved like the settings' Save, the pickup line, More
+settings - a sheet over the page, `PickingSettingsSheet`, "Analyze
+again." after a change - All measures: `widgets.cuboid_stats`) and
+Plate · slot N (mini `PlateGrid`: the planned wells, Filled / Planned
+once something is filled, the current well ringed during a run) - then
+the jog panel (its pad over the picture, folded). No Save pickup clips
+switch: its code stays, never shown and off. After a run that left wells of
 the plan short, "N wells were not filled" with Finish by hand
 (`Session.task_requested`: Manual pick's Work, Dispense on In a well and
 the first of them). The positions are Robot setup's.

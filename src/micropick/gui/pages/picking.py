@@ -12,18 +12,19 @@ On the right, top to bottom and with no scrolling:
    them "Lights go off while analyzing.": the rail lights put highlights
    on the dish, so the analysis switches them off for its frame and back
    on after if they were on, as a run does (#51), a failed one included.
-2. FoldCard **Cuboid sizes** (its summary the size window, "250-500 µm"):
+2. Card **Cuboid sizes** (its summary the size window, "250-500 µm"):
    the histogram whose white lines are dragged to change what is picked,
    the pickup height and volume ("0.5 mm above the bottom · 15 µl"),
-   **More settings** (the picking settings) and **All measures** (the
-   cuboids' figures in a window of their own, `widgets.cuboid_stats`).
-3. FoldCard **Plate · slot N** ("12 of 24 wells"): the whole plate as a
-   mini map, filled and planned wells in their colors, the current well
-   ringed.
+   **More settings** (the picking settings, a sheet over the page; after
+   a change, "Analyze again." under Analyze while cuboids found under the
+   old settings are shown) and **All measures** (the cuboids' figures in
+   a window of their own, `widgets.cuboid_stats`).
+3. Card **Plate · slot N** ("12 of 24 wells"): the whole plate as a mini
+   map, the planned wells before a run, filled and planned in their
+   colors once something is filled, the current well ringed during one.
 
-One card is open at a time: Sizes before a run, Plate during it. Under
-them Save pickup clips, and the jog panel last (its pad floats over the
-picture).
+Both cards are shown at once and neither folds (#52). The jog panel is
+last (its pad floats over the picture, folded until opened).
 
 The footer is the run's status (`run_status`, `footer_buttons`, read by
 the shell): a CAPS tag - READY, PICKING, PAUSED, WAITING FOR YOU, DONE,
@@ -109,6 +110,8 @@ Resume wait for the move.
 
 Pickup clips
 ------------
+Not offered on screen (#52): only a developer needs them. The switch is
+kept, never shown, and off, so what follows is there to be shown again.
 Save pickup clips is the notebook's `CLIP_DIR`: the lower camera opens, and
 the run records it from the approach to the end of each aspirate, with a
 box round every cuboid of the batch where the homography puts it, and
@@ -159,11 +162,11 @@ from ..widgets.checklist import BLOCKED, OK, TODO, Check
 from ..widgets.controls import Switch
 from ..widgets.cuboid_stats import CuboidStats
 from ..widgets.feed_row import FeedRow
-from ..widgets.fold_card import FoldCard, FoldGroup
+from ..widgets.fold_card import FoldCard
 from ..widgets.jog_panel import JogPanel
 from ..widgets.picking_fields import BOUNDS
 from ..widgets.plate_grid import PlateGrid
-from ..widgets.settings_form import PickingSettingsDialog
+from ..widgets.settings_form import PickingSettingsSheet
 from ..widgets.size_histogram import SizeHistogram
 from ..workers import Worker
 
@@ -174,6 +177,7 @@ TITLE = "Picking"
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 440
+HISTOGRAM_WIDTH = 380
 
 # How often the display looks at what the run is showing. The session's own
 # pace is set by the robot; this is only the refresh of a picture.
@@ -188,6 +192,7 @@ CONFIRM_START = (
     "The robot starts moving on Start.")
 
 LIGHTS_OFF = "Lights go off while analyzing."
+ANALYZE_AGAIN = "Analyze again."
 
 CENTER = "Camera to dish center"
 CENTER_WAIT = "Pause to move the camera"
@@ -282,18 +287,22 @@ class PickingPage(QWidget):
         column.addLayout(row)
         self.lights_line = muted_label(LIGHTS_OFF, panel)
         column.addWidget(self.lights_line)
+        # The settings changed since the cuboids shown were found.
+        self.again_line = muted_label(ANALYZE_AGAIN, panel)
+        self.again_line.hide()
+        column.addWidget(self.again_line)
+        self._stale = False
         column.addWidget(self._sizes_card(panel))
         column.addWidget(self._plate_card(panel))
-        self.folds = FoldGroup([self.sizes, self.plate_card])
         column.addWidget(self._unfilled_card(panel))
 
-        # Off unless asked for: see "Pickup clips".
+        # Never shown, and off: see "Pickup clips".
         self.clips_box = Switch("Save pickup clips", parent=panel)
         self.clips_box.toggled.connect(self._clips_toggled)
-        column.addWidget(self.clips_box)
+        self.clips_box.hide()
         self.clips_state = muted_label("", panel)
-        self.clips_state.setWordWrap(True)
-        column.addWidget(self.clips_state)
+        self.clips_state.hide()
+        self.settings_sheet: PickingSettingsSheet | None = None
         column.addWidget(self._jog_section())
         column.addStretch(1)
 
@@ -337,15 +346,18 @@ class PickingPage(QWidget):
     # -- construction --------------------------------------------------------
 
     def _sizes_card(self, parent: QWidget) -> FoldCard:
-        self.sizes = FoldCard("Cuboid sizes", open=True, parent=parent)
+        self.sizes = FoldCard("Cuboid sizes", fold=False, parent=parent)
         body = self.sizes.body.layout()
         self.histogram = SizeHistogram(
             "Drag the white lines to change which sizes are picked.",
             self.sizes)
-        self.histogram.plot.setMinimumHeight(140)
-        self.histogram.plot.setMaximumHeight(170)
+        # Narrower than the panel can be and a little taller than it was:
+        # both cards fit with it (#52).
+        self.histogram.plot.setMinimumHeight(160)
+        self.histogram.plot.setMaximumHeight(190)
+        self.histogram.setMaximumWidth(HISTOGRAM_WIDTH)
         self.histogram.window_moved.connect(self._size_window_moved)
-        body.addWidget(self.histogram)
+        body.addWidget(self.histogram, 0, Qt.AlignmentFlag.AlignHCenter)
         # The names the page and its tests have always used for the size
         # plot and its sentence.
         self.hist, self.window_state = (self.histogram.plot,
@@ -365,15 +377,17 @@ class PickingPage(QWidget):
         return self.sizes
 
     def _plate_card(self, parent: QWidget) -> FoldCard:
-        self.plate_card = FoldCard("Plate", parent=parent)
+        self.plate_card = FoldCard("Plate", fold=False, parent=parent)
         body = self.plate_card.body.layout()
         self.plate = PlateGrid(mini=True, parent=self.plate_card)
         body.addWidget(self.plate)
         legend = QHBoxLayout()
+        self.legend = {}
         for name, color in (("Filled", "plate"), ("Planned", "planned")):
             label = QLabel(f'<span style="color: {COLORS[color]}">'
                            f'&#9632;</span> {name}', self.plate_card)
             legend.addWidget(label)
+            self.legend[name] = label
         legend.addStretch(1)
         body.addLayout(legend)
         return self.plate_card
@@ -558,9 +572,9 @@ class PickingPage(QWidget):
         # Over the live feed, not a held frame: if the dish moves after
         # this, the contours stop sitting on the cuboids, which is the
         # sign to analyse again.
+        self._stale = False
         self._draw_overlay()
         self._draw_histogram()
-        self._show_sizes()
         self._refresh()
 
     def _found(self) -> list[str]:
@@ -606,11 +620,6 @@ class PickingPage(QWidget):
         if bins is None:
             # Nothing measured: no figures to show.
             self.stats.hide()
-
-    def _show_sizes(self) -> None:
-        """The Cuboid sizes card opened, as after an analysis."""
-        if not self._running():
-            self.folds.open(self.sizes)
 
     def _toggle_stats(self) -> None:
         if self._detection is None and not self.stats.isVisible():
@@ -832,10 +841,8 @@ class PickingPage(QWidget):
         self._run_worker.start()
         self._view_timer.start()
         # The run decides from its own frames; the last analysis's sizes
-        # are not what it sees, and its settings are fixed for it. The plate
-        # is what there is to follow now.
+        # are not what it sees, and its settings are fixed for it.
         self.stats.hide()
-        self.folds.open(self.plate_card)
         self._draw_histogram()
         self._refresh()
 
@@ -1047,21 +1054,30 @@ class PickingPage(QWidget):
     # -- settings ---------------------------------------------------------------
 
     def _settings(self) -> None:
+        """More settings: the picking settings as a sheet over the page."""
         profile = self.session.profile
         if profile is None or self._running():
             return
-        dialog = PickingSettingsDialog(profile.picking,
-                                       profile_name=profile.name,
-                                       previous=profile.previous_picking(),
-                                       parent=self)
-        if dialog.exec() != PickingSettingsDialog.DialogCode.Accepted:
+        if self.settings_sheet is not None:
+            self.settings_sheet.deleteLater()
+        self.settings_sheet = sheet = PickingSettingsSheet(
+            self, profile.picking, profile_name=profile.name,
+            previous=profile.previous_picking())
+        sheet.saved.connect(self._settings_saved)
+        sheet.open()
+
+    def _settings_saved(self, config) -> None:
+        profile = self.session.profile
+        if profile is None:
             return
-        profile.picking = dialog.result_config
+        # Taken before profile_changed, which lets the analysis go.
+        stale = config != profile.picking and self._detection is not None
+        profile.picking = config
         profile.save_picking()
         log.info("picking settings saved to %s", profile.path / "picking.json")
         self.session.profile_changed.emit(profile)
-        # The window may have moved, so what the last analysis means has
-        # changed with it.
+        # The cuboids on the picture were found under the old settings.
+        self._stale = stale
         self._draw_histogram()
         self._refresh()
 
@@ -1186,6 +1202,7 @@ class PickingPage(QWidget):
         # different window: nothing measured belongs to it.
         self.opener.forget()
         self._detection = None
+        self._stale = False
         self.view.set_overlay_items([])
         self.view.set_status([])
         self._draw_histogram()
@@ -1241,6 +1258,8 @@ class PickingPage(QWidget):
                               else {})
         self.plate.set_current(routine.current if self._running() else None)
         self.plate_card.set_summary(f"{filled} of {len(plan)} wells")
+        # Before a run the plan alone; Filled once there is any.
+        self.legend["Filled"].setVisible(bool(filled) or self._running())
 
     def _refresh(self) -> None:
         busy = self._busy()
@@ -1275,6 +1294,7 @@ class PickingPage(QWidget):
         self.settings_button.setEnabled(profile is not None and not busy
                                         and not running)
         self.stats_button.setEnabled(self._detection is not None)
+        self.again_line.setVisible(self._stale and not running)
         if profile is not None:
             cfg = profile.picking
             low, high = cfg.cuboid_size_threshold
@@ -1294,7 +1314,6 @@ class PickingPage(QWidget):
             self.clips_state.setText(
                 f"One clip per pickup, {w}x{h}, to "
                 f"{paths.clips_dir(create=False)}")
-        self.clips_state.setVisible(self.clips_box.isChecked())
 
         self._show_plate()
         self._show_unfilled()

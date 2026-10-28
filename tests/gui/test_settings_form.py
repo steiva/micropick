@@ -13,11 +13,20 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication                       # noqa: E402
+from PySide6.QtWidgets import QApplication, QWidget              # noqa: E402
 
 from micropick.config.schema import PickingConfig                # noqa: E402
 from micropick.gui.widgets.settings_form import (                # noqa: E402
-    PickingSettingsDialog)
+    PickingSettingsSheet)
+
+
+_hosts = []
+
+
+def PickingSettingsDialog(config):
+    """The sheet over a page of its own, kept alive with it."""
+    _hosts.append(QWidget())
+    return PickingSettingsSheet(_hosts[-1], config)
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +89,7 @@ def test_the_model_is_what_refuses_a_bad_value(app):
     dialog._rows["aspect_ratio_window"].set_value((2.0, 1.0))
     with pytest.raises(Exception):
         dialog.config()
-    dialog._accept()                      # shows the model's words, no crash
+    dialog._done()                        # shows the model's words, no crash
     assert dialog.message.isVisibleTo(dialog)
     assert "aspect_ratio_window" in dialog.message.text()
     dialog.deleteLater()
@@ -88,7 +97,8 @@ def test_the_model_is_what_refuses_a_bad_value(app):
 
 def test_the_filter_hides_by_name(app):
     dialog = PickingSettingsDialog(PickingConfig())
-    dialog.show()
+    dialog.parentWidget().show()
+    dialog.open()
     app.processEvents()
     dialog._apply_filter("size")
     shown = [name for name, row in dialog._rows.items()
@@ -97,5 +107,4 @@ def test_the_filter_hides_by_name(app):
     assert "vol" not in shown
     dialog._apply_filter("")
     assert not dialog._rows["vol"].widget.isHidden()
-    dialog.close()
-    dialog.deleteLater()
+    dialog.parentWidget().deleteLater()

@@ -118,7 +118,6 @@ def test_the_window_is_dragged_on_the_histogram_and_saved(page, tmp_path):
     profile.picking.cuboid_size_threshold = (250, 500)
     page._detection = detection([100, 200, 300, 400, 450, 600, 900])
     page._draw_histogram()
-    page._show_sizes()
     assert page.sizes.isVisibleTo(page)
     region = regions(page)[0]
     assert region.movable
@@ -131,15 +130,20 @@ def test_the_window_is_dragged_on_the_histogram_and_saved(page, tmp_path):
     assert "5 of 7" in page.window_state.text()
 
 
-def test_an_analysis_opens_the_sizes_card_and_its_figures(page):
-    """Cuboid sizes and Plate fold in turn (REDESIGN §6.5): Sizes is the
-    one open after an analysis; All measures opens the figures."""
-    page.plate_card.set_open(True)
-    assert not page.sizes.is_open()
+def test_sizes_and_plate_are_both_shown_and_do_not_fold(page):
+    """Both cards at once (#52): a click on a header folds nothing."""
+    page.show()
+    assert page.sizes.is_open() and page.plate_card.is_open()
+    page.sizes.header.click()
+    page.plate_card.header.click()
+    assert page.sizes.is_open() and page.plate_card.is_open()
+    assert page.histogram.isVisible() and page.plate.isVisible()
+    page.hide()
+
+
+def test_all_measures_opens_the_figures(page):
     page._detection = detection([300, 400])
     page._draw_histogram()
-    page._show_sizes()
-    assert page.sizes.is_open() and not page.plate_card.is_open()
     page._refresh()
     page.stats_button.click()
     assert page.stats.isVisible()
@@ -148,6 +152,74 @@ def test_an_analysis_opens_the_sizes_card_and_its_figures(page):
     page._detection = None
     page._refresh()
     assert not page.stats_button.isEnabled()
+
+
+def test_the_plate_shows_the_plan_before_a_run(page):
+    from micropick.config.labware import resolve_definition
+    from micropick.core.routine import Destination, Routine
+    from micropick.gui.theme import COLORS
+    definition = resolve_definition("corning_96_wellplate_360ul_flat")
+    page.session.set_routine(Routine(
+        Destination.from_definition(definition, 5), {"A1": 2, "B1": 2},
+        name="test plate"))
+    assert page.plate_card.header.text() == "Plate · slot 5"
+    from PySide6.QtGui import QColor
+    assert page.plate._fills == {"A1": QColor(COLORS["planned"]),
+                                 "B1": QColor(COLORS["planned"])}
+    assert page.legend["Filled"].isHidden()
+    assert page.plate_card.summary.text() == "0 of 2 wells"
+
+
+def _settings_ready(app, page):
+    """Shown, the page loads its detector; More settings waits for it."""
+    import time
+    end = time.monotonic() + 10
+    while not page.settings_button.isEnabled() and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    assert page.settings_button.isEnabled()
+
+
+def test_more_settings_is_a_sheet_and_asks_to_analyze_again(app, page,
+                                                            monkeypatch):
+    """Over the page, not a window of its own (#52); a change leaves the
+    cuboids found under the old settings, so the page says so."""
+    page.resize(1200, 800)
+    page.show()
+    page._detection = detection([300, 400])
+    page._refresh()
+    assert page.again_line.isHidden()
+    _settings_ready(app, page)
+    page.settings_button.click()
+    sheet = page.settings_sheet
+    assert sheet.parentWidget() is page and sheet.isVisible()
+    monkeypatch.setattr(sheet, "_confirm", lambda _changes: True)
+    sheet._rows["vol"].set_value(12.5)
+    sheet.done_button.click()
+    assert not sheet.isVisible()
+    profile = page.session.profile
+    assert profile.picking.vol == 12.5
+    assert "12.5" in (profile.path / "picking.json").read_text()
+    assert page.again_line.text() == "Analyze again."
+    assert not page.again_line.isHidden()
+    page.hide()
+
+
+def test_cancel_saves_nothing(app, page):
+    page.show()
+    before = page.session.profile.picking.vol
+    _settings_ready(app, page)
+    page.settings_button.click()
+    page.settings_sheet._rows["vol"].set_value(before + 1)
+    page.settings_sheet.cancel_button.click()
+    assert page.session.profile.picking.vol == before
+    page.hide()
+
+
+def test_there_is_no_pickup_clips_switch(page):
+    page.show()
+    assert not page.clips_box.isVisible()
+    page.hide()
 
 
 def test_the_pad_is_folded_on_picking(page):

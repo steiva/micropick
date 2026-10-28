@@ -126,7 +126,7 @@ class SheetWindow(_Cover):
         self.body.setSpacing(SPACING * 2)
         column.addWidget(self.body_widget, 1)
 
-        button_row = QHBoxLayout()
+        self.button_row = button_row = QHBoxLayout()
         button_row.setContentsMargins(24, 8, 24, 20)
         button_row.setSpacing(10)
         button_row.addStretch(1)
