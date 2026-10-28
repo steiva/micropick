@@ -68,7 +68,7 @@ def test_a_tile_opens_its_task_and_home_goes_back(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.top.path == ["Auto pick"]
     assert [name for name, _done in _chips(window)] == [
-        "Deck", "Tip", "Plan", "Dish bottom", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Plan", "Picking"]
     assert window.step_bar.isVisible() and window.footer.isVisible()
     assert window.current_page() is window.labware_page
     window.top.home_clicked.emit()
@@ -107,11 +107,25 @@ def test_the_banner_names_only_the_first_need_and_goes_there(app, window):
     assert _banner(window) is None
 
 
-def test_a_robot_setup_need_opens_its_page_and_its_crumb_comes_back(
-        app, window):
+def test_plans_banner_asks_for_a_plate_and_goes_to_deck(app, window):
     _connect(app, window)
     window.home.tiles["auto"].clicked.emit()
-    window.footer.next.click()                     # Deck checked
+    window.step_bar.clicked.emit(3)                # Plan
+    assert window.step == "plan"
+    text, (go,) = _banner(window)
+    assert (text, go.text()) == ("Put a plate on the deck first.",
+                                 "Go to Deck")
+    go.click()
+    assert window.step == "deck"
+
+
+def test_a_robot_setup_need_opens_its_page_and_its_crumb_comes_back(
+        app, window):
+    from micropick.config.labware import resolve_definition
+    _connect(app, window)
+    window.session.load_labware(
+        resolve_definition("opentrons_96_tiprack_300ul"), 10)
+    window.home.tiles["auto"].clicked.emit()       # opens on Tip
     assert window.step == "tip"
     text, (go,) = _banner(window)
     assert text == "Calibrate the camera first."
@@ -145,10 +159,16 @@ def _tip_calibrated(window):
 
 
 def test_next_is_enabled_when_the_step_is_done_and_marks_it(app, window):
+    from micropick.config.labware import resolve_definition
     _connect(app, window)
     window.home.tiles["manual"].clicked.emit()
     assert window.step == "deck"
-    assert window.footer.next.isEnabled()          # Deck is confirmed by Next
+    assert not window.footer.next.isEnabled()      # nothing on the deck
+    assert _chips(window)[0] == ("Deck", False)
+    window.session.load_labware(
+        resolve_definition("opentrons_96_tiprack_300ul"), 10)
+    assert _chips(window)[0] == ("Deck", True)     # done without Next
+    assert window.footer.next.isEnabled()
     window.footer.next.click()
     assert window.step == "tip"
     assert _chips(window)[0] == ("Deck", True)
@@ -166,8 +186,7 @@ def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):
     _connect(app, window)
     _tip_calibrated(window)                        # the rack on the deck first
     window.home.tiles["auto"].clicked.emit()
-    window.footer.next.click()                     # Deck
-    window.step_bar.clicked.emit(3)                # Dish bottom
+    assert window.step == "dish_bottom"            # the first not done
     window.session.confirm("dish_bottom")
     window.top.home_clicked.emit()
     window.home.tiles["manual"].clicked.emit()
@@ -211,9 +230,7 @@ def test_dish_bottom_is_its_own_page_and_done_by_use_it_not_by_next(
     window.session.profile.positions["observe"] = (200.0, 150.0, 120.0)
     window.session.profile.calibration.dish_bottom_set_at = datetime.now(
         timezone.utc)
-    window.home.tiles["manual"].clicked.emit()
-    window.footer.next.click()                     # Deck
-    window.step_bar.clicked.emit(2)                # Dish bottom
+    window.home.tiles["manual"].clicked.emit()     # opens on Dish bottom
     page = window.dish_bottom_page
     assert window.current_page() is page
     assert window.top.path == ["Manual pick"]

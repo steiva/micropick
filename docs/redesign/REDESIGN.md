@@ -289,7 +289,7 @@ Users do not need several profiles.
 
 | Task | Steps |
 |---|---|
-| Auto pick | Deck → Tip → Plan → **Dish bottom** → Picking |
+| Auto pick | Deck → Tip → **Dish bottom** → Plan → Picking (#39) |
 | Manual pick | Deck → Tip → **Dish bottom** → Work |
 | Liquid | Deck → Tip → **Well center** → Plan → Run |
 
@@ -409,10 +409,12 @@ Every task screen uses TopBar + StepBar + content + Footer. Content is
 
 **Right:**
 - Title "What goes to slot 7?" (empty slot) or "In slot 7" (filled).
-- Empty slot: search, chips (Frequent · Plates · Tips · Dishes), list items
+- Empty slot: tabs (Frequent · All · Plates · Tips, #41), a search inside
+  the tab shown, list items
   with icon, name and facts (always show well volume: two Corning 384 plates
   differ only by it), and + to add.
-- Filled slot: the item card, **Remove**, and "Put something else".
+- Filled slot: the item card and **Remove** (and a × on its tile; Clear
+  all under the deck, #40).
 - At the bottom, an outlined button **Change platforms in Robot setup**.
 
 ### 6.2 Tip (shared step 2) — existing `calibration_pipette` page logic

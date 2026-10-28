@@ -1070,10 +1070,10 @@ robot on.
   start the program: "Robot connected" within a few seconds, and the deck
   and tip are what they were.
 
-- [ ] **Auto pick opens on Deck, and Next checks it.**
-  Next on Deck is the deck checked against the real one, for this robot
-  session; Tip then shows ✓ on Deck. Start a new robot session: Deck is
-  no longer ✓.
+- [ ] **Auto pick opens on Deck, done once something is on it.**
+  With an empty deck Deck has no ✓ and Next is gray; load a tip box and
+  Deck gets its ✓ at once (#39). Start a new robot session: the deck is
+  empty again and Deck is no longer ✓.
 
 - [ ] **A dimmed step takes no keys.**
   Open Tip before the camera is calibrated: the page is dimmed under
@@ -1120,7 +1120,7 @@ Start the program normally (no `--mock`) on the bench machine.
   gantry does not move. Home and connect: the dialog says "Keep hands out of
   the robot. The gantry will move."; Cancel - nothing moves. Home and
   connect again, Home: "Homing…" while the robot homes, then "Robot connected". In Auto
-  pick, Deck is no longer ✓ and the tip is unknown until read again.
+  pick, the deck is empty, Deck is no longer ✓ and the tip is unknown until read again.
 
 - [ ] **A cable blip loses nothing.**
   Unplug the robot's cable for ten seconds and plug it back in: "Robot not
@@ -1371,15 +1371,16 @@ tip box and a 384 plate at hand.
   "384 wells · 112 µl · flat".
 
 - [ ] **What goes to a slot.**
-  Click an empty slot: "What goes to slot 7?", a search, Frequent · Plates
-  · Tips · Dishes. Frequent lists what was loaded lately, then the custom
-  labware. Tips lists only tip boxes. Type "384": every 384 plate,
-  whatever the chip, each with its well volume. Click one: a toast "… is
-  in slot 7.", the tile shows it, the panel reads "In slot 7".
+  Click an empty slot: "What goes to slot 7?", a search, Frequent · All ·
+  Plates · Tips (Frequent chosen). Frequent lists what was loaded lately,
+  then the custom labware. Tips lists only tip boxes. On All, type "384":
+  every 384 plate, each with its well volume; on Tips the same search
+  finds nothing. Click one: a toast "… is in slot 7.", the tile shows it,
+  the panel reads "In slot 7".
 
 - [ ] **In a slot.**
-  Put something else: the list again; a choice replaces the plate. Remove:
-  "Slot 7 is empty.", the tile reads Empty.
+  Remove (or the × at the tile's top right): "Slot 7 is empty.", the tile
+  reads Empty. There is no Put something else.
 
 - [ ] **Drag.**
   Drag the plate from slot 7 onto empty slot 4: it moves, the robot
@@ -1394,12 +1395,10 @@ tip box and a 384 plate at hand.
   time. Check that it matches the real deck." Got it hides it until the
   next robot session.
 
-- [ ] **Confirmation.**
-  Next on Deck: Deck gets its ✓. Back to Deck, load or remove anything,
-  or drag a plate: the ✓ is gone, Tip is dimmed under "Check the deck
-  first.", until Next again. Settings, Advanced, Start new robot session:
-  Deck is not done any more. A platform changed in Robot setup clears it
-  too.
+- [ ] **No confirmation (#39).**
+  Deck's ✓ comes with the first labware and stays through loads, removes
+  and drags; it goes only when the deck is empty or a labware sits on a
+  platform without its height. Next only moves on.
 
 - [ ] **Change platforms in Robot setup.**
   Opens the Platforms sheet over the step, the breadcrumb "Home › Auto
@@ -1778,3 +1777,38 @@ On the bench's profile, both cameras attached.
   After Reset setup, Lower camera: the focus row shows on the lower
   device's picture before anything is saved; Done saves the camera and
   that focus.
+
+## Auto pick order, the Deck tiles and the picker (#39, #40, #41, #42)
+
+Start the program normally, robot on, a profile with the platforms set
+(Picking platform in 5 and 8, Calibration module in 9), a tip box and a
+plate at hand.
+
+- [ ] **The order.**
+  Auto pick's steps read Deck, Tip, Dish bottom, Plan, Picking. With a
+  calibrated tip on and the dish bottom found, Auto pick opens on Plan.
+
+- [ ] **Plan needs a plate.**
+  With only a tip box on the deck, Plan is dimmed under "Put a plate on
+  the deck first."; Go to Deck opens Deck. Load a plate: Plan is open,
+  even with the dish bottom not found. Picking still names the dish
+  bottom.
+
+- [ ] **The tiles.**
+  The deck is about as wide as it is deep at any window size (never
+  stretched sideways), centered in its column. A long custom labware name
+  wraps inside its card, or ends in "…", never past the card. Each filled
+  tile has a × top right; Clear all under the deck empties every slot and
+  goes gray. Drag a plate: only its framed name follows the pointer, not
+  the slot and its platform chip.
+
+- [ ] **The calibration module's slot.**
+  Slot 9 (Calibration module) takes no click and no drop, like the trash.
+  The platform chips ("Picking platform") read at the size of the labware
+  facts.
+
+- [ ] **The Platforms sheet.**
+  Change platforms in Robot setup: the sheet's deck has the same tiles and
+  proportions as the Deck step, a dashed border and chip on each platform,
+  the trash striped. Choosing, Save changes and Save / Discard work as
+  before.

@@ -1,6 +1,6 @@
-"""The Deck step's page (REDESIGN §6.1): the deck's tiles, what goes to an
-empty slot, what is in a filled one, a move by drag, and the banner about
-the robot's memory."""
+"""The Deck step's page (REDESIGN §6.1, #40, #41): the deck's tiles, what
+goes to an empty slot, what is in a filled one, × and Clear all, a move by
+drag, and the banner about the robot's memory."""
 
 import os
 import time
@@ -77,43 +77,117 @@ def test_an_empty_slot_asks_what_goes_there_and_a_choice_loads_it(
     assert _listed(page)[0] == PLATE
 
 
-def test_chips_and_search(page):
+def test_tabs_and_a_search_inside_the_tab_shown(page):
     page.choose(7)
+    assert list(page.chip_buttons) == ["Frequent", "All", "Plates", "Tips"]
+    assert page.chip == "Frequent"
+    assert page.chip_buttons["Frequent"].isChecked()
     page.choose_chip("Tips")
     assert RACK in _listed(page) and PLATE not in _listed(page)
     page.choose_chip("Plates")
     assert PLATE in _listed(page) and RACK not in _listed(page)
-    # Typed: the whole catalogue, whatever the chip.
-    page.choose_chip("Tips")
+    page.choose_chip("All")
+    assert PLATE in _listed(page) and RACK in _listed(page)
+    # Typed: only inside the tab shown.
     page.search.setText("384")
-    assert PLATE_384 in _listed(page) and RACK not in _listed(page)
+    assert PLATE_384 in _listed(page)
+    page.choose_chip("Tips")
+    assert PLATE_384 not in _listed(page)
+    page.choose_chip("Plates")
+    assert PLATE_384 in _listed(page)
+    page.choose_chip("Frequent")
+    assert PLATE_384 not in _listed(page)          # never loaded here
 
 
-def test_put_something_else_replaces_and_remove_empties(app, session, page):
+def test_remove_empties_and_nothing_puts_something_else(app, session, page):
+    from PySide6.QtWidgets import QPushButton
     session.load_labware(resolve_definition(PLATE), 5)
     page.choose(5)
     assert page.title.text() == "In slot 5" and not page.held.isHidden()
-    page.put_something_else()
-    assert page.title.text() == "What goes to slot 5?"
-    page.put(resolve_definition(PLATE_384))
-    _wait(app, page)
-    assert session.run_state.labware["5"].load_name == PLATE_384
-    assert page.title.text() == "In slot 5"
+    assert "Put something else" not in [
+        b.text() for b in page.findChildren(QPushButton)]
     page.remove()
     _wait(app, page)
     assert "5" not in session.run_state.labware
     assert page.title.text() == "What goes to slot 5?"
 
 
+def test_a_tiles_x_removes_its_labware(app, session, page):
+    session.load_labware(resolve_definition(PLATE), 5)
+    close = page.deck.tiles[5].close_button
+    assert not close.isHidden()
+    assert page.deck.tiles[4].close_button.isHidden()      # empty
+    close.click()
+    _wait(app, page)
+    assert "5" not in session.run_state.labware
+
+
+def test_clear_all_removes_everything(app, session, page):
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.load_labware(resolve_definition(RACK), 10)
+    assert page.clear_button.isEnabled()
+    page.clear_button.click()
+    _wait(app, page)
+    assert session.run_state.labware == {}
+    assert not page.clear_button.isEnabled()               # nothing left
+
+
+def test_the_map_keeps_the_decks_proportions(app, page):
+    deck = page.deck
+    page.show()
+    for size in ((1800, 700), (900, 1400)):
+        page.resize(*size)
+        app.processEvents()
+        shown = deck.grid_widget.geometry()
+        assert abs(shown.width() / shown.height() - 40 / 36.5) < 0.02
+        assert deck.rect().contains(shown)
+    page.hide()
+
+
+def test_a_long_name_wraps_inside_its_card(app, page):
+    from micropick.gui.widgets.mini_deck import DeckTile
+    deck = page.deck
+    deck.set_tiles([DeckTile(5, name="corning_384_wellplate_112ul_flat_"
+                                      "with_a_lid_and_a_long_name",
+                             kind="plate", facts="384 wells")])
+    page.resize(1000, 700)
+    page.show()
+    app.processEvents()
+    tile = deck.tiles[5]
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QFontMetrics
+    name = tile.name
+    drawn = QFontMetrics(name.font()).boundingRect(
+        0, 0, name.width(), 10_000, Qt.TextFlag.TextWordWrap, name.shown())
+    assert name.width() <= tile.item.width()
+    assert drawn.height() <= name.height() and drawn.width() <= name.width()
+    assert tile.rect().contains(tile.item.geometry())
+    assert name.shown().startswith("corning_")
+    page.hide()
+
+
+def test_the_drag_carries_the_name_card_only(session, page):
+    session.load_labware(resolve_definition(PLATE), 5)
+    tile = page.deck.tiles[5]
+    assert tile.drag_pixmap().size() == tile.item.size()
+
+
+def test_the_calibration_modules_slot_is_not_a_slot_to_choose(session, page):
+    session.set_deck_modules([DeckModule(slots=[9], offset=[0, 0, 64.2],
+                                         name="Calibration module")])
+    page.choose(9)
+    assert page.slot is None
+    assert not page.deck.tile(9).valid
+    assert page.deck.tile(9).platform == "Calibration module"
+
+
 def test_a_tile_dragged_to_an_empty_slot_moves_it(app, session, page):
     session.load_labware(resolve_definition(PLATE), 5)
-    session.confirm("deck")
     page.deck.moved.emit(5, 6)
     _wait(app, page)
     held = session.run_state.labware
     assert "5" not in held and held["6"].load_name == PLATE
     assert page.slot == 6
-    assert not session.is_confirmed("deck")
 
 
 def test_the_trash_is_not_a_slot_to_choose(page):
@@ -139,3 +213,16 @@ def test_the_memory_banner_shows_until_got_it_in_this_robot_session(
     session.new_run()
     session.load_labware(resolve_definition(PLATE), 5)
     assert not page.memory.isHidden()
+
+
+def test_a_calibration_module_placed_under_the_chosen_slot_unchooses_it(
+        session, page):
+    session.load_labware(resolve_definition(PLATE), 9)
+    page.choose(9)
+    assert not page.held.isHidden()
+    session.set_deck_modules([DeckModule(slots=[9], offset=[0, 0, 64.2],
+                                         name="Calibration module")])
+    assert page.slot is None and page.deck.selected is None
+    assert page.held.isHidden() and page.catalogue.isHidden()
+    assert not page.deck.tiles[9].close_button.isHidden()  # still removable
+

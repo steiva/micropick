@@ -42,7 +42,6 @@ def window(app, tmp_path, monkeypatch):
     session.new_run()
     session.load_labware(resolve_definition(PLATE), 5)
     _until(app, lambda: not session.robot_lease.busy)
-    session.confirm("deck")
     session.tip = session.tip.__class__(attached=True)
     page = w.pages["liquid"]
     monkeypatch.setattr(page, "_confirm_start", lambda: True)

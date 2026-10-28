@@ -1,7 +1,6 @@
-"""Deck confirmation (REDESIGN §8.3, #13): Next on Deck confirms it for the
-robot session, and any change to the deck - labware loaded, removed or
-moved, platforms changed - or a new robot session clears it until the
-next Next."""
+"""Labware loaded, moved and refused on the deck (#13, #40): a move into
+an empty slot loads it again there, and the calibration module's slot,
+like the trash, takes nothing."""
 
 import os
 
@@ -42,65 +41,36 @@ def session(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
-def test_loading_labware_clears_the_deck_confirmation(session):
-    session.confirm("deck")
+def test_moving_labware_to_an_empty_slot_loads_it_there(session):
     session.load_labware(definition(PLATE), 5)
-    assert not session.is_confirmed("deck")
-
-
-def test_removing_labware_clears_it_and_an_empty_slot_does_not(session):
-    session.load_labware(definition(PLATE), 5)
-    session.confirm("deck")
-    session.unload_labware(4)                     # nothing there
-    assert session.is_confirmed("deck")
-    session.unload_labware(5)
-    assert not session.is_confirmed("deck")
-
-
-def test_moving_labware_to_an_empty_slot_clears_it(session):
-    session.load_labware(definition(PLATE), 5)
-    session.confirm("deck")
     session.move_labware(5, 6)
     held = session.run_state.labware
     assert "5" not in held and held["6"].load_name == PLATE
-    assert not session.is_confirmed("deck")
 
 
 def test_moving_onto_labware_is_refused_and_changes_nothing(session):
     session.load_labware(definition(PLATE), 5)
     session.load_labware(definition("nest_12_reservoir_15ml"), 6)
-    session.confirm("deck")
     with pytest.raises(SessionError, match="Slot 6 is not empty"):
         session.move_labware(5, 6)
     held = session.run_state.labware
     assert held["5"].load_name == PLATE
     assert held["6"].load_name == "nest_12_reservoir_15ml"
-    assert session.is_confirmed("deck")
 
 
-def test_changing_the_platforms_clears_it(session):
+def test_the_calibration_modules_slot_takes_no_labware(session):
     from micropick.config.schema import DeckModule
-    session.confirm("deck")
-    session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2],
-                                         name="Picking platform")])
-    assert not session.is_confirmed("deck")
-
-
-def test_a_new_robot_session_clears_it(session):
-    session.confirm("deck")
-    session.new_run()
-    assert not session.is_confirmed("deck")
-
-
-def test_a_tip_picked_up_is_not_a_change_to_the_deck(session):
-    rack = LabwareDefinition(load_name="opentrons_96_tiprack_300ul",
-                             namespace="opentrons", version=1,
-                             display_name="tips", ordering=[["A1"]], data={},
-                             source="shared")
-    session.load_labware(rack, 10)
-    session.confirm("deck")
-    session.pick_up_tip(10, "A1")
-    assert session.is_confirmed("deck")
+    session.set_deck_modules([
+        DeckModule(slots=[9], offset=[0, 0, 64.2], name="Calibration module"),
+        DeckModule(slots=[5], offset=[0, 0, 64.2], name="Picking platform")])
+    with pytest.raises(SessionError, match="calibration module"):
+        session.load_labware(definition(PLATE), 9)
+    session.load_labware(definition(PLATE), 5)        # a platform does
+    with pytest.raises(SessionError, match="calibration module"):
+        session.move_labware(5, 9)
+    held = session.run_state.labware
+    assert "9" not in held and held["5"].load_name == PLATE
+    assert session.refuses_labware(9) and not session.refuses_labware(5)
 
 
 def test_a_rack_whose_tip_is_on_is_not_moved(session):

@@ -21,9 +21,10 @@ __all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind"]
 
 log = logging.getLogger(__name__)
 
-# The catalogue's chips, in order; "Frequent" is the profile's recently
-# used and the custom definitions.
-CHIPS = ("Frequent", "Plates", "Tips", "Dishes")
+# The catalogue's tabs, in order, Frequent the default (#41): the
+# profile's recently used and the custom definitions. No Dishes: the robot
+# knows no dishes.
+CHIPS = ("Frequent", "All", "Plates", "Tips")
 
 _PLATES = ("wellPlate", "reservoir")
 _BOTTOMS = {"flat": "flat", "v": "V-bottom", "u": "U-bottom"}
@@ -46,10 +47,10 @@ def kind(definition: LabwareDefinition) -> str | None:
 
 
 def in_chip(definition: LabwareDefinition, chip: str) -> bool:
-    """Whether `definition` is listed under the chip Plates, Tips or
-    Dishes."""
-    return {"Plates": "plate", "Tips": "tips",
-            "Dishes": "dish"}.get(chip) == kind(definition)
+    """Whether `definition` is listed under the tab All, Plates or Tips."""
+    if chip == "All":
+        return True
+    return {"Plates": "plate", "Tips": "tips"}.get(chip) == kind(definition)
 
 
 def _volume(ul: float) -> str:

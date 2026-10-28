@@ -397,7 +397,6 @@ def test_liquids_well_center_step_is_this_page_and_skip_marks_it_done(
         page = w.stack.currentWidget()
         assert isinstance(page, step_page.WellCenterPage)
         assert page._selected == ("5", PLATE)
-        session.confirm("deck")
         session.tip = session.tip.__class__(attached=True)
         session.tip_changed.emit(session.tip)
         app.processEvents()

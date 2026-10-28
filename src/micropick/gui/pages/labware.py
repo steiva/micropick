@@ -7,40 +7,40 @@ lifted off by hand is still there as far as the run is concerned. This page is
 where the telling happens.
 
 **Left, the deck** (`widgets.deck_tiles`): twelve tiles in the deck's real
-layout, each with SLOT N, the platform the profile puts there (a chip,
-the border dashed) and its labware - icon, name, facts - or Empty; the
-trash faint and not clickable. A filled tile dragged onto an empty one
-moves its labware there (`Session.move_labware`). Over the deck, while
+layout and proportions, each with SLOT N, the platform the profile puts
+there (a chip, the border dashed) and its labware - a framed card of
+icon, name, facts, with a × that removes it - or Empty; the trash faint
+and not clickable, and so is the calibration module's slot, which takes
+no labware (`Session.refuses_labware`). A filled tile's card dragged onto
+an empty tile moves its labware there (`Session.move_labware`); Clear all
+under the deck removes everything. Over the deck, while
 the robot holds labware it remembers from before, the info banner "The
 robot remembers what was on it last time..." until Got it, once per robot
 session; and while labware sits on a platform without the platform's
 height, a warn banner with Load again (below).
 
 **Right, the slot clicked.** An empty one asks "What goes to slot N?":
-a search over every definition, the chips Frequent · Plates · Tips ·
-Dishes, and a list of items with icon, name and facts (the well volume
+the tabs Frequent · All · Plates · Tips (#41), a search inside the tab
+shown, and a list of items with icon, name and facts (the well volume
 always: two Corning 384 plates differ only by it) - a click loads it.
-A filled one is "In slot N": the item, Remove and Put something else,
-which offers the same list and replaces it. At the bottom, Change
+A filled one is "In slot N": the item and Remove. At the bottom, Change
 platforms in Robot setup opens the platforms sheet: the platforms are
 the profile's, placed once per bench, and no longer chosen here.
 
 Frequent is the profile's recently used (kept in `deck.json`, because a
 bench loads the same handful of plates every day and the stock list is
-hundreds long), then the custom definitions in `labware/`. Search, while
-something is typed, looks through all of them, custom first: a stock name
-shadowed by a custom file is the custom one, as `resolve_definition`
-has it.
+hundreds long), then the custom definitions in `labware/`. The other
+tabs list custom first: a stock name shadowed by a custom file is the
+custom one, as `resolve_definition` has it.
 
 Everything the page shows comes from the run state the robot reports, re-read
 after every change, rather than from a record the page keeps of what it asked
 for. That is the same rule `Routine.check_labware` follows: what the robot
 says is on the deck is the only thing the robot will act on.
 
-**Deck is done** once Next was pressed on it in this robot session and
-the deck has no problem (`tasks`); any change made here - a load, a
-remove, a move, the platforms - clears that until the next Next
-(`Session._deck_changed`).
+**Deck is done** while the robot is connected, something is on the deck
+and the deck has no problem (`tasks`, #39): nothing is confirmed here,
+and Next only moves on.
 
 **Platforms are the one thing here that ends in a crash if forgotten.**
 The picking platform and the calibration module raise the labware in their
@@ -134,9 +134,6 @@ class LabwarePage(QWidget):
         self.session = session
         self._worker: Worker | None = None
         self.slot: int | None = None
-        # "Put something else" pressed for the filled slot shown: the
-        # catalogue is offered in its place, and a choice replaces it.
-        self.replacing = False
         self.chip = CHIPS[0]
         # What a load in flight is loading, so a successful one goes into
         # Frequent and a failed one does not; and what its toast says.
@@ -183,9 +180,15 @@ class LabwarePage(QWidget):
         column.addWidget(self.problems)
         self.deck = DeckTiles(self)
         self.deck.slot_clicked.connect(self.choose)
+        self.deck.remove_clicked.connect(self.remove_slot)
         self.deck.moved.connect(self.move)
         column.addWidget(self.deck, 1)
-        column.addWidget(muted_label(DRAG_HINT, self))
+        under = QHBoxLayout()
+        under.addWidget(muted_label(DRAG_HINT, self), 1)
+        self.clear_button = compact(secondary_button("Clear all", self))
+        self.clear_button.clicked.connect(self.clear_all)
+        under.addWidget(self.clear_button)
+        column.addLayout(under)
         # Refusals land here rather than in a dialog: a slot the robot will
         # not load into is ordinary, and its text says what to do.
         self.message = QLabel(self)
@@ -206,7 +209,7 @@ class LabwarePage(QWidget):
         self.title.setWordWrap(True)
         column.addWidget(self.title)
 
-        # A filled slot: the item, Remove, Put something else.
+        # A filled slot: the item, Remove.
         self.held = QWidget(self)
         self.held.setObjectName("plain")
         held = QVBoxLayout(self.held)
@@ -232,16 +235,12 @@ class LabwarePage(QWidget):
         self.remove_button = secondary_button("Remove", self.held)
         self.remove_button.setIcon(icon("close", COLORS["text"], 16))
         self.remove_button.clicked.connect(self.remove)
-        self.replace_button = secondary_button("Put something else",
-                                               self.held)
-        self.replace_button.clicked.connect(self.put_something_else)
         buttons.addWidget(self.remove_button)
-        buttons.addWidget(self.replace_button)
         buttons.addStretch(1)
         held.addLayout(buttons)
         column.addWidget(self.held)
 
-        # An empty slot, or one being replaced: what can go there.
+        # An empty slot: what can go there.
         self.catalogue = QWidget(self)
         self.catalogue.setObjectName("plain")
         catalogue = QVBoxLayout(self.catalogue)
@@ -293,20 +292,22 @@ class LabwarePage(QWidget):
         self._custom, self._known = catalogue()
 
     def listed(self) -> list[LabwareDefinition]:
-        """What the list offers now: the search's matches while something
-        is typed, else the chip's."""
+        """What the list offers now: the tab's, and of those the search's
+        matches while something is typed (#41)."""
         known = self._known
         wanted = self.search.text().strip().lower()
-        if wanted:
-            found = [d for d in known.values() if wanted in " ".join(
-                (d.display_name, d.load_name, d.category)).lower()]
-        elif self.chip == "Frequent":
+        if self.chip == "Frequent":
             profile = self.session.profile
             recent = list(profile.deck.recent_labware) if profile else []
             names = recent + [n for n in self._custom if n not in recent]
-            return [known[n] for n in names if n in known]
+            found = [known[n] for n in names if n in known]
         else:
             found = [d for d in known.values() if in_chip(d, self.chip)]
+        if wanted:
+            found = [d for d in found if wanted in " ".join(
+                (d.display_name, d.load_name, d.category)).lower()]
+        if self.chip == "Frequent":
+            return found                       # most recent first
         return sorted(found, key=lambda d: (d.load_name not in self._custom,
                                             d.display_name.lower()))
 
@@ -339,20 +340,16 @@ class LabwarePage(QWidget):
     # -- acting --------------------------------------------------------------
 
     def choose(self, slot: int) -> None:
-        """A slot clicked on the deck; the trash is not one."""
-        if slot == TRASH_SLOT:
+        """A slot clicked on the deck; the trash and the calibration
+        module's slot are not ones."""
+        if self.session.refuses_labware(slot):
             return
         self.slot = slot
-        self.replacing = False
         self._say("")
         self._refresh()
 
-    def put_something_else(self) -> None:
-        self.replacing = True
-        self._refresh()
-
     def put(self, definition: LabwareDefinition) -> None:
-        """`definition` into the chosen slot, in place of what is there."""
+        """`definition` into the chosen slot."""
         if self.slot is None or self.session.robot is None:
             return
         slot = self.slot
@@ -362,11 +359,29 @@ class LabwarePage(QWidget):
             self._loading_name = definition.load_name
 
     def remove(self) -> None:
-        if self.slot is None or self.session.robot is None:
+        if self.slot is not None:
+            self.remove_slot(self.slot)
+
+    def remove_slot(self, slot: int) -> None:
+        """What is in `slot` off the deck: Remove, or the tile's ×."""
+        if self.session.robot is None:
             return
-        self._run(Worker(self.session.unload_labware, self.slot),
-                  f"moving slot {self.slot} off deck",
-                  f"Slot {self.slot} is empty.")
+        self._run(Worker(self.session.unload_labware, slot),
+                  f"moving slot {slot} off deck", f"Slot {slot} is empty.")
+
+    def clear_all(self) -> None:
+        """Everything the run holds off the deck, in one job."""
+        slots = sorted(int(n) for n in self._held() if n.isdigit())
+        if not slots or self.session.robot is None:
+            return
+        session = self.session
+
+        def job():
+            for slot in slots:
+                session.unload_labware(slot)
+
+        self._run(Worker(job), "clearing the deck: slots "
+                  + ", ".join(str(s) for s in slots), "The deck is empty.")
 
     def move(self, source: int, target: int) -> None:
         """A tile dragged onto an empty one."""
@@ -433,7 +448,6 @@ class LabwarePage(QWidget):
             self.session.remember_labware(self._loading_name)
             self._loading_name = None
             self._fill_list()
-        self.replacing = False
         if self._done_text:
             show_toast(self, self._done_text)
         self._refresh()
@@ -452,7 +466,6 @@ class LabwarePage(QWidget):
     def _on_robot_changed(self, _state: str) -> None:
         if self.session.robot is None:
             self.slot = None
-            self.replacing = False
         self._refresh()
 
     def _say(self, text: str) -> None:
@@ -482,8 +495,10 @@ class LabwarePage(QWidget):
         modules = profile.deck.modules if profile is not None else []
         for module in modules:
             for slot in module.slots:
-                by_slot[slot] = replace(by_slot.get(slot, DeckTile(slot)),
-                                        platform=module.name or "Platform")
+                by_slot[slot] = replace(
+                    by_slot.get(slot, DeckTile(slot)),
+                    platform=module.name or "Platform",
+                    valid=not self.session.refuses_labware(slot))
         return list(by_slot.values())
 
     def _refresh(self) -> None:
@@ -491,6 +506,8 @@ class LabwarePage(QWidget):
         busy = self._busy()
         free = not busy and not session.robot_lease.busy
         connected = session.robot is not None
+        if self.slot is not None and session.refuses_labware(self.slot):
+            self.slot = None              # a calibration module placed since
         held = self._held()
         problems = session.deck_problems()
         self.deck.set_tiles(self._tiles(held, {p.slot for p in problems}))
@@ -509,19 +526,23 @@ class LabwarePage(QWidget):
         filled = entry is not None
         if self.slot is None:
             self.title.setText("Click a slot.")
-        elif filled and not self.replacing:
+        elif filled:
             self.title.setText(f"In slot {self.slot}")
         else:
             self.title.setText(f"What goes to slot {self.slot}?")
-        offering = self.slot is not None and (not filled or self.replacing)
-        self.held.setVisible(filled and not self.replacing)
+        offering = self.slot is not None and not filled
+        self.held.setVisible(filled)
         self.catalogue.setVisible(offering)
         if filled:
             self._show_held(entry)
         if offering and self.items.count() == 0:
             self._fill_list()
-        for widget in (self.remove_button, self.replace_button, self.items):
+        for widget in (self.remove_button, self.items):
             widget.setEnabled(connected and free)
+        self.clear_button.setEnabled(connected and free and any(
+            n.isdigit() and int(n) != TRASH_SLOT for n in held))
+        for tile in self.deck.tiles.values():
+            tile.close_button.setEnabled(connected and free)
         lease = session.robot_lease
         self.items.setToolTip(f"Robot busy: {lease.holder}."
                               if lease.busy else "")

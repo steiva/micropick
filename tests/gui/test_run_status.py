@@ -186,7 +186,7 @@ def test_the_shake_tip_calibration_is_gone_back_to_in_its_sheet(app,
 def test_a_sweep_started_from_a_step_comes_back_over_that_step(app, window):
     _connect(app, window)
     window.home.tiles["auto"].clicked.emit()
-    window.footer.next.click()                     # Deck checked: Tip
+    window.step_bar.clicked.emit(1)                # Tip
     window.open_setup_item("camera_calibration")   # the Tip step's banner
     lease = window.session.robot_lease.claim("camera calibration sweep",
                                              run=True)

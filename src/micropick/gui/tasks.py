@@ -3,7 +3,7 @@
 A **task** is one of the three kinds of work started from Home, and a
 fixed order of **steps** (REDESIGN §4, GLOSSARY):
 
-    Auto pick    Deck → Tip → Plan → Dish bottom → Picking
+    Auto pick    Deck → Tip → Dish bottom → Plan → Picking
     Manual pick  Deck → Tip → Dish bottom → Work
     Liquid       Deck → Tip → Well center → Plan → Run
 
@@ -18,13 +18,16 @@ nothing records that a step was visited. A step the operator confirms
 the robot session (`Session.confirm`).
 
 A need is typed (`Need.kind`): the robot connected ("robot"), an earlier
-step ("step", `key` a step), or a Robot setup item ("setup", `key` one of
+step ("step", `key` a step), a plate on the deck ("plate", `key` the Deck
+step, where one is put), or a Robot setup item ("setup", `key` one of
 `SETUP`). Needs are checked in that order, so the banner names the thing
 to fix first. The robot is a need of its own because every step that
 moves it is dimmed while it is not connected, whatever else is missing.
 
-A step done by a confirmation (`Session.confirm`) is confirmed by its
-screen: Deck by its Next, Dish bottom by Save dish bottom or Use it, the
+Deck is done by fact (#39): the robot connected, something on the deck
+and no deck problem - no confirmation, so a change to the deck clears
+nothing. A step done by a confirmation (`Session.confirm`) is confirmed
+by its screen: Dish bottom by Save dish bottom or Use it, the
 Liquid plan by Use this plan, Run by a liquid run that ended, a plate by
 "Skip this plate" (`Session.skip_plate`). Well center counts the plates on the deck until the
 Liquid plan says which it uses. Run does not need Well center: an
@@ -44,7 +47,7 @@ __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
 
 # task -> (its name on screen, its steps in order)
 TASKS = {
-    "auto": ("Auto pick", ("deck", "tip", "plan", "dish_bottom", "picking")),
+    "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "plan", "picking")),
     "manual": ("Manual pick", ("deck", "tip", "dish_bottom", "work")),
     "liquid": ("Liquid", ("deck", "tip", "well_center", "liquid_plan",
                           "run")),
@@ -67,7 +70,7 @@ def title(step: str) -> str:
 
 @dataclass(frozen=True)
 class Need:
-    kind: str          # "robot", "step" or "setup"
+    kind: str          # "robot", "step", "plate" or "setup"
     key: str           # the step or the Robot setup item; "robot"
     text: str          # the banner's sentence
 
@@ -80,6 +83,8 @@ class StepState:
 
 
 _ROBOT = Need("robot", "robot", "The robot is not connected.")
+# A plate plan is made for a plate the robot holds; it is put on at Deck.
+_PLATE = Need("plate", "deck", "Put a plate on the deck first.")
 
 # The Robot setup items that are a stored position, and its name in the
 # profile: on screen by slot and coordinates, cleared by Reset setup.
@@ -144,21 +149,24 @@ _STEP_NEEDS = {
     "liquid_plan": "Make the plan first.",
 }
 
-# step -> (needs the robot, earlier steps, Robot setup items). Tip is
+# step -> (needs the robot, earlier steps, Robot setup items). Plan needs
+# a plate on the deck, not the Deck step (`_PLATE_NEEDED`). Tip is
 # task-dependent: Liquid does not use the camera, so its Tip needs no
 # calibration (REDESIGN §4).
 _NEEDS = {
     "deck": (True, (), ()),
     "tip": (True, ("deck",), ("camera_calibration", "calibration_position")),
-    "plan": (False, ("deck",), ()),
+    "plan": (False, (), ()),
     "dish_bottom": (True, ("tip",), ("dish_position",)),
-    "picking": (True, ("deck", "tip", "plan", "dish_bottom"),
+    "picking": (True, ("deck", "tip", "dish_bottom", "plan"),
                 ("shake_position", "dish_position")),
     "work": (True, ("deck", "tip", "dish_bottom"), ()),
     "well_center": (True, ("deck", "tip"), ()),
     "liquid_plan": (False, ("deck",), ()),
     "run": (True, ("deck", "tip", "liquid_plan"), ()),
 }
+
+_PLATE_NEEDED = {"plan"}
 
 
 def _needs(task: str, step: str) -> list[Need]:
@@ -167,6 +175,8 @@ def _needs(task: str, step: str) -> list[Need]:
         setup = ()
     out = [_ROBOT] if robot else []
     out += [Need("step", s, _STEP_NEEDS[s]) for s in earlier]
+    if step in _PLATE_NEEDED:
+        out.append(_PLATE)
     out += [Need("setup", k, SETUP[k][0]) for k in setup]
     return out
 
@@ -176,13 +186,16 @@ def _met(session, task: str, need: Need) -> bool:
         return session.robot is not None
     if need.kind == "step":
         return _done(session, task, need.key)
+    if need.kind == "plate":
+        return bool(session.plates())
     return setup_done(session, need.key)
 
 
 def _done(session, task: str, step: str) -> bool:
     if step == "deck":
-        return (session.robot is not None and session.is_confirmed("deck")
-                and not session.deck_problems())
+        state = session.run_state
+        return (session.robot is not None and state is not None
+                and bool(state.labware) and not session.deck_problems())
     if step == "tip":
         if task == "liquid":
             return session.robot is not None and session.tip.attached is True

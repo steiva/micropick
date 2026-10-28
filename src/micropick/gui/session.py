@@ -45,7 +45,8 @@ from ..config import app_settings, robot_sessions, store            # noqa: E402
 from ..config import templates                       # noqa: E402
 from ..config.labware import (LabwareDefinition,       # noqa: E402
                               LabwareError, resolve_definition)
-from ..config.schema import (Calibration, CameraSpec,  # noqa: E402
+from ..config.schema import (CALIBRATION_MODULE,  # noqa: E402
+                             Calibration, CameraSpec,
                              DeckConfig, DeckModule, ModuleType,
                              PickingConfig, WellCenter,
                              ProfileMeta)
@@ -478,12 +479,6 @@ class Session(QObject):
     def is_confirmed(self, key: str) -> bool:
         run_id = self._robot_session_id()
         return run_id is not None and self._confirmed.get(key) == run_id
-
-    def _deck_changed(self) -> None:
-        """The deck is not what the operator checked any more: Deck is
-        confirmed again only by its Next (REDESIGN §8.3)."""
-        if self._confirmed.pop("deck", None) is not None:
-            self.confirmations_changed.emit()
 
     # -- memo points ---------------------------------------------------------
 
@@ -1089,6 +1084,9 @@ class Session(QObject):
         if not 1 <= slot <= 11:
             raise SessionError(f"slot {slot} is not a deck slot (1-11; 12 is "
                                f"the fixed trash)")
+        if self.refuses_labware(slot):
+            raise SessionError(f"Slot {slot} holds the calibration module: "
+                               f"no labware goes there.")
         current = self.run_state.labware.get(str(slot)) if self.run_state else None
         if current is not None:
             self._move_off_deck(current)
@@ -1107,7 +1105,6 @@ class Session(QObject):
                              version=definition.version, verbose=False)
         log.info("loaded %s (%s) into slot %d", definition.load_name,
                  definition.namespace, slot)
-        self._deck_changed()
         state = self.refresh_run_state()
         entry = state.labware.get(str(slot))
         if entry is None:
@@ -1129,6 +1126,16 @@ class Session(QObject):
                 f"until it loads with the offset.")
         return entry
 
+    def refuses_labware(self, slot) -> bool:
+        """Whether nothing may be loaded into `slot`: the fixed trash, or
+        the slot the profile puts the calibration module in (#40)."""
+        slot = int(slot)
+        if slot == 12:
+            return True
+        module = (self.profile.deck.module_for(slot)
+                  if self.profile is not None else None)
+        return module is not None and module.name == CALIBRATION_MODULE
+
     def unload_labware(self, slot: int) -> None:
         """move_labware('offDeck') for whatever the run holds in `slot`.
         Blocking; moves nothing. A slot the run thinks is empty is a no-op
@@ -1139,7 +1146,6 @@ class Session(QObject):
             log.info("slot %s already holds nothing in the run", slot)
             return
         self._move_off_deck(current)
-        self._deck_changed()
         self.refresh_run_state()
 
     def move_labware(self, source: int, target: int) -> LoadedLabware:
@@ -1263,7 +1269,6 @@ class Session(QObject):
                  "; ".join(m.describe() for m in modules) or "none")
         if self._api is not None:
             self.register_deck_modules()
-        self._deck_changed()
         self.profile_changed.emit(self.profile)
         if self.run_state is not None:
             self.labware_changed.emit(self.run_state)

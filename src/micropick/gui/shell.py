@@ -19,8 +19,8 @@ breadcrumb then reads `Home › <task> › <item>`, and its crumb goes back.
 
 A task opens on its first step not done, so one switched to after another
 starts past what they share. Next is enabled on a step that is done or
-optional; Deck is confirmed by its Next (`Session.confirm`), Dish bottom
-by its own Save dish bottom and Use it.
+optional, and only moves on: Deck is done by what is on the deck, Dish
+bottom by its own Save dish bottom and Use it.
 
 The window as before: Esc and STOP stop (two presses hold), closing waits
 for the robot to be free, Park is what Home robot position was, Light
@@ -129,9 +129,6 @@ RUN_ACTIVITY = {
     "paused": ("Paused", "paused"),
     "waiting": ("Waiting for you", "waiting"),
 }
-
-# Steps their own Next confirms for the robot session.
-CONFIRMED_BY_NEXT = ("deck",)
 
 # How often the steps' marks are read again: a position saved on a page has
 # no signal of its own.
@@ -590,9 +587,6 @@ class MainWindow(QMainWindow):
         elif not self.dim.isVisible():
             self.dim.open()
             self.lock_overlay.raise_over()
-        confirmable = (self.step in CONFIRMED_BY_NEXT and need is None
-                       and not (self.step == "deck"
-                                and self.session.deck_problems()))
         if hasattr(page, "run_status"):
             # A run's step: the footer is its status (REDESIGN §6.5).
             tag, sentence, tone = page.run_status()
@@ -606,8 +600,7 @@ class MainWindow(QMainWindow):
             self.footer.clear_status()
         # Only on a change: it takes the buttons out and puts them back.
         navigation = dict(next=index < len(steps) - 1,
-                          next_enabled=state.done or state.optional
-                          or confirmable)
+                          next_enabled=state.done or state.optional)
         if navigation != self._navigation:
             self._navigation = navigation
             self.footer.set_navigation(**navigation)
@@ -615,7 +608,7 @@ class MainWindow(QMainWindow):
     def _need_button(self, need: tasks.Need) -> str:
         if need.kind == "robot":
             return "Go to Home"
-        if need.kind == "step":
+        if need.kind in ("step", "plate"):
             return f"Go to {tasks.title(need.key)}"
         return f"Go to {tasks.SETUP_TITLES[need.key]}"
 
@@ -623,7 +616,7 @@ class MainWindow(QMainWindow):
         """Where the banner's button goes: the thing to do first."""
         if need.kind == "robot":
             self.open_home()
-        elif need.kind == "step":
+        elif need.kind in ("step", "plate"):
             self.show_step(need.key)
         else:
             self.open_setup_item(need.key)
@@ -638,8 +631,6 @@ class MainWindow(QMainWindow):
 
     def _next(self) -> None:
         steps = tasks.steps(self.task)
-        if self.step in CONFIRMED_BY_NEXT:
-            self.session.confirm(self.step)
         index = steps.index(self.step)
         if index < len(steps) - 1:
             self.show_step(steps[index + 1])

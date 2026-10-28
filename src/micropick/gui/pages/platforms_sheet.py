@@ -2,8 +2,9 @@
 slot of the deck.
 
 A sheet over whatever is shown, opened from the Platforms row: the deck
-as a big 3×4 grid of slots (10 11 12 at the back, 1 2 3 at the front)
-on the left, and for the slot clicked "What stands in this slot?" on
+on the left with the Deck step's tiles and proportions
+(`widgets.deck_tiles`, without the labware: #42), and for the slot
+clicked "What stands in this slot?" on
 the right - one of the profile's module types (Picking platform,
 Calibration module) or Nothing. Slot 12 is the fixed trash and takes
 none.
@@ -26,19 +27,18 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLineEdit,
-                               QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
 
 from ...config.schema import (DEFAULT_MODULE_HEIGHT_MM, DeckModule,
                               ModuleType)
 from ..session import Session
 from ..tasks import SETUP_TITLES
-from ..theme import COLORS
 from ..theme.factory import (caption, compact, double_spin_box, heading,
                              muted_label, primary_button, secondary_button,
                              select)
-from ..widgets.mini_deck import DECK_ROWS
+from ..widgets.deck_tiles import DeckTiles
+from ..widgets.mini_deck import DeckTile
 from ..widgets.overlays import ConfirmDialog, SheetWindow
 from ..workers import describe_error
 
@@ -49,8 +49,6 @@ log = logging.getLogger(__name__)
 TITLE = SETUP_TITLES["platforms"]
 
 PANEL_WIDTH = 320
-TILE_MIN = (150, 96)
-TRASH_SLOT = 12
 NOTHING = "Nothing"
 HINT = "Platforms only differ in height."
 HEIGHT_RANGE = (0.0, 200.0)
@@ -67,7 +65,7 @@ def _height_box(parent: QWidget):
 
 class PlatformsSheet(SheetWindow):
     """`open_sheet()`; `said(text)` after a save. `slot` is the slot
-    chosen, `tiles` the deck's buttons by slot, `question` the Save /
+    chosen, `tiles` the deck's tiles by slot, `question` the Save /
     Discard asked on closing with changes (None while not asked)."""
 
     said = Signal(str)
@@ -85,21 +83,10 @@ class PlatformsSheet(SheetWindow):
 
         row = QHBoxLayout()
         row.setSpacing(24)
-        grid = QGridLayout()
-        grid.setSpacing(10)
-        self.tiles: dict[int, QPushButton] = {}
-        for r, slots in enumerate(DECK_ROWS):
-            for c, slot in enumerate(slots):
-                tile = QPushButton(self.body_widget)
-                tile.setMinimumSize(*TILE_MIN)
-                tile.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                tile.setEnabled(slot != TRASH_SLOT)
-                tile.clicked.connect(lambda _=False, s=slot: self._choose(s))
-                grid.addWidget(tile, r, c)
-                self.tiles[slot] = tile
-        deck = QWidget(self.body_widget)
-        deck.setLayout(grid)
-        row.addWidget(deck, 1)
+        self.deck = DeckTiles(self.body_widget, show_labware=False)
+        self.deck.slot_clicked.connect(self._choose)
+        self.tiles = self.deck.tiles
+        row.addWidget(self.deck, 1)
 
         panel = QVBoxLayout()
         panel.setSpacing(8)
@@ -269,17 +256,11 @@ class PlatformsSheet(SheetWindow):
     # -- display -------------------------------------------------------
 
     def _show_tiles(self) -> None:
-        for slot, tile in self.tiles.items():
-            module = self._draft.get(slot)
-            name = ("Trash" if slot == TRASH_SLOT else
-                    module.name if module is not None else NOTHING)
-            tile.setText(f"SLOT {slot}\n{name}")
-            chosen = slot == self.slot
-            border = COLORS["accent"] if chosen else COLORS["line"]
-            style = "dashed" if module is not None else "solid"
-            tile.setStyleSheet(
-                f"QPushButton {{ border: {2 if chosen else 1}px {style} "
-                f"{border}; border-radius: 12px; font-weight: 600; }}")
+        """The draft's platforms on the tiles, as the Deck step shows the
+        profile's."""
+        self.deck.set_tiles([DeckTile(slot, platform=module.name or "Platform")
+                             for slot, module in self._draft.items()])
+        self.deck.select(self.slot)
 
     def _show_save(self) -> None:
         """Save changes: gray while the draft is what is saved, or while

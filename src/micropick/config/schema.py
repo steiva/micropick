@@ -653,9 +653,12 @@ class WellCenter(BaseModel):
 # platform's, which is what this rig's modules raise the labware by.
 DEFAULT_MODULE_HEIGHT_MM = 64.2
 
+# The module the tip is calibrated over: no labware stands on it (#40).
+CALIBRATION_MODULE = "Calibration module"
+
 # The catalogue a profile starts with.
 DEFAULT_MODULE_TYPES = (("Picking platform", DEFAULT_MODULE_HEIGHT_MM),
-                        ("Calibration module", DEFAULT_MODULE_HEIGHT_MM))
+                        (CALIBRATION_MODULE, DEFAULT_MODULE_HEIGHT_MM))
 
 # How many load names "Recently used" keeps.
 RECENT_LABWARE = 5

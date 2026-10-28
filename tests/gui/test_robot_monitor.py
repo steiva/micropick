@@ -70,7 +70,6 @@ def test_a_restart_forgets_labware_tip_and_deck_and_asks_to_home(session):
     session.adopt_run()
     session.load_labware(resolve_definition("opentrons_96_tiprack_300ul"), 3)
     session.pick_up_tip(3, "A1")
-    session.confirm("deck")
     assert tasks.step_state(session, "auto", "deck").done
 
     session._api.power_off()
@@ -84,7 +83,7 @@ def test_a_restart_forgets_labware_tip_and_deck_and_asks_to_home(session):
     assert session.needs_home
     assert session.tip.attached is None
     assert session.run_state.labware == {}
-    assert not session.is_confirmed("deck")
+    assert not tasks.step_state(session, "auto", "deck").done
     assert _moves(session) == []                   # waits for the operator
 
 
@@ -124,14 +123,14 @@ def test_a_session_that_could_not_be_carried_on_with_asks_to_home(session):
 def test_a_status_passing_by_under_a_run_loses_nothing(session, monkeypatch):
     _look(session)
     session.adopt_run()
-    session.confirm("deck")
+    session.confirm("dish_bottom")
     finishing = session.look_at_robot()
     finishing.status = "finishing"
     lease = session.robot_lease.claim("picking run", run=True)
     try:
         session.robot_seen(finishing)
         assert session.robot is not None
-        assert session.is_confirmed("deck")
+        assert session.is_confirmed("dish_bottom")
     finally:
         lease.release()
     session.robot_seen(finishing)                  # nothing uses it now

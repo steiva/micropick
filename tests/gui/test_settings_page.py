@@ -200,7 +200,7 @@ def test_start_new_robot_session_from_advanced(app, window, monkeypatch):
     session.look_at_robot()
     session.probe_robot()
     session.new_run()
-    session.confirm("deck")
+    session.confirm("dish_bottom")
     advanced = _advanced(window)
     session._api.calls.clear()
     monkeypatch.setattr(QInputDialog, "exec",
@@ -213,7 +213,7 @@ def test_start_new_robot_session_from_advanced(app, window, monkeypatch):
     _until(app, lambda: not session.robot_lease.busy)
     # The mock keeps its one run; the robot makes a new one.
     assert "home_robot" in [c[0] for c in session._api.calls]
-    assert not session.is_confirmed("deck")        # a new robot session
+    assert not session.is_confirmed("dish_bottom")  # a new robot session
     assert session.robot is not None
 
 
