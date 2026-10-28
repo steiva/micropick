@@ -23,15 +23,18 @@ On the right, top to bottom and with no scrolling:
    map, the planned wells before a run, filled and planned in their
    colors once something is filled, the current well ringed during one.
 
+4. The run's buttons, centered: **Start picking** between runs - not at
+   the bottom right, where Next is on every other step (#53) - and in its
+   place during one **Pause** / **Resume** (one button, yellow while
+   paused or waiting) and **Stop run**.
+
 Both cards are shown at once and neither folds (#52). The jog panel is
 last (its pad floats over the picture, folded until opened).
 
 The footer is the run's status (`run_status`, `footer_buttons`, read by
 the shell): a CAPS tag - READY, PICKING, PAUSED, WAITING FOR YOU, DONE,
 NOT READY - and one sentence, the run's own (`PickingSession.status`)
-while it runs. Its buttons are Back and **Start picking** between runs,
-**Pause** / **Resume** (one button, yellow while paused or waiting) and
-**Stop run** during one. While the run waits for the operator the window
+while it runs, and Back. While the run waits for the operator the window
 flashes in the taskbar (the shell's, for every run).
 
 The position over the dish and the shake position are Robot setup's
@@ -295,6 +298,7 @@ class PickingPage(QWidget):
         column.addWidget(self._sizes_card(panel))
         column.addWidget(self._plate_card(panel))
         column.addWidget(self._unfilled_card(panel))
+        column.addLayout(self._run_buttons(panel))
 
         # Never shown, and off: see "Pickup clips".
         self.clips_box = Switch("Save pickup clips", parent=panel)
@@ -305,17 +309,6 @@ class PickingPage(QWidget):
         self.settings_sheet: PickingSettingsSheet | None = None
         column.addWidget(self._jog_section())
         column.addStretch(1)
-
-        # The run's buttons, shown in the window's footer (`footer_buttons`).
-        self.start_button = primary_button("Start picking", self)
-        self.start_button.clicked.connect(self._start_run)
-        self.pause_button = secondary_button("Pause", self)
-        self.pause_button.clicked.connect(self._pause_clicked)
-        self.stop_button = danger_button("Stop run", self)
-        self.stop_button.clicked.connect(self._stop_run)
-        for button in (self.start_button, self.pause_button,
-                       self.stop_button):
-            button.hide()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
@@ -421,6 +414,23 @@ class PickingPage(QWidget):
                 "1 well was not filled" if len(wells) == 1
                 else f"{len(wells)} wells were not filled")
             self.unfilled_wells.setText(f"{and_list(wells)}.")
+
+    def _run_buttons(self, parent: QWidget) -> QHBoxLayout:
+        """Start picking, or Pause / Resume and Stop run, centered."""
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.start_button = primary_button("Start picking", parent)
+        self.start_button.clicked.connect(self._start_run)
+        self.pause_button = secondary_button("Pause", parent)
+        self.pause_button.clicked.connect(self._pause_clicked)
+        self.stop_button = danger_button("Stop run", parent)
+        self.stop_button.clicked.connect(self._stop_run)
+        for button in (self.start_button, self.pause_button,
+                       self.stop_button):
+            button.setMinimumWidth(140)
+            row.addWidget(button)
+        row.addStretch(1)
+        return row
 
     def _jog_section(self) -> QWidget:
         self.jog = JogPanel(self.session, shortcut_host=self,
@@ -728,18 +738,23 @@ class PickingPage(QWidget):
         return well_center.for_plan(session.profile, session.routine,
                                     session.run_state)
 
-    def _confirm_start(self) -> bool:
+    def _start_question(self) -> QMessageBox:
+        """"Start picking?", the two sentences and nothing of the run's
+        details; Start the default, so Enter starts (#53)."""
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Start picking")
         box.setText("Start picking?")
-        box.setInformativeText(f"{self.session.routine.summary()}\n\n"
-                               f"{CONFIRM_START}")
+        box.setInformativeText(CONFIRM_START)
         start = box.addButton("Start", QMessageBox.ButtonRole.AcceptRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(start)
+        return box
+
+    def _confirm_start(self) -> bool:
+        box = self._start_question()
         box.exec()
-        return box.clickedButton() is start
+        return box.clickedButton() is box.defaultButton()
 
     def _start_run(self) -> None:
         if (self._running() or self._run_problems()
@@ -1045,11 +1060,9 @@ class PickingPage(QWidget):
                 "ready")
 
     def footer_buttons(self, back: QWidget) -> list[QWidget]:
-        """What the footer shows on the right: Back and Start picking
-        between runs, Pause or Resume and Stop run during one."""
-        if self._running():
-            return [self.pause_button, self.stop_button]
-        return [back, self.start_button]
+        """What the footer shows on the right: Back only - the run's
+        buttons are in the panel."""
+        return [back]
 
     # -- settings ---------------------------------------------------------------
 
@@ -1328,5 +1341,8 @@ class PickingPage(QWidget):
             self.pause_button.style().polish(self.pause_button)
         self.pause_button.setEnabled(running and not self._centering)
         self.stop_button.setEnabled(running)
+        self.start_button.setVisible(not running)
+        self.pause_button.setVisible(running)
+        self.stop_button.setVisible(running)
         # The shell's footer and pill read the run from here.
         self.session.run_activity_changed.emit()

@@ -137,6 +137,13 @@ def _buttons(window):
     return [layout.itemAt(i).widget().text() for i in range(layout.count())]
 
 
+def _panel(window):
+    """The run's buttons shown in the side panel."""
+    page = window.picking_page
+    return [b.text() for b in (page.start_button, page.pause_button,
+                               page.stop_button) if b.isVisibleTo(page)]
+
+
 def _ready(window, monkeypatch):
     """The steps before Picking done and the page's own set-up in place:
     what a tip calibration, a dish and a model would give."""
@@ -169,14 +176,16 @@ def test_not_ready_names_the_first_thing_missing(app, window):
     tag, sentence = _footer(window)
     assert tag == "NOT READY"
     assert sentence == window._need.text          # the banner's need
-    assert _buttons(window) == ["Back", "Start picking"]
+    assert _buttons(window) == ["Back"]
+    assert _panel(window) == ["Start picking"]
     assert not window.picking_page.start_button.isEnabled()
 
 
 def test_ready_offers_start(app, window, monkeypatch):
     _ready(window, monkeypatch)
     assert _footer(window)[0] == "READY"
-    assert _buttons(window) == ["Back", "Start picking"]
+    assert _buttons(window) == ["Back"]
+    assert _panel(window) == ["Start picking"]
     assert window.picking_page.start_button.isEnabled()
 
 
@@ -188,7 +197,8 @@ def test_the_footer_follows_the_run(app, window, monkeypatch):
     _start(app, window)
     page = window.picking_page
     assert _footer(window)[0] == "PICKING"
-    assert _buttons(window) == ["Pause", "Stop run"]
+    assert _panel(window) == ["Pause", "Stop run"]
+    assert _buttons(window) == ["Back"]           # the run's are the panel's
 
     _event(app, window, RobotState.PICKUP_SAMPLE,
            "Well A1 of 2 · taking a cuboid")
@@ -197,18 +207,18 @@ def test_the_footer_follows_the_run(app, window, monkeypatch):
     page.pause_button.click()
     app.processEvents()
     assert _footer(window)[0] == "PAUSED"
-    assert _buttons(window) == ["Resume", "Stop run"]
+    assert _panel(window) == ["Resume", "Stop run"]
     assert page.pause_button.property("tone") == "warn"
     page.pause_button.click()
     app.processEvents()
     assert _footer(window)[0] == "PICKING"
-    assert _buttons(window) == ["Pause", "Stop run"]
+    assert _panel(window) == ["Pause", "Stop run"]
     assert not alerts
 
     _event(app, window, RobotState.NEEDS_OPERATOR,
            "No cuboids found after 3 shakes. Add cuboids, or finish by hand.")
     assert _footer(window)[0] == "WAITING FOR YOU"
-    assert _buttons(window) == ["Resume", "Stop run"]
+    assert _panel(window) == ["Resume", "Stop run"]
     assert alerts == [window]                  # the taskbar flashes, once
     page.pause_button.click()                  # Resume: out of the wait
     assert ScriptedRun.made[-1].resumed
@@ -276,3 +286,14 @@ def test_wells_left_empty_are_finished_by_hand_on_manual_work(
     assert manual.target.current() == 0            # In a well
     assert not manual.plan_box.isHidden()
     assert manual.target_wells.chosen()[-1] == "A1"
+
+
+def test_the_start_question_is_short_and_start_is_the_default(app, window):
+    """Two sentences, no run details, Enter starts (#53)."""
+    box = window.picking_page._start_question()
+    assert box.text() == "Start picking?"
+    assert box.informativeText() == (
+        "Dish and plate in place, lids off, picking settings checked.\n\n"
+        "The robot starts moving on Start.")
+    assert box.defaultButton().text() == "Start"
+    box.deleteLater()

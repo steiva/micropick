@@ -41,10 +41,11 @@ and, in a build, its commit.
   it. Do not make the run view always-live — the overlays belong to that one
   frame, and drawing them over a newer one shows contours where nothing was
   measured.
-- Start picking asks for confirmation (dish and plate in place, lids off,
-  settings right) and then gives the session its go-ahead at once.
-  The footer's one Pause / Resume button unpauses, or leaves
-  `needs_operator`; nothing else gives a go-ahead.
+- Start picking asks for confirmation ("Start picking?", the dish and
+  plate in place, lids off, settings checked, the robot moving on Start;
+  Start the default) and then gives the session its go-ahead at once.
+  The panel's one Pause / Resume button, in Start's place during a run,
+  unpauses, or leaves `needs_operator`; nothing else gives a go-ahead.
 
 ### Camera view chrome
 
@@ -510,8 +511,9 @@ the first of them). The positions are Robot setup's.
 The footer is the run's status: the page's `run_status` and
 `footer_buttons`, read by the shell for any step page that has them -
 READY / PICKING / PAUSED / WAITING FOR YOU / DONE / NOT READY and one
-sentence (`PickingSession.status` while it runs), Back + Start picking,
-or Pause / Resume (yellow while held) + Stop run. The shell passes the
+sentence (`PickingSession.status` while it runs) and Back; Start picking
+is centered in the side panel under the cards, Pause / Resume (yellow
+while held) + Stop run in its place during a run. The shell passes the
 step's need down (`set_need`): Start waits for it. While a run's page
 says "waiting" the window flashes in the taskbar (`QApplication.alert`,
 `MainWindow._show_run`). Settings
