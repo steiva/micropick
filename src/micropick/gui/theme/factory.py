@@ -67,7 +67,7 @@ def set_primary(button: QPushButton, primary: bool) -> None:
 
 def quiet_button(text: str, parent: QWidget | None = None) -> QPushButton:
     """A text button with no border: the choice beside the primary one
-    that is not the next thing to do ("Save anyway", "Put back")."""
+    that is not the next thing to do ("Save anyway")."""
     button = QPushButton(text, parent)
     button.setObjectName("quiet")
     return button

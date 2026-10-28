@@ -1415,11 +1415,12 @@ tip box and a 384 plate at hand.
   first free tip is ringed and the button reads "Take tip A1". Click A3 on
   the rack: "Take tip A3", the button keeps its width (also for H12).
   Take it: the tip comes off A3, a toast and "Tip A3 is on.", Drop in
-  trash and Put back.
+  trash and Drop in place, one column of cards.
 
-- [ ] **Put back, Drop in trash.**
-  Put back: the tip goes into A3 again, A3 is not gray. Take it, Drop in
-  trash: the tip drops into the bin, A3 is gray and A1 is offered.
+- [ ] **Drop in trash, Drop in place.**
+  Drop in trash: the tip drops into the bin, A3 is gray and A1 is
+  offered. Take A1, hold a beaker under it, Drop in place: the tip falls
+  where it is, the gantry does not move, A1 stays gray.
 
 - [ ] **Calibrate the tip.**
   Without a tip the four steps are dimmed. With one: Start tip

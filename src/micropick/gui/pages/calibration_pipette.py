@@ -6,15 +6,17 @@ host's jog panel and picture, `done` and `changed` to read where they
 are); the page is the picture, the two blocks and its jog panel.
 
 The picture on the left - the upper camera, the lower one while the
-routine measures the tip - and on the right two cards:
+routine measures the tip - and on the right one column of two cards, read
+top to bottom:
 
 **Put a tip on.** A Select of the tip boxes on the deck ("<name> · slot
 10"), the rack's wells (a well taken here and not put back gray,
 `Session.used_tips`; the one to take ringed, the first free one until
 another is clicked) and **Take tip A3**, fixed in width so that "H12" does
-not move it. Once one is on: "Tip A3 is on." with Drop in trash and Put
-back. With no tip box on the deck, a warning and Back to Deck. Which tip
-is on is the robot's answer (`Session.read_tip`), never a note of what
+not move it. Once one is on: "Tip A3 is on." with Drop in trash and
+Drop in place (the robot's `dropTipInPlace` where the pipette is, nothing
+moved). No Put back: the robot's return to the rack did not work. With
+no tip box on the deck, a warning and Back to Deck. Which tip is on is the robot's answer (`Session.read_tip`), never a note of what
 was asked: no pick-up while a tip is on, no drop while there is none,
 nothing while it could not be read. These go through the page's jog panel
 (`JogPanel.run_job`), as every robot command from a page with one.
@@ -98,7 +100,6 @@ from ..theme.factory import (card, heading, muted_label, primary_button,
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
-from ..widgets.card_columns import CardColumns
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel
@@ -146,7 +147,7 @@ class TipOnBlock(QObject):
     """The "Put a tip on" card, for any page or sheet with a session and a
     jog panel: `box` goes into the host's layout.
 
-    Its pick-up, drop and put back go through the host's `jog`
+    Its pick-up and drops go through the host's `jog`
     (`JogPanel.run_job`), as every robot command from a page with one.
     With `calibration`, nothing here changes the tip while that one runs.
     `done` is a tip on (the robot's answer); `changed` is emitted after
@@ -207,10 +208,10 @@ class TipOnBlock(QObject):
         row = QHBoxLayout()
         self.drop_button = secondary_button("Drop in trash", box)
         self.drop_button.clicked.connect(self._drop_in_trash)
-        self.put_back_button = secondary_button("Put back", box)
-        self.put_back_button.clicked.connect(self._put_back)
+        self.drop_here_button = secondary_button("Drop in place", box)
+        self.drop_here_button.clicked.connect(self._drop_in_place)
         row.addWidget(self.drop_button)
-        row.addWidget(self.put_back_button)
+        row.addWidget(self.drop_here_button)
         row.addStretch(1)
         box.layout().addLayout(row)
         self.tip_note = muted_label("", box)
@@ -285,11 +286,12 @@ class TipOnBlock(QObject):
         self._tip_job(lambda _log: self.session.drop_tip_in_trash(),
                       "dropping the tip in the trash")
 
-    def _put_back(self) -> None:
-        self._tip_job(lambda _log: self.session.return_tip(),
-                      "putting the tip back")
+    def _drop_in_place(self) -> None:
+        self._tip_job(lambda _log: self.session.drop_tip_in_place(),
+                      "dropping the tip in place", moves=False)
 
-    def _tip_job(self, job, what: str, done: str = "") -> None:
+    def _tip_job(self, job, what: str, done: str = "", *,
+                 moves: bool = True) -> None:
         if self._running():
             return
 
@@ -298,7 +300,7 @@ class TipOnBlock(QObject):
                 show_toast(self.box, done)
             self.refresh()
 
-        if not self.jog.run_job(job, what=what, then=then):
+        if not self.jog.run_job(job, what=what, then=then, moves=moves):
             self.tip_note.setText(self.session.robot_lease.refusal
                                   if self.session.robot_lease.busy
                                   else "Robot busy.")
@@ -357,10 +359,9 @@ class TipOnBlock(QObject):
         else:
             self.tip_state.setText("")
         self.tip_state.setVisible(bool(self.tip_state.text()))
-        self.drop_button.setVisible(on)
-        self.put_back_button.setVisible(on)
-        self.drop_button.setEnabled(known and on)
-        self.put_back_button.setEnabled(known and tip.returnable)
+        for button in (self.drop_button, self.drop_here_button):
+            button.setVisible(on)
+            button.setEnabled(known and on)
         self.tip_note.setVisible(bool(self.tip_note.text()))
         self.changed.emit()
 
@@ -948,8 +949,14 @@ class PipetteCalibration(QWidget):
                                                parent=self)
         self.tip = TipOnBlock(session, self.jog, calibration=self.calibration,
                               parent=self)
-        panel = CardColumns([self.tip.box, self.calibration.box, self.jog],
-                            self)
+        # One column: the steps read top to bottom.
+        panel = QWidget(self)
+        column = QVBoxLayout(panel)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        for widget in (self.tip.box, self.calibration.box, self.jog):
+            column.addWidget(widget)
+        column.addStretch(1)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)
@@ -964,7 +971,7 @@ class PipetteCalibration(QWidget):
         self.calibrated = self.calibration.calibrated_banner
         for name in ("no_rack", "back_to_deck", "racks", "rack_hint",
                      "rack_grid", "take_button", "tip_state", "drop_button",
-                     "put_back_button", "tip_note"):
+                     "drop_here_button", "tip_note"):
             setattr(self, name, getattr(self.tip, name))
         for name in ("start_step", "start_button", "disc_step", "disc_button",
                      "calibrate_step", "calibrate_button", "tune_step",

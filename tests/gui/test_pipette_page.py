@@ -106,25 +106,45 @@ def test_a_click_on_the_rack_chooses_the_tip_to_take(app, page):
     assert _until(app, lambda: page.session.tip.attached is True)
     assert (page.session.tip.slot, page.session.tip.well) == ("10", "A3")
     assert _until(app, lambda: page.tip_state.text() == "Tip A3 is on.")
-    assert not page.drop_button.isHidden() and not page.put_back_button.isHidden()
+    assert page.drop_button.text() == "Drop in trash"
+    assert page.drop_here_button.text() == "Drop in place"
+    assert not page.drop_button.isHidden()
+    assert not page.drop_here_button.isHidden()
+    assert not hasattr(page, "put_back_button")
     assert page.take_button.isHidden()
 
 
-def test_put_back_returns_the_tip_and_drop_in_trash_uses_it(app, page):
+def test_drop_in_trash_uses_the_tip(app, page):
     _tip_on(app, page, "A3")
-    page.put_back_button.click()
-    assert _until(app, lambda: page.session.tip.attached is False
-                  and not page.jog.busy)
-    assert page.session.used_tips(10) == set()
-    assert page.take_button.text() == "Take tip A3"      # it is there again
-    page.take_button.click()
-    assert _until(app, lambda: page.session.tip.attached is True
-                  and not page.jog.busy)
     page.drop_button.click()
     assert _until(app, lambda: page.session.tip.attached is False
                   and not page.jog.busy)
     assert page.session.used_tips(10) == {"A3"}
     assert page.take_button.text() == "Take tip A1"
+
+
+def test_drop_in_place_lets_go_of_the_tip_without_moving(app, page):
+    _tip_on(app, page, "A3")
+    robot = page.session.robot
+    before = len(robot.calls)
+    page.drop_here_button.click()
+    assert _until(app, lambda: page.session.tip.attached is False
+                  and not page.jog.busy)
+    names = [call[0] for call in robot.calls[before:]]
+    assert "drop_tip_in_place" in names
+    assert not any(n.startswith("move") for n in names)
+    assert page.session.used_tips(10) == {"A3"}
+
+
+def test_the_tip_step_is_one_column(app, page):
+    page.resize(3000, 900)              # room for two columns
+    page.show()
+    app.processEvents()
+    left = [w.mapTo(page, w.rect().topLeft())
+            for w in (page.tip.box, page.calibration_box)]
+    assert left[0].x() == left[1].x()
+    assert left[0].y() < left[1].y()
+    page.hide()
 
 
 def test_the_rack_waits_for_a_run(app, page):

@@ -458,10 +458,11 @@ measures each device that works on the first load and takes the faster
 change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
 verify, manual adjustment, the start offset dx, dy). The Tip step
-(`pages.calibration_pipette`, REDESIGN §6.2) is two cards. Put a tip on:
+(`pages.calibration_pipette`, REDESIGN §6.2) is one column of two cards. Put a tip on:
 a Select of the deck's tip boxes, the rack (wells taken here and not put
 back gray, `Session.used_tips`), Take tip A3; then "Tip A3 is on." with
-Drop in trash and Put back; no tip box, a warning with Back to Deck.
+Drop in trash and Drop in place (`dropTipInPlace`, nothing moved; no
+Put back: it did not work); no tip box, a warning with Back to Deck.
 Calibrate the tip, its steps dimmed until a tip is on: Start tip
 calibration (the camera to the calibration position), The disc is
 there, Calibrate, the fine-tune (Save, or Skip: back to the automatic

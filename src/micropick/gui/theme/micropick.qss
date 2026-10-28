@@ -62,7 +62,7 @@ QPushButton#secondary:disabled,
 QPushButton#dangerText:disabled { color: @faint; border-color: @line; }
 QPushButton#dangerText { color: @danger-text; }
 
-/* A text button with no border: "Save anyway", "Put back". */
+/* A text button with no border: "Save anyway". */
 QPushButton#quiet {
     background: transparent;
     border: 1px solid transparent;
