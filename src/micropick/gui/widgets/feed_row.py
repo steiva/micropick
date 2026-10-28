@@ -8,6 +8,12 @@ and the panel takes the rest: at least the width it was designed for, at most
 `MAX_SIDE_FACTOR` times that, since cards stretched across half a screen read
 worse than a picture with a margin.
 
+The shape is the upper camera's 4:3 whatever is shown (#50), not the
+frame's: a view that followed the frame resized the row at each switch
+between cameras, the panel jumping with it. Another shape - the lower
+camera's square crop - is letterboxed inside by `CameraView`, black bars
+beside it, never stretched.
+
 Placed by hand in `resizeEvent` rather than by a layout: the split depends on
 the height, and no box layout asks its children for a width given a height.
 """
@@ -18,7 +24,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QWidget
 
 from ..theme import SPACING
-from .camera_view import CameraView
+from .camera_view import DEFAULT_ASPECT, CameraView
 
 __all__ = ["FeedRow"]
 
@@ -35,13 +41,12 @@ class FeedRow(QWidget):
         # The width the panel was built for is its minimum here.
         self._min_side = max(side.minimumWidth(), side.sizeHint().width())
         self._max_side = int(self._min_side * MAX_SIDE_FACTOR)
-        view.aspect_changed.connect(self._place)
 
     def _place(self) -> None:
         width, height = self.width(), self.height()
         if width <= 0 or height <= 0:
             return
-        wanted_view = int(round(height * self.view.aspect))
+        wanted_view = int(round(height * DEFAULT_ASPECT))
         side = width - SPACING - wanted_view
         side = max(self._min_side, min(self._max_side, side))
         view = max(0, width - SPACING - side)
@@ -65,4 +70,4 @@ class FeedRow(QWidget):
         return QSize(view.width() + SPACING + self._min_side, view.height())
 
     def sizeHint(self) -> QSize:
-        return QSize(int(700 * self.view.aspect) + SPACING + self._min_side, 700)
+        return QSize(int(700 * DEFAULT_ASPECT) + SPACING + self._min_side, 700)

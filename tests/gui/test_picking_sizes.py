@@ -148,3 +148,12 @@ def test_an_analysis_opens_the_sizes_card_and_its_figures(page):
     page._detection = None
     page._refresh()
     assert not page.stats_button.isEnabled()
+
+
+def test_the_pad_is_folded_on_picking(page):
+    assert page.jog.pad.folded
+
+
+def test_camera_to_dish_center_is_opaque(page):
+    """Readable over any picture (#50)."""
+    assert "background" in page.center_button.styleSheet()

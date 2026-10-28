@@ -199,7 +199,6 @@ class CameraView(QWidget):
 
     frame_shown = Signal()
     # The shape of what is shown changed - another camera, another crop.
-    # `FeedRow` listens, so the picture's share of the page follows it.
     aspect_changed = Signal()
     # A left click on the picture, in **sensor** pixels: the same
     # coordinates detection produces and `transform` maps, so a page can

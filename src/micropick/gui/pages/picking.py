@@ -256,6 +256,9 @@ class PickingPage(QWidget):
         self.view = CameraView(self)
         self.center_button = compact(secondary_button(CENTER, self))
         self.center_button.clicked.connect(self._goto_dish)
+        # Opaque: an outlined button over a bright dish cannot be read.
+        self.center_button.setStyleSheet(
+            f"QPushButton {{ background: {COLORS['raised']}; }}")
         self.view.add_top_widget(self.center_button)
         self.stats = CuboidStats(self)
 
@@ -402,6 +405,8 @@ class PickingPage(QWidget):
                             machine_controls=False,
                             parent=self)
         self.jog.show_position_on(self.view)
+        # Folded until asked for: the dish is what this page is looked at for.
+        self.jog.pad.set_folded(True)
         self.jog.add_help([f"{key.lower()}   {what}"
                            for key, what, _ in KEYS])
         return self.jog

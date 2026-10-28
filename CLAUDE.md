@@ -62,8 +62,9 @@ it with `CameraView.set_click_to_move`; without a pixel map that line is
 "Use the arrows to move the camera." and no click is sent.
 
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
-picture gets the width its frame shape needs (4:3 for the upper camera),
-the panel the rest, within 1-2x its designed width. Pages carry no title;
+picture is 4:3 (the upper camera's) whatever it shows, another shape
+letterboxed in it with black bars, so a switch of cameras resizes
+nothing; the panel gets the rest, within 1-2x its designed width. Pages carry no title;
 the TopBar's breadcrumb is the title.
 
 ### The shell: Home, tasks as steps (REDESIGN §4)
@@ -188,8 +189,9 @@ its holder in `RUNS` and gives its page a `run_activity`.
 Every jog panel's face is the `widgets.jog_pad.JogPad` (XY arrows, Z Up /
 Down, the step carousel of `jog.DEFAULT_STEPS`, the one list of step
 sizes): it floats over the picture's bottom-right
-(`CameraView.add_corner_widget`) while its panel is shown, and only
-says what was pressed - the panel moves as before (lease, envelope,
+(`CameraView.add_corner_widget`) while its panel is shown, folds to its
+title row there (`JogPad.set_folded`; folded from the start on
+Picking, the keys still bound), and only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
 Undo step is on the pad. A jog panel has no Move or Positions section
 (removed, #27; do not bring them back): saved positions are drawn on the

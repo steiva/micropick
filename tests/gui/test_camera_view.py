@@ -348,3 +348,30 @@ def test_a_view_not_on_screen_reads_no_frames(app):
     pump()
     assert camera.reads == seen
     view.deleteLater()
+
+
+def test_a_camera_switch_keeps_the_pictures_size_and_shape(app):
+    """The view is 4:3 whatever it shows (#50): the square lower camera is
+    pillarboxed in it rather than resizing the row, and neither picture is
+    stretched."""
+    from PySide6.QtWidgets import QWidget
+
+    from micropick.gui.widgets.feed_row import FeedRow
+    view = CameraView()
+    side = QWidget()
+    side.setMinimumWidth(300)
+    row = FeedRow(view, side)
+    row.resize(1200, 600)
+    row.show()
+    view.set_camera(_Camera("over", size=(800, 600)))
+    view._tick()
+    before = view.geometry()
+    shown = view._shown
+    assert abs(shown.width() / shown.height() - 800 / 600) < 0.01
+    view.set_camera(_Camera("under", size=(600, 600)))
+    view._tick()
+    assert view.geometry() == before
+    shown = view._shown
+    assert abs(shown.width() / shown.height() - 1.0) < 0.01
+    assert shown.height() == view.height()
+    row.deleteLater()

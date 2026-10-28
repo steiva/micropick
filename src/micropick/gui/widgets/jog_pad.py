@@ -14,7 +14,10 @@ in Settings shows here; under them, with Keys on, the panel's other keys
 and the page's (`set_key_lines`), which used to be a box on the picture.
 
 The pad floats over the bottom right of a picture, on a dark translucent
-plate, as the prototype draws it (`JogPanel.show_position_on`).
+plate, as the prototype draws it (`JogPanel.show_position_on`). The fold
+button at the end of its title row folds it into that corner, the title row
+alone left over the picture (#50); the keys still move the robot - they are
+the panel's, not the face's. Picking folds it from the start.
 
 The chosen step is colored by how far one press moves the gantry
 (`step_color`): a 10 mm step near the dish is the one to notice.
@@ -27,7 +30,7 @@ from html import escape
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
-                               QPushButton, QVBoxLayout, QWidget)
+                               QPushButton, QToolButton, QVBoxLayout, QWidget)
 
 from ...workflows.jog import DEFAULT_STEPS
 from .. import keys as key_actions
@@ -214,6 +217,12 @@ class JogPad(QFrame):
         self.keys.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.keys.toggled.connect(self._show_keys)
         head.addWidget(self.keys)
+        self.fold_button = QToolButton(self)
+        self.fold_button.setObjectName("barButton")
+        self.fold_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.fold_button.clicked.connect(
+            lambda: self.set_folded(not self.folded))
+        head.addWidget(self.fold_button)
         column.addLayout(head)
 
         self.carousel = StepCarousel(steps=steps, step=step, parent=self)
@@ -223,7 +232,9 @@ class JogPad(QFrame):
         self.options = self.carousel.options
         column.addWidget(self.carousel)
 
-        pads = QHBoxLayout()
+        self.pads = QWidget(self)
+        pads = QHBoxLayout(self.pads)
+        pads.setContentsMargins(0, 0, 0, 0)
         pads.setSpacing(14)
         grid = QGridLayout()
         grid.setSpacing(4)
@@ -258,7 +269,7 @@ class JogPad(QFrame):
             z.addWidget(button)
             self.buttons[action] = button
         pads.addLayout(z)
-        column.addLayout(pads)
+        column.addWidget(self.pads)
 
         self.key_list = QLabel(self)
         self.key_list.setObjectName("faint")
@@ -271,7 +282,30 @@ class JogPad(QFrame):
         self.note.hide()
         column.addWidget(self.note)
         self.key_lines: list[str] = []
+        self.folded = False
         self.set_bindings(self._bindings)
+        self._show_fold()
+
+    # -- folding ---------------------------------------------------------
+
+    def set_folded(self, folded: bool) -> None:
+        """Fold the pad to its title row, or open it again."""
+        self.folded = bool(folded)
+        self._show_fold()
+
+    def _show_fold(self) -> None:
+        open_ = not self.folded
+        for widget in (self.undo_button, self.keys, self.carousel,
+                       self.pads):
+            widget.setVisible(open_)
+        self.key_list.setVisible(open_ and self.keys.isChecked())
+        self.note.setVisible(open_ and bool(self.note.text()))
+        self.fold_button.setIcon(icon("chevron-down" if open_
+                                      else "chevron-up", COLORS["text-2"],
+                                      16, stroke=2))
+        self.fold_button.setToolTip("Fold the pad" if open_
+                                    else "Open the pad")
+        self.adjustSize()
 
     # -- the step --------------------------------------------------------
 
@@ -304,7 +338,7 @@ class JogPad(QFrame):
     def set_note(self, text: str) -> None:
         """A line under the pad whatever Keys says, or none."""
         self.note.setText(text)
-        self.note.setVisible(bool(text))
+        self.note.setVisible(bool(text) and not self.folded)
 
     def _write_keys(self) -> None:
         ink = COLORS["text-2"]
@@ -325,7 +359,7 @@ class JogPad(QFrame):
         for action, button in self.buttons.items():
             button.keycap = _keycap(self._bindings, action) if on else ""
             button.update()
-        self.key_list.setVisible(on)
+        self.key_list.setVisible(on and not self.folded)
 
     def set_xy_only(self, on: bool) -> None:
         for action in ("z+", "z-"):

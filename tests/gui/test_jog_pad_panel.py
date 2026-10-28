@@ -148,3 +148,20 @@ def test_undo_step_is_grayed_while_the_robot_is_held(app, session, shown):
         lease.release()
     app.processEvents()
     assert panel.pad.undo_button.isEnabled()
+
+
+def test_the_pad_folds_into_its_corner(app):
+    """Folded, only its title row is left over the picture; its keys still
+    move the robot, they are the panel's (#50)."""
+    from micropick.gui.widgets.jog_pad import JogPad
+    pad = JogPad()
+    pad.show()
+    tall = pad.sizeHint().height()
+    assert not pad.folded
+    pad.fold_button.click()
+    assert pad.folded
+    assert not pad.buttons["x+"].isVisible() and pad.carousel.isHidden()
+    assert pad.sizeHint().height() < tall / 2
+    pad.fold_button.click()
+    assert not pad.folded and pad.buttons["x+"].isVisible()
+    pad.deleteLater()
