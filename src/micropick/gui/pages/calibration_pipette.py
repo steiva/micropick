@@ -27,25 +27,30 @@ tip is on - the robot never moves while the disc is being placed:
 1. Start tip calibration: the camera goes to the calibration position
    (the profile's `tip_calib`, set in Robot setup).
 2. The disc is there: checked on the picture once the camera is over it.
-3. Calibrate: the automatic routine, about 30 s.
-4. Fine-tune by hand (when Settings has the manual adjustment on): nudge,
-   then Save, or Skip - the tip goes back to where the routine put it.
+3. Calibrate: the automatic routine, about 30 s, a spinner while it runs.
+   Its result is saved as it ends.
 
-Then "Tip calibrated." with Check: tip to crosshair, which sends the tip to
-the crosshair the routine found, at the module height, with the offset
-now saved. With no calibration since the program started (the tip
-calibrated in an earlier start, same tip and robot session), the
-crosshair is the pixel map's at the middle of the picture from the
-calibration position. Liquid's Tip step has no calibration (`set_task`): it is done
-once a tip is on.
+Then a green "Tip calibrated." with Check: tip to crosshair, which sends
+the tip to the crosshair the routine found, at the module height, with
+the offset now saved, and Redo calibration, which runs it again. With no
+calibration since the program started (the tip calibrated in an earlier
+start, same tip and robot session), the crosshair is the pixel map's at
+the middle of the picture from the calibration position. Liquid's Tip
+step has no calibration (`set_task`): it is done once a tip is on.
+
+Under it, folded and optional (when Settings has the manual adjustment
+on), **Fine-tune by hand**: the lower camera and the pad, XY only, while
+the tip is over the crosshair - else "Check: tip to crosshair" first. Its
+Save is gray until a step was taken, and stores the offset the tip is at
+now (`method` "auto+manual") as a short job, not a run.
 
 **The calibration is one run.** Start claims the robot's lease as a run
 (STOP and "Calibrating the tip" in the top bar) and one worker goes
-through every step: it drives there, waits for Calibrate, measures, waits
-for the fine-tune, saves. A wait is an Event the GUI sets; Stop (Esc,
-STOP) during one ends the run with nothing saved. Between the waits the
-routine is a handful of moves and a few seconds of detection, with no
-point to stop at; a second Stop holds the robot.
+through every step: it drives there, waits for Calibrate, measures,
+saves. The wait is an Event the GUI sets; Stop (Esc, STOP) during it ends
+the run with nothing saved. After it the routine is a handful of moves
+and a few seconds of detection, with no point to stop at; a second Stop
+holds the robot.
 
 How the routine measures - frames per reading, the check after the
 correction, the manual adjustment, the tip type recorded, the start
@@ -59,44 +64,48 @@ would send every pick to the wrong place. The step is done while the tip
 it measured is on, in the robot session it was measured in
 (`readiness.tip_calibration_status`).
 
-**The manual touch-up is the notebook's `jog_in_window`, in Qt**, with one
+**The fine-tune is the notebook's `jog_in_window`, in Qt**, with one
 difference: its arrows follow the lower camera's picture, which is turned
 and mirrored, through `TipTarget.axes` (`JogPanel` `view_axes`) - right on
-the screen moves the tip right on the picture. The workflow calls
-`manual_touch_up(robot, camera, view)` from its own thread and carries on
-when it returns, reading the final pose to compute the offset; Skip moves
-the tip back to the pose it was called at, so the offset is the
-automatic one. Its jog panel is lent the run's lease (`JogPanel.lend`).
+the screen moves the tip right on the picture. The offset is where the
+tip is less the crosshair, as the routine reads it from its final pose.
+"Over the crosshair" is the pose within `TUNE_RANGE_MM` of the crosshair
+plus the saved offset, at the module height: the pose says it, whatever
+moved the tip since.
 
-**The routine ends with the Z axis retracted**, as the notebook's cell does
-after printing the result. An aborted or failed run leaves the gantry
-where it stopped, so what happened can be seen.
+**The routine ends with the tip over the crosshair**, so the fine-tune
+can start at once; the next move across the deck raises it
+(`Motion.tip_to`). An aborted or failed run leaves the gantry where it
+stopped, so what happened can be seen.
 
 **The profile is written by the workflow**, which saves the offset and the
-by-product homography together when given the profile: Save, or Skip, is
-the operator looking at the tip on the crosshair and saying so.
+by-product homography together when given the profile.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
+from datetime import datetime, timezone
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QHBoxLayout, QProgressBar, QVBoxLayout,
+                               QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
-from ...hardware.protocols import move_to, xyz
+from ...hardware.protocols import xyz
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
 from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (card, heading, muted_label, primary_button,
-                             scroll_column, secondary_button, select)
+from ..theme.factory import (Section, card, heading, muted_label,
+                             primary_button, scroll_column, secondary_button,
+                             select)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
@@ -122,8 +131,11 @@ PANEL_WIDTH = 420
 # the notebook works here and the other way round.
 POSITION_NAME = CALIBRATION_POSITION
 
-# The jog step for the touch-up, as the notebook sets it.
+# The jog step for the fine-tune, as the notebook sets it.
 TOUCH_UP_STEP_MM = 0.05
+# The tip is over the crosshair while this close to it, XY and Z: a
+# fine-tune is a few steps of `TOUCH_UP_STEP_MM`.
+TUNE_RANGE_MM = 1.0
 
 NO_RACK = "There is no tip box on the deck. Add it on the Deck step."
 CALIBRATED = "Tip calibrated."
@@ -135,8 +147,8 @@ FIRST_A_TIP = "Put a tip on first."
 RUN_HOLDER = "pipette calibration"
 
 # Where a run is: driving to the calibration position, waiting for the
-# disc to be checked and Calibrate, measuring, waiting for the fine-tune.
-MOVING, DISC, MEASURING, TUNING = "moving", "disc", "measuring", "tuning"
+# disc to be checked and Calibrate, measuring.
+MOVING, DISC, MEASURING = "moving", "disc", "measuring"
 
 
 class TouchUpAborted(RuntimeError):
@@ -376,15 +388,15 @@ class TipCalibrationBlock(QObject):
     panel the only thing that moves the robot - and `view` shows the camera
     the run looks through. `done` is the tip on calibrated in this robot
     session (`readiness.tip_calibration_status`); `calibrated` is emitted
-    when a run has saved, `changed` after every refresh. The cameras are
-    opened by `open_cameras`, which the host calls when it is shown.
+    when a run or the fine-tune has saved, `changed` after every refresh.
+    The cameras are opened by `open_cameras`, which the host calls when it
+    is shown.
     """
 
     # Emitted from the worker thread when the routine waits for the
-    # operator: at the disc, and for the fine-tune. Signals, so that the
-    # slot runs on the GUI thread whatever thread asked.
+    # operator at the disc. A signal, so that the slot runs on the GUI
+    # thread whatever thread asked.
     disc_requested = Signal()
-    touch_up_requested = Signal()
     changed = Signal()
     calibrated = Signal()
 
@@ -400,21 +412,23 @@ class TipCalibrationBlock(QObject):
         self._disc_seen = False
         self._gate = threading.Event()
         self._aborted = False
-        self._skip = False
         self._last_line = ""
         # How the last run ended, shown under Start until the next one.
         self._outcome = ""
         # The crosshair the last calibration found, robot XY: where Check
         # sends the tip (else `_crosshair_xy`'s guess).
         self._crosshair: tuple[float, float] | None = None
-        # The lower camera after a check, until the next refresh that
-        # changes something: the tip is under it.
-        self._looking_at_tip = False
+        # Where the gantry is, by whichever panel read it last.
+        self._pose: tuple[float, float, float] | None = None
+        # A fine-tune step was taken since the tip was put on the crosshair.
+        self._nudged = False
         self.opener = CameraOpener(session, self)
         self.box = self._build(parent)
 
         self.disc_requested.connect(self._at_disc)
-        self.touch_up_requested.connect(self._begin_touch_up)
+        for panel in (self.jog, self.touch_jog):
+            panel.pose_changed.connect(self._on_pose)
+        self.touch_jog.moved.connect(self._on_nudge)
         session.camera_opened.connect(lambda _l: self.refresh())
         session.camera_closed.connect(lambda _l: self.refresh())
         session.robot_state_changed.connect(lambda _s: self.refresh())
@@ -429,8 +443,9 @@ class TipCalibrationBlock(QObject):
         self.refresh()
 
     def _build(self, parent) -> QWidget:
-        """The four steps under one heading, in one widget: dimmed as one
-        until a tip is on, hidden as one on Liquid's Tip step."""
+        """The three steps under one heading, the result and the fine-tune,
+        in one widget: dimmed as one until a tip is on, hidden as one on
+        Liquid's Tip step."""
         box = QWidget(parent)
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
@@ -462,29 +477,13 @@ class TipCalibrationBlock(QObject):
         self.calibrate_button = primary_button("Calibrate", box)
         self.calibrate_button.clicked.connect(self._calibrate)
         self.calibrate_step.add_button(self.calibrate_button)
+        self.spinner = QProgressBar(box)
+        self.spinner.setRange(0, 0)                  # turning, no amount
+        self.spinner.setTextVisible(False)
+        self.spinner.setFixedHeight(6)
+        self.spinner.hide()
+        self.calibrate_step.add(self.spinner)
         column.addWidget(self.calibrate_step.box)
-
-        self.tune_step = StepCard(box, 4, "Fine-tune by hand")
-        self.tune_text = wrapped()
-        self.tune_step.add(self.tune_text)
-        # XY only: a Z step here pushes the tip into the disc.
-        self.touch_jog = JogPanel(self.session, shortcut_host=parent,
-                                  machine_controls=False,
-                                  xy_only=True,
-                                  parent=self.tune_step.box)
-        self.touch_jog.show_position_on(self.view)
-        self.touch_jog.hide()
-        self.tune_step.add(self.touch_jog)
-        row = QHBoxLayout()
-        self.save_button = primary_button("Save", box)
-        self.save_button.clicked.connect(self._accept)
-        self.skip_button = secondary_button("Skip", box)
-        self.skip_button.clicked.connect(self._skip_tune)
-        row.addWidget(self.save_button)
-        row.addWidget(self.skip_button)
-        row.addStretch(1)
-        self.tune_step.add_layout(row)
-        column.addWidget(self.tune_step.box)
 
         # What stops Start, what the run is doing, or how it ended.
         self.checks = muted_label("", box)
@@ -495,6 +494,35 @@ class TipCalibrationBlock(QObject):
             "Check: tip to crosshair")
         self.check_button.clicked.connect(self._check)
         column.addWidget(self.calibrated_banner)
+        self.redo_button = secondary_button("Redo calibration", box)
+        self.redo_button.clicked.connect(self._start)
+        column.addWidget(self.redo_button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.tune_fold = Section("Fine-tune by hand", collapsed=True,
+                                 parent=box)
+        self.tune_fold.toggle.toggled.connect(lambda _on: self.refresh())
+        body = self.tune_fold.body.layout()
+        body.addWidget(wrapped(
+            f"Nudge the tip onto the central crosshair "
+            f"({TOUCH_UP_STEP_MM:g} mm steps), then Save."))
+        self.tune_away = wrapped("The tip is not over the crosshair.")
+        body.addWidget(self.tune_away)
+        self.tune_check_button = secondary_button("Check: tip to crosshair",
+                                                  box)
+        self.tune_check_button.clicked.connect(self._check)
+        body.addWidget(self.tune_check_button, 0, Qt.AlignmentFlag.AlignLeft)
+        # XY only: a Z step here pushes the tip into the disc. Its pad is
+        # over the picture; the panel itself shows nothing.
+        self.touch_jog = JogPanel(self.session, shortcut_host=parent,
+                                  machine_controls=False,
+                                  xy_only=True, parent=self.tune_fold.body)
+        self.touch_jog.show_position_on(self.view)
+        self.touch_jog.hide()
+        body.addWidget(self.touch_jog)
+        self.tune_save_button = primary_button("Save", box)
+        self.tune_save_button.clicked.connect(self._save_tune)
+        body.addWidget(self.tune_save_button, 0, Qt.AlignmentFlag.AlignLeft)
+        column.addWidget(self.tune_fold)
         return box
 
     @property
@@ -601,7 +629,6 @@ class TipCalibrationBlock(QObject):
         current = self._start_offset()
         frames, verify = settings.tip_cal_frames, settings.tip_cal_verify
         tip_type = self._tip_type()
-        touch_up = self._touch_up if settings.tip_cal_touch_up else None
         mock = session.mock
         device = settings.inference_device
         # Which tip is measured: the offset holds for it alone
@@ -632,23 +659,19 @@ class TipCalibrationBlock(QObject):
                     robot, over, under, detector, pmap, target=target,
                     current_offset=current, frames=frames, verify=verify,
                     tip_type=tip_type, profile=profile,
-                    manual_touch_up=touch_up, robot_session=robot_session,
+                    manual_touch_up=None, robot_session=robot_session,
                     tip_pickup=tip_pickup, log=log)
             finally:
                 # It switches the lights on when it finds them off.
                 session.refresh_lights()
-            # The tip is on the crosshair, offset by what was measured.
-            fx, fy, _fz = xyz(robot)
+            # The tip is on the crosshair, offset by what was measured, and
+            # left there for the fine-tune.
+            pose = tuple(float(v) for v in xyz(robot))
             offset = result.offset
-            crosshair = (fx - offset.dx, fy - offset.dy)
-            # As the notebook does once the offset is saved: the next thing
-            # anyone does is drive somewhere else.
-            log("retracting leftZ")
-            robot.retract_axis("leftZ", verbose=False)
-            return result, standin, crosshair
+            crosshair = (pose[0] - offset.dx, pose[1] - offset.dy)
+            return result, standin, crosshair, pose
 
-        # The robot for the whole calibration, the waits included; the
-        # touch-up's panel is lent it (`_begin_touch_up`).
+        # The robot for the whole calibration, the wait included.
         lease = session.robot_lease.claim(self.holder, run=True)
         if lease is None:
             self._outcome = session.robot_lease.refusal
@@ -656,7 +679,6 @@ class TipCalibrationBlock(QObject):
             return
         self._outcome = self._last_line = ""
         self._disc_seen = False
-        self._looking_at_tip = False
         self._phase = MOVING
         worker = Worker(job, what="calibrating the pipette", lease=lease)
         self._worker = worker
@@ -681,16 +703,6 @@ class TipCalibrationBlock(QObject):
         if self._aborted:
             raise TouchUpAborted("stopped while waiting for you")
 
-    def _touch_up(self, robot, camera, view) -> None:
-        start = xyz(robot)
-        self._skip = False
-        self._wait(self.touch_up_requested, "waiting for you: nudge the tip "
-                   "onto the crosshair, then Save or Skip")
-        if self._skip:
-            now = xyz(robot)
-            if any(abs(a - b) > 1e-3 for a, b in zip(now, start)):
-                move_to(robot, start, force_direct=True)
-
     # ...and from the GUI's side.
     def _at_disc(self) -> None:
         self._phase = DISC
@@ -707,53 +719,72 @@ class TipCalibrationBlock(QObject):
             self._gate.set()
             self.refresh()
 
-    def _begin_touch_up(self) -> None:
-        # The lower camera is turned and mirrored: through TipTarget.axes the
-        # arrows move the tip the way they point on its picture.
-        profile = self.session.profile
-        if profile is not None:
-            self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
-        self.touch_jog.set_step(TOUCH_UP_STEP_MM)
-        # The calibration holds the robot and waits; its steps are taken
-        # under that lease.
-        lease = getattr(self._worker, "lease", None)
-        if lease is not None:
-            self.touch_jog.lend(lease)
-        self._phase = TUNING
-        self.touch_jog.show()
+    def _on_pose(self, pose) -> None:
+        if pose is not None:
+            self._pose = tuple(float(v) for v in pose)
+            self.refresh()
+
+    def _on_nudge(self) -> None:
+        self._nudged = True
         self.refresh()
 
-    def _end_touch_up(self) -> bool:
-        """The fine-tune's panel let go; False while a step still moves:
-        the step took no lease of its own, and the calibration's ends
-        after this - the robot would be free while the step still moves."""
-        if self.touch_jog.busy:
-            self.touch_jog.tell("A step is still moving.")
+    def _over_crosshair(self) -> bool:
+        """The tip is over the crosshair, by the pose last read: within
+        `TUNE_RANGE_MM` of it plus the saved offset, at the module height."""
+        profile = self.session.profile
+        offset = profile.calibration.pipette_offset if profile else None
+        crosshair = self._crosshair_xy()
+        if self._pose is None or offset is None or crosshair is None:
             return False
-        self.touch_jog.hide()
-        self.touch_jog.end_loan()
-        return True
+        x, y, z = self._pose
+        module = float(profile.calibration.tip_target.module_height)
+        return (math.hypot(x - crosshair[0] - offset.dx,
+                           y - crosshair[1] - offset.dy) <= TUNE_RANGE_MM
+                and abs(z - module) <= TUNE_RANGE_MM)
 
-    def _accept(self) -> None:
-        if self._phase == TUNING and self._end_touch_up():
-            self._phase = MEASURING
-            self._gate.set()
-            self.refresh()
+    def _tuning(self) -> bool:
+        """The fine-tune's pad is up: unfolded, nothing running, the tip
+        over the crosshair."""
+        return (not self.tune_fold.collapsed and not self.running
+                and self.done and self._over_crosshair())
 
-    def _skip_tune(self) -> None:
-        if self._phase == TUNING and self._end_touch_up():
-            self._skip = True
-            self._phase = MEASURING
-            self._gate.set()
+    def _save_tune(self) -> None:
+        """The offset the tip is at now, read and saved: a short job."""
+        profile = self.session.profile
+        crosshair = self._crosshair_xy()
+        if (profile is None or crosshair is None or not self._nudged
+                or profile.calibration.pipette_offset is None):
+            return
+        robot = self.session.robot
+
+        def saved(pose) -> str:
+            old = profile.calibration.pipette_offset
+            x, y, _z = (float(v) for v in pose)
+            offset = old.model_copy(update={
+                "dx": x - crosshair[0], "dy": y - crosshair[1],
+                "method": "auto+manual",
+                "measured_at": datetime.now(timezone.utc)})
+            profile.calibration.pipette_offset = offset
+            profile.save_calibration(backup=False)
+            log.info("pipette offset fine-tuned: dx %+.3f dy %+.3f mm",
+                     offset.dx, offset.dy)
+            self._nudged = False
+            self.session.profile_changed.emit(profile)
+            show_toast(self.box, "Fine-tune saved.")
             self.refresh()
+            self.calibrated.emit()
+            return ""
+
+        self.touch_jog.run_job(lambda _log: xyz(robot), moves=False,
+                               what="reading the tip's position",
+                               then=saved)
+        self.refresh()
 
     def _on_stop(self) -> None:
-        if self._phase in (DISC, TUNING):
+        if self._phase == DISC:
             self._abort()
 
     def _abort(self) -> None:
-        if not self._end_touch_up():
-            return
         self._aborted = True
         self._gate.set()
         self.refresh()
@@ -766,11 +797,11 @@ class TipCalibrationBlock(QObject):
     def _on_finished(self, payload) -> None:
         self._worker = None
         self._phase = None
-        self.touch_jog.end_loan()
-        self.touch_jog.hide()
-        result, standin, crosshair = payload
+        result, standin, crosshair, pose = payload
         offset: PipetteOffset = result.offset
         self._crosshair = crosshair
+        self._pose = pose
+        self._nudged = False
         self._outcome = STANDIN_NOTE if standin else ""
         log.info("pipette offset calibrated: dx %+.3f dy %+.3f mm (%s)",
                  offset.dx, offset.dy, offset.method)
@@ -786,8 +817,6 @@ class TipCalibrationBlock(QObject):
     def _on_failed(self, reason: str) -> None:
         self._worker = None
         self._phase = None
-        self.touch_jog.end_loan()
-        self.touch_jog.hide()
         error = getattr(self.sender(), "error", None)
         if isinstance(error, TouchUpAborted):
             log.info("pipette calibration stopped: %s", reason)
@@ -809,14 +838,18 @@ class TipCalibrationBlock(QObject):
         y = crosshair[1] + offset.dy
         z = float(profile.calibration.tip_target.module_height)
         motion = self.session.motion
-        self._looking_at_tip = True
 
         def job(log):
             motion.tip_to((x, y), z, log=log)
 
-        if not self.jog.run_job(job, what=f"tip to the crosshair "
-                                f"({x:.2f}, {y:.2f}) at z {z:g}"):
-            self._looking_at_tip = False
+        def there(_result):
+            # Back on the crosshair: a fine-tune starts from here.
+            self._nudged = False
+
+        # The fine-tune's pad is hidden while the tip is away, so the
+        # page's panel takes it there.
+        self.jog.run_job(job, what=f"tip to the crosshair "
+                         f"({x:.2f}, {y:.2f}) at z {z:g}", then=there)
         self.refresh()
 
     # -- display -------------------------------------------------------------
@@ -826,24 +859,32 @@ class TipCalibrationBlock(QObject):
 
     def run_activity(self) -> str | None:
         """For the top bar's pill: "waiting" while the run waits for the
-        operator - at the disc, and for the fine-tune."""
-        return "waiting" if self._phase in (DISC, TUNING) else None
+        operator at the disc."""
+        return "waiting" if self._phase == DISC else None
 
     def refresh(self, *_args) -> None:
         self.session.run_activity_changed.emit()
         running = self.running
-        # The host's jog panel only while nothing runs: hidden, its keys are
-        # given up, and the touch-up's panel is the only thing that moves the
-        # robot during a calibration.
-        self.jog.setVisible(not running)
-        self._show(running)
+        tuning = self._tuning()
+        # The host's jog panel only while nothing runs and the fine-tune's
+        # pad is down: hidden, its keys are given up - one pad, one set.
+        self.touch_jog.setVisible(tuning)
+        self.jog.setVisible(not running and not tuning)
+        if tuning:
+            profile = self.session.profile
+            # The lower camera is turned and mirrored: through TipTarget.axes
+            # the arrows move the tip the way they point on its picture.
+            self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
+            self.touch_jog.set_step(TOUCH_UP_STEP_MM)
+        self._show(running, tuning)
         # The upper camera finds the disc; the lower one sees the tip.
-        lower = self._phase in (MEASURING, TUNING) or self._looking_at_tip
+        lower = (self._phase == MEASURING
+                 or not running and self.done and self._over_crosshair())
         self.view.set_camera(self._under_camera() if lower
                              else self._over_camera())
         self.changed.emit()
 
-    def _show(self, running: bool) -> None:
+    def _show(self, running: bool, tuning: bool) -> None:
         session = self.session
         on = session.tip.attached is True
         # Dimmed until a tip is on; never while its own run goes on.
@@ -852,32 +893,24 @@ class TipCalibrationBlock(QObject):
         problems = [] if running else self._readiness()
         phase = self._phase
 
-        if not on and not running:
-            self.start_step.set_state(BLOCKED, FIRST_A_TIP)
+        # The step open now: Start, the disc, Calibrate, or all done.
+        if running:
+            at = (0 if phase == MOVING else
+                  1 if phase == DISC and not self._disc_seen else 2)
         else:
-            self.start_step.set_state(OK if running and phase != MOVING
-                                      or measured and not running else TODO)
-        self.start_button.setEnabled(not running and not problems
-                                     and not session.robot_lease.busy)
-
-        self.disc_step.set_state(OK if self._disc_seen and running
-                                 or measured and not running else TODO)
+            at = 3 if measured else 0
+        for number, step in enumerate((self.start_step, self.disc_step,
+                                       self.calibrate_step)):
+            if not on and not running:
+                step.set_state(BLOCKED, FIRST_A_TIP)
+            else:
+                step.set_state(OK if number < at else
+                               TODO if number == at else BLOCKED)
+        free = not running and not session.robot_lease.busy
+        self.start_button.setEnabled(free and not problems)
         self.disc_button.setEnabled(phase == DISC and not self._disc_seen)
-
-        self.calibrate_step.set_state(OK if measured and not running
-                                      else TODO)
         self.calibrate_button.setEnabled(phase == DISC and self._disc_seen)
-
-        tuning = phase == TUNING
-        if session.settings.tip_cal_touch_up:
-            self.tune_text.setText(
-                f"Nudge the tip onto the central crosshair "
-                f"({TOUCH_UP_STEP_MM:g} mm steps), then Save or Skip.")
-        else:
-            self.tune_text.setText("Off in Settings.")
-        self.tune_step.set_state(OK if measured and not running else TODO)
-        self.save_button.setEnabled(tuning)
-        self.skip_button.setEnabled(tuning)
+        self.spinner.setVisible(phase == MEASURING)
 
         if running:
             self.checks.setText(f"Running: {self._last_line}"
@@ -890,12 +923,22 @@ class TipCalibrationBlock(QObject):
                 lines.append(why)
             self.checks.setText("\n".join(lines))
         self.checks.setVisible(bool(self.checks.text()))
-        self.calibrated_banner.setVisible(measured and not running)
+        result = measured and not running
+        self.calibrated_banner.setVisible(result)
         self.check_button.setEnabled(
-            measured and not running and self._crosshair_xy() is not None
+            result and self._crosshair_xy() is not None and free)
+        self.redo_button.setVisible(result)
+        self.redo_button.setEnabled(free and not problems)
+
+        self.tune_fold.setVisible(result
+                                  and session.settings.tip_cal_touch_up)
+        away = not tuning
+        self.tune_away.setVisible(away)
+        self.tune_check_button.setVisible(away)
+        self.tune_check_button.setEnabled(self.check_button.isEnabled())
+        self.tune_save_button.setEnabled(
+            tuning and self._nudged and not self.touch_jog.busy
             and not session.robot_lease.busy)
-        if not running and not self.jog.busy:
-            self._looking_at_tip = self._looking_at_tip and measured
 
     # -- cameras -------------------------------------------------------------
 
@@ -974,9 +1017,9 @@ class PipetteCalibration(QWidget):
                      "drop_here_button", "tip_note"):
             setattr(self, name, getattr(self.tip, name))
         for name in ("start_step", "start_button", "disc_step", "disc_button",
-                     "calibrate_step", "calibrate_button", "tune_step",
-                     "tune_text", "touch_jog", "save_button", "skip_button",
-                     "checks", "check_button"):
+                     "calibrate_step", "calibrate_button", "spinner",
+                     "checks", "check_button", "redo_button", "tune_fold",
+                     "tune_check_button", "touch_jog", "tune_save_button"):
             setattr(self, name, getattr(self.calibration, name))
         self._refresh()
 
@@ -997,12 +1040,6 @@ class PipetteCalibration(QWidget):
 
     def _refresh(self, *_args) -> None:
         self.calibration.refresh()
-
-    def _touch_up(self, robot, camera, view) -> None:
-        self.calibration._touch_up(robot, camera, view)
-
-    def _begin_touch_up(self) -> None:
-        self.calibration._begin_touch_up()
 
     def _abort(self) -> None:
         self.calibration._abort()

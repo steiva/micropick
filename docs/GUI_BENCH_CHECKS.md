@@ -1423,13 +1423,23 @@ tip box and a 384 plate at hand.
   where it is, the gantry does not move, A1 stays gray.
 
 - [ ] **Calibrate the tip.**
-  Without a tip the four steps are dimmed. With one: Start tip
+  Without a tip the three steps are dimmed. With one: Start tip
   calibration - the pill reads "Calibrating the tip", STOP shows, the
   camera goes over the calibration position and waits ("Waiting for
-  you"). The disc is there, Calibrate: about 30 s, the lower camera's
-  picture. With the manual adjustment on in Settings, nudge with the pad
-  and Save, or Skip (the tip goes back to where the routine put it).
-  "Tip calibrated.", Tip gets its ✓.
+  you"). The disc is there, Calibrate: a spinner for about 30 s, the
+  lower camera's picture. Then the run ends by itself: the pill goes, a
+  green "Tip calibrated." (saved), Tip gets its ✓, the tip stays over
+  the crosshair. Only the current step's button is blue.
+
+- [ ] **Fine-tune by hand.**
+  Folded under the result. Open it: the lower camera and the pad (XY
+  only, 0.05 mm steps), Save gray. One step: Save lights; Save: "Fine-tune
+  saved.", gray again, no pill. Move the tip away (Camera to slot ...),
+  open it again: "The tip is not over the crosshair." and Check: tip to
+  crosshair, which brings the pad back.
+
+- [ ] **Redo calibration.**
+  After a result: Redo calibration starts the run again at the disc.
 
 - [ ] **Stop while it waits.**
   Start, then Esc (or STOP) at the disc: the run ends, "Calibration

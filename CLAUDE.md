@@ -465,11 +465,14 @@ Drop in trash and Drop in place (`dropTipInPlace`, nothing moved; no
 Put back: it did not work); no tip box, a warning with Back to Deck.
 Calibrate the tip, its steps dimmed until a tip is on: Start tip
 calibration (the camera to the calibration position), The disc is
-there, Calibrate, the fine-tune (Save, or Skip: back to the automatic
-result) - one run from Start to its end (lease `run=True`, STOP, the
-pill), waiting for the operator at the disc and the fine-tune, where Stop
-ends it with nothing saved; then "Tip calibrated." with Check: tip to
-crosshair. Liquid's Tip step shows no calibration (`set_task`). Its
+there, Calibrate (a spinner; its result saved as it ends, the tip left
+over the crosshair) - one run from Start to its end (lease `run=True`,
+STOP, the pill), waiting for the operator at the disc, where Stop ends
+it with nothing saved; then "Tip calibrated." with Redo calibration and
+Check: tip to
+crosshair, and under it the folded, optional Fine-tune by hand (the
+lower camera and an XY pad while the tip is over the crosshair, else
+Check first; Save gray until a step, a short job, not a run). Liquid's Tip step shows no calibration (`set_task`). Its
 cameras are the profile's upper and lower ones.
 The Dish bottom step (`pages.dish_bottom`, REDESIGN §6.4) has no camera:
 a big Z readout, Up and Down with the step carousel between them

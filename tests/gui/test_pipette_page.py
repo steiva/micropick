@@ -27,7 +27,7 @@ from micropick.gui.readiness import (CALIBRATION_POSITION,       # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.checklist import BLOCKED, OK          # noqa: E402
 from micropick.gui.widgets.jog_panel import view_move            # noqa: E402
-from micropick.gui.workers import Worker                         # noqa: E402
+from micropick.hardware.protocols import move_to                 # noqa: E402
 
 RACK = "opentrons_96_tiprack_300ul"
 
@@ -184,20 +184,25 @@ def test_liquid_needs_no_calibration(page):
 @pytest.fixture
 def ready(app, page, monkeypatch):
     """A tip on, a calibration position, and the routine replaced by one
-    that asks for the touch-up and saves an offset for this tip."""
+    that puts the tip on the crosshair at the module height and saves an
+    offset for this tip. `ready["gate"]` cleared holds it measuring."""
     session = page.session
     _tip_on(app, page)
     session.remember(CALIBRATION_POSITION, (150.0, 150.0, 80.0))
-    seen = {}
+    seen = {"gate": threading.Event()}
+    seen["gate"].set()
 
-    def calibrate(robot, over, under, detector, pmap, *, profile,
+    def calibrate(robot, over, under, detector, pmap, *, profile, target,
                   current_offset, manual_touch_up, robot_session,
                   tip_pickup, **_kw):
         seen["start"] = current_offset
-        if manual_touch_up is not None:
-            manual_touch_up(robot, under, None)
+        seen["touch_up"] = manual_touch_up
+        seen["gate"].wait(10)
+        x, y, _z = tip_page.xyz(robot)
+        move_to(robot, (x, y, target.module_height),
+                force_direct=True)
         offset = PipetteOffset(dx=1.5, dy=-2.5, robot_session=robot_session,
-                               tip_pickup=tip_pickup)
+                               tip_pickup=tip_pickup, method="auto")
         profile.calibration.pipette_offset = offset
         return SimpleNamespace(offset=offset)
 
@@ -213,8 +218,16 @@ def ready(app, page, monkeypatch):
     return seen
 
 
-def test_the_calibration_is_a_run_through_the_disc_and_the_fine_tune(
-        app, page, ready):
+def _calibrate(app, page):
+    page.start_button.click()
+    assert _until(app, lambda: page.disc_button.isEnabled())
+    page.disc_button.click()
+    page.calibrate_button.click()
+    assert _until(app, lambda: not page.session.robot_lease.busy
+                  and not page.jog.busy)
+
+
+def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
     session = page.session
     assert page.start_step.state != BLOCKED
     page.start_button.click()
@@ -228,18 +241,25 @@ def test_the_calibration_is_a_run_through_the_disc_and_the_fine_tune(
     assert page.run_activity() == "waiting"
     page.disc_button.click()
     assert page.calibrate_button.isEnabled()
+    ready["gate"].clear()
     page.calibrate_button.click()
-    # The fine-tune, by hand: Save or Skip.
-    assert _until(app, lambda: page.save_button.isEnabled())
-    assert page.skip_button.isEnabled()
-    assert page.run_activity() == "waiting"
-    page.save_button.click()
+    # Measuring: a spinner, nothing to wait for the operator.
+    assert _until(app, lambda: page.spinner.isVisibleTo(page))
+    assert page.run_activity() is None
+    ready["gate"].set()
     assert _until(app, lambda: not session.robot_lease.busy)
+    assert ready["touch_up"] is None                 # no fine-tune in the run
     assert ready["start"] == session.settings.tip_cal_start_offset
+    assert not page.spinner.isVisibleTo(page)
     assert tip_calibration_status(session)[0]
     assert not page.calibrated.isHidden()
     assert page.calibrated.label.text() == "Tip calibrated."
+    assert page.calibrate_step.state == OK
     assert page.check_button.isEnabled()
+    assert page.redo_button.isEnabled()
+    # The fine-tune is there, folded and optional.
+    assert not page.tune_fold.isHidden()
+    assert page.tune_fold.collapsed
     # Done follows the tip that is on: another tip is to calibrate again.
     page.drop_button.click()
     assert _until(app, lambda: session.tip.attached is False
@@ -247,16 +267,85 @@ def test_the_calibration_is_a_run_through_the_disc_and_the_fine_tune(
     assert page.calibrated.isHidden()
 
 
-def test_check_sends_the_tip_to_the_crosshair_it_found(app, page, ready):
-    page.start_button.click()
+def test_the_fine_tune_saves_the_offset_once_the_tip_was_moved(
+        app, page, ready):
+    session = page.session
+    _calibrate(app, page)
+    crosshair = page._crosshair
+    page.tune_fold.toggle.click()
+    assert _until(app, lambda: not page.touch_jog.busy)
+    # The tip is still over the crosshair: the pad, no Check first.
+    assert page.touch_jog.isVisibleTo(page)
+    assert page.tune_check_button.isHidden()
+    assert not page.jog.isVisibleTo(page)            # one pad, one set of keys
+    assert not page.tune_save_button.isEnabled()      # nothing moved yet
+    page.touch_jog.step("x", +1)
+    assert _until(app, lambda: not page.touch_jog.busy
+                  and page.tune_save_button.isEnabled())
+    page.tune_save_button.click()
+    # A short job, not a run.
+    assert not session.robot_lease.holding_run
+    assert _until(app, lambda: not page.touch_jog.busy
+                  and not session.robot_lease.busy)
+    x, y, _z = tip_page.xyz(session.robot)
+    offset = session.profile.calibration.pipette_offset
+    assert (offset.dx, offset.dy) == pytest.approx(
+        (x - crosshair[0], y - crosshair[1]), abs=1e-6)
+    assert (offset.dx, offset.dy) != (1.5, -2.5)
+    assert offset.method == "auto+manual"
+    assert tip_calibration_status(session)[0]         # same tip, same session
+    assert not page.tune_save_button.isEnabled()      # saved: nothing new
+
+
+def test_the_fine_tune_asks_for_the_tip_back_on_the_crosshair(
+        app, page, ready):
+    _calibrate(app, page)
+    motion = page.session.motion
+    assert page.jog.run_job(lambda log: motion.tip_to((100.0, 100.0), 90.0,
+                                                      log=log))
+    assert _until(app, lambda: not page.jog.busy)
+    page.tune_fold.toggle.click()
+    app.processEvents()
+    assert not page.tune_check_button.isHidden()
+    assert not page.touch_jog.isVisibleTo(page)
+    page.tune_check_button.click()
+    assert _until(app, lambda: not page.jog.busy
+                  and page.touch_jog.isVisibleTo(page))
+    assert page.tune_check_button.isHidden()
+
+
+def test_the_fine_tune_follows_the_lower_camera_in_xy_only(app, page, ready):
+    _calibrate(app, page)
+    page.tune_fold.toggle.click()
+    app.processEvents()
+    jog = page.touch_jog
+    axes = page.session.profile.calibration.tip_target.axes
+    assert jog._view_axes == tuple(tuple(r) for r in axes)
+    assert view_move(jog._view_axes, "x", +1) == ("y", +1)
+    assert jog._xy_only
+    assert not any("PgUp" in line for line in jog.help_lines)
+
+
+def test_redo_calibration_measures_again(app, page, ready):
+    session = page.session
+    _calibrate(app, page)
+    page.redo_button.click()
+    assert session.robot_lease.holding_run
     assert _until(app, lambda: page.disc_button.isEnabled())
     page.disc_button.click()
     page.calibrate_button.click()
-    assert _until(app, lambda: page.skip_button.isEnabled())
-    page.skip_button.click()
-    assert _until(app, lambda: not page.session.robot_lease.busy)
+    assert _until(app, lambda: not session.robot_lease.busy)
+    assert tip_calibration_status(session)[0]
+
+
+def test_check_sends_the_tip_to_the_crosshair_it_found(app, page, ready):
+    _calibrate(app, page)
     crosshair = page._crosshair
     assert crosshair is not None
+    motion = page.session.motion
+    assert page.jog.run_job(lambda log: motion.tip_to((100.0, 100.0), 90.0,
+                                                      log=log))
+    assert _until(app, lambda: not page.jog.busy)
     page.check_button.click()
     assert _until(app, lambda: not page.jog.busy)
     x, y, _z = tip_page.xyz(page.session.robot)
@@ -275,13 +364,7 @@ def test_check_after_a_restart_takes_the_crosshair_from_the_pixel_map(
         coef=[[0.0, k * w / 2], [k * w / 2, 0.0]], zero=[0.0, 0.0],
         ref=[w / 2, h / 2], bounds=[100.0, 100.0, w - 100.0, h - 100.0],
         image_size=[w, h], sweep_z=0.0)
-    page.start_button.click()
-    assert _until(app, lambda: page.disc_button.isEnabled())
-    page.disc_button.click()
-    page.calibrate_button.click()
-    assert _until(app, lambda: page.skip_button.isEnabled())
-    page.skip_button.click()
-    assert _until(app, lambda: not page.session.robot_lease.busy)
+    _calibrate(app, page)
     page._crosshair = None                   # as a page of a new start
     page._refresh()
     assert page.check_button.isEnabled()
@@ -302,48 +385,6 @@ def test_stop_at_the_disc_ends_the_run_with_nothing_saved(app, page, ready):
     assert session.profile.calibration.pipette_offset is None
     assert "Nothing was saved." in page.checks.text()
     assert page.start_button.isEnabled()
-
-
-# -- the touch-up --------------------------------------------------------------
-
-def test_the_touch_up_follows_the_lower_camera_in_xy_only(app, page):
-    page._begin_touch_up()
-    jog = page.touch_jog
-    axes = page.session.profile.calibration.tip_target.axes
-    assert jog._view_axes == tuple(tuple(r) for r in axes)
-    assert view_move(jog._view_axes, "x", +1) == ("y", +1)
-    assert jog._xy_only
-    assert not any("PgUp" in line for line in jog.help_lines)
-    assert not page.jog.isVisible()                    # the page's panel steps aside
-    page._abort()
-
-
-def test_abort_waits_for_a_touch_up_step_still_moving(app, page):
-    session = page.session
-    # The calibration as it runs: it holds the robot and waits in the
-    # touch-up for the operator.
-    lease = session.robot_lease.claim("pipette calibration", run=True)
-    worker = Worker(lambda: page._touch_up(session.robot, None, None),
-                    lease=lease)
-    page._worker = worker
-    worker.start()
-    assert _until(app, lambda: page.save_button.isEnabled())
-    # A touch-up step, still moving when Abort is pressed.
-    moving, done = threading.Event(), threading.Event()
-
-    def step(_log):
-        moving.set()
-        done.wait(10)
-
-    assert page.touch_jog.run_job(step)
-    assert moving.wait(5)
-    page._abort()
-    assert session.robot_lease.holder == "pipette calibration"
-    assert worker.running and page.save_button.isEnabled()
-    done.set()
-    assert _until(app, lambda: not page.touch_jog.busy)
-    page._abort()
-    assert _until(app, lambda: not session.robot_lease.busy)
 
 
 # -- the cards as blocks in another widget ------------------------------------

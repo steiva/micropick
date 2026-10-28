@@ -382,10 +382,9 @@ class SettingsPage(QWidget):
         box.layout().addLayout(grid)
         self.tip_verify = QCheckBox("Verify after the correction", self)
         self.tip_verify.setToolTip("Measure again at the corrected offset.")
-        self.tip_touch_up = QCheckBox(
-            "Manual adjustment at the end", self)
-        self.tip_touch_up.setToolTip("Nudge the tip onto the crosshair "
-                                     "before saving.")
+        self.tip_touch_up = QCheckBox("Fine-tune by hand", self)
+        self.tip_touch_up.setToolTip("Offer to nudge the tip onto the "
+                                     "crosshair after calibrating.")
         for box_ in (self.tip_verify, self.tip_touch_up):
             box_.toggled.connect(lambda _on: self._edited())
             box.layout().addWidget(box_)
