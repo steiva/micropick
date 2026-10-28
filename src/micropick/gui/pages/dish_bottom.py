@@ -6,30 +6,34 @@ pick's third, the same screen and state in both.
 it: the tip is brought down onto the dish by hand. **No camera** here -
 the operator watches the tip itself - only what matters while lowering
 it: the robot's Z in big numbers, Up and Down with the step carousel
-between them (`jog_pad.StepCarousel`), active only during step 2.
+between them (`jog_pad.StepCarousel`), active only during step 2, and
+**Keys**, which lists their keys.
 
 On the right, "Last time: Z 66.40 mm · 3 days ago" with **Use it**, while
 there is a last time (`Calibration.dish_bottom_set_at`): the default was
-never measured, so it is never taken. Then the three steps:
+never measured, so it is never taken. Then the two steps:
 
 1. **Tip over the dish center** (Move the tip): the middle of the working
    circle - `circle_center`, a pixel of the picture taken at the position
    over the dish, through the pixel map and the pipette offset - at
    `ABOVE_BOTTOM_MM` over the dish bottom stored now: room for one stored
    a little high, and few presses down.
-2. **Lower until it touches** (Done).
-3. **Save** (Save dish bottom): Z is read where the tip is, saved into the
-   picking settings, and the tip raised. A value more than `BIG_CHANGE_MM`
-   from the last is asked about first: it is more often the tip resting
-   on something else.
+2. **Lower until it touches** (Save dish bottom): Z is read where the tip
+   is, saved into the picking settings, and the tip raised. A value more
+   than `BIG_CHANGE_MM` from the last is asked about first: it is more
+   often the tip resting on something else.
 
 The step is done once the dish bottom was measured, or Use it pressed, in
 this robot session (`Session.set_dish_bottom`,
-`Session.use_last_dish_bottom`): green "Dish bottom: Z 66.42 mm".
+`Session.use_last_dish_bottom`): green "Dish bottom: Z 66.42 mm" with
+**Redo**, back to step 1; the value saved holds until a new one is.
 
 Every robot command goes through the page's jog panel (`JogPanel.run_job`
 and `JogPanel.step`), which is never shown: its pad would be a second face
-for the same Up and Down, and hidden it binds no keys.
+for the same Up and Down, and hidden it binds no keys. The page binds its
+own, from the key actions (`gui.keys`: Z up and down, the step sizes, the
+key list) - no XY keys, the tip stays over the dish center - enabled
+while lowering, the page shown and the robot free.
 """
 
 from __future__ import annotations
@@ -38,11 +42,13 @@ import logging
 from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...workflows import manual as moves
+from .. import keys
 from ..readiness import DISH_POSITION
 from ..session import Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
@@ -75,8 +81,13 @@ BIG_CHANGE_MM = 3.0
 FIRST_STEP_MM = 1.0
 
 # Where the operator is: moving the tip over the center, lowering it,
-# saving.
-OVER_CENTER, LOWER, SAVE = 0, 1, 2
+# done (saved, or the last value used).
+OVER_CENTER, LOWER, DONE = 0, 1, 2
+
+# The page's keys: action id -> what it does, in the key list.
+KEYS = (("z+", "z-", "tip up / down"),
+        ("step_up", "step_down", "larger / smaller step"),
+        ("help", None, "show or hide this list"))
 
 
 def ago(when: datetime) -> str:
@@ -95,11 +106,12 @@ class DishBottomPage(QWidget):
         self.session = session
         self._at = OVER_CENTER
 
-        self.jog = JogPanel(session, shortcut_host=self,
-                            machine_controls=False, parent=self)
+        # Its keys on itself, hidden: they never fire (the page's own do).
+        self.jog = JogPanel(session, machine_controls=False, parent=self)
         self.jog.hide()
         self.jog.pose_changed.connect(self._show_pose)
         self.jog.position_changed.connect(self._show_said)
+        self._shortcuts: list[QShortcut] = []
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
@@ -111,7 +123,9 @@ class DishBottomPage(QWidget):
         session.robot_state_changed.connect(self._on_robot)
         session.robot_busy_changed.connect(lambda _h: self.refresh())
         session.profile_changed.connect(lambda _p: self.refresh())
-        session.confirmations_changed.connect(self.refresh)
+        session.confirmations_changed.connect(self._on_confirmations)
+        session.settings_changed.connect(lambda _s: self._bind_keys())
+        self._bind_keys()
         self.refresh()
 
     # -- construction --------------------------------------------------------
@@ -134,6 +148,18 @@ class DishBottomPage(QWidget):
         self.down_button.clicked.connect(lambda: self.jog.step("z", -1))
         for widget in (self.up_button, self.carousel, self.down_button):
             lines.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.keys_button = secondary_button("Keys", column)
+        self.keys_button.setProperty("compact", True)
+        self.keys_button.setCheckable(True)
+        self.keys_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.keys_button.toggled.connect(
+            lambda on: self.keys_list.setVisible(on))
+        lines.addSpacing(SPACING)
+        lines.addWidget(self.keys_button, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.keys_list = muted_label("", column)
+        self.keys_list.setFont(mono_font(SIZES["body"]))
+        self.keys_list.hide()
+        lines.addWidget(self.keys_list, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # What the robot answered: a step refused, a move not possible.
         self.said = muted_label("", column)
@@ -192,18 +218,14 @@ class DishBottomPage(QWidget):
         self.lower_step.add(wrapped(
             "Go down until the dish bottom bends a little. Then go up one "
             "step, make the step smaller and lower again."))
-        self.lowered_button = primary_button("Done", panel)
-        self.lowered_button.clicked.connect(self._lowered)
-        self.lower_step.add_button(self.lowered_button)
-        column.addWidget(self.lower_step.box)
-
-        self.save_step = StepCard(panel, 3, "Save")
         self.save_button = primary_button("Save dish bottom", panel)
         self.save_button.clicked.connect(self._save)
-        self.save_step.add_button(self.save_button)
-        column.addWidget(self.save_step.box)
+        self.lower_step.add_button(self.save_button)
+        column.addWidget(self.lower_step.box)
 
         self.result = Banner("", tone="ok", parent=panel)
+        self.redo_button = self.result.add_action("Redo")
+        self.redo_button.clicked.connect(self._redo)
         column.addWidget(self.result)
         column.addStretch(1)
         return panel
@@ -224,6 +246,57 @@ class DishBottomPage(QWidget):
         """Every answer of the panel's, a job's end included: the buttons
         follow it (the robot's lease is given back before)."""
         self.said.setText("\n".join(lines[1:]))
+        self.refresh()
+
+    # -- keys ----------------------------------------------------------------
+
+    def _bind_keys(self) -> None:
+        """The page's keys as bound in Settings: again after a change."""
+        for shortcut in self._shortcuts:
+            shortcut.setEnabled(False)
+            shortcut.setParent(None)
+            shortcut.deleteLater()
+        self._shortcuts = []
+        bindings = self.session.settings.keys
+        doing = {"z+": lambda: self.jog.step("z", +1),
+                 "z-": lambda: self.jog.step("z", -1),
+                 "step_up": lambda: self.carousel.step_by(+1),
+                 "step_down": lambda: self.carousel.step_by(-1),
+                 "help": self.keys_button.toggle}
+        for action_id, act in doing.items():
+            for sequence in keys.sequences(bindings, action_id):
+                shortcut = QShortcut(sequence, self)
+                shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+                shortcut.activated.connect(act)
+                shortcut.setProperty("action", action_id)
+                self._shortcuts.append(shortcut)
+        lines = []
+        for first, second, what in KEYS:
+            names = [keys.key_text(bindings, a) for a in (first, second) if a]
+            lines.append(f"{'/'.join(names)}   {what}")
+        self.keys_list.setText("\n".join(lines))
+        self._enable_keys()
+
+    def _enable_keys(self) -> None:
+        """Only on screen - a window-wide key of a hidden page would
+        compete with the shown one's - and, but for the list, only while
+        lowering with the robot free."""
+        movable = (self.session.robot is not None
+                   and not self.session.robot_lease.busy
+                   and not self.jog.busy)
+        for shortcut in self._shortcuts:
+            listing = shortcut.property("action") == "help"
+            shortcut.setEnabled(self.isVisible() and (
+                listing or self._at == LOWER and movable))
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        self._enable_keys()
+
+    def _on_confirmations(self) -> None:
+        # A new robot session forgot the dish bottom: measure it again.
+        if self._at == DONE and not self.session.is_confirmed("dish_bottom"):
+            self._at = OVER_CENTER
         self.refresh()
 
     def _on_robot(self, _state) -> None:
@@ -261,10 +334,8 @@ class DishBottomPage(QWidget):
         self.up_button.setEnabled(movable and lowering)
         self.down_button.setEnabled(movable and lowering)
         self.carousel.setEnabled(lowering)
-        self.lowered_button.setEnabled(lowering)
-        self.save_button.setEnabled(movable and self._at == SAVE)
-        for number, step in enumerate((self.over_step, self.lower_step,
-                                       self.save_step)):
+        self.save_button.setEnabled(movable and lowering)
+        for number, step in enumerate((self.over_step, self.lower_step)):
             step.set_state(OK if number < self._at else
                            TODO if number == self._at else BLOCKED)
 
@@ -272,6 +343,8 @@ class DishBottomPage(QWidget):
         if confirmed and profile is not None:
             self.result.set_text(
                 f"Dish bottom: Z {profile.picking.dish_bottom:.2f} mm")
+        self.redo_button.setVisible(self._at == DONE)
+        self._enable_keys()
 
     # -- the steps -----------------------------------------------------------
 
@@ -317,8 +390,9 @@ class DishBottomPage(QWidget):
             self.jog.tell(self.session.robot_lease.refusal)
         self.refresh()
 
-    def _lowered(self) -> None:
-        self._at = SAVE
+    def _redo(self) -> None:
+        """Back to step 1; the value saved holds until a new one is."""
+        self._at = OVER_CENTER
         self.refresh()
 
     def _save(self) -> None:
@@ -345,7 +419,7 @@ class DishBottomPage(QWidget):
             self.session.set_dish_bottom(z)
         except SessionError as exc:
             return describe_error(exc)
-        self._at = OVER_CENTER
+        self._at = DONE
         show_toast(self, "Dish bottom saved.")
         # After this job's own completion, which is still being delivered.
         QTimer.singleShot(0, self._lift)
@@ -368,5 +442,6 @@ class DishBottomPage(QWidget):
         except SessionError as exc:
             self.jog.tell(describe_error(exc))
             return
+        self._at = DONE
         show_toast(self, "Using the last dish bottom.")
         self.refresh()

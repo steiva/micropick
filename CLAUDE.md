@@ -477,10 +477,14 @@ cameras are the profile's upper and lower ones.
 The Dish bottom step (`pages.dish_bottom`, REDESIGN §6.4) has no camera:
 a big Z readout, Up and Down with the step carousel between them
 (`jog_pad.StepCarousel`), active only while lowering, through a jog panel
-that is never shown (so no keys). "Last time: Z 66.40 mm · 3 days ago"
+that is never shown (its keys on itself, so they never fire); the page's
+own keys from the key actions (Z up / down, the step sizes, H) while
+lowering, no XY, listed by Keys. "Last time: Z 66.40 mm · 3 days ago"
 with Use it while it was ever measured; Tip over the dish center (Move
-the tip), Lower until it touches (Done), Save dish bottom (a change over
-3 mm asked first; the tip raised after); then "Dish bottom: Z 66.42 mm".
+the tip), Lower until it touches, whose button is Save dish bottom (a
+change over 3 mm asked first; the tip raised after); then "Dish bottom:
+Z 66.42 mm" with Redo (back to Move the tip, the value kept until a new
+one is saved).
 Done when measured (`Session.set_dish_bottom`) or Use it
 (`Session.use_last_dish_bottom`) in this robot session, never by Next.
 The Picking step (`pages.picking`, REDESIGN §6.5): the dish picture with

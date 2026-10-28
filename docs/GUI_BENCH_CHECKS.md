@@ -1087,7 +1087,7 @@ robot on.
 
 - [ ] **Auto pick, then Manual pick, opens on Work.**
   With the deck checked, the tip calibrated and the dish bottom taken
-  (Next on Dish bottom, until it has Save and Use it), Home › Manual pick
+  (Save dish bottom or Use it), Home › Manual pick
   shows Deck, Tip and Dish bottom ✓ and the Work page.
 
 - [ ] **Esc still stops, Park parks, Light switches the lights.**
@@ -1518,13 +1518,22 @@ tip box and a 384 plate at hand.
 - [ ] **Measure.**
   Move the tip: the tip goes over the middle of the dish, about 10 mm over
   the last dish bottom. Down with 1 mm, then smaller, until the dish
-  bottom bends; Done; Save dish bottom: a toast "Dish bottom saved.", the
-  tip goes up, the green line shows the new Z, the step gets its ✓. A
-  value more than 3 mm from the last asks first; Cancel saves nothing.
+  bottom bends; Save dish bottom (in step 2, no third step): a toast
+  "Dish bottom saved.", the tip goes up, the green line shows the new Z
+  with Redo, the step gets its ✓. A value more than 3 mm from the last
+  asks first; Cancel saves nothing. Redo: back to Move the tip, the value
+  and the ✓ kept until a new one is saved. Only the current step's
+  button is blue.
+
+- [ ] **Keys.**
+  While lowering, PgUp / PgDn move the tip up and down and + / - change
+  the step, as rebound in Settings' Keys; the arrow keys do nothing.
+  Before Move the tip, and after saving, PgUp/PgDn do nothing. Keys (or
+  H) lists them under the buttons.
 
 - [ ] **Busy.**
-  While a run or Park has the robot, Move the tip, Up and Down are gray.
-  The arrow keys and PgUp/PgDn do nothing on this screen.
+  While a run or Park has the robot, Move the tip, Up and Down are gray,
+  and so are their keys.
 
 - [ ] **Picking.**
   The Picking page has no dish bottom card any more; its steps are 1-5.
