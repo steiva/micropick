@@ -8,7 +8,10 @@ and reads "Pause to move the camera" until then.
 
 On the right, top to bottom and with no scrolling:
 
-1. **Analyze the dish** and **Shake the dish**, side by side.
+1. **Analyze the dish** and **Shake the dish**, side by side, and under
+   them "Lights go off while analyzing.": the rail lights put highlights
+   on the dish, so the analysis switches them off for its frame and back
+   on after if they were on, as a run does (#51), a failed one included.
 2. FoldCard **Cuboid sizes** (its summary the size window, "250-500 µm"):
    the histogram whose white lines are dragged to change what is picked,
    the pickup height and volume ("0.5 mm above the bottom · 15 µl"),
@@ -139,6 +142,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
 
 from ... import paths
 from ...core.calibration.pixel_map import PixelMap
+from ...hardware.protocols import set_lights
 from ...viz import overlays
 from ...workflows import well_center
 from ...workflows.picking import PickingSession, RobotState, stir
@@ -182,6 +186,8 @@ KEYS = (("Space", "resume", "resume"),
 CONFIRM_START = (
     "Dish and plate in place, lids off, picking settings checked.\n\n"
     "The robot starts moving on Start.")
+
+LIGHTS_OFF = "Lights go off while analyzing."
 
 CENTER = "Camera to dish center"
 CENTER_WAIT = "Pause to move the camera"
@@ -274,6 +280,8 @@ class PickingPage(QWidget):
         row.addWidget(self.analyse_button, 1)
         row.addWidget(self.shake_button, 1)
         column.addLayout(row)
+        self.lights_line = muted_label(LIGHTS_OFF, panel)
+        column.addWidget(self.lights_line)
         column.addWidget(self._sizes_card(panel))
         column.addWidget(self._plate_card(panel))
         self.folds = FoldGroup([self.sizes, self.plate_card])
@@ -524,12 +532,22 @@ class PickingPage(QWidget):
 
         cfg, pixel_map = profile.picking, profile.pixel_map
         detector = self.detector
+        session, robot = self.session, self.session.robot
 
         def job(log):
-            log("taking a frame")
-            frame = camera.read_after(time.monotonic())
-            log("detecting")
-            return frame, detector.detect(frame, cfg, pixel_map)
+            # The bench dark for the frame, lit again as it was found; no
+            # lease, as the lights switch never takes one.
+            before = set_lights(robot, False) if robot is not None else None
+            try:
+                log("taking a frame")
+                frame = camera.read_after(time.monotonic())
+                log("detecting")
+                return frame, detector.detect(frame, cfg, pixel_map)
+            finally:
+                if before:
+                    set_lights(robot, True)
+                if robot is not None:
+                    session.refresh_lights()
 
         self._run(Worker(job, what="analyzing the dish"), self._analysed)
 

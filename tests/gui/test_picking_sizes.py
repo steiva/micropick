@@ -157,3 +157,67 @@ def test_the_pad_is_folded_on_picking(page):
 def test_camera_to_dish_center_is_opaque(page):
     """Readable over any picture (#50)."""
     assert "background" in page.center_button.styleSheet()
+
+
+class _Detector:
+    model = object()
+
+    def __init__(self, fail=False):
+        self.fail = fail
+
+    def detect(self, frame, cfg, pixel_map):
+        if self.fail:
+            raise RuntimeError("the model fell over")
+        return detection([300.0])
+
+
+class _Camera:
+    def __init__(self, robot):
+        self.robot, self.lit = robot, []
+
+    def read_after(self, _t):
+        self.lit.append(self.robot.lights)
+        return np.zeros((30, 40, 3), np.uint8)
+
+
+def _analyse(app, page, monkeypatch, fail=False):
+    import time
+    session = page.session
+    camera = _Camera(session.robot)
+    monkeypatch.setattr(page, "detector", _Detector(fail))
+    monkeypatch.setattr(page, "_camera", lambda: camera)
+    page._analyse()
+    end = time.monotonic() + 5
+    while page._busy() and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    app.processEvents()
+    return camera
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_analyze_darkens_the_bench_and_lights_it_again(app, page,
+                                                       monkeypatch, fail):
+    """The rail lights put highlights on the dish (#51): off for the frame,
+    back on after, a failed analysis included."""
+    page.session.connect_robot()
+    assert page.session.robot.lights is True
+    camera = _analyse(app, page, monkeypatch, fail)
+    assert camera.lit == [False]
+    assert page.session.robot.lights is True
+    assert page.session.lights is True
+    page.session.shutdown()
+
+
+def test_lights_left_off_stay_off(app, page, monkeypatch):
+    page.session.connect_robot()
+    page.session.set_lights(False)
+    camera = _analyse(app, page, monkeypatch)
+    assert camera.lit == [False]
+    assert page.session.robot.lights is False
+    page.session.shutdown()
+
+
+def test_the_analyze_button_says_the_lights_go_off(page):
+    assert page.lights_line.text() == "Lights go off while analyzing."
+    assert page.lights_line.isVisibleTo(page)
