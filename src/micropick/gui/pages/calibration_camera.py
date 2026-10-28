@@ -291,7 +291,7 @@ class CameraCalibrationSheet(SheetWindow):
         step.add(wrapped("Put the calibration marker on a platform."))
         self.placed_button = primary_button("It is in place", self)
         self.placed_button.clicked.connect(lambda: self._go("slot"))
-        step.add(self.placed_button)
+        step.add_button(self.placed_button)
         return step
 
     def _slot_card(self, number: int) -> StepCard:
@@ -312,7 +312,7 @@ class CameraCalibrationSheet(SheetWindow):
         step.add(self.center_state)
         self.centered_button = primary_button("It is centered", self)
         self.centered_button.clicked.connect(lambda: self._go("calibrate"))
-        step.add(self.centered_button)
+        step.add_button(self.centered_button)
         return step
 
     def _calibrate_card(self, number: int) -> StepCard:
@@ -325,7 +325,7 @@ class CameraCalibrationSheet(SheetWindow):
         step.add(self.camera_note)
         self.start_button = primary_button("Start calibration", self)
         self.start_button.clicked.connect(self._start)
-        step.add(self.start_button)
+        step.add_button(self.start_button)
         self.progress = QProgressBar(self)
         self.progress.setRange(0, 1)
         self.progress.setValue(0)

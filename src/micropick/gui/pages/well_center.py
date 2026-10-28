@@ -239,6 +239,7 @@ class WellCenterPage(QWidget):
         self.move_button.clicked.connect(self._go_to_well_top)
         row.addWidget(self.move_button)
         self.well_step.add_layout(row)
+        self.well_step.own_button(self.move_button)
         column.addWidget(self.well_step.box)
 
         self.center_step = StepCard(panel, 2, "Center the tip")
@@ -246,7 +247,7 @@ class WellCenterPage(QWidget):
             "Use the arrows until the tip is in the middle of the well."))
         self.centered_button = primary_button("It is centered", panel)
         self.centered_button.clicked.connect(lambda: self._to(LOWER))
-        self.center_step.add(self.centered_button)
+        self.center_step.add_button(self.centered_button)
         column.addWidget(self.center_step.box)
 
         self.lower_step = StepCard(panel, 3, "Lower to the top of the well")
@@ -254,7 +255,7 @@ class WellCenterPage(QWidget):
             "Lower until the tip end is level with the top of the plate."))
         self.level_button = primary_button("It is level", panel)
         self.level_button.clicked.connect(lambda: self._to(SAVE))
-        self.lower_step.add(self.level_button)
+        self.lower_step.add_button(self.level_button)
         column.addWidget(self.lower_step.box)
 
         self.depth_step = StepCard(panel, 4, "Well depth")
@@ -269,6 +270,7 @@ class WellCenterPage(QWidget):
         self.save_button.clicked.connect(self._save)
         row.addWidget(self.save_button)
         self.depth_step.add_layout(row)
+        self.depth_step.own_button(self.save_button)
         self.depth_source = caption("", panel)
         self.depth_step.add(self.depth_source)
         column.addWidget(self.depth_step.box)

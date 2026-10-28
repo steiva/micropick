@@ -355,7 +355,7 @@ class PositionSheet(SheetWindow):
             card.add(how)
         button = primary_button(step.button, self.column)
         button.clicked.connect(lambda: self.next_step(step.key))
-        card.add(button)
+        card.add_button(button)
         self.buttons[step.key] = button
 
         def refresh(reached: bool, _free: bool) -> None:
@@ -386,7 +386,7 @@ class PositionSheet(SheetWindow):
         button = self.save_button = primary_button("Save position",
                                                    self.column)
         button.clicked.connect(self._save)
-        card.add(button)
+        card.add_button(button)
         note = self.saved_note = muted_label("", self.column)
         note.setWordWrap(True)
         card.add(note)

@@ -23,7 +23,8 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
 
 from . import SPACING
 
-__all__ = ["primary_button", "secondary_button", "quiet_button",
+__all__ = ["primary_button", "secondary_button", "set_primary",
+           "quiet_button",
            "danger_button", "danger_text_button", "compact", "card",
            "heading", "caption", "muted_label", "combo_box", "select",
            "spin_box", "double_spin_box", "scroll_column", "Section",
@@ -50,6 +51,18 @@ def secondary_button(text: str, parent: QWidget | None = None) -> QPushButton:
     button = QPushButton(text, parent)
     button.setObjectName("secondary")
     return button
+
+
+def set_primary(button: QPushButton, primary: bool) -> None:
+    """Turn a button primary or secondary in place: the next thing to do
+    moves on while the buttons stay where they are."""
+    name = "primary" if primary else "secondary"
+    if button.objectName() == name and button.isDefault() == primary:
+        return
+    button.setObjectName(name)
+    button.setDefault(primary)
+    button.style().unpolish(button)
+    button.style().polish(button)
 
 
 def quiet_button(text: str, parent: QWidget | None = None) -> QPushButton:

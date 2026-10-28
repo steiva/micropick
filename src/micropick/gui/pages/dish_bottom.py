@@ -185,7 +185,7 @@ class DishBottomPage(QWidget):
             "above the bottom."))
         self.move_button = primary_button("Move the tip", panel)
         self.move_button.clicked.connect(self._tip_over_center)
-        self.over_step.add(self.move_button)
+        self.over_step.add_button(self.move_button)
         column.addWidget(self.over_step.box)
 
         self.lower_step = StepCard(panel, 2, "Lower until it touches")
@@ -194,13 +194,13 @@ class DishBottomPage(QWidget):
             "step, make the step smaller and lower again."))
         self.lowered_button = primary_button("Done", panel)
         self.lowered_button.clicked.connect(self._lowered)
-        self.lower_step.add(self.lowered_button)
+        self.lower_step.add_button(self.lowered_button)
         column.addWidget(self.lower_step.box)
 
         self.save_step = StepCard(panel, 3, "Save")
         self.save_button = primary_button("Save dish bottom", panel)
         self.save_button.clicked.connect(self._save)
-        self.save_step.add(self.save_button)
+        self.save_step.add_button(self.save_button)
         column.addWidget(self.save_step.box)
 
         self.result = Banner("", tone="ok", parent=panel)

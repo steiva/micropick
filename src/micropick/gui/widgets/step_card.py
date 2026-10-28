@@ -6,6 +6,10 @@ waiting for a step above it (the marks of `widgets.checklist`) - and whose
 body the page fills: what to do, in a sentence, and the controls that do
 it. A step that waits has its heading dimmed, and the mark's tooltip says
 what it waits for.
+
+Only the current step's button is the blue one (`add_button`,
+`own_button`): a done step's, or a waiting one's, turns secondary and
+stays usable where it was.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ import qtawesome as qta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
-from ..theme.factory import card, heading
+from ..theme.factory import card, heading, set_primary
 from .checklist import BLOCKED, COLOURS, ICONS, TODO
 
 __all__ = ["StepCard", "wrapped"]
@@ -42,6 +46,7 @@ class StepCard:
         row.addWidget(self.heading, 1)
         self.box.layout().addLayout(row)
         self.state = None
+        self.buttons = []
         self.set_state(TODO)
 
     def add(self, widget: QWidget) -> None:
@@ -49,6 +54,17 @@ class StepCard:
 
     def add_layout(self, layout) -> None:
         self.box.layout().addLayout(layout)
+
+    def add_button(self, button) -> None:
+        """The step's button, added to the card."""
+        self.add(button)
+        self.own_button(button)
+
+    def own_button(self, button) -> None:
+        """The step's button, laid out by the page: primary while the step
+        is to do, secondary otherwise."""
+        self.buttons.append(button)
+        set_primary(button, self.state == TODO)
 
     def set_state(self, state: str, why: str = "") -> None:
         """OK, TODO or BLOCKED; `why` is the mark's tooltip."""
@@ -60,3 +76,5 @@ class StepCard:
                             .pixmap(MARK_PX, MARK_PX))
         # A step that waits for one above it reads as waiting.
         self.heading.setEnabled(state != BLOCKED)
+        for button in self.buttons:
+            set_primary(button, state == TODO)

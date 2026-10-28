@@ -442,7 +442,7 @@ class TipCalibrationBlock(QObject):
             "The camera goes to the calibration position."))
         self.start_button = primary_button("Start tip calibration", box)
         self.start_button.clicked.connect(self._start)
-        self.start_step.add(self.start_button)
+        self.start_step.add_button(self.start_button)
         column.addWidget(self.start_step.box)
 
         self.disc_step = StepCard(box, 2, "Disc on the calibration module")
@@ -451,7 +451,7 @@ class TipCalibrationBlock(QObject):
             "put it on now."))
         self.disc_button = secondary_button("The disc is there", box)
         self.disc_button.clicked.connect(self._disc_there)
-        self.disc_step.add(self.disc_button)
+        self.disc_step.add_button(self.disc_button)
         column.addWidget(self.disc_step.box)
 
         self.calibrate_step = StepCard(box, 3, "Calibrate")
@@ -460,7 +460,7 @@ class TipCalibrationBlock(QObject):
             "30 s."))
         self.calibrate_button = primary_button("Calibrate", box)
         self.calibrate_button.clicked.connect(self._calibrate)
-        self.calibrate_step.add(self.calibrate_button)
+        self.calibrate_step.add_button(self.calibrate_button)
         column.addWidget(self.calibrate_step.box)
 
         self.tune_step = StepCard(box, 4, "Fine-tune by hand")
