@@ -21,6 +21,10 @@ _Avoid_: z top, Z max, ceiling
 The height a move across the deck is made at: 1 mm under the measured top, since the robot refuses a move to the retracted height itself.
 _Avoid_: safe height, clearance height
 
+**Park**:
+Moving the head out of the way, to the back right of the deck at the travel height, without homing.
+_Avoid_: home (homing drives all axes to their switches and is done from Settings)
+
 **Jog envelope**:
 The box a jog step or a click target must stay in: the deck's X and Y, a floor raised over each deck module, and a top computed from the bare nozzle's height less the tip's length.
 _Avoid_: soft limits (on screen only), bounds
