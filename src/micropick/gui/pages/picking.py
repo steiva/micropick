@@ -191,6 +191,7 @@ log = logging.getLogger(__name__)
 PANEL_WIDTH = 440
 HISTOGRAM_WIDTH = 380
 DONE_WIDTH = 460
+PLATE_HEIGHT = 200
 
 # How often the display looks at what the run is showing. The session's own
 # pace is set by the robot; this is only the refresh of a picture.
@@ -383,6 +384,9 @@ class PickingPage(QWidget):
         self.plate_card = FoldCard("Plate", fold=False, parent=parent)
         body = self.plate_card.body.layout()
         self.plate = PlateGrid(mini=True, parent=self.plate_card)
+        # Its cells follow the width; capped, the Start under it stays in
+        # view on a wide panel.
+        self.plate.setMaximumHeight(PLATE_HEIGHT)
         body.addWidget(self.plate)
         legend = QHBoxLayout()
         self.legend = {}
