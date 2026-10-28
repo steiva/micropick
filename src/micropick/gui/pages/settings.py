@@ -54,8 +54,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QGridLayout,
                                QHBoxLayout, QKeySequenceEdit, QLabel,
-                               QLineEdit, QStackedWidget, QVBoxLayout,
-                               QWidget)
+                               QLineEdit, QMessageBox, QStackedWidget,
+                               QVBoxLayout, QWidget)
 
 from ... import paths
 from ...config.app_settings import AppSettings, settings_path
@@ -69,6 +69,7 @@ from ..theme.factory import (card, combo_box, double_spin_box, heading,
                              muted_label, primary_button, scroll_column,
                              secondary_button, spin_box)
 from ..widgets.controls import Segmented
+from ..widgets.jog_panel import HOME_DETAIL, HOME_TITLE
 from ..widgets.overlays import SheetWindow
 from ..workers import Worker
 from .log import LogPage
@@ -826,10 +827,11 @@ class SettingsPage(QWidget):
 
 class AdvancedPanel(QWidget):
     """The robot session, by hand: Start new robot session (it homes, so
-    it asks, as Home and connect does) and Disconnect robot session, which
-    lets the session go and keeps the connection monitor off it until
-    Continue robot session (`Session.release_run`). Both claim the robot's
-    lease and are refused while it is held."""
+    it asks, as Home and connect does), Home (all axes; it asks, since the
+    tip calibration is then to do again, `Session.home`) and Disconnect
+    robot session, which lets the session go and keeps the connection
+    monitor off it until Continue robot session (`Session.release_run`).
+    Each claims the robot's lease and is refused while it is held."""
 
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
@@ -843,6 +845,8 @@ class AdvancedPanel(QWidget):
         row = QHBoxLayout()
         self.new_button = secondary_button("Start new robot session", self)
         self.new_button.clicked.connect(self._new)
+        self.home_button = secondary_button("Home", self)
+        self.home_button.clicked.connect(self._home)
         self.disconnect_button = secondary_button("Disconnect robot session",
                                                   self)
         self.disconnect_button.clicked.connect(self._disconnect)
@@ -850,8 +854,8 @@ class AdvancedPanel(QWidget):
                                                 self)
         self.continue_button.setToolTip("Carry on with the robot's session.")
         self.continue_button.clicked.connect(session.continue_run)
-        for button in (self.new_button, self.disconnect_button,
-                       self.continue_button):
+        for button in (self.new_button, self.home_button,
+                       self.disconnect_button, self.continue_button):
             row.addWidget(button)
         row.addStretch(1)
         box.layout().addLayout(row)
@@ -896,6 +900,11 @@ class AdvancedPanel(QWidget):
         self.new_button.setToolTip(
             refusal or ("Start a new robot session with an empty deck."
                         if answers else "Robot not connected."))
+        self.home_button.setEnabled(session.robot is not None
+                                    and not refusal)
+        self.home_button.setToolTip(
+            refusal or ("Home all axes." if session.robot is not None else
+                        "Robot not connected."))
         self.disconnect_button.setVisible(session.released is None)
         self.disconnect_button.setEnabled(session.robot is not None
                                           and not refusal)
@@ -934,6 +943,21 @@ class AdvancedPanel(QWidget):
             self.state.setText("Homing…")
             self._run(self.session.new_run, name, what=what, lease=lease,
                       done="New robot session started.")
+
+    def _home(self) -> None:
+        answer = QMessageBox.question(
+            self, HOME_TITLE, HOME_DETAIL,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel)
+        # `==`, not `is`: see JogPanel._confirm.
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        what = "homing the robot"
+        lease = self._claim(what)
+        if lease is not None:
+            self.state.setText("Homing…")
+            self._run(self.session.home, what=what, lease=lease,
+                      done="Homed.")
 
     def _disconnect(self) -> None:
         what = "disconnecting the robot session"

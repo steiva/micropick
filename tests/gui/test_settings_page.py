@@ -217,6 +217,54 @@ def test_start_new_robot_session_from_advanced(app, window, monkeypatch):
     assert session.robot is not None
 
 
+def test_home_from_advanced_asks_and_undoes_the_tip_calibration(
+        app, window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    from micropick.config.schema import PipetteOffset
+    from micropick.gui import tasks
+    from micropick.gui.readiness import tip_calibration_status
+    session = window.session
+    session.look_at_robot()
+    session.probe_robot()
+    session.new_run()
+    session.pick_up_tip(*_tip_rack(session))
+    session.profile.calibration.pipette_offset = PipetteOffset(
+        dx=0.0, dy=0.0, robot_session=session.run_state.run_id,
+        tip_pickup=session.tip.pickup)
+    assert tip_calibration_status(session)[0]
+    advanced = _advanced(window)
+    assert advanced.home_button.isEnabled()
+    session._api.calls.clear()
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: (
+        asked.append(a[2]) or QMessageBox.StandardButton.Cancel))
+    advanced.home_button.click()
+    assert "tip calibration" in asked[0]
+    assert session._api.calls == []                # Cancel: nothing
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: QMessageBox.StandardButton.Yes)
+    advanced.home_button.click()
+    _until(app, lambda: not session.robot_lease.busy)
+    assert [c[0] for c in session._api.calls] == ["home_robot"]
+    assert advanced.state.text() == "Homed."
+    done, detail, _ = tip_calibration_status(session)
+    assert not done and detail == "Homed since it was measured."
+    assert tasks.step_state(session, "auto", "tip").done is False
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        advanced.refresh()
+        assert not advanced.home_button.isEnabled()
+        assert "picking run" in advanced.home_button.toolTip()
+    finally:
+        lease.release()
+
+
+def _tip_rack(session):
+    from micropick.config.labware import resolve_definition
+    session.load_labware(resolve_definition("opentrons_96_tiprack_300ul"), 10)
+    return 10, "A1"
+
+
 def test_connect_goes_to_the_saved_address_or_the_command_lines(
         app, tmp_path, monkeypatch):
     from opentrons_api import ot2_api

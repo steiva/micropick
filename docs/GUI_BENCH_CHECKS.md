@@ -1092,8 +1092,10 @@ robot on.
 
 - [ ] **Esc still stops, Park parks, Light switches the lights.**
   Esc during a jog stops it; a second Esc within 10 s holds the robot.
-  STOP shows in the top bar during a picking run only. Park asks, then
-  homes all axes. Light follows the rail lights.
+  STOP shows in the top bar during a picking run only. Park moves the
+  head to the back right without homing; the Tip step stays done. Settings
+  › Advanced › Home asks, homes, and the Tip step is not done after it.
+  Light follows the rail lights.
 
 - [ ] **The log is under Settings.**
   ⚙ Settings, Log at the bottom left: Home › Settings › Log.

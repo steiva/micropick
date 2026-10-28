@@ -166,7 +166,7 @@ def _input_field(widget) -> QWidget | None:
 from ..workers import Worker
 
 __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "HOME_TITLE",
-           "HOME_DETAIL", "home_robot", "view_move", "check_view_axes"]
+           "HOME_DETAIL", "view_move", "check_view_axes"]
 
 log = logging.getLogger(__name__)
 
@@ -184,17 +184,11 @@ def setup_name_refusal(name: str) -> str | None:
 
 PANEL_WIDTH = 400
 
-# Home, asked the same way from the panel's Machine card and from the status
-# bar's button.
-HOME_TITLE = "Home robot position?"
-HOME_DETAIL = ("Home all axes. The undo history is cleared.")
-
-
-def home_robot(robot) -> str:
-    """Home all axes. Blocking: run it on a worker or through `run_job`."""
-    robot.home_robot(verbose=False)
-    log.info("homed")
-    return "homed"
+# Home, asked the same way from the panel's Machine card and from Settings,
+# Advanced (`Session.home`).
+HOME_TITLE = "Home the robot?"
+HOME_DETAIL = ("All axes go home. The tip calibration has to be done "
+               "again.")
 
 # The pose at the head of `JogController.status()`, "(x, y, z) ...", and
 # its "x OUT by 0.30" for each axis out of the envelope.
@@ -536,12 +530,12 @@ class JogPanel(QWidget):
     def _home(self) -> None:
         if not self._confirm(HOME_TITLE, HOME_DETAIL):
             return
-        robot, controller = self.session.robot, self.controller
+        session, controller = self.session, self.controller
 
         def job():
             # None, not the HTTP response: _job_done reads the first item as
             # a MoveResult, and a home has no clamp or refusal to report.
-            home_robot(robot)
+            session.home()
             return None, controller.status()
 
         self._run(Worker(job))

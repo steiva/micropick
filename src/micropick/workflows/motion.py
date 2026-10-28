@@ -63,12 +63,17 @@ from ..core.deck import SLOT_HEIGHT, SLOT_WIDTH, slot_center
 from ..hardware.protocols import Robot, move_to, require_ok, xyz
 from .jog import AXES, Limits
 
-__all__ = ["Motion", "NoRobot", "WELL_LEVELS", "TRAVEL_BELOW_TOP_MM",
-           "Z_NOZZLE_TOP_MM", "JOG_BELOW_TOP_MM", "UNKNOWN_TIP_LENGTH_MM",
-           "MODULE_MARGIN_MM", "envelope_for", "refusal"]
+__all__ = ["Motion", "NoRobot", "WELL_LEVELS", "PARK_XY",
+           "TRAVEL_BELOW_TOP_MM", "Z_NOZZLE_TOP_MM", "JOG_BELOW_TOP_MM",
+           "UNKNOWN_TIP_LENGTH_MM", "MODULE_MARGIN_MM", "envelope_for",
+           "refusal"]
 
 # The robot's names for where in a well an offset is measured from.
 WELL_LEVELS = ("top", "center", "bottom")
+
+# Where Park leaves the head: the back right corner of the jog envelope,
+# out of the way of the deck. Not a home: a home loses the tip calibration.
+PARK_XY = (380.0, 350.0)
 
 # The travel height, under the measured top: see "The tip travels high".
 TRAVEL_BELOW_TOP_MM = 1.0
@@ -254,6 +259,10 @@ class Motion:
         if log is not None:
             log(f"camera to ({xy[0]:.2f}, {xy[1]:.2f})")
         _straight(robot, xy, _travel(top))
+
+    def park(self, *, log=None) -> None:
+        """The head out of the way, to `PARK_XY` at the travel height."""
+        self.camera_to(PARK_XY, log=log)
 
     def tip_to(self, xy, z: float, *, log=None) -> None:
         """The tip up, across to `xy`, then down to `z`, or to the travel

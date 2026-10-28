@@ -72,9 +72,8 @@ the TopBar's breadcrumb is the title.
 
 There are no tabs, no status bar, no floating next step and no Profile
 page (removed in redesign phase 2; do not bring them back). The window is
-`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park - what
-Home robot position was - STOP and the StatusPill while a run has the
-robot, Settings) over
+`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park, STOP
+and the StatusPill while a run has the robot, Settings) over
 one stack: Home (`pages.home`: the robot, the Robot setup, three task
 tiles) and the existing pages, reused as the content of a **task**'s
 **steps** (`gui.tasks`; `shell.STEP_PAGES` maps step to page). While a
@@ -174,8 +173,9 @@ chosen on screen. Settings is a sheet (`pages.settings.SettingsSheet`)
 over whatever is shown, the breadcrumb gaining "Settings": General (Save,
 Revert; closing it discards what was not saved), Advanced and the Log
 (over the lock: only Advanced is the robot's). Advanced's
-Start new robot session and Disconnect robot session claim the robot's
-lease; Disconnect lets the session go (`Session.release_run`) and the
+Start new robot session, Home and Disconnect robot session claim the
+robot's lease; Home (`Session.home`) asks first, since the tip calibration
+is then to do again (`Session.homed_at`: the Tip step not done); Disconnect lets the session go (`Session.release_run`) and the
 monitor leaves it alone until Continue robot session (Home or Advanced)
 or a new session.
 
@@ -302,8 +302,10 @@ robot refuses. Never an overlap computed here: the robot's differs from
 the installed pipette definition's. A jog panel reads the pose again when
 the tip changes and when it is shown.
 
-Park in the top bar (all axes home, the head to the back right) is
-reachable from every screen: it is refused while the robot's lease is
+Park in the top bar (the head to the back right at the travel height,
+`Motion.park`: a retract only if the tip is below it, then one move; never
+a home, which would lose the tip calibration) is reachable from every
+screen, without asking: it is refused while the robot's lease is
 held, and goes through the shown page's `JogPanel.run_job` when that page
 has one, else claims the lease for a worker of its own.
 "The robot is busy" (`MainWindow._robot_busy`) is the robot's lease being

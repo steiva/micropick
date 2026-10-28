@@ -101,14 +101,20 @@ def _dated(when, what: str) -> tuple[bool, str, bool]:
     return True, f"{what} on {day}.", False
 
 
+def _utc(when: datetime) -> datetime:
+    """`when` comparable with an aware UTC time; a naive one is local."""
+    return when.astimezone(timezone.utc)
+
+
 def tip_calibration_status(session) -> tuple[bool, str, bool]:
     """(done, detail, stale) of the tip calibration.
 
     Done only while the tip it measured is on the pipette: the offset records
     the robot session and the pick-up that put that tip on
     (`PipetteOffset.tip_pickup`). No tip, another tip, or a robot restarted
-    since - a new robot session - and it is to do again. The profile keeps
-    the numbers; the next calibration starts from them.
+    since - a new robot session - and it is to do again; so after a Home
+    (`Session.homed_at`). The profile keeps the numbers; the next
+    calibration starts from them.
     """
     profile = session.profile
     offset = (profile.calibration.pipette_offset if profile is not None
@@ -124,6 +130,10 @@ def tip_calibration_status(session) -> tuple[bool, str, bool]:
         return False, "Measured in an earlier robot session.", False
     if offset.tip_pickup is None or offset.tip_pickup != tip.pickup:
         return False, "Measured on a different tip.", False
+    homed = session.homed_at
+    if homed is not None and (offset.measured_at is None
+                              or _utc(offset.measured_at) < homed):
+        return False, "Homed since it was measured.", False
     return _dated(offset.measured_at, "Measured on this tip")
 
 

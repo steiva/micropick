@@ -23,8 +23,9 @@ optional, and only moves on: Deck is done by what is on the deck, Dish
 bottom by its own Save dish bottom and Use it.
 
 The window as before: Esc and STOP stop (two presses hold), closing waits
-for the robot to be free, Park is what Home robot position was, Light
-switches the rail lights.
+for the robot to be free, Park moves the head to the back right at the
+travel height (no home: Home is in Settings, Advanced), Light switches the
+rail lights.
 
 A run is seen from every screen: while one has the robot, the top bar's
 pill says what it is doing (`RUNS`; "Paused" and "Waiting for you" from
@@ -55,7 +56,7 @@ from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
 from .widgets.footer import Footer
-from .widgets.jog_panel import HOME_DETAIL, HOME_TITLE, JogPanel, home_robot
+from .widgets.jog_panel import JogPanel
 from .widgets.overlays import DimCover, LockOverlay
 from .widgets.step_bar import StepBar
 from .widgets.toast import Toast
@@ -754,37 +755,28 @@ class MainWindow(QMainWindow):
         self.top.set_light(self.session.lights)
 
     def _park(self) -> None:
-        """Park: all axes home, the head to the back right. Through the
-        shown page's jog panel when it has one, so the keys and the panel's
-        buttons are held while it moves, as for every other command on such
-        a page; on its own worker otherwise."""
-        robot = self.session.robot
-        if robot is None:
+        """Park: the head to the back right at the travel height, through
+        `Motion` - a retract first only if the tip is below it. No home: a
+        home loses the tip calibration (Settings, Advanced has Home).
+        Through the shown page's jog panel when it has one, so the keys and
+        the panel's buttons are held while it moves, as for every other
+        command on such a page; on its own worker otherwise."""
+        motion = self.session.motion
+        if self.session.robot is None:
             return
         if self._robot_busy():
-            self.say("Robot busy.")
-            return
-        answer = QMessageBox.question(
-            self, HOME_TITLE, HOME_DETAIL,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        # `==`, not `is`: see JogPanel._confirm.
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        if self._robot_busy():                       # changed while asking
             self.say("Robot busy.")
             return
         panels = [panel for panel in
                   self.current_page().findChildren(JogPanel)
                   if panel.isVisible()]
-        if panels and panels[0].run_job(lambda _log: home_robot(robot)):
+        if panels and panels[0].run_job(lambda log: motion.park(log=log)):
             return
         lease = self.session.robot_lease.claim("Park")
         if lease is None:
             self.say(self.session.robot_lease.refusal)
             return
-        worker = Worker(home_robot, robot, what="parking the robot",
-                        lease=lease)
+        worker = Worker(motion.park, what="parking the robot", lease=lease)
         self._park_worker = worker
         worker.finished.connect(self._park_done)
         worker.failed.connect(self._park_failed)

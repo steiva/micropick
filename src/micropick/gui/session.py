@@ -449,6 +449,9 @@ class Session(QObject):
         # What the operator confirmed in this robot session (`confirm`):
         # key -> the robot session it was confirmed in.
         self._confirmed: dict[str, str | None] = {}
+        # When the robot was last homed from here (`home`), UTC: a tip
+        # calibration measured before it is to do again.
+        self.homed_at: datetime | None = None
         # This computer's settings (config.app_settings): the robot's address
         # and where outputs go. Applied at once, so every writer asks paths
         # for the right folder from the first file.
@@ -995,6 +998,20 @@ class Session(QObject):
                           self._api.PIPETTE, state.run_id)
         self._ready("reused")
         return self.robot
+
+    def home(self) -> None:
+        """Home all axes. Blocking; **moves the gantry**. The tip stays on,
+        but the tip calibration is to do again (`homed_at`,
+        `readiness.tip_calibration_status`): the home moves the pipette and
+        the measured offset no longer holds."""
+        robot = self.robot
+        if robot is None:
+            raise RuntimeError("no robot connected")
+        log.info("homing")
+        robot.home_robot(verbose=False)
+        self.homed_at = datetime.now(timezone.utc)
+        log.info("homed; the tip calibration is to do again")
+        self.confirmations_changed.emit()
 
     def new_run(self, name: str | None = None):
         """A fresh run, and then home. Blocking; **moves the gantry**.

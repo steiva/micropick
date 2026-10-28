@@ -228,10 +228,8 @@ def test_park_is_refused_during_a_run(app, window, picking_run, monkeypatch):
     assert "busy" in window.toast.text()
 
 
-def test_parking_shows_until_the_move_ends(app, window, monkeypatch):
+def test_parking_shows_until_the_move_ends(app, window):
     _connect(app, window)
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda *a, **k: QMessageBox.StandardButton.Yes)
     window.open_home()                       # no jog panel: its own worker
     window._park()
     assert window.top.park.text() == "Parking…"

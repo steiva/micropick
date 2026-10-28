@@ -1,6 +1,6 @@
-"""Park from the top bar (what Home robot position was): asks, refuses
-while busy, and homes through the shown page's jog panel or on its own.
-Stop, its hold, and closing the window."""
+"""Park from the top bar: refuses while busy, and moves the head to the
+back right at the travel height - no home - through the shown page's jog
+panel or on its own. Stop, its hold, and closing the window."""
 
 import os
 import time
@@ -58,32 +58,40 @@ def test_off_until_connected(app, window):
 
 
 @pytest.mark.parametrize("page", ["home", "manual"])
-def test_asks_then_homes_from_any_page(app, window, monkeypatch, page):
+def test_parks_without_homing_from_any_page(app, window, page):
+    from micropick.hardware.protocols import xyz
+    from micropick.workflows.motion import PARK_XY
     _connect(app, window)
     window.show()
     window.show_page(page)
-    before = len(_homes(window))
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: NO)
+    robot = window.session.robot
+    x, y, _ = xyz(robot)
+    robot.move_to_coordinates((x, y, 20.0))       # the tip down low
+    homes = len(_homes(window))
+    retracts = robot.calls.count(("retract_axis", "leftZ"))
     window.top.park.click()
     _settle(app, window)
-    assert len(_homes(window)) == before
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: YES)
+    assert len(_homes(window)) == homes
+    assert robot.calls.count(("retract_axis", "leftZ")) == retracts + 1
+    px, py, pz = xyz(robot)
+    assert (px, py) == pytest.approx(PARK_XY, abs=0.05)
+    assert pz == pytest.approx(window.session.motion.travel_z, abs=0.05)
+    # At the travel height already: no retract, one move.
     window.top.park.click()
     _settle(app, window)
-    assert len(_homes(window)) == before + 1
+    assert robot.calls.count(("retract_axis", "leftZ")) == retracts + 1
     window.hide()
 
 
 def test_refused_while_a_jog_panel_is_busy(app, window, monkeypatch):
     _connect(app, window)
-    asked = []
-    monkeypatch.setattr(QMessageBox, "question",
-                        lambda *a, **k: asked.append(1) or YES)
+    robot = window.session.robot
+    before = list(robot.calls)
     # What a jog step holds while it moves, on whichever page.
     lease = window.session.robot_lease.claim("moving the robot")
     try:
         window._park()
-        assert asked == []
+        assert robot.calls == before
         assert "busy" in window.toast.text()
         assert not window.top.park.isEnabled()
     finally:
