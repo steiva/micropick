@@ -367,6 +367,9 @@ class Session(QObject):
     # A page asks for a step of another task, (task, step): Picking's
     # Finish by hand opens Manual pick's Work.
     task_requested = Signal(str, str)
+    # Picking done's Choose plan: the plan a run delivered into, for Plan to
+    # show again, not in use, its counts fresh at Use this plan.
+    plan_chosen = Signal(object)
     # A memo point was added, changed or removed; see `memo_points`.
     memo_points_changed = Signal()
     # What now holds the robot (`robot_lease`), in a few words, or None.

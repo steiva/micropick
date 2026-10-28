@@ -263,17 +263,70 @@ def test_and_list_names_the_wells():
         == "A1, A2, A3 and 7 more"
 
 
+def _filled(window, *wells):
+    """What a run that put one cuboid in each of `wells` recorded."""
+    for well in wells:
+        window.session.routine.record(delivered=1, target=well)
+
+
+def test_a_filled_plan_ends_on_picking_done(app, window, monkeypatch):
+    """A large card over the page (#54): what went where, Choose plan."""
+    _ready(window, monkeypatch)
+    page = window.picking_page
+    assert page.done_card.isHidden()               # no run yet
+    _start(app, window)
+    _filled(window, "A1", "A2")
+    ScriptedRun.script.put((RobotState.COMPLETED, "The plan is filled."))
+    assert _until(app, lambda: not page._running())
+    assert page.done_card.isVisibleTo(page)
+    assert page.done_title.text() == "Picking done"
+    assert page.done_count.text() == "2 cuboids in 2 wells"
+    assert page.choose_button.isVisibleTo(page)
+    assert not page.finish_button.isVisibleTo(page)
+    # The plan is done: it is not run again over a full plate.
+    assert not page.start_button.isVisibleTo(page)
+    page.close_button.click()
+    assert page.done_card.isHidden()
+    assert not page.start_button.isVisibleTo(page)
+
+
+def test_choose_plan_opens_plan_with_the_same_plan_not_in_use(
+        app, window, monkeypatch):
+    _ready(window, monkeypatch)
+    page = window.picking_page
+    _start(app, window)
+    _filled(window, "A1", "A2")
+    ScriptedRun.script.put((RobotState.COMPLETED, "The plan is filled."))
+    assert _until(app, lambda: not page._running())
+    page.choose_button.click()
+    app.processEvents()
+    assert (window.task, window.step) == ("auto", "plan")
+    assert window.session.routine is None          # not in use
+    plan_page = window.current_page()
+    assert plan_page.plan() == {"A1": 1, "A2": 1}
+    assert plan_page.destination.slot == 5
+    assert plan_page.use_button.text() == "Use this plan"
+    assert plan_page.use_button.isEnabled()
+    plan_page.use_button.click()
+    routine = window.session.routine
+    assert routine.plan == {"A1": 1, "A2": 1}
+    assert routine.remaining("A1") == 1 and not routine.is_done()
+
+
 def test_wells_left_empty_are_finished_by_hand_on_manual_work(
         app, window, monkeypatch):
     _ready(window, monkeypatch)
     page = window.picking_page
-    assert page.unfilled.isHidden()                # no run yet
     _start(app, window)
     page.stop_button.click()
     assert _until(app, lambda: not page._running())
-    assert not page.unfilled.isHidden()
+    assert page.done_card.isVisibleTo(page)
+    assert page.done_title.text() == "Picking stopped"
+    assert page.done_count.text() == "0 cuboids in 0 wells"
     assert page.unfilled_title.text() == "2 wells were not filled"
     assert page.unfilled_wells.text() == "A1 and A2."
+    assert not page.choose_button.isVisibleTo(page)
+    assert page.start_button.isVisibleTo(page)           # the plan is not done
 
     routine = window.session.routine
     page.finish_button.click()

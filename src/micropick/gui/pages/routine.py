@@ -38,6 +38,10 @@ which lets a run carry on after a restart - is written under
 `Outputs/routines` by itself and never shown here: an unfinished run is
 for Picking to offer.
 
+Picking done's **Choose plan** (`Session.plan_chosen`) puts the plan the
+run filled back on screen, not in use: Use this plan makes it again with
+nothing filled.
+
 Ctrl+Z / Ctrl+Y undo and redo a change of the plan, Ctrl+A chooses every
 well.
 """
@@ -173,6 +177,7 @@ class RoutinePage(QWidget):
         session.robot_state_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.routine_changed.connect(lambda _r: self._refresh())
+        session.plan_chosen.connect(self._plan_chosen)
         # Edit plan is gray while a picking run has the robot.
         session.robot_busy_changed.connect(lambda _h: self._refresh())
         self._install_shortcuts()
@@ -451,6 +456,16 @@ class RoutinePage(QWidget):
         """The plan in use, as it was used."""
         self._set_destination(routine.destination)
         self._show_plan(routine.plan, routine.strategy)
+
+    def _plan_chosen(self, routine: Routine) -> None:
+        """Choose plan: `routine`'s plate and plan on screen again, for Use
+        this plan; the session has let it go."""
+        held = {slot: entry.load_name
+                for slot, entry, _d in self.session.plates()}
+        if held.get(str(routine.destination.slot)) \
+                == routine.destination.load_name:
+            self._show_routine(routine)
+        self._refresh()
 
     def _in_use(self) -> bool:
         """Whether the plan on screen is the one the session runs."""

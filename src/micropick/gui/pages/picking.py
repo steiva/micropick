@@ -28,6 +28,15 @@ On the right, top to bottom and with no scrolling:
    place during one **Pause** / **Resume** (one button, yellow while
    paused or waiting) and **Stop run**.
 
+At a run's end a large card over the middle of the page (#54): **Picking
+done** (or **Picking stopped**), "N cuboids in M wells", and **Choose
+plan** - Plan with the same plan, not in use, Use this plan making it
+again with nothing filled (`Session.plan_chosen`) - and **Close**. With
+wells left short, "N wells were not filled" and the wells, and **Finish
+by hand** instead of Choose plan: Manual pick's Work, the session as it is
+(plate, plan, dish bottom, tip), Dispense on those wells. While the plan
+is done Start picking is not offered: it would run over a full plate.
+
 Both cards are shown at once and neither folds (#52). The jog panel is
 last (its pad floats over the picture, folded until opened).
 
@@ -143,8 +152,8 @@ import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QMessageBox,
+                               QVBoxLayout, QWidget)
 
 from ... import paths
 from ...core.calibration.pixel_map import PixelMap
@@ -157,7 +166,7 @@ from ..detector import wanted_model
 from ..readiness import DISH_POSITION, SHAKE_POSITION, readiness_checks
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (card, compact, danger_button, heading,
+from ..theme.factory import (compact, danger_button, heading,
                              muted_label, primary_button, quiet_button,
                              scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
@@ -181,6 +190,7 @@ log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 440
 HISTOGRAM_WIDTH = 380
+DONE_WIDTH = 460
 
 # How often the display looks at what the run is showing. The session's own
 # pace is set by the robot; this is only the refresh of a picture.
@@ -297,7 +307,6 @@ class PickingPage(QWidget):
         self._stale = False
         column.addWidget(self._sizes_card(panel))
         column.addWidget(self._plate_card(panel))
-        column.addWidget(self._unfilled_card(panel))
         column.addLayout(self._run_buttons(panel))
 
         # Never shown, and off: see "Pickup clips".
@@ -316,6 +325,7 @@ class PickingPage(QWidget):
         layout.setSpacing(SPACING)
         layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
                          1)
+        self._done_card()
 
         self._view_timer = QTimer(self)
         self._view_timer.setInterval(VIEW_MS)
@@ -324,7 +334,7 @@ class PickingPage(QWidget):
         session.profile_changed.connect(self._on_profile_changed)
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.robot_busy_changed.connect(self._on_robot_busy)
-        session.routine_changed.connect(lambda _r: self._refresh())
+        session.routine_changed.connect(self._on_routine_changed)
         session.settings_changed.connect(self._on_settings_changed)
         # The window's Stop, and Esc: see `shell.MainWindow._stop`.
         session.stop_requested.connect(self._stop_run)
@@ -385,35 +395,95 @@ class PickingPage(QWidget):
         body.addLayout(legend)
         return self.plate_card
 
-    def _unfilled_card(self, parent: QWidget) -> QWidget:
-        """After a run that left wells of its plan empty: which, and Finish
-        by hand - Manual pick's Work, the session as it is (plate, plan,
-        dish bottom, tip), Dispense on those wells."""
-        self.unfilled = card(parent)
-        self.unfilled_title = heading("", 2, parent=self.unfilled)
-        self.unfilled_wells = muted_label("", self.unfilled)
-        self.unfilled_wells.setWordWrap(True)
-        self.finish_button = primary_button("Finish by hand", self.unfilled)
-        self.finish_button.clicked.connect(
-            lambda: self.session.task_requested.emit("manual", "work"))
-        layout = self.unfilled.layout()
-        layout.addWidget(self.unfilled_title)
-        layout.addWidget(self.unfilled_wells)
-        layout.addWidget(self.finish_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self.unfilled.hide()
-        return self.unfilled
+    def _done_card(self) -> QWidget:
+        """The end of a run, over the page; see the module's notes."""
+        self.done_card = QFrame(self)
+        self.done_card.setObjectName("dialog")
+        self.done_card.setFixedWidth(DONE_WIDTH)
+        layout = QVBoxLayout(self.done_card)
+        layout.setContentsMargins(32, 28, 32, 24)
+        layout.setSpacing(SPACING)
+        self.done_title = heading("", 1, parent=self.done_card)
+        self.done_count = QLabel(self.done_card)
+        self.unfilled_title = heading("", 3, parent=self.done_card)
+        self.unfilled_wells = muted_label("", self.done_card)
+        for widget in (self.done_title, self.done_count,
+                       self.unfilled_title, self.unfilled_wells):
+            layout.addWidget(widget)
+        layout.addSpacing(SPACING)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        self.close_button = secondary_button("Close", self.done_card)
+        self.close_button.clicked.connect(self._close_done)
+        self.choose_button = primary_button("Choose plan", self.done_card)
+        self.choose_button.clicked.connect(self._choose_plan)
+        self.finish_button = primary_button("Finish by hand", self.done_card)
+        self.finish_button.clicked.connect(self._finish_by_hand)
+        for button in (self.close_button, self.choose_button,
+                       self.finish_button):
+            row.addWidget(button)
+        layout.addLayout(row)
+        self.done_card.hide()
+        return self.done_card
 
-    def _show_unfilled(self) -> None:
-        routine = self.session.routine
-        wells = (unfilled_wells(routine)
-                 if routine is not None and routine is self._ended_on
-                 and not self._running() else [])
-        self.unfilled.setVisible(bool(wells))
-        if wells:
-            self.unfilled_title.setText(
-                "1 well was not filled" if len(wells) == 1
-                else f"{len(wells)} wells were not filled")
-            self.unfilled_wells.setText(f"{and_list(wells)}.")
+    def _show_done(self) -> None:
+        """The card's words, from the plan the run ended on."""
+        routine = self._ended_on
+        if routine is None:
+            self.done_card.hide()
+            return
+        self.done_title.setText("Picking done" if self._filled
+                                else "Picking stopped")
+        table = routine.progress_table()
+        delivered = (table.to_numpy() if routine.destination.is_plate
+                     else table["delivered"].to_numpy())
+        cuboids, wells = int(delivered.sum()), int((delivered > 0).sum())
+        self.done_count.setText(
+            f"{cuboids} cuboid{'' if cuboids == 1 else 's'} in "
+            f"{wells} well{'' if wells == 1 else 's'}")
+        short = unfilled_wells(routine)
+        self.unfilled_title.setText(
+            "1 well was not filled" if len(short) == 1
+            else f"{len(short)} wells were not filled")
+        self.unfilled_wells.setText(f"{and_list(short)}.")
+        for widget in (self.unfilled_title, self.unfilled_wells,
+                       self.finish_button):
+            widget.setVisible(bool(short))
+        self.choose_button.setVisible(not short)
+        self._place_done_card()
+        self.done_card.show()
+        self.done_card.raise_()
+
+    def _place_done_card(self) -> None:
+        card = self.done_card
+        card.adjustSize()
+        card.move((self.width() - card.width()) // 2,
+                  (self.height() - card.height()) // 2)
+
+    def _close_done(self) -> None:
+        self.done_card.hide()
+
+    def _choose_plan(self) -> None:
+        """Plan, with the plan just run on screen and not in use."""
+        routine = self._ended_on
+        self.done_card.hide()
+        if routine is None or self._running():
+            return
+        self.session.set_routine(None)
+        self.session.plan_chosen.emit(routine)
+        self.session.task_requested.emit("auto", "plan")
+
+    def _finish_by_hand(self) -> None:
+        self.done_card.hide()
+        self.session.task_requested.emit("manual", "work")
+
+    def _on_routine_changed(self, routine) -> None:
+        """Another plan: what the last run ended as is not about it."""
+        if routine is not self._ended_on:
+            self._filled = False
+            self._run_message = ""
+            self.done_card.hide()
+        self._refresh()
 
     def _run_buttons(self, parent: QWidget) -> QHBoxLayout:
         """Start picking, or Pause / Resume and Stop run, centered."""
@@ -844,6 +914,7 @@ class PickingPage(QWidget):
                 session.refresh_lights()
             return picking.state.value
 
+        self.done_card.hide()
         self._run_message = ""
         self._status = "Starting."
         self._stopping = False
@@ -926,12 +997,14 @@ class PickingPage(QWidget):
             self._filled = True
             self._run_message = "The plan is filled."
         self._back_to_live()
+        self._show_done()
 
     def _run_failed(self, reason: str) -> None:
         self._end_run()
         self._run_message = reason
         log.error("picking run failed: %s%s", reason, self._clips_said())
         self._back_to_live()
+        self._show_done()
 
     def _end_run(self) -> None:
         self._ended_on = self.session.routine
@@ -1230,6 +1303,10 @@ class PickingPage(QWidget):
         self._ensure_detector()
         self._show_camera()
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._place_done_card()
+
     def hideEvent(self, event) -> None:
         """A run keeps running; only the picture stops being fetched. The
         session is the robot's business and a page being looked at is not.
@@ -1329,7 +1406,6 @@ class PickingPage(QWidget):
                 f"{paths.clips_dir(create=False)}")
 
         self._show_plate()
-        self._show_unfilled()
         problems = self._run_problems()
         self.start_button.setEnabled(movable and not busy and not running
                                      and not problems and self._need is None)
@@ -1341,7 +1417,10 @@ class PickingPage(QWidget):
             self.pause_button.style().polish(self.pause_button)
         self.pause_button.setEnabled(running and not self._centering)
         self.stop_button.setEnabled(running)
-        self.start_button.setVisible(not running)
+        routine = self.session.routine
+        done = routine is not None and getattr(routine, "is_done",
+                                                lambda: False)()
+        self.start_button.setVisible(not running and not done)
         self.pause_button.setVisible(running)
         self.stop_button.setVisible(running)
         # The shell's footer and pill read the run from here.

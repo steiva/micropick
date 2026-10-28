@@ -504,10 +504,15 @@ again." after a change - All measures: `widgets.cuboid_stats`) and
 Plate · slot N (mini `PlateGrid`: the planned wells, Filled / Planned
 once something is filled, the current well ringed during a run) - then
 the jog panel (its pad over the picture, folded). No Save pickup clips
-switch: its code stays, never shown and off. After a run that left wells of
-the plan short, "N wells were not filled" with Finish by hand
-(`Session.task_requested`: Manual pick's Work, Dispense on In a well and
-the first of them). The positions are Robot setup's.
+switch: its code stays, never shown and off. At a run's end a large card over
+the middle of the page: Picking done (Picking stopped after a stop or a
+failure), "N cuboids in M wells", Choose plan (primary: Plan with the
+same plan on screen, not in use, `Session.plan_chosen`, so Use this plan
+makes it again with nothing filled) and Close; with wells of the plan
+left short, "N wells were not filled" and Finish by hand instead of
+Choose plan (`Session.task_requested`: Manual pick's Work, Dispense on In
+a well and the first of them). While the plan is done Start picking is
+not offered. The positions are Robot setup's.
 The footer is the run's status: the page's `run_status` and
 `footer_buttons`, read by the shell for any step page that has them -
 READY / PICKING / PAUSED / WAITING FOR YOU / DONE / NOT READY and one
