@@ -1,6 +1,7 @@
 """The Plan step (REDESIGN §6.3): the plate from the dropdown, the wells
-chosen on the grid, cuboids per well and fill order, Use this plan, and
-templates - Save as for a new plan, Save changes for an edited one."""
+planned on the grid, a count per selected well and fill order, Use this
+plan and Edit plan, and templates - put on the plate chosen on the mini
+deck, Save as for a new plan, Save changes for an edited one."""
 
 import os
 
@@ -63,9 +64,9 @@ def test_the_plate_on_the_deck_is_chosen_and_nothing_is_planned(page):
     assert not page.save_as_button.isEnabled()
 
 
-def test_use_this_plan_makes_the_plan_ready(page, session):
+def test_use_this_plan_puts_it_in_use_and_locks_the_grid(page, session):
     page.plate.set_selection({"A1", "A2", "B1"})
-    page.per_well.stepUp()
+    _type(page.cuboids, "2")
     page.order_tiles["by_row"].click()
     assert page.summary.text() == "3 wells × 2 cuboids"
     assert not _plan_done(session)
@@ -76,14 +77,41 @@ def test_use_this_plan_makes_the_plan_ready(page, session):
     assert routine.strategy == "by_row"
     assert routine.destination.slot == 5
     assert _plan_done(session)
-    assert not page.ready.isHidden()
-    assert not page.use_button.isEnabled()
-
-    page.plate.set_selection({"A1"})                  # changed after use
+    assert page.use_button.text() == "Edit plan"
     assert page.use_button.isEnabled()
-    assert page.ready.isHidden()
-    assert session.routine is None                     # Plan not done
+    for widget in (page.plate, page.tools, page.cuboids, page.dropdown,
+                   page.order_tiles["by_column"], page.template_tile):
+        assert not widget.isEnabled()
+
+
+def test_edit_plan_unlocks_it_and_plan_is_not_done_until_used_again(page,
+                                                                    session):
+    page.plate.set_selection({"A1", "A2"})
+    page.use_button.click()
+    page.use_button.click()                            # Edit plan
+    assert session.routine is None
     assert not _plan_done(session)
+    assert page.use_button.text() == "Use this plan"
+    assert page.plate.isEnabled()
+    assert page.plan() == {"A1": 1, "A2": 1}           # the plan stays
+
+    page.plate.choose(["A3"])
+    page.use_button.click()
+    assert session.routine.plan == {"A1": 1, "A2": 1, "A3": 1}
+    assert _plan_done(session)
+
+
+def test_edit_plan_is_refused_during_a_picking_run(page, session):
+    page.plate.set_selection({"A1"})
+    page.use_button.click()
+    routine = session.routine
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        assert not page.use_button.isEnabled()
+        page._use_or_edit()
+        assert session.routine is routine
+    finally:
+        lease.release()
 
 
 def test_a_change_during_a_picking_run_keeps_the_plan_in_use(page, session):
@@ -137,9 +165,9 @@ def test_save_as_template_names_it_inline_then_save_changes(page, session):
     assert page.save_as_button.isHidden()             # the template is open
     assert page.save_changes_button.isHidden()        # nothing changed yet
 
-    page.plate.set_selection({"A1", "A2", "A3"})
+    page.plate.choose(["A3"])
     assert not page.save_changes_button.isHidden()
-    assert page.save_changes_button.text() == 'Save changes to "Row A"'
+    assert page.save_changes_button.text() == "Save changes to template"
     page.save_changes_button.click()
     listed = session.plate_templates()
     assert len(listed) == 1
@@ -160,30 +188,72 @@ def test_a_name_in_use_is_refused_inline(page, session):
     assert len(session.plate_templates()) == 1
 
 
-def test_a_template_from_the_list_is_put_on_the_plate(page, session):
+def _open_first_template(page):
+    page.template_tile.click()
+    page._template_clicked(page.template_list.item(0))
+
+
+def test_every_template_is_listed(page, session):
+    for n in range(5):
+        session.save_plate_template(
+            PlanPreset.from_plan(Destination.from_labware(PLATE, 5),
+                                 {"A1": 1}), f"Plan {n}")
+    page.template_tile.click()
+    assert page.template_list.count() == 5
+    assert (page.template_list.maximumHeight()
+            >= 5 * page.template_list.sizeHintForRow(0))
+
+
+def test_a_template_goes_on_the_plate_chosen_on_the_mini_deck(page, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    session.load_labware(resolve_definition(OTHER), 3)
     session.save_plate_template(
         PlanPreset.from_plan(Destination.from_labware(PLATE, 5),
                              {"A1": 2, "B1": 2, "C1": 3}, strategy="by_row"),
         "Mixed")
-    page.template_tile.click()
-    assert page.template_list.count() == 1
+    _open_first_template(page)
     assert "3 wells · saved" in page.template_list.item(0).text()
-    page._template_clicked(page.template_list.item(0))
+    assert not page.which_plate.isHidden()
+    assert page.plan() == {}                           # nothing loaded yet
+    chooser = page.slot_chooser
+    assert [s for s in chooser.slots if chooser.button(s).isEnabled()] \
+        == [2, 5]
+
+    chooser.button(2).click()
+    assert page.destination.slot == 2
     assert page.plan() == {"A1": 2, "B1": 2, "C1": 3}
-    assert page.per_well.value() == 2
     assert page.order_tiles["by_row"].isChecked()
     assert page.summary.text() == "3 wells, 7 cuboids"
-    page.per_well.stepUp()                          # one number for all
-    assert page.plan() == {"A1": 3, "B1": 3, "C1": 3}
-    assert page.save_changes_button.text() == 'Save changes to "Mixed"'
+    assert page.which_plate.isHidden()
 
 
-def test_a_template_for_a_plate_not_on_the_deck_says_so(page, tmp_path):
+def test_one_plate_of_the_type_is_still_chosen_on_the_mini_deck(page,
+                                                                session):
+    session.save_plate_template(
+        PlanPreset.from_plan(Destination.from_labware(PLATE, 5), {"A1": 1}),
+        "One")
+    _open_first_template(page)
+    assert page.plan() == {}
+    page.slot_chooser.button(5).click()
+    assert page.plan() == {"A1": 1}
+
+
+def test_a_template_for_a_plate_not_on_the_deck_says_put_one_there(
+        page, session, tmp_path):
     path = tmp_path / "other.json"
     PlanPreset(OTHER, {"A1": 1}, name="Other").save(path)
+    page.template_tile.click()
     page.open_template(path)
-    assert "No plate on the deck" in page.message.text()
+    name = resolve_definition(OTHER).display_name
+    assert page.missing_plate.isVisibleTo(page)
+    assert page.missing_plate.label.text() == f"Put a {name} on the deck."
+    assert page.which_plate.isHidden()
     assert page.template is None
+    assert page.plan() == {}
+    asked = []
+    session.page_requested.connect(asked.append)
+    page.go_to_deck.click()
+    assert asked == ["labware"]
 
 
 def test_the_plan_in_use_is_shown_again_on_a_new_page(session):
@@ -193,7 +263,7 @@ def test_the_plan_in_use_is_shown_again_on_a_new_page(session):
     session.set_routine(routine)
     page = RoutinePage(session)
     assert page.plan() == {"D4": 1}
-    assert not page.ready.isHidden()
+    assert page.use_button.text() == "Edit plan"
     page.deleteLater()
 
 
@@ -216,11 +286,56 @@ def test_new_plan_closes_the_template_and_clears_its_wells(page, session):
     session.save_plate_template(
         PlanPreset.from_plan(Destination.from_labware(PLATE, 5), {"A1": 1}),
         "One")
-    page.template_tile.click()
-    page._template_clicked(page.template_list.item(0))
+    _open_first_template(page)
+    page.slot_chooser.button(5).click()
     page.new_tile.click()
     assert page.template is None
     assert page.plan() == {}
     assert not page.save_as_button.isHidden()
     page.tools.undo.click()                           # the wells come back
+    assert page.plan() == {"A1": 1}
+
+
+def _type(field, text):
+    field.selectAll()
+    QTest.keyClicks(field, text)
+
+
+def test_two_wells_are_planned_with_their_own_counts(page):
+    page.plate.choose(["A1"])
+    _type(page.cuboids, "5")
+    page.plate.choose(["A2"])
+    _type(page.cuboids, "3")
+    assert page.plan() == {"A1": 5, "A2": 3}
+
+
+def test_a_mixed_selection_shows_mixed_and_a_number_sets_them_all(page):
+    page.plate.choose(["A1"])
+    _type(page.cuboids, "5")
+    page.plate.choose(["A2"])
+    _type(page.cuboids, "3")
+    page.plate.choose(["A1"], add=True)
+    assert page.cuboids.text() == ""
+    assert page.cuboids.placeholderText() == "mixed"
+    _type(page.cuboids, "4")
+    assert page.plan() == {"A1": 4, "A2": 4}
+    assert page.cuboids.placeholderText() == ""
+
+
+def test_a_click_on_a_planned_well_selects_it_and_a_second_takes_it_out(page):
+    page.plate.choose(["A1"])
+    _type(page.cuboids, "5")
+    page.plate.choose(["A2"])
+    page.plate.choose(["A1"])                         # selects it
+    assert page.plan() == {"A1": 5, "A2": 5}
+    assert page.cuboids.text() == "5"
+    page.plate.choose(["A1"])                         # selected: out
+    assert page.plan() == {"A2": 5}
+
+
+def test_typing_a_count_is_one_undo_step(page):
+    page.plate.choose(["A1"])
+    _type(page.cuboids, "12")
+    assert page.plan() == {"A1": 12}
+    page.tools.undo.click()
     assert page.plan() == {"A1": 1}

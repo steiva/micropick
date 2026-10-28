@@ -379,13 +379,20 @@ screen means a picking or liquid run. The pipette
 is set up under the hood and never mentioned ("pipette loaded" reads as "a
 tip is on"). A `Routine` is a **plate plan**, "Plan" on screen (Auto
 pick's Plan step, `pages.routine`: the plate from the MiniDeckDropdown,
-the wells on the PlateGrid, one Cuboids per well, Fill order as two
-tiles; done while the plan made by Use this plan is the session's). A
-**template** is a named plan file (`config.templates`):
+the wells planned on the PlateGrid (`planning=True`: a click plans a
+well and selects it, a click on a planned one selects it, on a selected
+one takes it out), the Cuboids field setting only the selected wells
+("mixed" when they differ, every planned well drawn with its count),
+Fill order as two tiles; done while the plan made by Use this plan is
+the session's, which locks the page and turns the button into Edit plan:
+that lets the session's plan go, so Plan is not done until Use this plan
+again). A **template** is a named plan file (`config.templates`):
 `Outputs/templates/plate-plans/` (the old `plate_plan_presets` moved there
-when first listed); Save as template makes a new file under a name not
-in use, Save changes to "<name>" writes over the open one, no "are you
-sure". The run's own file (`Outputs/routines`) is never shown. Stored
+when first listed), every one listed; a click asks on the mini deck slot
+chooser which plate of its type it goes on, even when only one fits, and
+with none says "Put a <type> on the deck." with Go to Deck. Save as
+template makes a new file under a name not in use, Save changes to
+template writes over the open one, no "are you sure". The run's own file (`Outputs/routines`) is never shown. Stored
 poses are set with **Save position** (the shake position's too); the pipette
 calibration's way back is **Go to saved position**, the Picking page's
 **Camera to dish center**.

@@ -20,6 +20,16 @@ What a well looks like is the page's to say, by name: `set_fills` (a
 color per well), `set_counts` (a number inside, shown only when the page
 gives one - §12.11: only when more than one cuboid goes per well) and
 `set_current` (the white ring). The selection is drawn over those.
+
+`planning=True` is the Plan step's grid (#43): a **plan** - the wells
+planned, each with its count, drawn in every planned well, "1" included -
+and a **selection** apart from it, the wells a count is set for
+(`set_count`). A click or a box chooses: wells not planned yet are
+planned with `new_count`, and the selection becomes the wells chosen
+(Ctrl or Shift: added to it), so a click on a planned well selects it to
+change its count. Chosen again - all of them selected already - they
+leave the plan. Undo and Redo take back the plan and the selection
+together; typing a count over and over is one step.
 """
 
 from __future__ import annotations
@@ -45,23 +55,32 @@ class PlateGrid(QWidget):
     well_clicked = Signal(str)            # mini: the well clicked
     hovered = Signal(object)              # a name, or None off the wells
 
-    def __init__(self, *, mini: bool = False, parent: QWidget | None = None):
+    def __init__(self, *, mini: bool = False, planning: bool = False,
+                 parent: QWidget | None = None):
         super().__init__(parent)
         self.mini = mini
+        self.planning = planning
+        # The count a well newly planned takes.
+        self.new_count = 1
         self.setMouseTracking(True)
         self._columns: list[list[str]] = []
         self._row_labels: list[str] = []
         self._column_labels: list[str] = []
         self._at: dict[str, tuple[int, int]] = {}
         self._selected: set[str] = set()
+        self._plan: dict[str, int] = {}
         self._fills: dict[str, QColor] = {}
         self._counts: dict[str, int] = {}
         self._current: str | None = None
         self._hover: str | None = None
         self._press: QPointF | None = None
         self._band: QRectF | None = None
-        self._undo: list[set[str]] = []
-        self._redo: list[set[str]] = []
+        # (plan, selection) as they were; the plan is {} unless planning.
+        self._undo: list[tuple[dict[str, int], set[str]]] = []
+        self._redo: list[tuple[dict[str, int], set[str]]] = []
+        # The selection a count was last typed for: the next count typed
+        # for it is the same undo step.
+        self._counting: set[str] | None = None
         self.selection_color = QColor(COLORS["plate"])
 
     # -- the plate -------------------------------------------------------
@@ -79,7 +98,9 @@ class PlateGrid(QWidget):
         else:
             self._row_labels, self._column_labels = [], []
         self._selected = set()
+        self._plan = {}
         self._undo, self._redo = [], []
+        self._counting = None
         self._current = None
         self.history_changed.emit()
         self.update()
@@ -108,17 +129,60 @@ class PlateGrid(QWidget):
     def selection(self) -> set[str]:
         return set(self._selected)
 
+    @property
+    def plan(self) -> dict[str, int]:
+        """Planning: the wells planned, each with its count."""
+        return dict(self._plan)
+
     def set_selection(self, names, *, record: bool = True) -> None:
+        """The wells chosen. Planning: they are chosen as a box chooses
+        them, without taking any out."""
         wanted = {n for n in (names or ()) if n in self._at}
-        if wanted == self._selected:
+        if self.planning:
+            plan = dict(self._plan)
+            for name in wanted:
+                plan.setdefault(name, self.new_count)
+            self._change(plan, wanted, record=record)
+        else:
+            self._change({}, wanted, record=record)
+
+    def set_plan(self, plan: dict, *, record: bool = True) -> None:
+        """Planning: `plan` on the grid, nothing selected."""
+        self._change({n: int(c) for n, c in (plan or {}).items()
+                      if n in self._at}, set(), record=record)
+
+    def set_count(self, count: int) -> None:
+        """Planning: `count` for the wells selected, and for the next well
+        planned."""
+        self.new_count = count
+        if not self._selected:
             return
-        if record:
-            self._undo.append(set(self._selected))
-            self._redo.clear()
-        self._selected = wanted
-        self.update()
-        self.selection_changed.emit(set(wanted))
-        self.history_changed.emit()
+        plan = dict(self._plan)
+        for name in self._selected:
+            plan[name] = count
+        if plan == self._plan:
+            return
+        counting = set(self._selected)
+        self._change(plan, counting, record=self._counting != counting)
+        self._counting = counting
+
+    def choose(self, names, *, add: bool = False) -> None:
+        """A click or a box on `names` (see the module docstring); not
+        planning, `toggle`."""
+        if not self.planning:
+            self.toggle(names)
+            return
+        names = {n for n in names if n in self._at}
+        if not names:
+            return
+        if names <= self._selected:
+            self._change({w: c for w, c in self._plan.items()
+                          if w not in names}, self._selected - names)
+            return
+        plan = dict(self._plan)
+        for name in names:
+            plan.setdefault(name, self.new_count)
+        self._change(plan, (self._selected if add else set()) | names)
 
     def toggle(self, names) -> None:
         """All of `names` chosen: take them out. Else: put them all in."""
@@ -134,7 +198,17 @@ class PlateGrid(QWidget):
         self.set_selection(self._at)
 
     def clear(self) -> None:
-        self.set_selection(())
+        self._change({}, set())
+
+    def _change(self, plan: dict[str, int], selection: set[str], *,
+                record: bool = True) -> None:
+        if plan == self._plan and selection == self._selected:
+            return
+        if record:
+            self._undo.append((dict(self._plan), set(self._selected)))
+            self._redo.clear()
+        self._counting = None
+        self._apply_history((plan, selection))
 
     def can_undo(self) -> bool:
         return bool(self._undo)
@@ -144,16 +218,19 @@ class PlateGrid(QWidget):
 
     def undo(self) -> None:
         if self._undo:
-            self._redo.append(set(self._selected))
+            self._redo.append((dict(self._plan), set(self._selected)))
+            self._counting = None
             self._apply_history(self._undo.pop())
 
     def redo(self) -> None:
         if self._redo:
-            self._undo.append(set(self._selected))
+            self._undo.append((dict(self._plan), set(self._selected)))
+            self._counting = None
             self._apply_history(self._redo.pop())
 
-    def _apply_history(self, names: set[str]) -> None:
-        self._selected = names
+    def _apply_history(self, state) -> None:
+        plan, names = state
+        self._plan, self._selected = dict(plan), set(names)
         self.update()
         self.selection_changed.emit(set(names))
         self.history_changed.emit()
@@ -240,7 +317,7 @@ class PlateGrid(QWidget):
             inside = [n for n in self._at
                       if self._band.contains(self._well_rect(n).center())]
             self._band = None
-            self.toggle(inside)
+            self.choose(inside, add=self._adding(event))
         else:
             hit = self._hit(event.position())
             if hit is not None:
@@ -249,14 +326,19 @@ class PlateGrid(QWidget):
                     if kind == "well":
                         self.well_clicked.emit(what)
                 elif kind == "well":
-                    self.toggle([what])
+                    self.choose([what], add=self._adding(event))
                 elif kind == "column":
-                    self.toggle(self._columns[what])
+                    self.choose(self._columns[what], add=self._adding(event))
                 else:
-                    self.toggle([c[what] for c in self._columns
-                                 if what < len(c)])
+                    self.choose([c[what] for c in self._columns
+                                 if what < len(c)], add=self._adding(event))
         self._press = None
         self.update()
+
+    @staticmethod
+    def _adding(event) -> bool:
+        return bool(event.modifiers() & (Qt.KeyboardModifier.ControlModifier
+                                         | Qt.KeyboardModifier.ShiftModifier))
 
     def leaveEvent(self, event) -> None:
         if self._hover is not None:
@@ -299,6 +381,8 @@ class PlateGrid(QWidget):
         for name in self._at:
             rect = self._well_rect(name)
             fill = self._fills.get(name)
+            if self.planning and name in self._plan:
+                fill = self.selection_color
             selected = name in self._selected
             color = (self.selection_color if selected and not self.mini
                      else fill if fill is not None else empty)
@@ -312,7 +396,13 @@ class PlateGrid(QWidget):
                 painter.setPen(QPen(ring, max(1.5, cell * 0.08)))
                 painter.drawRoundedRect(rect.adjusted(-1, -1, 1, 1), radius,
                                         radius)
-            count = self._counts.get(name)
+            if self.planning and selected:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(ring, max(2.0, cell * 0.1)))
+                painter.drawRoundedRect(rect.adjusted(-1, -1, 1, 1), radius,
+                                        radius)
+            count = (self._plan.get(name) if self.planning
+                     else self._counts.get(name))
             if count and cell >= 14:
                 painter.setFont(number_font)
                 painter.setPen(QColor(COLORS["on-accent"] if selected or fill
@@ -358,4 +448,4 @@ class PlateTools(QWidget):
     def _refresh(self, *_args) -> None:
         self.undo.setEnabled(self.grid.can_undo())
         self.redo.setEnabled(self.grid.can_redo())
-        self.clear.setEnabled(bool(self.grid.selection))
+        self.clear.setEnabled(bool(self.grid.selection or self.grid.plan))

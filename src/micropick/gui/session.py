@@ -735,7 +735,7 @@ class Session(QObject):
     #
     # Plans saved under the operator's name, to start the next one from
     # (`config.templates`). On the Plan step: Save as template for a new
-    # plan, Save changes to "<name>" for an edited one.
+    # plan, Save changes to template for an edited one.
 
     def plate_templates(self) -> list[templates.Template]:
         return templates.plate_templates()

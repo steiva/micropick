@@ -1451,26 +1451,36 @@ tip box and a 384 plate at hand.
 
 - [ ] **Choosing wells.**
   Click wells, a row letter, a column number, drag a box: they turn
-  purple. Undo, Redo, Select all, Clear; Ctrl+Z, Ctrl+Y, Ctrl+A do the
-  same. New plan with no wells: "Choose the wells on the plate."
+  purple and show their count ("1" too), the last chosen ringed. Undo,
+  Redo, Select all, Clear; Ctrl+Z, Ctrl+Y, Ctrl+A do the same. New plan
+  with no wells: "Choose the wells on the plate."
 
-- [ ] **Use this plan.**
-  Cuboids per well 2, Column by column: the summary reads "N wells × 2
-  cuboids", the wells show 2. Use this plan: a toast "Plan ready", the
-  green "Plan ready", Plan gets its ✓ and Next is enabled. Change a well:
-  Use this plan is offered again.
+- [ ] **A count per well (#43).**
+  Click A1, type 5; click A2, type 3: A1 shows 5, A2 shows 3. Click A1:
+  ringed, the field reads 5. Ctrl+click A2: the field is empty, "mixed";
+  type 4: both show 4. Click a ringed well: it leaves the plan.
+
+- [ ] **Use this plan, Edit plan (#45).**
+  Column by column, Use this plan: a toast "Plan ready" and no green
+  line under the button; Plan gets its ✓ and Next is enabled. The grid,
+  the plate, the field, the order and the templates are gray; the button
+  reads Edit plan. Edit plan: all editable again, Plan loses its ✓ until
+  Use this plan. During a picking run Edit plan is gray.
 
 - [ ] **Save as template, Save changes.**
   Save as template: a name field in place, Save. A name already used is
-  refused under it. Change a well: Save changes to "<name>" appears and
+  refused under it. Change a well: Save changes to template appears and
   writes over that template; the folder `Outputs/templates/plate-plans`
   holds one file for it. No dialog asks "are you sure".
 
-- [ ] **A template.**
-  A template: the list, about three rows high, scrolls inside its box;
-  each reads "<name>" over "24 wells · saved Oct 20". A click puts it on
-  the plate. Open from file… takes one from anywhere (a colleague's).
-  A template for a plate that is not on the deck says so.
+- [ ] **A template (#44).**
+  A template: every saved one is listed, each "<name>" over "24 wells ·
+  saved Oct 20". A click: "Which plate does it go on?" and the mini deck,
+  only the slots holding that plate type clickable - also with one such
+  plate. A click on a slot puts the plan on that plate. Open from file…
+  takes one from anywhere (a colleague's). A template for a plate type
+  not on the deck: "Put a <type> on the deck." with Go to Deck, nothing
+  loaded.
 
 - [ ] **Old presets.**
   Files from `Outputs/plate_plan_presets` (Save plan as preset… before)
