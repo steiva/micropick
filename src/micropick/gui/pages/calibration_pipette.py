@@ -775,9 +775,10 @@ class TipCalibrationBlock(QObject):
             self.calibrated.emit()
             return ""
 
-        self.touch_jog.run_job(lambda _log: xyz(robot), moves=False,
-                               what="reading the tip's position",
-                               then=saved)
+        if not self.touch_jog.run_job(lambda _log: xyz(robot), moves=False,
+                                      what="reading the tip's position",
+                                      then=saved):
+            self.touch_jog.tell(self.session.robot_lease.refusal)
         self.refresh()
 
     def _on_stop(self) -> None:
