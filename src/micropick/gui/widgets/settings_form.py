@@ -218,6 +218,11 @@ def field_widget(name: str, annotation, value, *, labels: dict | None = None,
     return _Row(name, annotation, value, labels=labels, unit=unit)
 
 
+# Narrow and long: one setting per row, read down (#52's sheet was the
+# whole window wide, its rows across the screen).
+SHEET_WIDTH = 680
+
+
 class PickingSettingsSheet(SheetWindow):
     """The whole of `PickingConfig`, editable, as a sheet over `host` (#52):
     the settings a run is tuned with first, the technical ones folded under
@@ -232,7 +237,7 @@ class PickingSettingsSheet(SheetWindow):
                  previous: tuple[str, PickingConfig] | None = None):
         super().__init__(host, "Picking settings",
                          done_text=(f"Save to {profile_name}" if profile_name
-                                    else "Save"))
+                                    else "Save"), width=SHEET_WIDTH)
         self._config = config
         self._rows: dict[str, _Row] = {}
         self._labels: dict[str, QLabel] = {}

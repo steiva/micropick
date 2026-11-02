@@ -84,12 +84,14 @@ class SheetWindow(_Cover):
     canceled = Signal()
 
     def __init__(self, host: QWidget, title: str, *, done_text: str = "Done",
-                 buttons: bool = True, done_closes: bool = False):
+                 buttons: bool = True, done_closes: bool = False,
+                 width: int | None = None):
         """`buttons` False: no Cancel and Done, for a sheet that saves with
         buttons of its own (Settings); × still closes it. `done_closes`:
         Done only closes, as × does - no Cancel, Done a secondary button -
         for a sheet whose one action is a Save of its own (the platforms,
-        the positions)."""
+        the positions). `width`: at most that wide, centered - a single
+        column of rows reads down, not across the screen."""
         super().__init__(host, 0.72)
         self.title = title
         outer = QVBoxLayout(self)
@@ -97,7 +99,11 @@ class SheetWindow(_Cover):
                                  SHEET_MARGIN)
         self.frame = QFrame(self)
         self.frame.setObjectName("sheet")
-        outer.addWidget(self.frame)
+        if width is None:
+            outer.addWidget(self.frame)
+        else:
+            self.frame.setMaximumWidth(width)
+            outer.addWidget(self.frame, 0, Qt.AlignmentFlag.AlignHCenter)
         column = QVBoxLayout(self.frame)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
