@@ -71,10 +71,10 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QFrame, QLabel, QPushButton, QVBoxLayout,
                                QWidget)
 
-from ...core.deck import nearest_slot
 from ...hardware.protocols import xyz
 from ..auto_camera import CameraOpener
-from ..camera_moves import move_over_slot, move_tip_to_pixel, move_to_pixel
+from ..camera_moves import (move_over_slot, move_tip_to_pixel, move_to_pixel,
+                            pose_slot)
 from ..labware_kinds import catalogue
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES
@@ -179,11 +179,12 @@ STEPS: dict[str, tuple[Step, ...]] = {
 }
 
 
-def saved_text(pose, slot: int | None = None) -> str:
+def saved_text(session, name: str, pose, slot: int | None = None) -> str:
     """`Saved: slot 8 · X 245.1 Y 132.4 Z 80.0` for the slot clicked; with
-    none, `Saved: ≈ slot 8 · …`, the slot nearest the pose."""
+    none, `Saved: ≈ slot 8 · …`, the slot the stored pose `name` is in
+    (`camera_moves.pose_slot`)."""
     x, y, z = pose
-    where = (f"≈ slot {nearest_slot(x, y)}" if slot is None
+    where = (f"≈ slot {pose_slot(session, name, (x, y))}" if slot is None
              else f"slot {slot}")
     return f"Saved: {where} · X {x:.1f} Y {y:.1f} Z {z:.1f}"
 
@@ -562,7 +563,8 @@ class PositionSheet(SheetWindow):
 
         def there(said):
             if self.slots is not None:
-                self.slots.set_marked(nearest_slot(*where[:2]))
+                self.slots.set_marked(
+                    pose_slot(self.session, self.name, where[:2]))
                 self._slot_guessed = True
             self.step = max(self.step, len(self.steps) - 1)
             self._refresh()
@@ -593,7 +595,7 @@ class PositionSheet(SheetWindow):
         marked = (self.slots.marked
                   if self.slots is not None and not self._slot_guessed
                   else None)
-        said = saved_text(pose, marked)
+        said = saved_text(self.session, self.name, pose, marked)
         log.info("%s saved: %s", self.name, said)
         if self.saved_note is not None:
             self.saved_note.setText(said)
@@ -659,7 +661,8 @@ class PositionSheet(SheetWindow):
         stored = self._stored()
         self.saved_line.setVisible(stored is not None)
         if stored is not None:
-            self.saved_line.setText(saved_text(stored))
+            self.saved_line.setText(
+                saved_text(self.session, self.name, stored))
         lease = self.session.robot_lease
         free = not lease.busy and self.session.robot is not None
         self.goto_button.setVisible(stored is not None)

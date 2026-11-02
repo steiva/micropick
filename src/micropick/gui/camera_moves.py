@@ -21,6 +21,11 @@ from the picture, and only inside the calibrated area: outside it the map
 extrapolates. The gantry at the travel height is the tip at it, so the
 move is a camera move to the tip's target.
 
+**A position's slot** is the one the camera is over for the camera
+positions (`position_marks.CAMERA_POSITIONS`: centered by the camera,
+stored as the tip's pose, so the tip is a slot away), the tip's for the
+others.
+
 A target the gantry cannot reach at the height it crosses the deck at (or
 where it is, while that is not measured) is not moved to; the panel says
 why under the position.
@@ -33,12 +38,13 @@ import logging
 import numpy as np
 
 from ..core.calibration.pixel_map import PixelMap
-from ..core.deck import slot_center
+from ..core.deck import nearest_slot, slot_center
 from ..hardware.protocols import xyz
 from ..workflows.manual import camera_target, tip_target
+from .position_marks import CAMERA_POSITIONS
 
 __all__ = ["camera_offset", "move_over_slot", "move_tip_to_pixel",
-           "move_to_pixel", "out_of_reach"]
+           "move_to_pixel", "out_of_reach", "pose_slot"]
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +57,15 @@ def camera_offset(session) -> np.ndarray:
     if offset is not None:
         return np.array([offset.dx, offset.dy])
     return np.array(session.settings.tip_cal_start_offset)
+
+
+def pose_slot(session, name: str, xy) -> int:
+    """The slot the stored pose `name` at `xy` is in, in words an operator
+    knows: the camera's for a camera position, else the tip's."""
+    x, y = float(xy[0]), float(xy[1])
+    if name in CAMERA_POSITIONS:
+        x, y = np.array([x, y]) + camera_offset(session)
+    return nearest_slot(x, y)
 
 
 def out_of_reach(session, jog, xy, what: str) -> bool:

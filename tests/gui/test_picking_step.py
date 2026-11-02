@@ -350,3 +350,19 @@ def test_the_start_question_is_short_and_start_is_the_default(app, window):
         "The robot starts moving on Start.")
     assert box.defaultButton().text() == "Start"
     box.deleteLater()
+
+
+def test_without_a_shake_position_the_button_sets_it(app, window,
+                                                     monkeypatch):
+    page = window.picking_page
+    _ready(window, monkeypatch)
+    window.session.profile.forget("shake")
+    page._refresh()
+    assert page.shake_button.text() == "Set shake position"
+    assert page.shake_button.isEnabled()
+    page.shake_button.click()
+    assert window.top.path[-1] == "Shake position"
+    assert not window.position_sheet.isHidden()
+    window.session.remember("shake", (200.0, 150.0, 60.0))
+    page._refresh()
+    assert page.shake_button.text() == "Shake the dish"

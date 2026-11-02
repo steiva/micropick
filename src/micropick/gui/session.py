@@ -65,6 +65,8 @@ from ..hardware.robot_lease import RobotLease       # noqa: E402
 from ..workflows import manual as moves             # noqa: E402
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
+from .camera_moves import pose_slot                 # noqa: E402
+from .readiness import DISH_POSITION, SHAKE_POSITION  # noqa: E402
 from .tasks import SETUP_POSITIONS                  # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
@@ -782,10 +784,21 @@ class Session(QObject):
         return templates.save_liquid_template(program, over=template)
 
     def remember(self, name: str, position) -> None:
+        """A named pose, saved. The source dish put in another slot
+        forgets the shake position: its hole was the dish holder's in
+        the old slot, so Shake the dish asks for it again."""
         if self.profile is None:
             raise SessionError("no profile is loaded, so there is nowhere to "
                                "remember a position")
+        before = self.profile.positions.get(name)
         self.profile.remember(name, position)
+        if (name == DISH_POSITION and before is not None
+                and pose_slot(self, name, before)
+                != pose_slot(self, name, position)
+                and SHAKE_POSITION in self.profile.positions):
+            self.profile.forget(SHAKE_POSITION)
+            log.info("shake position forgotten: the source dish moved to "
+                     "slot %d", pose_slot(self, name, position))
         log.info("remembered %r at %s in profile %r", name,
                  tuple(round(float(v), 2) for v in position), self.profile.name)
         self.profile_changed.emit(self.profile)

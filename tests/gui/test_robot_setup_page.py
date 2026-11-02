@@ -53,9 +53,11 @@ def _rows(window):
 
 
 def _positions(session):
-    session.remember("observe", (245.1, 132.4, 80.0))
+    # The tip's poses. The camera positions' slot is the camera's, 16, 60
+    # mm from the tip (Settings' start offset, no tip calibration yet).
+    session.remember("observe", (245.1, 72.4, 80.0))
     session.remember("shake", (251.0, 140.2, 62.5))
-    session.remember("tip_calib", (380.2, 220.6, 95.0))
+    session.remember("tip_calib", (380.2, 160.6, 95.0))
 
 
 def test_home_opens_robot_setup_with_its_rows(app, window):
@@ -101,10 +103,10 @@ def test_positions_read_as_a_slot_and_coordinates(app, window):
     assert rows["Platforms"] == (
         True, "Picking platform in 5 and 8 · Calibration module in 9")
     assert rows["Position over the dish"] == (
-        True, "≈ slot 5 · X 245.1 Y 132.4 Z 80.0")
+        True, "≈ slot 5 · X 245.1 Y 72.4 Z 80.0")
     assert rows["Shake position"] == (True, "≈ slot 5 · X 251.0 Y 140.2 Z 62.5")
     assert rows["Calibration position"] == (
-        True, "≈ slot 9 · X 380.2 Y 220.6 Z 95.0")
+        True, "≈ slot 9 · X 380.2 Y 160.6 Z 95.0")
     assert not any("observe" in v or "tip_calib" in v
                    for _l, _d, v in _rows(window))
 

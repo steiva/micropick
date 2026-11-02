@@ -13,7 +13,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
-from micropick.core.deck import nearest_slot, slot_center        # noqa: E402
+from micropick.config.schema import PipetteOffset                # noqa: E402
+from micropick.core.deck import (SLOT_PITCH_Y, nearest_slot,     # noqa: E402
+                                 slot_center)
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
 from micropick.hardware.protocols import xyz                     # noqa: E402
@@ -373,6 +375,44 @@ def test_the_dish_position_is_the_source_dish_on_its_platform(app, window):
     assert done and value.startswith("≈ slot ")
 
 
+def _camera_one_slot_back(session):
+    """A tip calibration that puts the camera one slot behind the tip."""
+    session.profile.calibration.pipette_offset = PipetteOffset(
+        dx=0.0, dy=SLOT_PITCH_Y)
+
+
+def test_a_camera_position_is_in_the_slot_the_camera_is_over(app, window):
+    session = window.session
+    _camera_one_slot_back(session)
+    tx, ty = slot_center(6)
+    # The robot's pose is the tip's; the camera over the dish is over 9.
+    session.remember("observe", (tx, ty, 100.0))
+    session.remember("shake", (tx, ty, 100.0))
+    window.open_robot_setup()
+    assert _row(window, "dish_position")[1].startswith("≈ slot 9 · ")
+    # The shake position is the tip's own: in the hole, slot 6.
+    assert _row(window, "shake_position")[1].startswith("≈ slot 6 · ")
+    window.robot_setup_page.rows["dish_position"].clicked.emit()
+    sheet = window.position_sheet
+    assert sheet.saved_line.text().startswith("Saved: ≈ slot 9 · ")
+
+
+def test_the_dish_moved_to_another_slot_forgets_the_shake_position(
+        app, window):
+    session = window.session
+    _camera_one_slot_back(session)
+    tx, ty = slot_center(6)
+    session.remember("observe", (tx, ty, 100.0))
+    session.remember("shake", (tx, ty, 50.0))
+    # Moved a little in the same slot: the shake position is kept.
+    session.remember("observe", (tx + 5.0, ty, 100.0))
+    assert "shake" in session.profile.positions
+    # In another slot: it is forgotten, to be set again.
+    tx, ty = slot_center(5)
+    session.remember("observe", (tx, ty, 100.0))
+    assert "shake" not in session.profile.positions
+
+
 def test_done_and_close_only_close(app, window):
     """No Cancel; Done and × store nothing, and a saved pose stays."""
     _open(window, "dish_position")
@@ -422,7 +462,8 @@ def test_a_saved_position_is_on_top_and_go_to_marks_the_steps(app, window):
     assert [mark for _, mark in _steps(sheet)] == [
         "ok", "ok", "ok", "todo"]
     # The slot it is over is marked on the deck, as the nearest one.
-    slot = nearest_slot(x + 10.0, y)
+    dx, dy = window.session.settings.tip_cal_start_offset
+    slot = nearest_slot(x + 10.0 + dx, y + dy)
     assert sheet.slots.marked == slot
     sheet.save_button.click()
     _wait(app, lambda: sheet.saved_note.text().startswith("Saved:"))

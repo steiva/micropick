@@ -210,6 +210,9 @@ ANALYZE_AGAIN = "Analyze again."
 
 CENTER = "Camera to dish center"
 CENTER_WAIT = "Pause to move the camera"
+SHAKE = "Shake the dish"
+# Without a shake position the button opens Robot setup's sheet for it.
+SET_SHAKE = "Set shake position"
 
 
 def unfilled_wells(routine) -> list[str]:
@@ -294,7 +297,7 @@ class PickingPage(QWidget):
         row = QHBoxLayout()
         self.analyse_button = primary_button("Analyze the dish", panel)
         self.analyse_button.clicked.connect(self._analyse)
-        self.shake_button = secondary_button("Shake the dish", panel)
+        self.shake_button = secondary_button(SHAKE, panel)
         self.shake_button.clicked.connect(self._shake)
         row.addWidget(self.analyse_button, 1)
         row.addWidget(self.shake_button, 1)
@@ -570,7 +573,13 @@ class PickingPage(QWidget):
     def _shake(self) -> None:
         """What the run does when too few cuboids are isolated, on demand:
         the tip into the dish at `shake`, the run's own strokes, and back to
-        the picking position to look again - or only up, without one."""
+        the picking position to look again - or only up, without one.
+        Without a shake position (none yet, or forgotten when the dish
+        moved to another slot) it opens the sheet that sets it."""
+        if self._stored_shake() is None:
+            if not self._running():
+                self.session.page_requested.emit("shake_position")
+            return
         if self._running():
             self._shake_during_run()
             return
@@ -1373,10 +1382,12 @@ class PickingPage(QWidget):
             "The position over the dish is not set.")
 
         shake = self._stored_shake()
+        self.shake_button.setText(SHAKE if shake is not None else SET_SHAKE)
         # During a run only while it is paused or waits for you.
         self.shake_button.setEnabled(
-            connected and shake is not None
-            and ((movable and not running) or self._can_shake_in_run()))
+            (shake is None and not running) or (
+                connected and shake is not None
+                and ((movable and not running) or self._can_shake_in_run())))
         self.shake_button.setToolTip(
             "Stir the dish at the shake position."
             if shake is not None else "The shake position is not set.")

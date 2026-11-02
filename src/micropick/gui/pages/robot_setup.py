@@ -27,7 +27,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
-from ...core.deck import nearest_slot
+from ..camera_moves import pose_slot
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES, setup_done
 from ..theme import COLORS
@@ -123,10 +123,11 @@ def _slots(slots: list[int]) -> str:
     return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
-def position_text(xyz) -> str:
-    """`≈ slot 8 · X 245.1 Y 132.4 Z 80.0`."""
+def position_text(session, name: str, xyz) -> str:
+    """`≈ slot 8 · X 245.1 Y 132.4 Z 80.0`: the slot of the stored pose
+    `name` (`camera_moves.pose_slot`)."""
     x, y, z = xyz
-    return (f"≈ slot {nearest_slot(x, y)} · "
+    return (f"≈ slot {pose_slot(session, name, (x, y))} · "
             f"X {x:.1f} Y {y:.1f} Z {z:.1f}")
 
 
@@ -213,7 +214,8 @@ class RobotSetupPage(QWidget):
                                  []).extend(module.slots)
             return " · ".join(f"{name} in {_slots(slots)}"
                               for name, slots in kinds.items())
-        return position_text(profile.positions[SETUP_POSITIONS[item]])
+        name = SETUP_POSITIONS[item]
+        return position_text(session, name, profile.positions[name])
 
     def refresh(self) -> None:
         for item, row in self.rows.items():
