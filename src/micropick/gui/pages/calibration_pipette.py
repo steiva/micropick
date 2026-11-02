@@ -732,7 +732,10 @@ class TipCalibrationBlock(QObject):
             self.refresh()
 
     def _on_nudge(self) -> None:
-        self._nudged = True
+        # Only a step of the fine-tune's own: the panel's other jobs (a
+        # read, a move from elsewhere) are nothing to save.
+        if self._tuning():
+            self._nudged = True
         self.refresh()
 
     def _over_crosshair(self) -> bool:
