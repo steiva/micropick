@@ -322,15 +322,50 @@ def test_a_mixed_selection_shows_mixed_and_a_number_sets_them_all(page):
     assert page.cuboids.placeholderText() == ""
 
 
-def test_a_click_on_a_planned_well_selects_it_and_a_second_takes_it_out(page):
+def test_a_click_on_a_planned_well_selects_it_and_never_takes_it_out(page):
     page.plate.choose(["A1"])
     _type(page.cuboids, "5")
     page.plate.choose(["A2"])
     page.plate.choose(["A1"])                         # selects it
     assert page.plan() == {"A1": 5, "A2": 5}
     assert page.cuboids.text() == "5"
-    page.plate.choose(["A1"])                         # selected: out
-    assert page.plan() == {"A2": 5}
+    page.plate.choose(["A1"])                         # still only selected
+    assert page.plan() == {"A1": 5, "A2": 5}
+    assert page.plate.selection == {"A1"}
+
+
+def test_ctrl_adds_a_well_to_the_selection_and_takes_it_out_of_it(page):
+    page.plate.choose(["A1"])
+    page.plate.choose(["A2"], add=True)
+    assert page.plate.selection == {"A1", "A2"}
+    page.plate.choose(["A1"], add=True)               # out of the selection
+    assert page.plate.selection == {"A2"}
+    assert set(page.plan()) == {"A1", "A2"}           # still planned
+
+
+def test_remove_takes_the_selected_wells_out_of_the_plan(page):
+    page.plate.choose(["A1"])
+    page.plate.choose(["A2"])
+    page.plate.choose(["A3"], add=True)
+    assert not page.tools.remove.isHidden()
+    assert page.tools.remove.isEnabled()
+    page.tools.remove.click()
+    assert page.plan() == {"A1": 1}
+    assert page.plate.selection == set()
+    assert not page.tools.remove.isEnabled()
+    page.tools.undo.click()
+    assert set(page.plan()) == {"A1", "A2", "A3"}
+
+
+def test_delete_on_the_grid_removes_the_selected_wells(page):
+    page.plate.choose(["A1"])
+    page.plate.choose(["A2"])
+    page.plate.setFocus()
+    QTest.keyClick(page.plate, Qt.Key.Key_Delete)
+    assert page.plan() == {"A1": 1}
+    page.plate.choose(["A1"])
+    QTest.keyClick(page.plate, Qt.Key.Key_Backspace)
+    assert page.plan() == {}
 
 
 def test_typing_a_count_is_one_undo_step(page):

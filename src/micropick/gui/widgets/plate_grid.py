@@ -25,11 +25,13 @@ gives one - §12.11: only when more than one cuboid goes per well) and
 planned, each with its count, drawn in every planned well, "1" included -
 and a **selection** apart from it, the wells a count is set for
 (`set_count`). A click or a box chooses: wells not planned yet are
-planned with `new_count`, and the selection becomes the wells chosen
-(Ctrl or Shift: added to it), so a click on a planned well selects it to
-change its count. Chosen again - all of them selected already - they
-leave the plan. Undo and Redo take back the plan and the selection
-together; typing a count over and over is one step.
+planned with `new_count`, and the selection becomes the wells chosen, so
+a click on a planned well selects it to change its count; chosen again,
+it stays. Ctrl or Shift adds them to the selection, or - all of them
+selected already - takes them out of it, never out of the plan. Only
+`remove_selected` (PlateTools' Remove, Delete or Backspace on the grid)
+takes wells out of the plan. Undo and Redo take back the plan and the
+selection together; typing a count over and over is one step.
 """
 
 from __future__ import annotations
@@ -63,6 +65,9 @@ class PlateGrid(QWidget):
         # The count a well newly planned takes.
         self.new_count = 1
         self.setMouseTracking(True)
+        # A click gives the grid Delete and Backspace.
+        if planning:
+            self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self._columns: list[list[str]] = []
         self._row_labels: list[str] = []
         self._column_labels: list[str] = []
@@ -175,14 +180,20 @@ class PlateGrid(QWidget):
         names = {n for n in names if n in self._at}
         if not names:
             return
-        if names <= self._selected:
-            self._change({w: c for w, c in self._plan.items()
-                          if w not in names}, self._selected - names)
+        if add and names <= self._selected:
+            self._change(dict(self._plan), self._selected - names)
             return
         plan = dict(self._plan)
         for name in names:
             plan.setdefault(name, self.new_count)
         self._change(plan, (self._selected if add else set()) | names)
+
+    def remove_selected(self) -> None:
+        """Planning: the wells selected out of the plan."""
+        if not self.planning or not self._selected:
+            return
+        self._change({w: c for w, c in self._plan.items()
+                      if w not in self._selected}, set())
 
     def toggle(self, names) -> None:
         """All of `names` chosen: take them out. Else: put them all in."""
@@ -340,6 +351,13 @@ class PlateGrid(QWidget):
         return bool(event.modifiers() & (Qt.KeyboardModifier.ControlModifier
                                          | Qt.KeyboardModifier.ShiftModifier))
 
+    def keyPressEvent(self, event) -> None:
+        if (self.planning and event.key() in (Qt.Key.Key_Delete,
+                                              Qt.Key.Key_Backspace)):
+            self.remove_selected()
+            return
+        super().keyPressEvent(event)
+
     def leaveEvent(self, event) -> None:
         if self._hover is not None:
             self._hover = None
@@ -419,7 +437,8 @@ class PlateGrid(QWidget):
 
 
 class PlateTools(QWidget):
-    """Undo, Redo, Select all, Clear - for one grid."""
+    """Undo, Redo, Select all, Clear - for one grid; Remove (the wells
+    selected out of the plan) for a planning one."""
 
     def __init__(self, grid: PlateGrid, parent: QWidget | None = None):
         super().__init__(parent)
@@ -430,8 +449,12 @@ class PlateTools(QWidget):
         self.undo = self._button("Undo", "undo", grid.undo)
         self.redo = self._button("Redo", "redo", grid.redo)
         self.select_all = self._button("Select all", None, grid.select_all)
+        self.remove = self._button("Remove", None, grid.remove_selected)
+        self.remove.setToolTip("Delete")
+        self.remove.setVisible(grid.planning)
         self.clear = self._button("Clear", None, grid.clear)
-        for button in (self.undo, self.redo, self.select_all, self.clear):
+        for button in (self.undo, self.redo, self.select_all, self.remove,
+                       self.clear):
             row.addWidget(button)
         grid.history_changed.connect(self._refresh)
         grid.selection_changed.connect(self._refresh)
@@ -448,4 +471,5 @@ class PlateTools(QWidget):
     def _refresh(self, *_args) -> None:
         self.undo.setEnabled(self.grid.can_undo())
         self.redo.setEnabled(self.grid.can_redo())
+        self.remove.setEnabled(bool(self.grid.selection))
         self.clear.setEnabled(bool(self.grid.selection or self.grid.plan))

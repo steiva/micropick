@@ -394,8 +394,10 @@ is set up under the hood and never mentioned ("pipette loaded" reads as "a
 tip is on"). A `Routine` is a **plate plan**, "Plan" on screen (Auto
 pick's Plan step, `pages.routine`: the plate from the MiniDeckDropdown,
 the wells planned on the PlateGrid (`planning=True`: a click plans a
-well and selects it, a click on a planned one selects it, on a selected
-one takes it out), the Cuboids field setting only the selected wells
+well and selects it, a click on a planned one selects it, Ctrl or Shift
+adds to the selection or takes out of it, never out of the plan; only
+Remove, Delete or Backspace takes the selected wells out of the plan),
+the Cuboids field setting only the selected wells
 ("mixed" when they differ, every planned well drawn with its count),
 Fill order as two tiles; done while the plan made by Use this plan is
 the session's, which locks the page and turns the button into Edit plan:
@@ -495,16 +497,25 @@ the page's `JogPanel.run_job`), never while the robot's lease is held.
 Liquid's Tip step shows no calibration (`set_task`). Its
 cameras are the profile's upper and lower ones.
 The Dish bottom step (`pages.dish_bottom`, REDESIGN §6.4) has no camera:
-a big Z readout, Up and Down with the step carousel between them
-(`jog_pad.StepCarousel`), active only while lowering, through a jog panel
-that is never shown (its keys on itself, so they never fire); the page's
-own keys from the key actions (Z up / down, the step sizes, H) while
-lowering, no XY, listed by Keys. "Last time: Z 66.40 mm · 3 days ago"
-with Use it while it was ever measured; Tip over the dish center (Move
-the tip), Lower until it touches, whose button is Save dish bottom (a
+a big Z readout over three cards side by side, Coarse, Finer, Finest
+(`dish_bottom.STAGES`, 1, 0.5, 0.1 mm, no numbers), each with Up and
+Down and its own step carousel (`jog_pad.StepCarousel`), active only
+while it is the one lowering, through a jog panel that is never shown
+(its keys on itself, so they never fire); the page's own keys from the
+key actions (Z up / down, the lowering card's step sizes, H) while
+lowering, no XY, listed by Keys. Move the tip (over the dish center) is
+the first card's first button; It touches raises the tip by that card's
+step and the next card lowers; the last card's is Save dish bottom (a
 change over 3 mm asked first; the tip raised after); then "Dish bottom:
 Z 66.42 mm" with Redo (back to Move the tip, the value kept until a new
-one is saved).
+one is saved). On the right "Last time: Z 66.40 mm · 3 days ago" with
+Use it while it was ever measured, and "Over the dish · slot 9" with
+Change (Robot setup's sheet over the task). A camera position's slot
+(over the dish, calibration) is the camera's, the tip's pose plus the
+measured offset, else Settings' start (`camera_moves.pose_slot`); the
+shake position's is the tip's. Saved over the dish in another slot, the
+shake position is forgotten (`Session.remember`): Picking's Shake the
+dish is then Set shake position.
 Done when measured (`Session.set_dish_bottom`) or Use it
 (`Session.use_last_dish_bottom`) in this robot session, never by Next.
 The Picking step (`pages.picking`, REDESIGN §6.5): the dish picture with
