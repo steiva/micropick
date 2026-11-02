@@ -444,6 +444,18 @@ class PickingPage(QWidget):
 
         return RunHold(why, borrow, self._end_centering)
 
+    # -- a value typed and not saved (`MainWindow._ask_unsaved`) -------------
+
+    def unsaved(self) -> str:
+        return ("Liquid in tip: volume and height not saved."
+                if self.liquid.changing else "")
+
+    def save_unsaved(self) -> None:
+        self.liquid.save_change()
+
+    def discard_unsaved(self) -> None:
+        self.liquid.cancel_change()
+
     def _show_liquid(self) -> None:
         self.liquid_card.set_summary(self.liquid.summary())
 

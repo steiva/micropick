@@ -58,7 +58,7 @@ from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
 from .widgets.footer import Footer
 from .widgets.jog_panel import JogPanel
-from .widgets.overlays import DimCover, LockOverlay
+from .widgets.overlays import ConfirmDialog, DimCover, LockOverlay
 from .widgets.step_bar import StepBar
 from .widgets.toast import Toast
 from .widgets.top_bar import TopBar
@@ -243,6 +243,9 @@ class MainWindow(QMainWindow):
         # The task's step to go back to from a page out of the steps.
         self._task_step: str | None = None
         self._page = "home"
+        # Save / Discard, asked over the page shown next when the one left
+        # had a value typed and not saved (`_ask_unsaved`).
+        self.unsaved_question: ConfirmDialog | None = None
         self._need: tasks.Need | None = None
         # What the footer was last given (`_refresh`).
         self._navigation: dict | list | None = None
@@ -407,6 +410,7 @@ class MainWindow(QMainWindow):
         return self.stack.currentWidget()
 
     def _show(self, name: str, path: list[str], *, in_task: bool) -> None:
+        left = self.pages[self._page] if name != self._page else None
         page = self.pages[name]
         # A page dimmed as one step is not dimmed as anything else.
         page.setEnabled(True)
@@ -422,6 +426,33 @@ class MainWindow(QMainWindow):
             self.step = None
             self._banner_row.hide()
             self._need = None
+        if left is not None:
+            self._ask_unsaved(left)
+
+    def _ask_unsaved(self, page) -> None:
+        """A page left with a value typed and not saved (its `unsaved()`,
+        a sentence saying what): Save / Discard over the page shown now,
+        as the platforms sheet asks - going elsewhere is never held up,
+        and nothing typed is dropped without a word. The page's
+        `save_unsaved` or `discard_unsaved` answers."""
+        unsaved = getattr(page, "unsaved", None)
+        what = unsaved() if unsaved is not None else ""
+        if not what or self.unsaved_question is not None:
+            return
+        question = ConfirmDialog(self, "Save the changes?", text=what,
+                                 safe="Save", destructive="Discard")
+        self.unsaved_question = question
+
+        def answered(discard: bool) -> None:
+            self.unsaved_question = None
+            question.deleteLater()
+            if discard:
+                page.discard_unsaved()
+            else:
+                page.save_unsaved()
+
+        question.answered.connect(answered)
+        question.open()
 
     def open_home(self) -> None:
         self.task = None

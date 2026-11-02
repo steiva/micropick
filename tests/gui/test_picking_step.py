@@ -382,3 +382,46 @@ def test_liquid_in_tip_waits_for_a_pause_during_a_run(app, window,
     page.pause_button.click()
     app.processEvents()
     assert hold.why() == ""
+
+
+def _typed_volume(page, ul):
+    box = page.liquid
+    page.liquid_card.set_open(True)
+    box.change_button.click()
+    box.volume.setValue(ul)
+
+
+def test_leaving_with_a_value_not_saved_asks_and_save_saves_it(app, window,
+                                                              monkeypatch):
+    page = window.picking_page
+    _ready(window, monkeypatch)
+    _typed_volume(page, 33.0)
+    window.show_step("plan")
+    # Gone, and asked over what is shown next.
+    question = window.unsaved_question
+    assert question is not None and not question.isHidden()
+    question.safe.click()                                  # Save
+    assert window.unsaved_question is None
+    assert window.session.profile.picking.tip_liquid_vol == 33.0
+    assert page.liquid.change_box.isHidden()
+
+
+def test_leaving_with_a_value_not_saved_and_discard_drops_it(app, window,
+                                                             monkeypatch):
+    page = window.picking_page
+    _ready(window, monkeypatch)
+    _typed_volume(page, 33.0)
+    window.open_home()
+    window.unsaved_question.destructive.click()            # Discard
+    assert window.session.profile.picking.tip_liquid_vol == 20.0
+    assert page.liquid.change_box.isHidden()
+
+
+def test_leaving_with_nothing_typed_asks_nothing(app, window, monkeypatch):
+    page = window.picking_page
+    _ready(window, monkeypatch)
+    page.liquid_card.set_open(True)
+    page.liquid.change_button.click()                      # open, unchanged
+    assert not page.liquid.change_box.isHidden()
+    window.show_step("plan")
+    assert window.unsaved_question is None

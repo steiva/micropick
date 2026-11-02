@@ -83,7 +83,12 @@ time, never from a visit; a step whose need is not met is dimmed
 (`overlays.DimCover`) and disabled - so its keys do nothing - under one
 banner naming that need with a button there. A task opens on its first
 step not done. Next is enabled when the step is done or optional, and
-only moves on: nothing is confirmed by it. Deck is done while the robot
+only moves on: nothing is confirmed by it. A value is saved by a Save of
+its own (Enter in its field); a page left with one typed and not saved
+says so in `unsaved()` and is asked about over the page shown next, Save
+/ Discard (`MainWindow._ask_unsaved`, `save_unsaved`, `discard_unsaved`),
+as the platforms sheet asks. What the robot does and measures itself
+(Calibrate, Save dish bottom, Use this plan) is saved at once and said. Deck is done while the robot
 is connected, something is on the deck and there is no deck problem; a
 move by drag goes through `Session.move_labware`, which loads again so a
 platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan

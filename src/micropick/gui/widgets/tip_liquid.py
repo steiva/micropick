@@ -137,14 +137,14 @@ class TipLiquidBox(QWidget):
             line.addWidget(number)
             line.addStretch(1)
             lines.addLayout(line)
-            number.lineEdit().returnPressed.connect(self._save_settings)
+            number.lineEdit().returnPressed.connect(self.save_change)
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         self.cancel_button = compact(secondary_button("Cancel",
                                                       self.change_box))
-        self.cancel_button.clicked.connect(self._cancel_change)
+        self.cancel_button.clicked.connect(self.cancel_change)
         self.save_button = compact(primary_button("Save", self.change_box))
-        self.save_button.clicked.connect(self._save_settings)
+        self.save_button.clicked.connect(self.save_change)
         buttons.addWidget(self.cancel_button)
         buttons.addWidget(self.save_button)
         lines.addLayout(buttons)
@@ -213,7 +213,7 @@ class TipLiquidBox(QWidget):
         self.change_box.setVisible(False)
         self.change_button.setEnabled(True)
 
-    def _cancel_change(self) -> None:
+    def cancel_change(self) -> None:
         """What was typed is dropped."""
         self._show_settings()
         self._close_change()
@@ -232,7 +232,7 @@ class TipLiquidBox(QWidget):
         return {"tip_liquid_vol": round(self.volume.value(), 1),
                 "tip_liquid_above_bottom": round(self.above_bottom.value(), 1)}
 
-    def _save_settings(self) -> None:
+    def save_change(self) -> None:
         """The boxes into the picking settings, when they differ."""
         profile = self.session.profile
         if profile is None:
