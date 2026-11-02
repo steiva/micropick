@@ -117,7 +117,7 @@ def dish_center(profile):
     """(x, y) for the tip over the dish center, or None and why: the
     middle of the working circle (`circle_center`, a pixel of the picture
     taken at the position over the dish) through the pixel map and the
-    pipette offset. Tip liquid's too."""
+    pipette offset. Liquid in tip's too (`widgets.tip_liquid`)."""
     if profile is None:
         return None, "No profile loaded."
     observe = profile.positions.get(DISH_POSITION)

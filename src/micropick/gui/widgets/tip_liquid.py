@@ -1,17 +1,17 @@
-"""The Tip liquid step: Auto pick's fourth, between Dish bottom and Plan.
+"""Liquid in tip: the Picking page's card for liquid in the tip by hand.
 
 A little liquid in the tip before a picking run makes the pickups work
 better: the run draws and gives back only each cuboid's own volume
 (`PickingConfig.vol`), so what is drawn here stays in the tip as a
-cushion for the whole run. Optional: Next is never held, and the step is
-done while the tip holds something (`Session.in_tip`), so it is undone
-by itself when the tip is dropped or changed.
+cushion for the whole run. It was a step of Auto pick of its own; it is
+done with the dish in place, just before Start, so it is on the Picking
+page, a card folded to its title and what the tip holds.
 
-**No camera**, one card: the settings as one line with **Change** - the
-volume (`tip_liquid_vol`, 20 µl) and the height above the dish bottom
-(`tip_liquid_above_bottom`, 1.5 mm), saved into the picking settings as
-they are typed; the speed is the picking settings' flow rate - then
-**Aspirate from**:
+The settings as one line with **Change** - the volume (`tip_liquid_vol`,
+20 µl) and the height above the dish bottom (`tip_liquid_above_bottom`,
+1.5 mm); the speed is the picking settings' flow rate. Change opens the
+two boxes with **Save** (Enter in a box) and **Cancel**: nothing typed is
+saved before Save, so a slip of the keyboard is seen first. Then **From**:
 
 - **Dish center** (the default, never remembered): the middle of the
   working circle, as the Dish bottom step finds it (`dish_center`), at the
@@ -22,43 +22,54 @@ they are typed; the speed is the picking settings' flow rate - then
   (`well_center.xy`), the drawing's else.
 
 **Aspirate 20 µl** goes there, aspirates at the flow rate and raises the
-tip to the travel height, one short job through the page's jog panel
-(`JogPanel.run_job`), never shown. Pressed again it adds to what is in the
-tip, which "The tip holds 40 µl." says.
+tip to the travel height; pressed again it adds to what is in the tip,
+which "The tip holds 40 µl." says. **Dispense 40 µl** gives all of it
+back there: liquid drawn by mistake, or the tip rinsed - draw, give back.
+Each is one short job through the page's jog panel (`JogPanel.run_job`).
+
+During a run they work only while it is paused or waits with the tip
+empty of a cuboid, under the run's lease lent to the panel, as Camera to
+dish center does: the page says so through `run_hold`.
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...workflows import well_center
 from ..labware_kinds import facts, kind
+from ..pages.dish_bottom import dish_center
 from ..session import Session
-from ..theme import SPACING
-from ..theme.factory import (caption, card, compact, double_spin_box,
-                             heading, muted_label, primary_button,
-                             scroll_column, secondary_button)
-from ..widgets.controls import Segmented
-from ..widgets.jog_panel import JogPanel
-from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
-from ..widgets.picking_fields import BOUNDS, STEPS
-from ..widgets.plate_grid import PlateGrid
-from .dish_bottom import dish_center
+from ..theme.factory import (caption, compact, double_spin_box, muted_label,
+                             primary_button, secondary_button)
+from .controls import Segmented
+from .jog_panel import JogPanel
+from .mini_deck import DeckTile, MiniDeckDropdown
+from .picking_fields import BOUNDS, STEPS
+from .plate_grid import PlateGrid
 
-__all__ = ["TipLiquidPage", "FROM"]
-
-TITLE = "Tip liquid"
+__all__ = ["TipLiquidBox", "FROM", "RunHold"]
 
 log = logging.getLogger(__name__)
 
-PANEL_WIDTH = 440
-
-# Aspirate from: the segmented choices.
+# From: the segmented choices.
 FROM = ("Dish center", "A well")
 DISH, WELL = 0, 1
+
+
+class RunHold:
+    """What a run lets the card do, from the page that runs it: `why()`
+    is None with no run, "" while the card may use the robot under the
+    run's lease, else why not; `borrow()` lends that lease to the panel
+    for one job, `give_back()` ends a loan that started nothing."""
+
+    def __init__(self, why: Callable[[], str | None],
+                 borrow: Callable[[], None], give_back: Callable[[], None]):
+        self.why, self.borrow, self.give_back = why, borrow, give_back
 
 
 def _number_box(parent: QWidget, name: str, suffix: str):
@@ -72,26 +83,20 @@ def _number_box(parent: QWidget, name: str, suffix: str):
     return box
 
 
-class TipLiquidPage(QWidget):
-    def __init__(self, session: Session, parent: QWidget | None = None):
+class TipLiquidBox(QWidget):
+    def __init__(self, session: Session, jog: JogPanel, *,
+                 run_hold: RunHold | None = None,
+                 parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
+        self.jog = jog
+        self.run_hold = run_hold
         # (slot, labware id, definition) of the plate chosen, and its well.
         self._plate = None
         self._well: str | None = None
         self._plates: dict = {}
-
-        # Its keys on itself, hidden: they never fire.
-        self.jog = JogPanel(session, machine_controls=False, parent=self)
-        self.jog.hide()
-        self.jog.position_changed.connect(self._show_said)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
-                                  SPACING * 2)
-        layout.addStretch(1)
-        layout.addWidget(scroll_column(self._panel(), PANEL_WIDTH))
-        layout.addStretch(1)
+        jog.position_changed.connect(self._show_said)
+        self._build()
 
         session.robot_state_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._reload_plates())
@@ -104,27 +109,19 @@ class TipLiquidPage(QWidget):
 
     # -- construction --------------------------------------------------------
 
-    def _panel(self) -> QWidget:
-        panel = QWidget(self)
-        column = QVBoxLayout(panel)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-        column.addWidget(heading("Fill the tip", 1, panel))
-
-        box = card(panel)
-        body = box.layout()
+    def _build(self) -> None:
+        body = QVBoxLayout(self)
+        body.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
-        self.settings_line = muted_label("", box)
+        self.settings_line = muted_label("", self)
         self.settings_line.setWordWrap(True)
-        self.change_button = compact(secondary_button("Change", box))
-        self.change_button.setCheckable(True)
-        self.change_button.toggled.connect(
-            lambda on: self.change_box.setVisible(on))
+        self.change_button = compact(secondary_button("Change", self))
+        self.change_button.clicked.connect(self._open_change)
         row.addWidget(self.settings_line, 1)
         row.addWidget(self.change_button)
         body.addLayout(row)
 
-        self.change_box = QWidget(box)
+        self.change_box = QWidget(self)
         lines = QVBoxLayout(self.change_box)
         lines.setContentsMargins(0, 0, 0, 0)
         self.volume = _number_box(self.change_box, "tip_liquid_vol", " µl")
@@ -140,16 +137,26 @@ class TipLiquidPage(QWidget):
             line.addWidget(number)
             line.addStretch(1)
             lines.addLayout(line)
-            number.editingFinished.connect(self._save_settings)
+            number.lineEdit().returnPressed.connect(self._save_settings)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        self.cancel_button = compact(secondary_button("Cancel",
+                                                      self.change_box))
+        self.cancel_button.clicked.connect(self._cancel_change)
+        self.save_button = compact(primary_button("Save", self.change_box))
+        self.save_button.clicked.connect(self._save_settings)
+        buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.save_button)
+        lines.addLayout(buttons)
         self.change_box.setVisible(False)
         body.addWidget(self.change_box)
 
-        body.addWidget(caption("Aspirate from", box))
-        self.source = Segmented(list(FROM), current=DISH, parent=box)
+        body.addWidget(caption("From", self))
+        self.source = Segmented(list(FROM), current=DISH, parent=self)
         self.source.changed.connect(lambda _i: self._source_changed())
         body.addWidget(self.source)
 
-        self.well_box = QWidget(box)
+        self.well_box = QWidget(self)
         wells = QVBoxLayout(self.well_box)
         wells.setContentsMargins(0, 0, 0, 0)
         self.plate_dropdown = MiniDeckDropdown(self.well_box,
@@ -164,21 +171,23 @@ class TipLiquidPage(QWidget):
         self.well_box.setVisible(False)
         body.addWidget(self.well_box)
 
-        self.holds = muted_label("", box)
+        self.holds = muted_label("", self)
         self.holds.setVisible(False)
         body.addWidget(self.holds)
-        self.aspirate_button = primary_button("", box)
+        buttons = QHBoxLayout()
+        self.aspirate_button = primary_button("", self)
         self.aspirate_button.clicked.connect(self._aspirate)
-        body.addWidget(self.aspirate_button)
-        column.addWidget(box)
+        self.dispense_button = secondary_button("", self)
+        self.dispense_button.clicked.connect(self._dispense)
+        buttons.addWidget(self.aspirate_button, 1)
+        buttons.addWidget(self.dispense_button, 1)
+        body.addLayout(buttons)
 
         # What the robot answered: a move not possible, a job refused.
-        self.said = muted_label("", panel)
+        self.said = muted_label("", self)
         self.said.setWordWrap(True)
         self.said.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        column.addWidget(self.said)
-        column.addStretch(1)
-        return panel
+        body.addWidget(self.said)
 
     # -- the settings --------------------------------------------------------
 
@@ -195,19 +204,46 @@ class TipLiquidPage(QWidget):
                 number.blockSignals(False)
         self.refresh()
 
+    def _open_change(self) -> None:
+        self._show_settings()
+        self.change_box.setVisible(True)
+        self.change_button.setEnabled(False)
+
+    def _close_change(self) -> None:
+        self.change_box.setVisible(False)
+        self.change_button.setEnabled(True)
+
+    def _cancel_change(self) -> None:
+        """What was typed is dropped."""
+        self._show_settings()
+        self._close_change()
+
+    @property
+    def changing(self) -> bool:
+        """The boxes are open with a value that differs from what is
+        saved."""
+        profile = self.session.profile
+        if profile is None or self.change_box.isHidden():
+            return False
+        return self._typed() != {
+            name: getattr(profile.picking, name) for name in self._typed()}
+
+    def _typed(self) -> dict[str, float]:
+        return {"tip_liquid_vol": round(self.volume.value(), 1),
+                "tip_liquid_above_bottom": round(self.above_bottom.value(), 1)}
+
     def _save_settings(self) -> None:
         """The boxes into the picking settings, when they differ."""
         profile = self.session.profile
         if profile is None:
             return
-        new = {"tip_liquid_vol": round(self.volume.value(), 1),
-               "tip_liquid_above_bottom": round(self.above_bottom.value(), 1)}
+        new = self._typed()
         old = {name: getattr(profile.picking, name) for name in new}
-        if new == old:
-            return
-        profile.picking = profile.picking.model_copy(update=new)
-        profile.save_picking()
-        log.info("picking settings: %s -> %s (Tip liquid)", old, new)
+        if new != old:
+            profile.picking = profile.picking.model_copy(update=new)
+            profile.save_picking()
+            log.info("picking settings: %s -> %s (Liquid in tip)", old, new)
+        self._close_change()
         self.refresh()
 
     def _settings_text(self) -> str:
@@ -264,11 +300,11 @@ class TipLiquidPage(QWidget):
         self.plate_map.set_current(well)
         self.refresh()
 
-    # -- what the page shows -------------------------------------------------
+    # -- what the card shows -------------------------------------------------
 
     def _show_said(self, lines) -> None:
-        """Every answer of the panel's, a job's end included: the button
-        follows it (the robot's lease is given back before)."""
+        """Every answer of the panel's, a job's end included: the buttons
+        follow it (the robot's lease is given back before)."""
         self.said.setText("\n".join(lines[1:]))
         self.refresh()
 
@@ -276,12 +312,25 @@ class TipLiquidPage(QWidget):
         super().showEvent(event)
         self.refresh()
 
+    @property
+    def held(self) -> float:
+        """µl in the tip now: none without a tip."""
+        session = self.session
+        return session.in_tip if session.tip.attached is True else 0.0
+
+    def summary(self) -> str:
+        """For the card's title row: "20 µl in the tip", "Tip empty"."""
+        held = self.held
+        return f"{held:g} µl in the tip" if held > 0 else "Tip empty"
+
     def refresh(self) -> None:
-        session, profile = self.session, self.session.profile
+        profile = self.session.profile
         self.settings_line.setText(self._settings_text())
         volume = profile.picking.tip_liquid_vol if profile else 0.0
         self.aspirate_button.setText(f"Aspirate {volume:g} µl")
-        held = session.in_tip if session.tip.attached is True else 0.0
+        held = self.held
+        self.dispense_button.setText(f"Dispense {held:g} µl" if held > 0
+                                     else "Dispense")
         self.holds.setVisible(held > 0)
         self.holds.setText(f"The tip holds {held:g} µl.")
         if self._plate is not None:
@@ -292,13 +341,19 @@ class TipLiquidPage(QWidget):
         why = self._why_not()
         self.aspirate_button.setEnabled(not why)
         self.aspirate_button.setToolTip(why)
+        why = why or ("" if held > 0 else "The tip is empty.")
+        self.dispense_button.setEnabled(not why)
+        self.dispense_button.setToolTip(why)
 
     def _why_not(self) -> str:
-        """Why Aspirate cannot be pressed now, or ""."""
+        """Why the robot cannot go to the source now, or ""."""
         session = self.session
         if session.robot is None:
             return "The robot is not connected."
-        if session.robot_lease.busy or self.jog.busy:
+        run = self.run_hold.why() if self.run_hold is not None else None
+        if run:
+            return run
+        if self.jog.busy or (run is None and session.robot_lease.busy):
             return "Robot busy."
         if session.tip.attached is not True:
             return "No tip is on."
@@ -310,14 +365,12 @@ class TipLiquidPage(QWidget):
             return "Choose the well."
         return ""
 
-    # -- aspirate ------------------------------------------------------------
+    # -- aspirate, dispense --------------------------------------------------
 
-    def _aspirate(self) -> None:
-        if self._why_not():
-            return
+    def _to_source(self):
+        """(go(log), where), or None when the move is refused (said)."""
         session = self.session
         picking = session.profile.picking
-        volume, rate = float(picking.tip_liquid_vol), float(picking.flow_rate)
         motion = session.motion
         if self.source.current() == DISH:
             xy, _why = dish_center(session.profile)
@@ -326,32 +379,70 @@ class TipLiquidPage(QWidget):
             refused = motion.refused((*xy, z))
             if refused:
                 self.jog.tell(f"Not possible: {refused}.")
-                return
+                return None
 
             def go(log_):
                 motion.tip_to(xy, z, log=log_)
-            where = "the dish center"
-        else:
-            slot, labware_id, definition = self._plate
-            well = self._well
-            center = session.profile.deck.well_center(slot,
-                                                      definition.load_name)
-            dx, dy = well_center.xy(center)
+            return go, "the dish center"
+        slot, labware_id, definition = self._plate
+        well = self._well
+        center = session.profile.deck.well_center(slot, definition.load_name)
+        dx, dy = well_center.xy(center)
 
-            def go(log_):
-                motion.to_well(labware_id, well, "bottom", (dx, dy, 0.0),
-                               log=log_)
-            where = f"{well} of slot {slot}"
+        def go(log_):
+            motion.to_well(labware_id, well, "bottom", (dx, dy, 0.0),
+                           log=log_)
+        return go, f"{well} of slot {slot}"
+
+    def _run(self, act, what: str) -> None:
+        """To the source, `act(log)`, the tip up; under the run's lease
+        while one holds the robot."""
+        if self._why_not():
+            return
+        target = self._to_source()
+        if target is None:
+            return
+        go, where = target
+        motion = self.session.motion
 
         def job(log_):
             go(log_)
+            said = act(log_)
+            motion.raise_tip(log=log_)
+            return said
+
+        def then(said):
+            return f"{said} {where}"
+
+        if self.run_hold is not None and self.run_hold.why() == "":
+            self.run_hold.borrow()
+        if not self.jog.run_job(job, what=what, then=then):
+            if self.run_hold is not None:
+                self.run_hold.give_back()
+            self.jog.tell(self.session.robot_lease.refusal)
+        self.refresh()
+
+    def _aspirate(self) -> None:
+        session = self.session
+        picking = session.profile.picking
+        volume, rate = float(picking.tip_liquid_vol), float(picking.flow_rate)
+
+        def act(log_):
             log_(f"aspirate {volume:g} µl at {rate:g} µl/s")
             session.aspirate(volume, rate)
-            motion.raise_tip(log=log_)
+            return f"aspirated {volume:g} µl from"
 
-        def then(_result):
-            return f"aspirated {volume:g} µl from {where}"
+        self._run(act, "tip liquid")
 
-        if not self.jog.run_job(job, what="tip liquid", then=then):
-            self.jog.tell(session.robot_lease.refusal)
-        self.refresh()
+    def _dispense(self) -> None:
+        session = self.session
+        if self.held <= 0:
+            return
+        rate = float(session.profile.picking.flow_rate)
+
+        def act(log_):
+            log_(f"dispense all at {rate:g} µl/s")
+            volume = session.dispense(rate)
+            return f"dispensed {volume:g} µl into"
+
+        self._run(act, "tip liquid")

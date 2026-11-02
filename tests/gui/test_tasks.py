@@ -32,13 +32,13 @@ def session(app, tmp_path, monkeypatch):
 
 
 def test_each_task_is_its_steps_in_order():
-    assert tasks.steps("auto") == ["deck", "tip", "dish_bottom",
-                                   "tip_liquid", "plan", "picking"]
+    assert tasks.steps("auto") == ["deck", "tip", "dish_bottom", "plan",
+                                   "picking"]
     assert tasks.steps("manual") == ["deck", "tip", "dish_bottom", "work"]
     assert tasks.steps("liquid") == ["deck", "tip", "well_center",
                                      "liquid_plan", "run"]
     assert [tasks.title(s) for s in tasks.steps("auto")] == [
-        "Deck", "Tip", "Dish bottom", "Tip liquid", "Plan", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Plan", "Picking"]
     assert tasks.title("liquid_plan") == "Plan"
 
 

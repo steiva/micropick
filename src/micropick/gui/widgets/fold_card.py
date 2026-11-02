@@ -55,6 +55,10 @@ class FoldCard(QFrame):
         # centers its text.
         self.title = QLabel(title, self)
         self.title.setObjectName("heading3")
+        # A card stretched taller than its body (one beside a taller one)
+        # keeps its title on top: the label takes none of the height.
+        self.title.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                 QSizePolicy.Policy.Fixed)
         self.title.setVisible(not fold)
         self.header.setVisible(fold)
         header.addWidget(self.title, 1)

@@ -1,6 +1,8 @@
-"""The Tip liquid step: a little liquid drawn into the tip before a picking
-run, from the dish center or a well of a plate on the deck. Its volume and
-height are picking settings; what is in the tip is the session's count."""
+"""Liquid in tip, the Picking page's card: a little liquid drawn into the
+tip before a picking run, from the dish center or a well of a plate on the
+deck, and given back there. Its volume and height are picking settings,
+saved with Save; what is in the tip is the session's count. During a run
+only what the page's `RunHold` allows."""
 
 import os
 import time
@@ -11,7 +13,9 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication                       # noqa: E402
+from PySide6.QtCore import Qt                                    # noqa: E402
+from PySide6.QtTest import QTest                                 # noqa: E402
+from PySide6.QtWidgets import QApplication, QWidget              # noqa: E402
 
 from micropick.config.labware import (LabwareDefinition,          # noqa: E402
                                       resolve_definition)
@@ -19,7 +23,9 @@ from micropick.config.schema import PipetteOffset                # noqa: E402
 from micropick.config.schema import PixelMap as PixelMapConfig   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages.dish_bottom import dish_center          # noqa: E402
-from micropick.gui.pages.tip_liquid import TipLiquidPage         # noqa: E402
+from micropick.gui.widgets.jog_panel import JogPanel             # noqa: E402
+from micropick.gui.widgets.tip_liquid import (RunHold,            # noqa: E402
+                                              TipLiquidBox)
 from micropick.gui.readiness import DISH_POSITION                # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.hardware.protocols import xyz                     # noqa: E402
@@ -49,12 +55,15 @@ def session(app, tmp_path, monkeypatch):
 
 @pytest.fixture
 def page(app, session):
-    p = TipLiquidPage(session)
-    p.show()
+    host = QWidget()
+    jog = JogPanel(session, machine_controls=False, parent=host)
+    jog.hide()
+    p = TipLiquidBox(session, jog, parent=host)
+    host.show()
     assert _until(app, lambda: not p.jog.busy)
     yield p
-    p.hide()
-    p.deleteLater()
+    host.hide()
+    host.deleteLater()
 
 
 def _until(app, condition, timeout_s=10.0):
@@ -134,21 +143,73 @@ def test_aspirating_again_adds_to_what_is_in_the_tip(app, session, page):
     assert page.holds.text() == "The tip holds 40 µl."
 
 
-def test_change_saves_the_volume_and_height_into_the_picking_settings(
-        session, page):
+def test_change_saves_the_volume_and_height_only_with_save(session, page):
     assert page.change_box.isHidden()
     page.change_button.click()
     assert not page.change_box.isHidden()
     page.volume.setValue(30.0)
-    page.volume.editingFinished.emit()
+    page.volume.editingFinished.emit()               # left the box: no save
     page.above_bottom.setValue(2.0)
-    page.above_bottom.editingFinished.emit()
+    picking = session.profile.picking
+    assert picking.tip_liquid_vol == 20.0
+    assert page.changing
+    page.save_button.click()
     picking = session.profile.picking
     assert (picking.tip_liquid_vol, picking.tip_liquid_above_bottom) == (
         30.0, 2.0)
+    assert page.change_box.isHidden()
+    assert not page.changing
     assert page.aspirate_button.text() == "Aspirate 30 µl"
     assert page.settings_line.text() == (
         "30 µl · 2 mm above the dish bottom · 50 µl/s")
+
+
+def test_cancel_drops_what_was_typed(session, page):
+    page.change_button.click()
+    page.volume.setValue(33.0)
+    page.cancel_button.click()
+    assert page.change_box.isHidden()
+    assert session.profile.picking.tip_liquid_vol == 20.0
+    page.change_button.click()
+    assert page.volume.value() == 20.0
+
+
+def test_enter_in_a_box_saves(session, page):
+    page.change_button.click()
+    page.volume.lineEdit().selectAll()
+    QTest.keyClicks(page.volume.lineEdit(), "25")
+    QTest.keyClick(page.volume.lineEdit(), Qt.Key.Key_Return)
+    assert session.profile.picking.tip_liquid_vol == 25.0
+    assert page.change_box.isHidden()
+
+
+def test_dispense_gives_back_all_that_is_in_the_tip(app, session, page):
+    assert not page.dispense_button.isEnabled()          # the tip is empty
+    page.aspirate_button.click()
+    assert _until(app, lambda: session.in_tip > 0 and not page.jog.busy)
+    assert page.dispense_button.text() == "Dispense 20 µl"
+    assert page.dispense_button.isEnabled()
+    page.dispense_button.click()
+    assert _until(app, lambda: session.in_tip == 0 and not page.jog.busy)
+    assert page.summary() == "Tip empty"
+    assert not page.dispense_button.isEnabled()
+    # Raised to the travel height afterwards.
+    assert float(xyz(session.robot)[2]) > 66.4 + 10
+
+
+def test_during_a_run_only_what_the_run_allows(app, session, page):
+    said, lent = ["Pause to use the tip."], []
+    page.run_hold = RunHold(lambda: said[0], lambda: lent.append(1),
+                            lambda: None)
+    page.refresh()
+    assert not page.aspirate_button.isEnabled()
+    assert page.aspirate_button.toolTip() == "Pause to use the tip."
+    said[0] = ""                                         # paused
+    page.refresh()
+    assert page.aspirate_button.isEnabled()
+    page.aspirate_button.click()
+    assert lent == [1]
+    assert _until(app, lambda: session.in_tip > 0 and not page.jog.busy)
 
 
 def test_a_well_is_chosen_on_the_mini_deck_and_aspirated_from_its_bottom(

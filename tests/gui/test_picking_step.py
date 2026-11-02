@@ -366,3 +366,19 @@ def test_without_a_shake_position_the_button_sets_it(app, window,
     window.session.remember("shake", (200.0, 150.0, 60.0))
     page._refresh()
     assert page.shake_button.text() == "Shake the dish"
+
+
+def test_liquid_in_tip_waits_for_a_pause_during_a_run(app, window,
+                                                      monkeypatch):
+    page = window.picking_page
+    assert page.liquid_card.summary.text() == "Tip empty"
+    assert not page.liquid_card.is_open()
+    _ready(window, monkeypatch)
+    _start(app, window)
+    hold = page.liquid.run_hold
+    assert hold.why() == "Pause to use the tip."
+    page.liquid.refresh()
+    assert page.liquid.aspirate_button.toolTip() == "Pause to use the tip."
+    page.pause_button.click()
+    app.processEvents()
+    assert hold.why() == ""

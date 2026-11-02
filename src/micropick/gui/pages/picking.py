@@ -12,17 +12,22 @@ On the right, top to bottom and with no scrolling:
    them "Lights go off while analyzing.": the rail lights put highlights
    on the dish, so the analysis switches them off for its frame and back
    on after if they were on, as a run does (#51), a failed one included.
-2. Card **Cuboid sizes** (its summary the size window, "250-500 µm"):
+2. Side by side, card **Cuboid sizes** (its summary the size window,
+   "250-500 µm"):
    the histogram whose white lines are dragged to change what is picked,
    the pickup height and volume ("0.5 mm above the bottom · 15 µl"),
    **More settings** (the picking settings, a sheet over the page; after
    a change, "Analyze again." under Analyze while cuboids found under the
    old settings are shown) and **All measures** (the cuboids' figures in
-   a window of their own, `widgets.cuboid_stats`).
-3. Card **Plate · slot N** ("12 of 24 wells"): the whole plate as a mini
-   map, the planned wells before a run, filled and planned in their
-   colors once something is filled, the current well ringed during one.
-
+   a window of their own, `widgets.cuboid_stats`) - and card **Plate ·
+   slot N** ("12 of 24 wells"): the whole plate as a mini map, the
+   planned wells before a run, filled and planned in their colors once
+   something is filled, the current well ringed during one. Neither needs
+   the whole width of the panel.
+3. Card **Liquid in tip**, folded to its title and what the tip holds
+   (`widgets.tip_liquid`): liquid drawn into the tip before a run, given
+   back, or the tip rinsed during a pause - under the run's lease lent to
+   the jog panel, as Camera to dish center.
 4. The run's buttons, centered: **Start picking** between runs - not at
    the bottom right, where Next is on every other step (#53) - and in its
    place during one **Pause** / **Resume** (one button, yellow while
@@ -37,7 +42,7 @@ by hand** instead of Choose plan: Manual pick's Work, the session as it is
 (plate, plan, dish bottom, tip), Dispense on those wells. While the plan
 is done Start picking is not offered: it would run over a full plate.
 
-Both cards are shown at once and neither folds (#52). The jog panel is
+Cuboid sizes and Plate are shown at once and neither folds (#52). The jog panel is
 last (its pad floats over the picture, folded until opened).
 
 The footer is the run's status (`run_status`, `footer_buttons`, read by
@@ -179,6 +184,7 @@ from ..widgets.jog_panel import JogPanel
 from ..widgets.picking_fields import BOUNDS
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.settings_form import PickingSettingsSheet
+from ..widgets.tip_liquid import RunHold, TipLiquidBox
 from ..widgets.size_histogram import SizeHistogram
 from ..workers import Worker
 
@@ -276,7 +282,8 @@ class PickingPage(QWidget):
         self._clip_dir = None
         # Why the lower camera did not open for the clips, until retried.
         self._clips_failure = ""
-        # A camera move under the run's lease, until it ends.
+        # A job under the run's lease - the camera to the dish center,
+        # liquid in the tip - until it ends.
         self._centering = False
         # The step's first unmet need, from the shell (`set_need`).
         self._need: str | None = None
@@ -309,8 +316,14 @@ class PickingPage(QWidget):
         self.again_line.hide()
         column.addWidget(self.again_line)
         self._stale = False
-        column.addWidget(self._sizes_card(panel))
-        column.addWidget(self._plate_card(panel))
+        cards = QHBoxLayout()
+        cards.setSpacing(SPACING)
+        cards.addWidget(self._sizes_card(panel), 3)
+        cards.addWidget(self._plate_card(panel), 2)
+        # The plate map's room goes under the legend, not around the title.
+        self.plate_card.body.layout().addStretch(1)
+        column.addLayout(cards)
+        column.addWidget(self._liquid_card(panel))
         column.addLayout(self._run_buttons(panel))
 
         # Never shown, and off: see "Pickup clips".
@@ -401,6 +414,38 @@ class PickingPage(QWidget):
         legend.addStretch(1)
         body.addLayout(legend)
         return self.plate_card
+
+    def _liquid_card(self, parent: QWidget) -> FoldCard:
+        """Liquid in tip, folded to its title and what the tip holds; its
+        box is made with the jog panel (`_jog_section`), whose jobs it
+        runs."""
+        self.liquid_card = FoldCard("Liquid in tip", fold=True, parent=parent)
+        return self.liquid_card
+
+    def _liquid_hold(self) -> RunHold:
+        """The run's lease for Liquid in tip, as for Camera to dish
+        center: only while the run is paused or waits, the tip empty of a
+        cuboid."""
+
+        def why() -> str | None:
+            if not self._running():
+                return None
+            picking = self._session
+            if not self._held():
+                return "Pause to use the tip."
+            if (picking is None or not picking.can_shake_now
+                    or picking.shake_pending or self.jog.busy):
+                return "Robot busy."
+            return ""
+
+        def borrow() -> None:
+            self.jog.lend(self._run_worker.lease)
+            self._centering = True
+
+        return RunHold(why, borrow, self._end_centering)
+
+    def _show_liquid(self) -> None:
+        self.liquid_card.set_summary(self.liquid.summary())
 
     def _done_card(self) -> QWidget:
         """The end of a run, over the page; see the module's notes."""
@@ -514,6 +559,13 @@ class PickingPage(QWidget):
                             machine_controls=False,
                             parent=self)
         self.jog.show_position_on(self.view)
+        self.liquid = TipLiquidBox(self.session, self.jog,
+                                   run_hold=self._liquid_hold(),
+                                   parent=self.liquid_card)
+        self.liquid_card.body.layout().addWidget(self.liquid)
+        for signal in (self.session.in_tip_changed, self.session.tip_changed):
+            signal.connect(lambda _v: self._show_liquid())
+        self._show_liquid()
         # Folded until asked for: the dish is what this page is looked at for.
         self.jog.pad.set_folded(True)
         self.jog.add_help([f"{key.lower()}   {what}"

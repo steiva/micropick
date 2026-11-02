@@ -1819,8 +1819,7 @@ Start the program normally, robot on, a profile with the platforms set
 plate at hand.
 
 - [ ] **The order.**
-  Auto pick's steps read Deck, Tip, Dish bottom, Tip liquid, Plan,
-  Picking. With a
+  Auto pick's steps read Deck, Tip, Dish bottom, Plan, Picking. With a
   calibrated tip on and the dish bottom found, Auto pick opens on Plan.
 
 - [ ] **Plan needs a plate.**
@@ -1873,21 +1872,20 @@ plate at hand.
   Done at Robot setup's bottom right goes to Home. Settings › Log has Save
   report for help… and no Clear.
 
-## Tip liquid step
+## Liquid in tip (Picking)
 
 - [ ] **Where it is.**
-  Auto pick's steps read Deck, Tip, Dish bottom, Tip liquid, Plan,
-  Picking; Manual pick has no Tip liquid. Without a tip on, or before the
-  dish bottom, it is dimmed under the first of "Put a tip on first." /
-  "Find the dish bottom first.". Next is never gray here. With the dish
-  bottom found and the tip empty, Auto pick still opens on Plan.
+  Auto pick has no Tip liquid step. On Picking, under Cuboid sizes and
+  Plate, the Liquid in tip card is folded to its title and "Tip empty".
+  Click the title: it opens.
 
 - [ ] **Dish center.**
   "20 µl · 1.5 mm above the dish bottom · 50 µl/s", Aspirate from on
   Dish center, Aspirate 20 µl: the tip goes over the middle of the dish,
   1.5 mm over the dish bottom, draws 20 µl and goes up. "The tip holds
-  20 µl.", the step gets its ✓. Press again: "The tip holds 40 µl.".
-  Drop the tip: the ✓ is gone.
+  20 µl.", the title row "20 µl in the tip". Press again: "The tip holds
+  40 µl.". Dispense 40 µl: the tip goes there again, gives all of it
+  back and goes up; "Tip empty", Dispense gray.
 
 - [ ] **A well.**
   A well: the mini deck lists the plates on the deck; choose one, click a
@@ -1897,9 +1895,15 @@ plate at hand.
   step later: Dish center again.
 
 - [ ] **Change.**
-  Change unfolds Volume and Height; a new value (Enter or leaving the
-  box) is in the line and on the button at once, and in More settings
+  Change opens Volume and Height with Cancel and Save. Type 33, leave
+  the box: nothing is saved yet. Cancel: the line is as before. Change,
+  30, Enter (or Save): in the line, on the button and in More settings
   under Main. Restart: the values are kept.
+
+- [ ] **During a run.**
+  While a run picks, Aspirate and Dispense are gray, "Pause to use the
+  tip.". Pause: they work, Pause / Resume is gray until the tip is up
+  again; Resume: the run goes on.
 
 - [ ] **The run keeps it.**
   Fill 20 µl, then run Picking: each deposit and return gives back only

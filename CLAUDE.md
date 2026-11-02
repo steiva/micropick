@@ -86,16 +86,9 @@ step not done. Next is enabled when the step is done or optional, and
 only moves on: nothing is confirmed by it. Deck is done while the robot
 is connected, something is on the deck and there is no deck problem; a
 move by drag goes through `Session.move_labware`, which loads again so a
-platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Tip
-liquid → Plan → Picking; Tip liquid (`pages.tip_liquid`, no camera) is
-optional, done while the tip holds something (`Session.in_tip`), and a
-task opens on its first step not done that is not optional. It draws
-the picking settings' `tip_liquid_vol` (20 µl) at their flow rate, from
-the dish center (`dish_bottom.dish_center`, `tip_liquid_above_bottom`,
-1.5 mm, over the dish bottom) or a well chosen on the mini deck and its
-mini `PlateGrid` (its bottom as the robot has it, x and y at the
-measured well center), then raises the tip: a cushion the run never
-dispenses, since it gives back only `vol` per cuboid. Plan needs a plate on the deck (a "plate" need, "Put a plate
+platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan
+→ Picking (no Tip liquid step: it is Picking's card), and a task opens
+on its first step not done that is not optional. Plan needs a plate on the deck (a "plate" need, "Put a plate
 on the deck first." with Go to Deck), not the Deck step. The Deck step
 is `pages.labware`: the tiles of `widgets.deck_tiles` in the deck's
 proportions, a × per filled tile and Clear all (no Put something else),
@@ -524,14 +517,25 @@ run only while paused or waiting, under the run's lease lent to the jog
 panel, the tip empty; else "Pause to move the camera"); beside it, with
 no panel scroll, Analyze the dish and Shake the dish ("Lights go off
 while analyzing.": the lights off for its frame, back as they were
-after), then two cards shown together, neither folding
+after), then two cards side by side, neither folding
 (`FoldCard(fold=False)`) - Cuboid sizes (the histogram whose window is
 dragged and saved like the settings' Save, the pickup line, More
 settings - a sheet over the page, `PickingSettingsSheet`, "Analyze
 again." after a change - All measures: `widgets.cuboid_stats`) and
 Plate · slot N (mini `PlateGrid`: the planned wells, Filled / Planned
-once something is filled, the current well ringed during a run) - then
-the jog panel (its pad over the picture, folded). No Save pickup clips
+once something is filled, the current well ringed during a run) - under
+them Liquid in tip (`widgets.tip_liquid.TipLiquidBox`, a card folded to
+its title and "20 µl in the tip" / "Tip empty"): the picking settings'
+`tip_liquid_vol` (20 µl) at their flow rate, from the dish center
+(`dish_bottom.dish_center`, `tip_liquid_above_bottom`, 1.5 mm, over the
+dish bottom) or a well chosen on the mini deck and its mini `PlateGrid`
+(its bottom as the robot has it, x and y at the measured well center),
+then the tip raised: a cushion the run never dispenses, since it gives
+back only `vol` per cuboid. Dispense gives all of it back there. Change
+opens the volume and height with Save (Enter) and Cancel, nothing saved
+before. During a run only while paused or waiting with the tip empty of
+a cuboid, under the run's lease lent to the jog panel (`RunHold`), as
+Camera to dish center - then the jog panel (its pad over the picture, folded). No Save pickup clips
 switch: its code stays, never shown and off. At a run's end a large card over
 the middle of the page: Picking done (Picking stopped after a stop or a
 failure), "N cuboids in M wells", Choose plan (primary: Plan with the
