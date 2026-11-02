@@ -358,6 +358,55 @@ def test_the_pages_arrows_follow_the_lower_camera_when_it_is_shown(
     assert page.jog._view_axes is None
 
 
+def test_leaving_the_step_raises_the_tip_to_the_travel_height(
+        app, page, ready):
+    """The calibration leaves the tip low over the crosshair; going to
+    another step takes it up, under the robot's lease."""
+    session = page.session
+    page.show()
+    _calibrate(app, page)
+    assert tip_page.xyz(session.robot)[2] < session.motion.travel_z
+    page.hide()
+    assert session.robot_lease.busy                # the page's job
+    assert _until(app, lambda: not page.jog.busy
+                  and not session.robot_lease.busy)
+    assert (tip_page.xyz(session.robot)[2]
+            >= session.motion.travel_z - 0.05)
+
+
+def test_leaving_the_step_moves_nothing_while_the_robot_is_held(
+        app, page, ready):
+    session = page.session
+    page.show()
+    _calibrate(app, page)
+    z = tip_page.xyz(session.robot)[2]
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        before = len(session.robot.calls)
+        page.hide()
+        app.processEvents()
+        assert session.robot.calls[before:] == []
+    finally:
+        lease.release()
+    assert tip_page.xyz(session.robot)[2] == pytest.approx(z, abs=0.05)
+
+
+def test_leaving_the_step_high_moves_nothing(app, page, ready):
+    session = page.session
+    page.show()
+    motion = session.motion
+    assert page.jog.run_job(lambda log: motion.raise_tip(log=log))
+    assert _until(app, lambda: not page.jog.busy)
+    page.jog.refresh_position()
+    assert _until(app, lambda: not page.jog.busy)
+    before = len(session.robot.calls)
+    page.hide()
+    app.processEvents()
+    assert not session.robot_lease.busy
+    assert not any(c[0].startswith(("move", "retract"))
+                   for c in session.robot.calls[before:])
+
+
 def test_redo_calibration_measures_again(app, page, ready):
     session = page.session
     _calibrate(app, page)

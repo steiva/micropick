@@ -488,7 +488,10 @@ camera and an XY pad while the tip is over the crosshair, else "The tip
 is not over the crosshair."; Save gray until a step, a short job, not a
 run). While the picture is the lower camera's, the page's own pad goes
 through `TipTarget.axes` too (`JogPanel.set_view_axes`), so an arrow
-moves the tip its way on that turned, mirrored picture. Liquid's Tip step shows no calibration (`set_task`). Its
+moves the tip its way on that turned, mirrored picture. Leaving the
+step raises a tip below the travel height (`Motion.raise_tip` through
+the page's `JogPanel.run_job`), never while the robot's lease is held.
+Liquid's Tip step shows no calibration (`set_task`). Its
 cameras are the profile's upper and lower ones.
 The Dish bottom step (`pages.dish_bottom`, REDESIGN §6.4) has no camera:
 a big Z readout, Up and Down with the step carousel between them

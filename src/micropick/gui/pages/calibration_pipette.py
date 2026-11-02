@@ -78,7 +78,9 @@ moved the tip since.
 
 **The routine ends with the tip over the crosshair**, so the fine-tune
 can start at once; the next move across the deck raises it
-(`Motion.tip_to`). An aborted or failed run leaves the gantry where it
+(`Motion.tip_to`), and so does leaving the step (`Motion.raise_tip`
+through the page's jog panel, unless the robot's lease is held or the
+tip is already at the travel height). An aborted or failed run leaves the gantry where it
 stopped, so what happened can be seen.
 
 **The profile is written by the workflow**, which saves the offset and the
@@ -102,6 +104,7 @@ from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
 from ...workflows.calibrate_pipette import calibrate_pipette_offset
+from ...workflows.motion import READ_TOL_MM
 from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
@@ -1022,3 +1025,27 @@ class PipetteCalibration(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.calibration.open_cameras()
+
+    def hideEvent(self, event) -> None:
+        super().hideEvent(event)
+        # A minimized window is not the step left.
+        if not event.spontaneous():
+            self._raise_tip()
+
+    def _raise_tip(self) -> None:
+        """Leaving the step: the tip, left low over the crosshair or the
+        disc, up to the travel height, so that the next page's first move
+        does not start down there. Nothing while the robot's lease is held
+        (a run) or the tip is known to be at the travel height already; with
+        the window closing the robot is let go first, so nothing then
+        either."""
+        session = self.session
+        if session.robot is None or session.robot_lease.busy:
+            return
+        motion = session.motion
+        travel, pose = motion.travel_z, self.calibration._pose
+        if (travel is not None and pose is not None
+                and pose[2] >= travel - READ_TOL_MM):
+            return
+        self.jog.run_job(lambda log: motion.raise_tip(log=log),
+                         what="raising the tip")
