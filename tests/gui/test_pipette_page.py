@@ -224,7 +224,7 @@ def _calibrate(app, page):
     page.disc_button.click()
     page.calibrate_button.click()
     assert _until(app, lambda: not page.session.robot_lease.busy
-                  and not page.jog.busy)
+                  and not page.calibration.running and not page.jog.busy)
 
 
 def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
@@ -243,11 +243,16 @@ def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
     assert page.calibrate_button.isEnabled()
     ready["gate"].clear()
     page.calibrate_button.click()
-    # Measuring: a spinner, nothing to wait for the operator.
+    # Measuring: a spinner and a plain line, nothing to wait for the
+    # operator; what the routine does goes to the log only.
     assert _until(app, lambda: page.spinner.isVisibleTo(page))
     assert page.run_activity() is None
+    page.calibration._on_message("residual 0.012 mm after 3 frames")
+    assert page.checks.text() == "Calibrating…"
     ready["gate"].set()
-    assert _until(app, lambda: not session.robot_lease.busy)
+    # The lease is let go on the worker's thread, before its end arrives.
+    assert _until(app, lambda: not session.robot_lease.busy
+                  and not page.calibration.running)
     assert ready["touch_up"] is None                 # no fine-tune in the run
     assert ready["start"] == session.settings.tip_cal_start_offset
     assert not page.spinner.isVisibleTo(page)
@@ -255,7 +260,7 @@ def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
     assert not page.calibrated.isHidden()
     assert page.calibrated.label.text() == "Tip calibrated."
     assert page.calibrate_step.state == OK
-    assert page.check_button.isEnabled()
+    assert page.calibrated._actions.count() == 0        # no Check button
     assert page.redo_button.isEnabled()
     # The fine-tune is there, folded and optional.
     assert not page.tune_fold.isHidden()
@@ -274,9 +279,9 @@ def test_the_fine_tune_saves_the_offset_once_the_tip_was_moved(
     crosshair = page._crosshair
     page.tune_fold.toggle.click()
     assert _until(app, lambda: not page.touch_jog.busy)
-    # The tip is still over the crosshair: the pad, no Check first.
+    # The tip is still over the crosshair: the pad at once.
     assert page.touch_jog.isVisibleTo(page)
-    assert page.tune_check_button.isHidden()
+    assert page.tune_away.isHidden()
     assert not page.jog.isVisibleTo(page)            # one pad, one set of keys
     assert not page.tune_save_button.isEnabled()      # nothing moved yet
     page.touch_jog.step("x", +1)
@@ -297,7 +302,7 @@ def test_the_fine_tune_saves_the_offset_once_the_tip_was_moved(
     assert not page.tune_save_button.isEnabled()      # saved: nothing new
 
 
-def test_the_fine_tune_asks_for_the_tip_back_on_the_crosshair(
+def test_the_fine_tune_says_when_the_tip_is_away_from_the_crosshair(
         app, page, ready):
     _calibrate(app, page)
     motion = page.session.motion
@@ -306,12 +311,10 @@ def test_the_fine_tune_asks_for_the_tip_back_on_the_crosshair(
     assert _until(app, lambda: not page.jog.busy)
     page.tune_fold.toggle.click()
     app.processEvents()
-    assert not page.tune_check_button.isHidden()
+    assert not page.tune_away.isHidden()
+    assert page.tune_away.text() == "The tip is not over the crosshair."
     assert not page.touch_jog.isVisibleTo(page)
-    page.tune_check_button.click()
-    assert _until(app, lambda: not page.jog.busy
-                  and page.touch_jog.isVisibleTo(page))
-    assert page.tune_check_button.isHidden()
+    assert not page.tune_save_button.isEnabled()
 
 
 def test_the_fine_tune_follows_the_lower_camera_in_xy_only(app, page, ready):
@@ -338,23 +341,7 @@ def test_redo_calibration_measures_again(app, page, ready):
     assert tip_calibration_status(session)[0]
 
 
-def test_check_sends_the_tip_to_the_crosshair_it_found(app, page, ready):
-    _calibrate(app, page)
-    crosshair = page._crosshair
-    assert crosshair is not None
-    motion = page.session.motion
-    assert page.jog.run_job(lambda log: motion.tip_to((100.0, 100.0), 90.0,
-                                                      log=log))
-    assert _until(app, lambda: not page.jog.busy)
-    page.check_button.click()
-    assert _until(app, lambda: not page.jog.busy)
-    x, y, _z = tip_page.xyz(page.session.robot)
-    # The mock's pose wanders by a few hundredths.
-    assert (x, y) == pytest.approx((crosshair[0] + 1.5, crosshair[1] - 2.5),
-                                   abs=0.05)
-
-
-def test_check_after_a_restart_takes_the_crosshair_from_the_pixel_map(
+def test_after_a_restart_the_crosshair_is_the_pixel_maps(
         app, page, ready):
     from micropick.config.schema import PixelMap as PixelMapConfig
     from micropick.core.calibration.pixel_map import PixelMap
@@ -366,14 +353,17 @@ def test_check_after_a_restart_takes_the_crosshair_from_the_pixel_map(
         image_size=[w, h], sweep_z=0.0)
     _calibrate(app, page)
     page._crosshair = None                   # as a page of a new start
-    page._refresh()
-    assert page.check_button.isEnabled()
     pmap = PixelMap(page.session.profile.pixel_map)
     gx, gy = pmap.to_robot(pmap.config.cu, pmap.config.cv, (150.0, 150.0))
-    page.check_button.click()
+    assert page.calibration._crosshair_xy() == pytest.approx((gx, gy))
+    # The tip over it plus the offset: the fine-tune's pad.
+    module = page.session.profile.calibration.tip_target.module_height
+    motion = page.session.motion
+    assert page.jog.run_job(lambda log: motion.tip_to(
+        (gx + 1.5, gy - 2.5), module, log=log))
     assert _until(app, lambda: not page.jog.busy)
-    x, y, _z = tip_page.xyz(page.session.robot)
-    assert (x, y) == pytest.approx((gx + 1.5, gy - 2.5), abs=0.05)
+    page.tune_fold.toggle.click()
+    assert _until(app, lambda: page.touch_jog.isVisibleTo(page))
 
 
 def test_stop_at_the_disc_ends_the_run_with_nothing_saved(app, page, ready):

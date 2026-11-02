@@ -1422,8 +1422,9 @@ tip box and a 384 plate at hand.
   Without a tip the three steps are dimmed. With one: Start tip
   calibration - the pill reads "Calibrating the tip", STOP shows, the
   camera goes over the calibration position and waits ("Waiting for
-  you"). The disc is there, Calibrate: a spinner for about 30 s, the
-  lower camera's picture. Then the run ends by itself: the pill goes, a
+  you"). The disc is there, Calibrate: a spinner and "Calibrating…" for
+  about 30 s (no numbers on screen; the routine's lines are in the Log),
+  the lower camera's picture. Then the run ends by itself: the pill goes, a
   green "Tip calibrated." (saved), Tip gets its ✓, the tip stays over
   the crosshair. Only the current step's button is blue.
 
@@ -1431,8 +1432,7 @@ tip box and a 384 plate at hand.
   Folded under the result. Open it: the lower camera and the pad (XY
   only, 0.05 mm steps), Save gray. One step: Save lights; Save: "Fine-tune
   saved.", gray again, no pill. Move the tip away (Camera to slot ...),
-  open it again: "The tip is not over the crosshair." and Check: tip to
-  crosshair, which brings the pad back.
+  open it again: "The tip is not over the crosshair.", no pad.
 
 - [ ] **Redo calibration.**
   After a result: Redo calibration starts the run again at the disc.
@@ -1440,10 +1440,6 @@ tip box and a 384 plate at hand.
 - [ ] **Stop while it waits.**
   Start, then Esc (or STOP) at the disc: the run ends, "Calibration
   stopped. Nothing was saved.", the pill goes.
-
-- [ ] **Check: tip to crosshair.**
-  After a calibration the tip goes to the crosshair at the module height:
-  on the lower camera it is on the central crosshair.
 
 - [ ] **Done follows the tip.**
   Drop the tip and take another: Tip loses its ✓ until calibrated again.
