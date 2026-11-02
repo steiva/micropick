@@ -13,11 +13,9 @@ icon, name, facts, with a × that removes it - or Empty; the trash faint
 and not clickable, and so is the calibration module's slot, which takes
 no labware (`Session.refuses_labware`). A filled tile's card dragged onto
 an empty tile moves its labware there (`Session.move_labware`); Clear all
-under the deck removes everything. Over the deck, while
-the robot holds labware it remembers from before, the info banner "The
-robot remembers what was on it last time..." until Got it, once per robot
-session; and while labware sits on a platform without the platform's
-height, a warn banner with Load again (below).
+under the deck removes everything. Over the deck, while labware sits on
+a platform without the platform's height, a warn banner with Load again
+(below).
 
 **Right, the slot clicked.** An empty one asks "What goes to slot N?":
 the tabs Frequent · All · Plates · Tips (#41), a search inside the tab
@@ -92,13 +90,9 @@ PANEL_WIDTH = SIZES["side-min"]
 # and a longer list is typed into, not read.
 MAX_LISTED = 60
 
-MEMORY = ("The robot remembers what was on it last time. Check that it "
-          "matches the real deck.")
 NO_HEIGHT = "Loaded without the platform's height."
 NO_HEIGHT_IN = "Slot {}: loaded without the platform's height."
 DRAG_HINT = "Drag an item to another slot to move it."
-# Got it on the memory banner, for the robot session (`Session.confirm`).
-MEMORY_SEEN = "deck-memory-seen"
 
 # A definition rides on its list item under this role.
 DEFINITION_ROLE = Qt.ItemDataRole.UserRole
@@ -170,10 +164,6 @@ class LabwarePage(QWidget):
         column.setContentsMargins(SPACING * 3, SPACING * 2, SPACING * 3,
                                   SPACING * 2)
         column.setSpacing(SPACING * 2)
-        self.memory = Banner(MEMORY, "info", self)
-        self.memory.add_action("Got it", quiet=True).clicked.connect(
-            self._memory_seen_now)
-        column.addWidget(self.memory)
         self.problems = Banner("", "warn", self)
         self.reload_button = self.problems.add_action("Load again")
         self.reload_button.clicked.connect(self._reload_problems)
@@ -407,10 +397,6 @@ class LabwarePage(QWidget):
         self._run(Worker(job), "loading again with the module offset: slots "
                   + ", ".join(p.slot for p in problems))
 
-    def _memory_seen_now(self) -> None:
-        self.session.confirm(MEMORY_SEEN)
-        self._refresh()
-
     # -- jobs ----------------------------------------------------------------
 
     def _busy(self) -> bool:
@@ -513,9 +499,6 @@ class LabwarePage(QWidget):
         self.deck.set_tiles(self._tiles(held, {p.slot for p in problems}))
         self.deck.select(self.slot)
 
-        remembered = any(n != str(TRASH_SLOT) for n in held)
-        self.memory.setVisible(remembered
-                               and not session.is_confirmed(MEMORY_SEEN))
         self.problems.set_text(NO_HEIGHT_IN.format(
             ", ".join(p.slot for p in problems)) if problems else "")
         self.problems.setToolTip("\n".join(p.describe() for p in problems))

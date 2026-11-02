@@ -1391,12 +1391,6 @@ tip box and a 384 plate at hand.
   control's Go to well top stops above the plate, not inside the
   platform.
 
-- [ ] **The robot's memory.**
-  Close and start the program again: the robot carries on with its
-  session, the Deck step shows "The robot remembers what was on it last
-  time. Check that it matches the real deck." Got it hides it until the
-  next robot session.
-
 - [ ] **No confirmation (#39).**
   Deck's ✓ comes with the first labware and stays through loads, removes
   and drags; it goes only when the deck is empty or a labware sits on a

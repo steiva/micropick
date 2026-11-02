@@ -1,6 +1,6 @@
 """The Deck step's page (REDESIGN §6.1, #40, #41): the deck's tiles, what
 goes to an empty slot, what is in a filled one, × and Clear all, a move by
-drag, and the banner about the robot's memory."""
+drag."""
 
 import os
 import time
@@ -201,18 +201,6 @@ def test_a_platform_shows_on_its_tile(session, page):
                                          name="Picking platform")])
     assert page.deck.tile(8).platform == "Picking platform"
     assert page.deck.tile(5).platform == ""
-
-
-def test_the_memory_banner_shows_until_got_it_in_this_robot_session(
-        app, session, page):
-    assert page.memory.isHidden()                  # nothing remembered
-    session.load_labware(resolve_definition(PLATE), 5)
-    assert not page.memory.isHidden()
-    page._memory_seen_now()
-    assert page.memory.isHidden()
-    session.new_run()
-    session.load_labware(resolve_definition(PLATE), 5)
-    assert not page.memory.isHidden()
 
 
 def test_a_calibration_module_placed_under_the_chosen_slot_unchooses_it(
