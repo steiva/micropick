@@ -1,8 +1,9 @@
 """The Dish bottom step (REDESIGN §6.4, #16): measured with the tip, or
 the last value taken with Use it - either holds for the robot session it
-was done in. The page: no camera, a big Z readout with Up and Down (and
-their keys, #49) that work only while lowering, Last time with Use it,
-two steps - the second ending in Save dish bottom - and Redo."""
+was done in. The page: no camera, a big Z readout over three cards, each
+lowering in finer steps with Up and Down (and their keys, #49) that work
+only while it is the one lowering - the last ending in Save dish bottom -
+Last time with Use it, where the dish is with Change, and Redo."""
 
 import os
 import time
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.schema import PipetteOffset                # noqa: E402
 from micropick.config.schema import PixelMap as PixelMapConfig   # noqa: E402
+from micropick.core.deck import slot_center                      # noqa: E402
 from micropick.gui import keys                                   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import dish_bottom as page_module       # noqa: E402
@@ -161,6 +163,21 @@ def test_up_and_down_only_while_lowering(app, session, page):
     assert not page.save_button.isEnabled()
 
 
+def _touch(app, page):
+    """It touches on the card lowering: the next card is lowering then."""
+    stage = page._stage
+    page.lowering.touch.click()
+    assert _until(app, lambda: page._stage == stage + 1
+                  and page.up_button.isEnabled())
+
+
+def _to_last(app, page):
+    page.move_button.click()
+    assert _until(app, lambda: page.up_button.isEnabled())
+    _touch(app, page)
+    _touch(app, page)
+
+
 def test_measured_with_the_tip(app, session, page):
     _calibrated(session)
     page.refresh()
@@ -173,19 +190,25 @@ def test_measured_with_the_tip(app, session, page):
                               + page_module.ABOVE_BOTTOM_MM, abs=0.01)
     assert page.z_readout.text() == f"Z {z:.2f}"
 
-    # Down 10 mm, then up half a millimeter: 0.5 mm over the old value.
-    page.set_step(10.0)
-    page.down_button.click()
-    assert _until(app, lambda: page.z_readout.text() == f"Z {z - 10.0:.2f}"
-                  and page.up_button.isEnabled())
-    page.set_step(0.5)
-    page.up_button.click()
-    low = z - 9.5
-    assert _until(app, lambda: page.z_readout.text() == f"Z {low:.2f}"
-                  and page.up_button.isEnabled())
+    # Each card lowers at its own step and It touches takes the tip up by
+    # it: 1 mm, then 0.5, then 0.1.
+    low = z
+    for i, (_title, step) in enumerate(page_module.STAGES):
+        assert page.lowering is page.stages[i]
+        assert page.carousel.step == step
+        assert not page.stages[i - 1].up.isEnabled() if i else True
+        page.down_button.click()
+        low -= step
+        assert _until(app, lambda: page.z_readout.text() == f"Z {low:.2f}"
+                      and page.up_button.isEnabled())
+        if i < len(page_module.STAGES) - 1:
+            _touch(app, page)
+            low += step
+            assert page.z_readout.text() == f"Z {low:.2f}"
     assert page.save_button.text() == "Save dish bottom"
     assert page.save_button.isEnabled()
 
+    session.profile.picking.dish_bottom = low + 0.5   # no question asked
     page.save_button.click()
     assert _until(app, lambda: session.is_confirmed("dish_bottom")
                   and not page.jog.busy)
@@ -205,9 +228,7 @@ def test_a_big_change_is_asked_about_first(app, session, page, monkeypatch):
     monkeypatch.setattr(page_module.ConfirmDialog, "confirm",
                         classmethod(lambda cls, host, q, **kw:
                                     asked.append(q) or False))
-    page.move_button.click()
-    assert _until(app, lambda: page.save_button.isEnabled()
-                  and not page.jog.busy)
+    _to_last(app, page)
     page.save_button.click()                       # 10 mm over the old value
     assert _until(app, lambda: asked and not page.jog.busy)
     assert not session.is_confirmed("dish_bottom")
@@ -288,17 +309,35 @@ def test_redo_goes_back_to_the_first_step_and_keeps_the_value(
         app, session, page):
     _calibrated(session)
     page.refresh()
-    page.move_button.click()
-    assert _until(app, lambda: page.save_button.isEnabled()
-                  and not page.jog.busy)
+    _to_last(app, page)
     session.profile.picking.dish_bottom = 76.0        # no question asked
     page.save_button.click()
     assert _until(app, lambda: session.is_confirmed("dish_bottom")
                   and not page.jog.busy)
     saved = session.profile.picking.dish_bottom
-    assert page.over_step.state == page_module.OK
+    assert [s.card.state for s in page.stages] == [page_module.OK] * 3
     page.redo_button.click()
-    assert page.over_step.state == page_module.TODO
+    assert page.stages[0].card.state == page_module.TODO
+    assert page.lowering is page.stages[0]
+    assert page.carousel.step == page_module.FIRST_STEP_MM
     assert page.redo_button.isHidden()
     assert session.profile.picking.dish_bottom == saved
     assert session.is_confirmed("dish_bottom")
+
+
+def test_where_the_dish_is_with_change(app, session, page):
+    asked = []
+    session.page_requested.connect(asked.append)
+    session.profile.positions.pop(DISH_POSITION, None)
+    page.refresh()
+    assert page.dish_line.text() == "Over the dish: not set"
+    assert page.dish_button.text() == "Set"
+    session.profile.calibration.pipette_offset = PipetteOffset(dx=0.0,
+                                                               dy=90.5)
+    x, y = slot_center(6)
+    session.remember(DISH_POSITION, (x, y, 100.0))
+    # The camera's slot, one behind the tip's.
+    assert page.dish_line.text() == "Over the dish · slot 9"
+    assert page.dish_button.text() == "Change"
+    page.dish_button.click()
+    assert asked == ["dish_position"]

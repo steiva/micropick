@@ -34,14 +34,16 @@ def wrapped(text: str = "") -> QLabel:
 
 
 class StepCard:
-    """The card is `box`; `add` and `add_layout` fill it."""
+    """The card is `box`; `add` and `add_layout` fill it. With no number
+    the heading is the title alone."""
 
-    def __init__(self, parent: QWidget, number: int, title: str):
+    def __init__(self, parent: QWidget, number: int | None, title: str):
         self.box = card(parent)
         row = QHBoxLayout()
         self.mark = QLabel(parent)
         row.addWidget(self.mark, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.heading = heading(f"{number}. {title}", 2)
+        self.heading = heading(
+            title if number is None else f"{number}. {title}", 2)
         self.heading.setWordWrap(True)
         row.addWidget(self.heading, 1)
         self.box.layout().addLayout(row)

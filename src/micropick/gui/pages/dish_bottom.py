@@ -5,35 +5,42 @@ pick's third, the same screen and state in both.
 (`PickingConfig.pickup_height`), and this platform has no sensor to find
 it: the tip is brought down onto the dish by hand. **No camera** here -
 the operator watches the tip itself - only what matters while lowering
-it: the robot's Z in big numbers, Up and Down with the step carousel
-between them (`jog_pad.StepCarousel`), active only during step 2, and
-**Keys**, which lists their keys.
+it: the robot's Z in big numbers and, under it, three cards side by side,
+the tip lowered in finer steps from one to the next (`STAGES`: Coarse,
+Finer, Finest at 1, 0.5 and 0.1 mm). Each has Up and Down with its own
+step carousel (`jog_pad.StepCarousel`), active only while it is the one
+lowering; **Keys** lists their keys.
 
-On the right, "Last time: Z 66.40 mm · 3 days ago" with **Use it**, while
-there is a last time (`Calibration.dish_bottom_set_at`): the default was
-never measured, so it is never taken. Then the two steps:
-
-1. **Tip over the dish center** (Move the tip): the middle of the working
+1. **Move the tip**, in the first card: over the middle of the working
    circle - `circle_center`, a pixel of the picture taken at the position
    over the dish, through the pixel map and the pipette offset - at
    `ABOVE_BOTTOM_MM` over the dish bottom stored now: room for one stored
    a little high, and few presses down.
-2. **Lower until it touches** (Save dish bottom): Z is read where the tip
-   is, saved into the picking settings, and the tip raised. A value more
-   than `BIG_CHANGE_MM` from the last is asked about first: it is more
-   often the tip resting on something else.
+2. **It touches**, in each card but the last: the tip goes up by that
+   card's step and the next card, a finer step, lowers it again. The
+   operator touches the bottom three times, each closer.
+3. **Save dish bottom**, the last card's: Z is read where the tip is,
+   saved into the picking settings, and the tip raised. A value more than
+   `BIG_CHANGE_MM` from the last is asked about first: it is more often
+   the tip resting on something else.
+
+On the right, "Last time: Z 66.40 mm · 3 days ago" with **Use it**, while
+there is a last time (`Calibration.dish_bottom_set_at`): the default was
+never measured, so it is never taken; and where the dish is, "Over the
+dish · slot 9" with **Change**, Robot setup's sheet for that position
+over the task (a dish put elsewhere for one experiment).
 
 The step is done once the dish bottom was measured, or Use it pressed, in
 this robot session (`Session.set_dish_bottom`,
 `Session.use_last_dish_bottom`): green "Dish bottom: Z 66.42 mm" with
-**Redo**, back to step 1; the value saved holds until a new one is.
+**Redo**, back to Move the tip; the value saved holds until a new one is.
 
 Every robot command goes through the page's jog panel (`JogPanel.run_job`
 and `JogPanel.step`), which is never shown: its pad would be a second face
 for the same Up and Down, and hidden it binds no keys. The page binds its
-own, from the key actions (`gui.keys`: Z up and down, the step sizes, the
-key list) - no XY keys, the tip stays over the dish center - enabled
-while lowering, the page shown and the robot free.
+own, from the key actions (`gui.keys`: Z up and down, the step sizes of
+the card lowering, the key list) - no XY keys, the tip stays over the
+dish center - enabled while lowering, the page shown and the robot free.
 """
 
 from __future__ import annotations
@@ -47,13 +54,15 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
+from ..camera_moves import pose_slot
 from ...workflows import manual as moves
 from .. import keys
 from ..readiness import DISH_POSITION
 from ..session import Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, heading, muted_label,
-                             primary_button, scroll_column, secondary_button)
+                             primary_button, scroll_column, secondary_button,
+                             set_primary)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
 from ..widgets.checklist import BLOCKED, OK, TODO
@@ -77,12 +86,15 @@ PANEL_WIDTH = 440
 ABOVE_BOTTOM_MM = 10.0
 # A new dish bottom this far from the old one is asked about first.
 BIG_CHANGE_MM = 3.0
-# The step lowering starts with: 10 mm in ten presses would be too few to
+# The cards the tip is lowered in, each a finer step: (title, step mm).
+# The first starts at 1 mm: 10 mm in ten presses would be too few to
 # notice the dish coming.
-FIRST_STEP_MM = 1.0
+STAGES = (("Coarse", 1.0), ("Finer", 0.5), ("Finest", 0.1))
+FIRST_STEP_MM = STAGES[0][1]
+Z_BUTTON = (150, 56)
 
-# Where the operator is: moving the tip over the center, lowering it,
-# done (saved, or the last value used).
+# Where the operator is: moving the tip over the center, lowering it (in
+# `_stage`, a card of STAGES), done (saved, or the last value used).
 OVER_CENTER, LOWER, DONE = 0, 1, 2
 
 # The page's keys: action id -> what it does, in the key list.
@@ -122,11 +134,38 @@ def dish_center(profile):
     return (float(xy[0]), float(xy[1])), ""
 
 
+class _Stage:
+    """One card of STAGES: its step, Up and Down, and It touches (Save
+    dish bottom on the last)."""
+
+    def __init__(self, parent: QWidget, title: str, step: float, text: str,
+                 done: str):
+        self.card = StepCard(parent, None, title)
+        self.card.add(wrapped(text))
+        self.carousel = StepCarousel(step=step, parent=parent)
+        self.up = _z_button("Up", "chevron-up", parent)
+        self.down = _z_button("Down", "chevron-down", parent)
+        for widget in (self.up, self.carousel, self.down):
+            self.card.box.layout().addWidget(widget, 0,
+                                             Qt.AlignmentFlag.AlignHCenter)
+        self.touch = primary_button(done, parent)
+        self.card.add_button(self.touch)
+
+
+def _z_button(text: str, name: str, parent: QWidget):
+    button = secondary_button(text, parent)
+    button.setIcon(icon(name, COLORS["text"], 22, stroke=2.2))
+    button.setFixedSize(*Z_BUTTON)
+    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    return button
+
+
 class DishBottomPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
         self._at = OVER_CENTER
+        self._stage = 0
 
         # Its keys on itself, hidden: they never fire (the page's own do).
         self.jog = JogPanel(session, machine_controls=False, parent=self)
@@ -159,17 +198,34 @@ class DishBottomPage(QWidget):
         lines.addStretch(1)
         for widget in self._readout(column):
             lines.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
-        lines.addSpacing(SPACING * 4)
+        lines.addSpacing(SPACING * 3)
 
-        self.up_button = self._z_button("Up", "chevron-up", column)
-        self.up_button.clicked.connect(lambda: self.jog.step("z", +1))
-        self.carousel = StepCarousel(step=FIRST_STEP_MM, parent=column)
-        self.carousel.step_changed.connect(self.jog.set_step)
+        row = QHBoxLayout()
+        row.setSpacing(SPACING)
+        last = len(STAGES) - 1
+        self.stages: list[_Stage] = []
+        for i, (title, step) in enumerate(STAGES):
+            stage = _Stage(column, title, step,
+                           "Lower until the tip touches the dish." if i == 0
+                           else "Lower again, in smaller steps.",
+                           "Save dish bottom" if i == last else "It touches")
+            if i == 0:
+                self.move_button = primary_button("Move the tip", column)
+                self.move_button.clicked.connect(self._tip_over_center)
+                stage.card.box.layout().insertWidget(2, self.move_button)
+                stage.card.own_button(self.move_button)
+            stage.up.clicked.connect(lambda: self.jog.step("z", +1))
+            stage.down.clicked.connect(lambda: self.jog.step("z", -1))
+            stage.carousel.step_changed.connect(
+                lambda mm, i=i: self._step_chosen(i, mm))
+            stage.touch.clicked.connect(self._save if i == last
+                                        else self._touches)
+            row.addWidget(stage.card.box, 1)
+            self.stages.append(stage)
+        lines.addLayout(row)
+        self.save_button = self.stages[-1].touch
         self.jog.set_step(self.carousel.step)
-        self.down_button = self._z_button("Down", "chevron-down", column)
-        self.down_button.clicked.connect(lambda: self.jog.step("z", -1))
-        for widget in (self.up_button, self.carousel, self.down_button):
-            lines.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
+
         self.keys_button = secondary_button("Keys", column)
         self.keys_button.setProperty("compact", True)
         self.keys_button.setCheckable(True)
@@ -198,13 +254,6 @@ class DishBottomPage(QWidget):
         unit = muted_label("mm", parent)
         return [caption("Tip height", parent), self.z_readout, unit]
 
-    def _z_button(self, text: str, name: str, parent: QWidget):
-        button = secondary_button(text, parent)
-        button.setIcon(icon(name, COLORS["text"], 22, stroke=2.2))
-        button.setFixedSize(180, 72)
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        return button
-
     def _panel(self) -> QWidget:
         panel = QWidget(self)
         column = QVBoxLayout(panel)
@@ -227,23 +276,16 @@ class DishBottomPage(QWidget):
         self.last_card.layout().addLayout(row)
         column.addWidget(self.last_card)
 
-        self.over_step = StepCard(panel, 1, "Tip over the dish center")
-        self.over_step.add(wrapped(
-            "The tip goes to the middle of the dish and stops a little "
-            "above the bottom."))
-        self.move_button = primary_button("Move the tip", panel)
-        self.move_button.clicked.connect(self._tip_over_center)
-        self.over_step.add_button(self.move_button)
-        column.addWidget(self.over_step.box)
-
-        self.lower_step = StepCard(panel, 2, "Lower until it touches")
-        self.lower_step.add(wrapped(
-            "Go down until the dish bottom bends a little. Then go up one "
-            "step, make the step smaller and lower again."))
-        self.save_button = primary_button("Save dish bottom", panel)
-        self.save_button.clicked.connect(self._save)
-        self.lower_step.add_button(self.save_button)
-        column.addWidget(self.lower_step.box)
+        dish_card = card(panel)
+        row = QHBoxLayout()
+        self.dish_line = QLabel("", panel)
+        row.addWidget(self.dish_line, 1)
+        self.dish_button = secondary_button("Change", panel)
+        self.dish_button.clicked.connect(
+            lambda: self.session.page_requested.emit("dish_position"))
+        row.addWidget(self.dish_button)
+        dish_card.layout().addLayout(row)
+        column.addWidget(dish_card)
 
         self.result = Banner("", tone="ok", parent=panel)
         self.redo_button = self.result.add_action("Redo")
@@ -254,9 +296,31 @@ class DishBottomPage(QWidget):
 
     # -- what the page shows -------------------------------------------------
 
+    @property
+    def lowering(self) -> _Stage:
+        """The card lowering now, or the first before Move the tip."""
+        return self.stages[self._stage]
+
+    # The lowering card's, for the keys and a test.
+    @property
+    def carousel(self) -> StepCarousel:
+        return self.lowering.carousel
+
+    @property
+    def up_button(self):
+        return self.lowering.up
+
+    @property
+    def down_button(self):
+        return self.lowering.down
+
     def set_step(self, mm: float) -> None:
-        """The step Up and Down take."""
+        """The step Up and Down take, on the card lowering."""
         self.carousel.set_step(mm, emit=True)
+
+    def _step_chosen(self, stage: int, mm: float) -> None:
+        if stage == self._stage:
+            self.jog.set_step(mm)
 
     def _show_pose(self, pose) -> None:
         if pose is not None:
@@ -318,13 +382,13 @@ class DishBottomPage(QWidget):
     def _on_confirmations(self) -> None:
         # A new robot session forgot the dish bottom: measure it again.
         if self._at == DONE and not self.session.is_confirmed("dish_bottom"):
-            self._at = OVER_CENTER
+            self._to_start()
         self.refresh()
 
     def _on_robot(self, _state) -> None:
         # A new connection: the tip may be anywhere.
         if self.session.robot is None:
-            self._at = OVER_CENTER
+            self._to_start()
             self._show_pose(None)
         self.refresh()
 
@@ -349,17 +413,34 @@ class DishBottomPage(QWidget):
         confirmed = session.is_confirmed("dish_bottom")
         self.use_button.setEnabled(not confirmed)
 
+        observe = (profile.positions.get(DISH_POSITION)
+                   if profile is not None else None)
+        self.dish_line.setText(
+            "Over the dish: not set" if observe is None else
+            f"Over the dish · slot "
+            f"{pose_slot(session, DISH_POSITION, observe[:2])}")
+        self.dish_button.setText("Set" if observe is None else "Change")
+        self.dish_button.setEnabled(profile is not None)
+
         center, why = dish_center(profile)
         self.move_button.setEnabled(movable and center is not None)
         self.move_button.setToolTip(why)
-        lowering = self._at == LOWER
-        self.up_button.setEnabled(movable and lowering)
-        self.down_button.setEnabled(movable and lowering)
-        self.carousel.setEnabled(lowering)
-        self.save_button.setEnabled(movable and lowering)
-        for number, step in enumerate((self.over_step, self.lower_step)):
-            step.set_state(OK if number < self._at else
-                           TODO if number == self._at else BLOCKED)
+        for i, stage in enumerate(self.stages):
+            now = self._at == LOWER and i == self._stage
+            stage.up.setEnabled(movable and now)
+            stage.down.setEnabled(movable and now)
+            stage.carousel.setEnabled(now)
+            stage.touch.setEnabled(movable and now)
+            done = self._at == DONE or (self._at == LOWER
+                                        and i < self._stage)
+            stage.card.set_state(
+                OK if done else
+                TODO if now or (i == 0 and self._at == OVER_CENTER)
+                else BLOCKED)
+        # Move the tip is the first card's button until the tip is there.
+        set_primary(self.move_button, self._at == OVER_CENTER)
+        set_primary(self.stages[0].touch, self._at == LOWER
+                    and self._stage == 0)
 
         self.result.setVisible(confirmed and profile is not None)
         if confirmed and profile is not None:
@@ -369,6 +450,14 @@ class DishBottomPage(QWidget):
         self._enable_keys()
 
     # -- the steps -----------------------------------------------------------
+
+    def _to_start(self) -> None:
+        """Back to Move the tip, every card at its first step."""
+        self._at = OVER_CENTER
+        self._stage = 0
+        for stage, (_title, step) in zip(self.stages, STAGES):
+            stage.carousel.set_step(step)
+        self.jog.set_step(self.carousel.step)
 
     def _tip_over_center(self) -> None:
         xy, why = dish_center(self.session.profile)
@@ -386,6 +475,8 @@ class DishBottomPage(QWidget):
 
         def then(_result):
             self._at = LOWER
+            self._stage = 0
+            self.jog.set_step(self.carousel.step)
             self.refresh()
             return ""
 
@@ -394,9 +485,31 @@ class DishBottomPage(QWidget):
             self.jog.tell(self.session.robot_lease.refusal)
         self.refresh()
 
+    def _touches(self) -> None:
+        """It touches: up by this card's step, and the next card lowers,
+        a finer step."""
+        controller = self.jog.controller
+        if controller is None:
+            return
+        step = self.carousel.step
+
+        def then(result):
+            # Refused (the top of the envelope): the same card again.
+            if result.ok:
+                self._stage += 1
+                self.jog.set_step(self.carousel.step)
+            self.refresh()
+            return result
+
+        if not self.jog.run_job(
+                lambda _log: controller.move("z", +1, distance=step),
+                what="raising the tip a step", then=then):
+            self.jog.tell(self.session.robot_lease.refusal)
+        self.refresh()
+
     def _redo(self) -> None:
-        """Back to step 1; the value saved holds until a new one is."""
-        self._at = OVER_CENTER
+        """Back to Move the tip; the value saved holds until a new one is."""
+        self._to_start()
         self.refresh()
 
     def _save(self) -> None:
