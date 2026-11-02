@@ -1434,6 +1434,12 @@ tip box and a 384 plate at hand.
   saved.", gray again, no pill. Move the tip away (Camera to slot ...),
   open it again: "The tip is not over the crosshair.", no pad.
 
+- [ ] **Arrows over the lower camera.**
+  After a calibration, Fine-tune folded, the picture is the lower
+  camera's: the page's left arrow (and the left key) moves the tip left
+  on the picture, not up. Move the tip away: the upper camera, its
+  arrows as on every page.
+
 - [ ] **Redo calibration.**
   After a result: Redo calibration starts the run again at the disc.
 

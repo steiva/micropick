@@ -68,7 +68,9 @@ it measured is on, in the robot session it was measured in
 **The fine-tune is the notebook's `jog_in_window`, in Qt**, with one
 difference: its arrows follow the lower camera's picture, which is turned
 and mirrored, through `TipTarget.axes` (`JogPanel` `view_axes`) - right on
-the screen moves the tip right on the picture. The offset is where the
+the screen moves the tip right on the picture. So do the page's own
+arrows whenever the picture is the lower camera's (the tip left over the
+crosshair, the fine-tune folded). The offset is where the
 tip is less the crosshair, as the routine reads it from its final pose.
 "Over the crosshair" is the pose within `TUNE_RANGE_MM` of the crosshair
 plus the saved offset, at the module height: the pose says it, whatever
@@ -112,7 +114,7 @@ from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
-from ..widgets.jog_panel import JogPanel
+from ..widgets.jog_panel import JogPanel, check_view_axes
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
@@ -852,6 +854,13 @@ class TipCalibrationBlock(QObject):
                  or not running and self.done and self._over_crosshair())
         self.view.set_camera(self._under_camera() if lower
                              else self._over_camera())
+        # The host's pad follows the picture shown: over the lower camera's,
+        # turned and mirrored, its arrows go through TipTarget.axes too, or
+        # left on the screen moves the tip up on the picture.
+        axes = (self.session.profile.calibration.tip_target.axes
+                if lower and self.session.profile is not None else None)
+        if check_view_axes(axes) != self.jog._view_axes:
+            self.jog.set_view_axes(axes)
         self.changed.emit()
 
     def _show(self, running: bool, tuning: bool) -> None:

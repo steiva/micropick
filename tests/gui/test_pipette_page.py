@@ -329,6 +329,35 @@ def test_the_fine_tune_follows_the_lower_camera_in_xy_only(app, page, ready):
     assert not any("PgUp" in line for line in jog.help_lines)
 
 
+def test_the_pages_arrows_follow_the_lower_camera_when_it_is_shown(
+        app, page, ready):
+    """The calibration leaves the tip over the crosshair, seen from below,
+    with the fine-tune folded: the page's own pad moves the tip the way
+    its arrows point on that turned and mirrored picture."""
+    session = page.session
+    _calibrate(app, page)
+    assert page.tune_fold.collapsed
+    assert page.view._camera is page.calibration._under_camera()
+    assert page.jog.isVisibleTo(page)
+    axes = session.profile.calibration.tip_target.axes
+    assert page.jog._view_axes == tuple(tuple(r) for r in axes)
+    x0, y0, _z = tip_page.xyz(session.robot)
+    page.jog.step("x", -1)                       # left on the picture
+    assert _until(app, lambda: not page.jog.busy)
+    x1, y1, _z = tip_page.xyz(session.robot)
+    # Mock axes: left on the picture is robot -Y; X stays (the mock's pose
+    # wanders by a few hundredths).
+    assert y1 < y0 - 0.5 and abs(x1 - x0) < 0.1
+    # Away from the crosshair the picture is the upper camera's, whose
+    # arrows are the robot's own.
+    motion = session.motion
+    assert page.jog.run_job(lambda log: motion.tip_to((100.0, 100.0), 90.0,
+                                                      log=log))
+    assert _until(app, lambda: not page.jog.busy)
+    assert page.view._camera is page.calibration._over_camera()
+    assert page.jog._view_axes is None
+
+
 def test_redo_calibration_measures_again(app, page, ready):
     session = page.session
     _calibrate(app, page)
