@@ -31,10 +31,12 @@ from dataclasses import dataclass
 import numpy as np
 import pyqtgraph as pg
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QPalette
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtGui import QColor, QPalette
+from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
-__all__ = ["SizeHistogram", "SizeBins", "size_bins", "INSIDE", "OUTSIDE",
+from ..theme import COLORS
+
+__all__ = ["SizeHistogram", "SizeBins", "size_bins", "themed_plot", "INSIDE", "OUTSIDE",
            "INSIDE_ALPHA", "OUTSIDE_ALPHA", "WINDOW_EDGE", "HIST_BINS"]
 
 # Histogram colours. Inside the window, translucent green: what a run
@@ -121,6 +123,21 @@ def size_bins(detection, window) -> SizeBins | str:
                     bigger=int((sizes > high).sum()))
 
 
+def themed_plot() -> pg.PlotWidget:
+    """A plot in the theme: the card's surface it stands on, no frame, the
+    axes and their numbers in secondary text and a faint grid - left to
+    itself the plot's view is the window's darker background, a black box
+    on the card."""
+    plot = pg.PlotWidget(background=QColor(COLORS["card"]))
+    plot.setFrameShape(QFrame.Shape.NoFrame)
+    line, ink = QColor(COLORS["control-border"]), QColor(COLORS["muted"])
+    for axis in ("left", "bottom"):
+        plot.getAxis(axis).setPen(line)
+        plot.getAxis(axis).setTextPen(ink)
+    plot.showGrid(x=True, y=True, alpha=0.12)
+    return plot
+
+
 class SizeHistogram(QWidget):
     """The plot and the sentence under it. `show_detection` draws one
     detection against a window; `intro` is what the sentence says before
@@ -137,11 +154,7 @@ class SizeHistogram(QWidget):
         self._after = ""
         self._region = None
         self._bars: list = []
-        self.plot = pg.PlotWidget(background=None)
-        ink = self.palette().color(QPalette.ColorRole.Text)
-        for axis in ("left", "bottom"):
-            self.plot.getAxis(axis).setPen(ink)
-            self.plot.getAxis(axis).setTextPen(ink)
+        self.plot = themed_plot()
         # The plot is a readout, not something to explore. Left to itself
         # pyqtgraph keeps whatever range the last wheel turn or auto-range
         # left behind, and a plot in a scrolling column collects wheel
@@ -155,7 +168,6 @@ class SizeHistogram(QWidget):
         self.plot.getPlotItem().hideButtons()
         self.plot.setLabel("bottom", "diameter, µm")
         self.plot.setLabel("left", "cuboids")
-        self.plot.showGrid(x=True, y=True, alpha=0.2)
         # Bounded above too: a plot widget expands, and in a tall column it
         # took every spare pixel and pushed the next card out of sight.
         self.plot.setMinimumHeight(190)

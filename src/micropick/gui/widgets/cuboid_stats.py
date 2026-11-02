@@ -31,9 +31,9 @@ from PySide6.QtWidgets import (QAbstractItemView, QGridLayout, QHeaderView,
                                QLabel, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget)
 
-from ..theme import SPACING
+from ..theme import COLORS, SPACING
 from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE_ALPHA, WINDOW_EDGE,
-                             SizeHistogram)
+                             SizeHistogram, themed_plot)
 
 __all__ = ["CuboidStats", "MEASURES"]
 
@@ -77,19 +77,14 @@ def _inside(values: np.ndarray, low, high) -> np.ndarray:
 
 def _plot(title: str, unit: str) -> pg.PlotWidget:
     """A histogram readout: no mouse, no menu, axes set from the data."""
-    plot = pg.PlotWidget(background=None)
-    ink = plot.palette().color(QPalette.ColorRole.Text)
-    for axis in ("left", "bottom"):
-        plot.getAxis(axis).setPen(ink)
-        plot.getAxis(axis).setTextPen(ink)
+    plot = themed_plot()
     view = plot.getPlotItem().getViewBox()
     view.setMouseEnabled(x=False, y=False)
     view.setMenuEnabled(False)
     view.wheelEvent = lambda event, axis=None: event.ignore()
     plot.getPlotItem().hideButtons()
-    plot.setTitle(title, color=ink, size="10pt")
+    plot.setTitle(title, color=COLORS["text-2"], size="10pt")
     plot.setLabel("bottom", unit)
-    plot.showGrid(x=True, y=True, alpha=0.2)
     plot.setMinimumHeight(190)
     return plot
 
@@ -112,7 +107,7 @@ class CuboidStats(QWidget):
 
         self.sizes = SizeHistogram("Not analyzed yet.", self)
         self.sizes.plot.setTitle(
-            "Diameter", color=self.palette().color(QPalette.ColorRole.Text),
+            "Diameter", color=COLORS["text-2"],
             size="10pt")
         self.sizes.plot.setMaximumHeight(16777215)
         self.plots: dict[str, pg.PlotWidget] = {}
