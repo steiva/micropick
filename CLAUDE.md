@@ -86,8 +86,16 @@ step not done. Next is enabled when the step is done or optional, and
 only moves on: nothing is confirmed by it. Deck is done while the robot
 is connected, something is on the deck and there is no deck problem; a
 move by drag goes through `Session.move_labware`, which loads again so a
-platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan
-→ Picking; Plan needs a plate on the deck (a "plate" need, "Put a plate
+platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Tip
+liquid → Plan → Picking; Tip liquid (`pages.tip_liquid`, no camera) is
+optional, done while the tip holds something (`Session.in_tip`), and a
+task opens on its first step not done that is not optional. It draws
+the picking settings' `tip_liquid_vol` (20 µl) at their flow rate, from
+the dish center (`dish_bottom.dish_center`, `tip_liquid_above_bottom`,
+1.5 mm, over the dish bottom) or a well chosen on the mini deck and its
+mini `PlateGrid` (its bottom as the robot has it, x and y at the
+measured well center), then raises the tip: a cushion the run never
+dispenses, since it gives back only `vol` per cuboid. Plan needs a plate on the deck (a "plate" need, "Put a plate
 on the deck first." with Go to Deck), not the Deck step. The Deck step
 is `pages.labware`: the tiles of `widgets.deck_tiles` in the deck's
 proportions, a × per filled tile and Clear all (no Put something else),

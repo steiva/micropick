@@ -3,7 +3,7 @@
 A **task** is one of the three kinds of work started from Home, and a
 fixed order of **steps** (REDESIGN §4, GLOSSARY):
 
-    Auto pick    Deck → Tip → Dish bottom → Plan → Picking
+    Auto pick    Deck → Tip → Dish bottom → Tip liquid → Plan → Picking
     Manual pick  Deck → Tip → Dish bottom → Work
     Liquid       Deck → Tip → Well center → Plan → Run
 
@@ -26,7 +26,8 @@ moves it is dimmed while it is not connected, whatever else is missing.
 
 Deck is done by fact (#39): the robot connected, something on the deck
 and no deck problem - no confirmation, so a change to the deck clears
-nothing. A step done by a confirmation (`Session.confirm`) is confirmed
+nothing. Tip liquid is done by fact too, and optional: while the tip on
+holds something (`Session.in_tip`). A step done by a confirmation (`Session.confirm`) is confirmed
 by its screen: Dish bottom by Save dish bottom or Use it, the
 Liquid plan by Use this plan, Run by a liquid run that ended, a plate by
 "Skip this plate" (`Session.skip_plate`). Well center counts the plates on the deck until the
@@ -47,7 +48,8 @@ __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
 
 # task -> (its name on screen, its steps in order)
 TASKS = {
-    "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "plan", "picking")),
+    "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "tip_liquid", "plan",
+                          "picking")),
     "manual": ("Manual pick", ("deck", "tip", "dish_bottom", "work")),
     "liquid": ("Liquid", ("deck", "tip", "well_center", "liquid_plan",
                           "run")),
@@ -55,7 +57,8 @@ TASKS = {
 
 _TITLES = {
     "deck": "Deck", "tip": "Tip", "plan": "Plan",
-    "dish_bottom": "Dish bottom", "picking": "Picking", "work": "Work",
+    "dish_bottom": "Dish bottom", "tip_liquid": "Tip liquid",
+    "picking": "Picking", "work": "Work",
     "well_center": "Well center", "liquid_plan": "Plan", "run": "Run",
 }
 
@@ -158,6 +161,7 @@ _NEEDS = {
     "tip": (True, ("deck",), ("camera_calibration", "calibration_position")),
     "plan": (False, (), ()),
     "dish_bottom": (True, ("tip",), ("dish_position",)),
+    "tip_liquid": (True, ("tip", "dish_bottom"), ()),
     "picking": (True, ("deck", "tip", "dish_bottom", "plan"),
                 ("shake_position", "dish_position")),
     "work": (True, ("deck", "tip", "dish_bottom"), ()),
@@ -206,6 +210,9 @@ def _done(session, task: str, step: str) -> bool:
         return routine is not None and not routine.needs_confirmation
     if step == "dish_bottom":
         return session.is_confirmed("dish_bottom")
+    if step == "tip_liquid":
+        return (session.robot is not None and session.tip.attached is True
+                and session.in_tip > 0)
     if step == "picking":
         routine = session.routine
         return routine is not None and routine.is_done()
@@ -224,8 +231,9 @@ def _done(session, task: str, step: str) -> bool:
     return False
 
 
-# Steps a task can go past without: Work is a toolbox, never "done".
-OPTIONAL = {"work"}
+# Steps a task can go past without: Work is a toolbox, never "done"; Tip
+# liquid is done while the tip holds some, and a run goes without it.
+OPTIONAL = {"work", "tip_liquid"}
 
 
 def step_state(session, task: str, step: str) -> StepState:

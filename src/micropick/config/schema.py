@@ -387,6 +387,10 @@ class PickingConfig(BaseModel):
     failure_threshold: float = 0.5
     minimum_distance: float = 1.7
     wait_time_after_deposit: float = 0.5
+    # Tip liquid, drawn into the tip before a run (the Auto pick step): the
+    # volume, and the height above the dish bottom when from the dish center.
+    tip_liquid_vol: float = 20.0
+    tip_liquid_above_bottom: float = 1.5
     one_by_one: bool = False
 
     # ---------------------- deposit ----------------------

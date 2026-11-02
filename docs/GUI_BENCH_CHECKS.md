@@ -1817,7 +1817,8 @@ Start the program normally, robot on, a profile with the platforms set
 plate at hand.
 
 - [ ] **The order.**
-  Auto pick's steps read Deck, Tip, Dish bottom, Plan, Picking. With a
+  Auto pick's steps read Deck, Tip, Dish bottom, Tip liquid, Plan,
+  Picking. With a
   calibrated tip on and the dish bottom found, Auto pick opens on Plan.
 
 - [ ] **Plan needs a plate.**
@@ -1869,3 +1870,35 @@ plate at hand.
 - [ ] **Robot setup's Done; the Log.**
   Done at Robot setup's bottom right goes to Home. Settings › Log has Save
   report for help… and no Clear.
+
+## Tip liquid step
+
+- [ ] **Where it is.**
+  Auto pick's steps read Deck, Tip, Dish bottom, Tip liquid, Plan,
+  Picking; Manual pick has no Tip liquid. Without a tip on, or before the
+  dish bottom, it is dimmed under the first of "Put a tip on first." /
+  "Find the dish bottom first.". Next is never gray here. With the dish
+  bottom found and the tip empty, Auto pick still opens on Plan.
+
+- [ ] **Dish center.**
+  "20 µl · 1.5 mm above the dish bottom · 50 µl/s", Aspirate from on
+  Dish center, Aspirate 20 µl: the tip goes over the middle of the dish,
+  1.5 mm over the dish bottom, draws 20 µl and goes up. "The tip holds
+  20 µl.", the step gets its ✓. Press again: "The tip holds 40 µl.".
+  Drop the tip: the ✓ is gone.
+
+- [ ] **A well.**
+  A well: the mini deck lists the plates on the deck; choose one, click a
+  well on its map ("Well B3, slot 5."): Aspirate 20 µl goes into that
+  well's bottom (shifted by its measured well center, if any), draws and
+  goes up. The line drops the height. Back to Dish center and to the
+  step later: Dish center again.
+
+- [ ] **Change.**
+  Change unfolds Volume and Height; a new value (Enter or leaving the
+  box) is in the line and on the button at once, and in More settings
+  under Main. Restart: the values are kept.
+
+- [ ] **The run keeps it.**
+  Fill 20 µl, then run Picking: each deposit and return gives back only
+  the cuboids' volume; at the end the tip still holds about 20 µl.

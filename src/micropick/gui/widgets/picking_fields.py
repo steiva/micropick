@@ -77,6 +77,15 @@ FIELDS: dict[str, Field] = {
         MAIN, "mm",
         trouble="Cuboids stay in the dish: lower it (or calibrate Z first). "
                 "The tip touches the dish or draws debris: raise it."),
+    "tip_liquid_vol": Field(
+        "Tip liquid volume",
+        "Volume drawn into the tip before a run, on the Tip liquid step.",
+        MAIN, "µl"),
+    "tip_liquid_above_bottom": Field(
+        "Tip liquid height above the bottom",
+        "Tip height above the dish bottom where the tip liquid is drawn "
+        "from the dish center.",
+        MAIN, "mm"),
     "cuboid_size_threshold": Field(
         "Cuboid size window (µm)",
         "Diameter range of cuboids that are picked.",
@@ -321,6 +330,8 @@ BOUNDS: dict[str, tuple[float, float]] = {
     "pickup_offset": (0.0, 5.0),
     "retry_pickup_offset": (0.0, 5.0),
     "retry_flow_rate": (1.0, 300.0),
+    "tip_liquid_vol": (0.5, 200.0),
+    "tip_liquid_above_bottom": (0.0, 10.0),
     "cuboid_size_threshold": (10, 5000),
     "failure_threshold": (0.05, 5.0),
     "minimum_distance": (0.0, 10.0),
@@ -362,6 +373,8 @@ STEPS: dict[str, float] = {
     "pickup_offset": 0.1,
     "retry_pickup_offset": 0.1,
     "retry_flow_rate": 5.0,
+    "tip_liquid_vol": 1.0,
+    "tip_liquid_above_bottom": 0.1,
     "cuboid_size_threshold": 10,
     "failure_threshold": 0.05,
     "minimum_distance": 0.1,

@@ -17,8 +17,9 @@ naming that need with a button that goes there: an earlier step, Home for
 the robot, or the page a Robot setup item is set on (`SETUP_PAGES`) - the
 breadcrumb then reads `Home › <task> › <item>`, and its crumb goes back.
 
-A task opens on its first step not done, so one switched to after another
-starts past what they share. Next is enabled on a step that is done or
+A task opens on its first step not done, an optional one skipped (Tip
+liquid is not done while the tip is empty), so one switched to after
+another starts past what they share. Next is enabled on a step that is done or
 optional, and only moves on: Deck is done by what is on the deck, Dish
 bottom by its own Save dish bottom and Use it.
 
@@ -51,7 +52,7 @@ from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
                     dish_bottom, home, labware, liquid, liquid_plan, manual,
                     picking, platforms_sheet, position_sheet, robot_setup, routine,
-                    settings, well_center)
+                    settings, tip_liquid, well_center)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -80,6 +81,7 @@ PAGES = (
      calibration_pipette.PipetteCalibration),
     ("routine", routine.TITLE, routine.RoutinePage),
     ("dish_bottom", dish_bottom.TITLE, dish_bottom.DishBottomPage),
+    ("tip_liquid", tip_liquid.TITLE, tip_liquid.TipLiquidPage),
     ("picking", picking.TITLE, picking.PickingPage),
     ("well_center", well_center.TITLE, well_center.WellCenterPage),
     ("liquid_plan", liquid_plan.TITLE, liquid_plan.LiquidPlanPage),
@@ -91,7 +93,8 @@ PAGES = (
 # The page each step shows.
 STEP_PAGES = {
     "deck": "labware", "tip": "tip_calibration", "plan": "routine",
-    "dish_bottom": "dish_bottom", "picking": "picking", "work": "manual",
+    "dish_bottom": "dish_bottom", "tip_liquid": "tip_liquid",
+    "picking": "picking", "work": "manual",
     "well_center": "well_center", "liquid_plan": "liquid_plan", "run": "liquid",
 }
 
@@ -436,11 +439,12 @@ class MainWindow(QMainWindow):
         self.step_bar.set_steps([tasks.title(s) for s in tasks.steps(task)])
 
     def open_task(self, task: str) -> None:
-        """On its first step not done; the last when all are."""
+        """On its first step not done, an optional one skipped; the last
+        when all are."""
         self._set_task(task)
         steps = tasks.steps(task)
-        first = next((s for s in steps
-                      if not tasks.step_state(self.session, task, s).done),
+        first = next((s for s in steps if s not in tasks.OPTIONAL
+                      and not tasks.step_state(self.session, task, s).done),
                      steps[-1])
         self.show_step(first)
 

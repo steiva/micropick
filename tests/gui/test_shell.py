@@ -89,7 +89,7 @@ def test_a_tile_opens_its_task_and_home_goes_back(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.top.path == ["Auto pick"]
     assert [name for name, _done in _chips(window)] == [
-        "Deck", "Tip", "Dish bottom", "Plan", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Tip liquid", "Plan", "Picking"]
     assert window.step_bar.isVisible() and window.footer.isVisible()
     assert window.current_page() is window.labware_page
     window.top.home_clicked.emit()
@@ -120,7 +120,7 @@ def test_the_banner_names_only_the_first_need_and_goes_there(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert _banner(window) is None                 # Deck needs the robot only
     assert window.labware_page.isEnabled()
-    window.step_bar.clicked.emit(4)                # Picking: everything missing
+    window.step_bar.clicked.emit(5)                # Picking: everything missing
     text, (go,) = _banner(window)
     assert text == "Check the deck first."
     go.click()
@@ -131,7 +131,7 @@ def test_the_banner_names_only_the_first_need_and_goes_there(app, window):
 def test_plans_banner_asks_for_a_plate_and_goes_to_deck(app, window):
     _connect(app, window)
     window.home.tiles["auto"].clicked.emit()
-    window.step_bar.clicked.emit(3)                # Plan
+    window.step_bar.clicked.emit(4)                # Plan
     assert window.step == "plan"
     text, (go,) = _banner(window)
     assert (text, go.text()) == ("Put a plate on the deck first.",
@@ -232,7 +232,7 @@ def test_no_profile_is_named_or_chosen(app, window):
 
 def test_a_page_asked_for_from_a_step_keeps_the_task(app, window):
     window.home.tiles["auto"].clicked.emit()
-    window.step_bar.clicked.emit(4)                # Picking
+    window.step_bar.clicked.emit(5)                # Picking
     window.session.page_requested.emit("picking")
     assert window.step == "picking"                # not Dish bottom
     window.session.page_requested.emit("settings")

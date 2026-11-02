@@ -130,6 +130,8 @@ class MockRobot:
         # can assert what volumes went where and how far a batch got before a
         # stop interrupted it
         self.calls: list[tuple] = []
+        # the offset of the last move_to_well, which `calls` leaves out
+        self.well_offset: tuple[float, float, float] | None = None
         # the rail LEDs. A real robot answers GET /robot/lights; this attribute
         # is what lights_on() falls back to, so a workflow that darkens the bench
         # and puts it back can be checked with nothing attached.
@@ -239,6 +241,7 @@ class MockRobot:
 
     def move_to_well(self, labware_id, well_name, well_location="top",
                      offset=(0, 0, 0), verbose=False, force_direct=False):
+        self.well_offset = tuple(float(v) for v in offset)
         self.calls.append(("move_to_well", labware_id, well_name, well_location))
 
     def aspirate_in_place(self, volume, flow_rate, verbose=False):

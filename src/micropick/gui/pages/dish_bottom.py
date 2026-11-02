@@ -64,7 +64,8 @@ from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
 from ..workers import describe_error
 
-__all__ = ["DishBottomPage", "ABOVE_BOTTOM_MM", "BIG_CHANGE_MM", "ago"]
+__all__ = ["DishBottomPage", "ABOVE_BOTTOM_MM", "BIG_CHANGE_MM", "ago",
+           "dish_center"]
 
 TITLE = "Dish bottom"
 
@@ -98,6 +99,27 @@ def ago(when: datetime) -> str:
     if days <= 0:
         return "today"
     return "yesterday" if days == 1 else f"{days} days ago"
+
+
+def dish_center(profile):
+    """(x, y) for the tip over the dish center, or None and why: the
+    middle of the working circle (`circle_center`, a pixel of the picture
+    taken at the position over the dish) through the pixel map and the
+    pipette offset. Tip liquid's too."""
+    if profile is None:
+        return None, "No profile loaded."
+    observe = profile.positions.get(DISH_POSITION)
+    if observe is None:
+        return None, "The position over the dish is not set."
+    if profile.pixel_map is None:
+        return None, "The camera is not calibrated."
+    offset = profile.calibration.pipette_offset
+    if offset is None:
+        return None, "The tip is not calibrated."
+    pmap = PixelMap.from_config(profile.pixel_map)
+    cx, cy = profile.picking.circle_center
+    xy = moves.tip_target(pmap, float(cx), float(cy), observe, offset)
+    return (float(xy[0]), float(xy[1])), ""
 
 
 class DishBottomPage(QWidget):
@@ -327,7 +349,7 @@ class DishBottomPage(QWidget):
         confirmed = session.is_confirmed("dish_bottom")
         self.use_button.setEnabled(not confirmed)
 
-        center, why = self._center_target()
+        center, why = dish_center(profile)
         self.move_button.setEnabled(movable and center is not None)
         self.move_button.setToolTip(why)
         lowering = self._at == LOWER
@@ -348,26 +370,8 @@ class DishBottomPage(QWidget):
 
     # -- the steps -----------------------------------------------------------
 
-    def _center_target(self):
-        """(x, y) for the tip over the dish center, or None and why."""
-        profile = self.session.profile
-        if profile is None:
-            return None, "No profile loaded."
-        observe = profile.positions.get(DISH_POSITION)
-        if observe is None:
-            return None, "The position over the dish is not set."
-        if profile.pixel_map is None:
-            return None, "The camera is not calibrated."
-        offset = profile.calibration.pipette_offset
-        if offset is None:
-            return None, "The tip is not calibrated."
-        pmap = PixelMap.from_config(profile.pixel_map)
-        cx, cy = profile.picking.circle_center
-        xy = moves.tip_target(pmap, float(cx), float(cy), observe, offset)
-        return (float(xy[0]), float(xy[1])), ""
-
     def _tip_over_center(self) -> None:
-        xy, why = self._center_target()
+        xy, why = dish_center(self.session.profile)
         if xy is None or self.session.robot is None:
             return
         z = self.session.profile.picking.dish_bottom + ABOVE_BOTTOM_MM
