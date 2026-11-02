@@ -483,11 +483,13 @@ there, Calibrate (a spinner and "Calibrating…", the routine's lines
 only in the log; its result saved as it ends, the tip left over the
 crosshair) - one run from Start to its end (lease `run=True`, STOP, the
 pill), waiting for the operator at the disc, where Stop ends it with
-nothing saved; then "Tip calibrated." with Redo calibration (no Check
-button), and under it the folded, optional Fine-tune by hand (the lower
-camera and an XY pad while the tip is over the crosshair, else "The tip
-is not over the crosshair."; Save gray until a step, a short job, not a
-run). While the picture is the lower camera's, the page's own pad goes
+nothing saved; then, in the same Calibrate card, "Tip calibrated."
+with Redo calibration (no Check button) and the optional fine-tune, no
+fold: "Optional: move the tip onto the central crosshair by hand on the
+picture, then Save.", at once the lower camera and the XY pad at 0.05 mm
+while the tip is over the crosshair, else "The tip is not over the
+crosshair."; Save gray until a step, a short job, not a run; left with
+a step not saved, Save / Discard is asked. While the picture is the lower camera's, the page's own pad goes
 through `TipTarget.axes` too (`JogPanel.set_view_axes`), so an arrow
 moves the tip its way on that turned, mirrored picture. Leaving the
 step raises a tip below the travel height (`Motion.raise_tip` through

@@ -35,10 +35,12 @@ Then a green "Tip calibrated." and Redo calibration, which runs it
 again. Liquid's Tip step has no calibration (`set_task`): it is done
 once a tip is on.
 
-Under it, folded and optional (when Settings has the manual adjustment
-on), **Fine-tune by hand**: the lower camera and the pad, XY only, while
-the tip is over the crosshair, where the calibration leaves it - else
-"The tip is not over the crosshair.". With no calibration since the
+In the same card, optional (when Settings has the manual adjustment on),
+the fine-tune by hand: at once after Calibrate, the lower camera and the
+pad at `TOUCH_UP_STEP_MM`, XY only, while the tip is over the crosshair,
+where the calibration leaves it - else "The tip is not over the
+crosshair.". No fold: it is one sentence and Save. Left with a step not
+saved, the step asks Save / Discard (`unsaved`). With no calibration since the
 program started (the tip calibrated in an earlier start, same tip and
 robot session), the crosshair is the pixel map's at the middle of the
 picture from the calibration position. Its Save is gray until a step was
@@ -69,8 +71,8 @@ it measured is on, in the robot session it was measured in
 difference: its arrows follow the lower camera's picture, which is turned
 and mirrored, through `TipTarget.axes` (`JogPanel` `view_axes`) - right on
 the screen moves the tip right on the picture. So do the page's own
-arrows whenever the picture is the lower camera's (the tip left over the
-crosshair, the fine-tune folded). The offset is where the
+arrows whenever the picture is the lower camera's (the tip over the
+crosshair with the fine-tune off in Settings). The offset is where the
 tip is less the crosshair, as the routine reads it from its final pose.
 "Over the crosshair" is the pose within `TUNE_RANGE_MM` of the crosshair
 plus the saved offset, at the module height: the pose says it, whatever
@@ -109,7 +111,7 @@ from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (Section, card, heading, muted_label,
+from ..theme.factory import (card, heading, muted_label,
                              primary_button, scroll_column, secondary_button,
                              select)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
@@ -492,39 +494,42 @@ class TipCalibrationBlock(QObject):
         self.spinner.setFixedHeight(6)
         self.spinner.hide()
         self.calibrate_step.add(self.spinner)
+
+        # Calibrated: the result, Redo and the optional fine-tune, in the
+        # Calibrate card - one card from Calibrate to the offset saved.
+        self.calibrated_banner = Banner(CALIBRATED, tone="ok", parent=box)
+        self.calibrate_step.add(self.calibrated_banner)
+        self.redo_button = secondary_button("Redo calibration", box)
+        self.redo_button.clicked.connect(self._start)
+        self.calibrate_step.box.layout().addWidget(
+            self.redo_button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.tune_box = QWidget(box)
+        tune = QVBoxLayout(self.tune_box)
+        tune.setContentsMargins(0, SPACING, 0, 0)
+        tune.addWidget(wrapped(
+            "Optional: move the tip onto the central crosshair by hand on "
+            "the picture, then Save."))
+        self.tune_away = wrapped("The tip is not over the crosshair.")
+        tune.addWidget(self.tune_away)
+        # XY only: a Z step here pushes the tip into the disc. Its pad is
+        # over the picture; the panel itself shows nothing.
+        self.touch_jog = JogPanel(self.session, shortcut_host=parent,
+                                  machine_controls=False,
+                                  xy_only=True, parent=self.tune_box)
+        self.touch_jog.show_position_on(self.view)
+        self.touch_jog.hide()
+        tune.addWidget(self.touch_jog)
+        self.tune_save_button = primary_button("Save", box)
+        self.tune_save_button.clicked.connect(self._save_tune)
+        tune.addWidget(self.tune_save_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.calibrate_step.add(self.tune_box)
         column.addWidget(self.calibrate_step.box)
 
         # What stops Start, what the run is doing, or how it ended.
         self.checks = muted_label("", box)
         self.checks.setWordWrap(True)
         column.addWidget(self.checks)
-        self.calibrated_banner = Banner(CALIBRATED, tone="ok", parent=box)
-        column.addWidget(self.calibrated_banner)
-        self.redo_button = secondary_button("Redo calibration", box)
-        self.redo_button.clicked.connect(self._start)
-        column.addWidget(self.redo_button, 0, Qt.AlignmentFlag.AlignLeft)
-
-        self.tune_fold = Section("Fine-tune by hand", collapsed=True,
-                                 parent=box)
-        self.tune_fold.toggle.toggled.connect(lambda _on: self.refresh())
-        body = self.tune_fold.body.layout()
-        body.addWidget(wrapped(
-            f"Nudge the tip onto the central crosshair "
-            f"({TOUCH_UP_STEP_MM:g} mm steps), then Save."))
-        self.tune_away = wrapped("The tip is not over the crosshair.")
-        body.addWidget(self.tune_away)
-        # XY only: a Z step here pushes the tip into the disc. Its pad is
-        # over the picture; the panel itself shows nothing.
-        self.touch_jog = JogPanel(self.session, shortcut_host=parent,
-                                  machine_controls=False,
-                                  xy_only=True, parent=self.tune_fold.body)
-        self.touch_jog.show_position_on(self.view)
-        self.touch_jog.hide()
-        body.addWidget(self.touch_jog)
-        self.tune_save_button = primary_button("Save", box)
-        self.tune_save_button.clicked.connect(self._save_tune)
-        body.addWidget(self.tune_save_button, 0, Qt.AlignmentFlag.AlignLeft)
-        column.addWidget(self.tune_fold)
         return box
 
     @property
@@ -745,9 +750,10 @@ class TipCalibrationBlock(QObject):
                 and abs(z - module) <= TUNE_RANGE_MM)
 
     def _tuning(self) -> bool:
-        """The fine-tune's pad is up: unfolded, nothing running, the tip
-        over the crosshair."""
-        return (not self.tune_fold.collapsed and not self.running
+        """The fine-tune's pad is up: calibrated, the fine-tune on in
+        Settings, nothing running, the tip over the crosshair - at once
+        after Calibrate, which leaves it there."""
+        return (self.session.settings.tip_cal_touch_up and not self.running
                 and self.done and self._over_crosshair())
 
     def _save_tune(self) -> None:
@@ -911,8 +917,8 @@ class TipCalibrationBlock(QObject):
         self.redo_button.setVisible(result)
         self.redo_button.setEnabled(free and not problems)
 
-        self.tune_fold.setVisible(result
-                                  and session.settings.tip_cal_touch_up)
+        self.tune_box.setVisible(result
+                                 and session.settings.tip_cal_touch_up)
         self.tune_away.setVisible(not tuning)
         self.tune_save_button.setEnabled(
             tuning and self._nudged and not self.touch_jog.busy
@@ -996,7 +1002,7 @@ class PipetteCalibration(QWidget):
             setattr(self, name, getattr(self.tip, name))
         for name in ("start_step", "start_button", "disc_step", "disc_button",
                      "calibrate_step", "calibrate_button", "spinner",
-                     "checks", "redo_button", "tune_fold", "tune_away",
+                     "checks", "redo_button", "tune_box", "tune_away",
                      "touch_jog", "tune_save_button"):
             setattr(self, name, getattr(self.calibration, name))
         self._refresh()
@@ -1015,6 +1021,19 @@ class PipetteCalibration(QWidget):
 
     def run_activity(self) -> str | None:
         return self.calibration.run_activity()
+
+    # -- a value typed and not saved (`MainWindow._ask_unsaved`) -------------
+
+    def unsaved(self) -> str:
+        return ("Tip calibration: the fine-tune is not saved."
+                if self.calibration._nudged else "")
+
+    def save_unsaved(self) -> None:
+        self.calibration._save_tune()
+
+    def discard_unsaved(self) -> None:
+        self.calibration._nudged = False
+        self.calibration.refresh()
 
     def _refresh(self, *_args) -> None:
         self.calibration.refresh()

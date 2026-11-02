@@ -262,9 +262,9 @@ def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
     assert page.calibrate_step.state == OK
     assert page.calibrated._actions.count() == 0        # no Check button
     assert page.redo_button.isEnabled()
-    # The fine-tune is there, folded and optional.
-    assert not page.tune_fold.isHidden()
-    assert page.tune_fold.collapsed
+    # The fine-tune is there at once, in the same card, its pad up.
+    assert not page.tune_box.isHidden()
+    assert page.touch_jog.isVisibleTo(page)
     # Done follows the tip that is on: another tip is to calibrate again.
     page.drop_button.click()
     assert _until(app, lambda: session.tip.attached is False
@@ -277,7 +277,6 @@ def test_the_fine_tune_saves_the_offset_once_the_tip_was_moved(
     session = page.session
     _calibrate(app, page)
     crosshair = page._crosshair
-    page.tune_fold.toggle.click()
     assert _until(app, lambda: not page.touch_jog.busy)
     # The tip is still over the crosshair: the pad at once.
     assert page.touch_jog.isVisibleTo(page)
@@ -309,7 +308,6 @@ def test_the_fine_tune_says_when_the_tip_is_away_from_the_crosshair(
     assert page.jog.run_job(lambda log: motion.tip_to((100.0, 100.0), 90.0,
                                                       log=log))
     assert _until(app, lambda: not page.jog.busy)
-    page.tune_fold.toggle.click()
     app.processEvents()
     assert not page.tune_away.isHidden()
     assert page.tune_away.text() == "The tip is not over the crosshair."
@@ -319,7 +317,6 @@ def test_the_fine_tune_says_when_the_tip_is_away_from_the_crosshair(
 
 def test_the_fine_tune_follows_the_lower_camera_in_xy_only(app, page, ready):
     _calibrate(app, page)
-    page.tune_fold.toggle.click()
     app.processEvents()
     jog = page.touch_jog
     axes = page.session.profile.calibration.tip_target.axes
@@ -336,7 +333,8 @@ def test_the_pages_arrows_follow_the_lower_camera_when_it_is_shown(
     its arrows point on that turned and mirrored picture."""
     session = page.session
     _calibrate(app, page)
-    assert page.tune_fold.collapsed
+    session.settings.tip_cal_touch_up = False         # no fine-tune pad
+    page.calibration.refresh()
     assert page.view._camera is page.calibration._under_camera()
     assert page.jog.isVisibleTo(page)
     axes = session.profile.calibration.tip_target.axes
@@ -440,7 +438,7 @@ def test_after_a_restart_the_crosshair_is_the_pixel_maps(
     assert page.jog.run_job(lambda log: motion.tip_to(
         (gx + 1.5, gy - 2.5), module, log=log))
     assert _until(app, lambda: not page.jog.busy)
-    page.tune_fold.toggle.click()
+    page.calibration.refresh()
     assert _until(app, lambda: page.touch_jog.isVisibleTo(page))
 
 
@@ -531,3 +529,15 @@ def _fake_routine(monkeypatch):
                         lambda *a, **k: object())
     monkeypatch.setattr(tip_page.PixelMap, "from_config",
                         staticmethod(lambda _config: None))
+
+
+def test_a_fine_tune_not_saved_is_asked_about_when_leaving(app, page, ready):
+    _calibrate(app, page)
+    assert page.unsaved() == ""
+    page.touch_jog.step("x", +1)
+    assert _until(app, lambda: not page.touch_jog.busy
+                  and page.tune_save_button.isEnabled())
+    assert page.unsaved() == "Tip calibration: the fine-tune is not saved."
+    page.discard_unsaved()
+    assert page.unsaved() == ""
+    assert not page.tune_save_button.isEnabled()
