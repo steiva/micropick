@@ -6,7 +6,7 @@ on the left with the Deck step's tiles and proportions
 (`widgets.deck_tiles`, without the labware: #42), and for the slot
 clicked "What stands in this slot?" on
 the right - one of the profile's module types (Picking platform,
-Calibration module) or Nothing. Slot 12 is the fixed trash and takes
+Calibration module) or Nothing; a tile's × is Nothing for its slot. Slot 12 is the fixed trash and takes
 none.
 
 The choices are a draft until Save changes (#30): it saves the deck
@@ -85,6 +85,7 @@ class PlatformsSheet(SheetWindow):
         row.setSpacing(24)
         self.deck = DeckTiles(self.body_widget, show_labware=False)
         self.deck.slot_clicked.connect(self._choose)
+        self.deck.remove_clicked.connect(self.remove)
         self.tiles = self.deck.tiles
         row.addWidget(self.deck, 1)
 
@@ -213,6 +214,13 @@ class PlatformsSheet(SheetWindow):
                                            name=name)
         self._show_height()
         self._show_tiles()
+        self._show_save()
+
+    def remove(self, slot: int) -> None:
+        """The platform in `slot` taken out of the draft (its ×), as
+        Nothing chosen for it; the slot chosen."""
+        self._draft.pop(slot, None)
+        self._choose(slot)
         self._show_save()
 
     def add_type(self) -> None:

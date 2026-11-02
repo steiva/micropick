@@ -19,7 +19,7 @@ the drag carries that card, not the slot or its platform. What any of
 them means is the page's: this owns no session and shows what `set_tiles`
 gives it (`mini_deck.DeckTile`). Robot setup's platforms sheet shows the
 same tiles without the labware (`show_labware=False`), so both maps read
-the same.
+the same; there the × is on a tile with a platform, and takes it out.
 """
 
 from __future__ import annotations
@@ -246,7 +246,13 @@ class _Tile(QFrame):
         self.chip.setVisible(bool(tile.platform))
         self.item.setVisible(labware and self.filled)
         self.empty.setVisible(labware and not self.filled)
-        self.close_button.setVisible(labware and self.filled)
+        # Without the labware, the × takes the platform out of the slot.
+        self.close_button.setVisible(
+            self.filled if labware
+            else not self.trash and bool(tile.platform))
+        self.close_button.setToolTip(
+            f"Remove what is in slot {self.slot}" if self.owner.show_labware
+            else f"Remove the platform from slot {self.slot}")
         self.setCursor(Qt.CursorShape.PointingHandCursor if self.usable
                        else Qt.CursorShape.ArrowCursor)
         if self.filled:

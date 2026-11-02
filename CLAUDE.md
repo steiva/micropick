@@ -137,8 +137,8 @@ closes the sheet), Redo waits ("Not accurate enough: the marker was off
 center.", Redo calibration secondary, Save anyway quiet). × closes
 it and a sweep carries on. The platforms have theirs
 (`pages.platforms_sheet.PlatformsSheet`): the 3×4 deck, a slot clicked,
-"What stands in this slot?" (the profile's module types or Nothing), its
-height, New type and Delete type - all a draft until Save changes
+"What stands in this slot?" (the profile's module types or Nothing; a
+tile's × is Nothing for its slot), its height, New type and Delete type - all a draft until Save changes
 (`Session.set_module_types`, `Session.set_deck_modules`), gray while
 nothing differs from what is saved, then "Saved: slot 9 · Calibration
 module"; Done and × only close (no Cancel), and with unsaved changes ask

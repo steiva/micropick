@@ -136,6 +136,27 @@ def test_nothing_takes_a_platform_away(app, window):
     assert _row(window, "platforms") == (False, "Not set.")
 
 
+def test_a_tiles_cross_takes_its_platform_away(app, window):
+    _open(window, "platforms")
+    sheet = window.platforms_sheet
+    # Only a tile with a platform has its ×.
+    assert sheet.tiles[5].close_button.isHidden()
+    _choose(sheet, 5, "Picking platform")
+    sheet.save_button.click()
+    _choose(sheet, 2, "Nothing")
+    assert not sheet.tiles[5].close_button.isHidden()
+    sheet.tiles[5].close_button.click()
+    # As Nothing chosen for it: the slot chosen, a draft until Save.
+    assert sheet.slot == 5
+    assert sheet.kind.currentText() == "Nothing"
+    assert sheet.tiles[5].close_button.isHidden()
+    assert "Picking platform" not in sheet.tiles[5].text()
+    assert window.session.profile.deck.modules != []
+    sheet.save_button.click()
+    assert sheet.saved_note.text() == "Saved: slot 5 · Nothing"
+    assert window.session.profile.deck.modules == []
+
+
 def test_closing_with_changes_asks_and_discard_drops_them(app, window):
     _open(window, "platforms")
     sheet = window.platforms_sheet
