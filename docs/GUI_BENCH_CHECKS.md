@@ -1435,16 +1435,19 @@ tip box and a 384 plate at hand.
   the crosshair. Only the current step's button is blue.
 
 - [ ] **Fine-tune by hand.**
-  Folded under the result. Open it: the lower camera and the pad (XY
-  only, 0.05 mm steps), Save gray. One step: Save lights; Save: "Fine-tune
-  saved.", gray again, no pill. Move the tip away (Camera to slot ...),
-  open it again: "The tip is not over the crosshair.", no pad.
+  In the Calibrate card under "Tip calibrated." and Redo, no fold: at
+  once the lower camera and the pad (XY only, 0.05 mm), Save gray. The
+  left arrow (and the left key) moves the tip left on the picture, not
+  up. One step: Save lights; Save: "Fine-tune saved.", gray again, no
+  pill. Another step, then Next or Home: "Save the changes?" over what is
+  shown next; Discard keeps the saved offset. Move the tip away: "The tip
+  is not over the crosshair.", no pad.
 
 - [ ] **Arrows over the lower camera.**
-  After a calibration, Fine-tune folded, the picture is the lower
-  camera's: the page's left arrow (and the left key) moves the tip left
-  on the picture, not up. Move the tip away: the upper camera, its
-  arrows as on every page.
+  With the manual adjustment off in Settings, after a calibration the
+  picture is the lower camera's: the page's left arrow (and the left key)
+  moves the tip left on the picture, not up. Move the tip away: the upper
+  camera, its arrows as on every page.
 
 - [ ] **Redo calibration.**
   After a result: Redo calibration starts the run again at the disc.
@@ -1473,7 +1476,10 @@ tip box and a 384 plate at hand.
 - [ ] **A count per well (#43).**
   Click A1, type 5; click A2, type 3: A1 shows 5, A2 shows 3. Click A1:
   ringed, the field reads 5. Ctrl+click A2: the field is empty, "mixed";
-  type 4: both show 4. Click a ringed well: it leaves the plan.
+  type 4: both show 4. Click a ringed well: it stays, selected. Ctrl+click
+  a selected well: out of the selection, still planned. Remove (or Delete,
+  Backspace after a click on the grid): the selected wells leave the plan,
+  Undo brings them back; Remove is gray with nothing selected.
 
 - [ ] **Use this plan, Edit plan (#45).**
   Column by column, Use this plan: a toast "Plan ready" and no green
@@ -1509,8 +1515,10 @@ tip box and a 384 plate at hand.
 
 - [ ] **No camera.**
   Auto pick › Dish bottom (and Manual pick › Dish bottom, the same
-  screen): no picture; "Tip height", Z in big numbers, mm, then Up, the
-  step carousel and Down, gray until step 2. Readable from two meters.
+  screen): no picture; "Tip height", Z in big numbers, mm, then three
+  cards side by side - Coarse, Finer, Finest - each with Up, its step
+  carousel (1, 0.5, 0.1 mm) and Down, gray until it is the one lowering.
+  Readable from two meters.
 
 - [ ] **Last time.**
   With a dish bottom measured before: "Last time: Z 66.40 mm" over
@@ -1520,14 +1528,23 @@ tip box and a 384 plate at hand.
   stays. On a profile that never measured it, no Last time card.
 
 - [ ] **Measure.**
-  Move the tip: the tip goes over the middle of the dish, about 10 mm over
-  the last dish bottom. Down with 1 mm, then smaller, until the dish
-  bottom bends; Save dish bottom (in step 2, no third step): a toast
-  "Dish bottom saved.", the tip goes up, the green line shows the new Z
-  with Redo, the step gets its ✓. A value more than 3 mm from the last
-  asks first; Cancel saves nothing. Redo: back to Move the tip, the value
-  and the ✓ kept until a new one is saved. Only the current step's
+  Move the tip (in Coarse): the tip goes over the middle of the dish,
+  about 10 mm over the last dish bottom. Down 1 mm at a time until it
+  touches; It touches: the tip goes up 1 mm and Finer lowers at 0.5 mm;
+  It touches again: up 0.5 mm, Finest at 0.1 mm; down until the dish
+  bottom bends; Save dish bottom: a toast "Dish bottom saved.", the tip
+  goes up, the green line shows the new Z with Redo, the step gets its
+  ✓. A value more than 3 mm from the last asks first; Cancel saves
+  nothing. Redo: back to Move the tip, each card at its first step, the
+  value and the ✓ kept until a new one is saved. Only the current card's
   button is blue.
+
+- [ ] **Where the dish is.**
+  On the right "Over the dish · slot 9" - the slot the camera is over,
+  not the tip's (Robot setup's row says the same). Change: Robot setup's
+  position sheet over the task. Save it in another slot: the shake
+  position is cleared, Picking's Shake the dish reads Set shake position
+  and opens its sheet.
 
 - [ ] **Keys.**
   While lowering, PgUp / PgDn move the tip up and down and + / - change
