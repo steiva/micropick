@@ -14,10 +14,16 @@ in Settings shows here; under them, with Keys on, the panel's other keys
 and the page's (`set_key_lines`), which used to be a box on the picture.
 
 The pad floats over the bottom right of a picture, on a dark translucent
-plate, as the prototype draws it (`JogPanel.show_position_on`). The fold
-button at the end of its title row folds it into that corner, the title row
-alone left over the picture (#50); the keys still move the robot - they are
-the panel's, not the face's. Picking folds it from the start.
+plate, as the prototype draws it (`JogPanel.show_position_on`). Its title
+is the fold toggle, with the arrow of every title that folds (`fold_arrow`)
+before it, apart from Undo step and Keys at the row's other end: an arrow
+at the end of the row read as a third button. It folds the pad into that
+corner, the title alone left over the picture (#50); the keys still move
+the robot - they are the panel's, not the face's. Picking folds it from the
+start.
+
+The pad's own containers are `plain` (transparent): qdarktheme fills a bare
+QWidget with the window's color, an opaque block on the translucent plate.
 
 The chosen step is colored by how far one press moves the gantry
 (`step_color`): a 10 mm step near the dish is the one to notice.
@@ -35,6 +41,7 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
 from ...workflows.jog import DEFAULT_STEPS
 from .. import keys as key_actions
 from ..theme import COLORS, SIZES, mono_font
+from ..theme.factory import fold_arrow
 from ..theme.icons import icon
 
 __all__ = ["STEPS", "JogPad", "StepCarousel", "step_label", "step_color"]
@@ -200,9 +207,16 @@ class JogPad(QFrame):
         column.setSpacing(10)
 
         head = QHBoxLayout()
-        title = QLabel("MOVE THE ROBOT", self)
-        title.setObjectName("caption")
-        head.addWidget(title, 1)
+        self.fold_button = QToolButton(self)
+        self.fold_button.setObjectName("padTitle")
+        self.fold_button.setText("MOVE THE ROBOT")
+        self.fold_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.fold_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.fold_button.clicked.connect(
+            lambda: self.set_folded(not self.folded))
+        head.addWidget(self.fold_button)
+        head.addStretch(1)
         self.undo_button = QPushButton("Undo step", self)
         self.undo_button.setObjectName("secondary")
         self.undo_button.setProperty("compact", True)
@@ -217,12 +231,6 @@ class JogPad(QFrame):
         self.keys.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.keys.toggled.connect(self._show_keys)
         head.addWidget(self.keys)
-        self.fold_button = QToolButton(self)
-        self.fold_button.setObjectName("barButton")
-        self.fold_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.fold_button.clicked.connect(
-            lambda: self.set_folded(not self.folded))
-        head.addWidget(self.fold_button)
         column.addLayout(head)
 
         self.carousel = StepCarousel(steps=steps, step=step, parent=self)
@@ -233,6 +241,7 @@ class JogPad(QFrame):
         column.addWidget(self.carousel)
 
         self.pads = QWidget(self)
+        self.pads.setObjectName("plain")
         pads = QHBoxLayout(self.pads)
         pads.setContentsMargins(0, 0, 0, 0)
         pads.setSpacing(14)
@@ -300,9 +309,7 @@ class JogPad(QFrame):
             widget.setVisible(open_)
         self.key_list.setVisible(open_ and self.keys.isChecked())
         self.note.setVisible(open_ and bool(self.note.text()))
-        self.fold_button.setIcon(icon("chevron-down" if open_
-                                      else "chevron-up", COLORS["text-2"],
-                                      16, stroke=2))
+        fold_arrow(self.fold_button, open_)
         self.fold_button.setToolTip("Fold the pad" if open_
                                     else "Open the pad")
         self.adjustSize()

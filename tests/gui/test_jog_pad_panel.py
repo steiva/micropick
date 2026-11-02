@@ -165,3 +165,40 @@ def test_the_pad_folds_into_its_corner(app):
     pad.fold_button.click()
     assert not pad.folded and pad.buttons["x+"].isVisible()
     pad.deleteLater()
+
+
+def test_the_title_is_the_fold_toggle_apart_from_the_actions(app):
+    """The arrow is the title's, at the row's start; Undo step and Keys
+    are the row's other end, so the fold does not read as a third
+    button."""
+    from micropick.gui.widgets.jog_pad import JogPad
+    pad = JogPad()
+    pad.show()
+    app.processEvents()
+    assert pad.fold_button.text() == "MOVE THE ROBOT"
+    assert not pad.fold_button.icon().isNull()               # its arrow
+    assert (pad.fold_button.geometry().right()
+            < pad.undo_button.geometry().left()
+            < pad.keys.geometry().left())
+    pad.deleteLater()
+
+
+def test_the_pads_own_containers_let_the_plate_show_through(app):
+    """qdarktheme fills a bare QWidget with the window's color: the area
+    behind the arrows was an opaque block on the translucent plate."""
+    from PySide6.QtCore import Qt
+    from micropick.gui import theme
+    from micropick.gui.widgets.jog_pad import JogPad
+    theme.apply_theme(app)
+    pad = JogPad()
+    pad.resize(pad.sizeHint())
+    pad.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    pad.show()
+    app.processEvents()
+    image = pad.grab().toImage()
+    # A point of the pads' area between the arrows and Up / Down.
+    xy = pad.pads.geometry()
+    up = pad.buttons["z+"].mapTo(pad, pad.buttons["z+"].rect().topLeft())
+    point = (up.x() - 6, xy.top() + 4)
+    assert image.pixelColor(*point).alpha() < 255
+    pad.deleteLater()

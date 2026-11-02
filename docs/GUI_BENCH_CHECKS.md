@@ -1269,6 +1269,12 @@ cameras.
   Expected failure if wrong: two pads on one picture, or a pad left over
   another page.
 
+- [ ] **Its title folds it.**
+  ▾ MOVE THE ROBOT at the pad's top left, Undo step and Keys at the
+  right: a click on the title folds the pad to "▸ MOVE THE ROBOT" in the
+  corner, again opens it. Over a bright picture the plate is evenly
+  translucent, the area between the arrows and Up / Down too.
+
 - [ ] **A press moves one step.**
   At step 1 each arrow moves 1 mm, Up / Down 1 mm in Z; ‹ › and + / - walk
   0.01 … 10 mm, 5 drawn yellow and 10 red. Over the tip calibration's

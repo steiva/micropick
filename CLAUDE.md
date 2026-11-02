@@ -199,7 +199,8 @@ Every jog panel's face is the `widgets.jog_pad.JogPad` (XY arrows, Z Up /
 Down, the step carousel of `jog.DEFAULT_STEPS`, the one list of step
 sizes): it floats over the picture's bottom-right
 (`CameraView.add_corner_widget`) while its panel is shown, folds to its
-title row there (`JogPad.set_folded`; folded from the start on
+title there - the title is the fold toggle, its arrow before it, apart
+from Undo step and Keys (`JogPad.set_folded`; folded from the start on
 Picking, the keys still bound), and only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
 Undo step is on the pad. A jog panel has no Move or Positions section
