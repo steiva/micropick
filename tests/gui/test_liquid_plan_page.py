@@ -134,7 +134,7 @@ def test_a_wells_to_trash_step_is_built_by_mouse_and_runs(app, window, page):
     page.first_step_button.click()
     _click(app, page, "C1", "C2", "C3")
     page.next_button.click()
-    page.dest_kind.buttons[1].click()              # Trash
+    page.dest_kind.buttons[2].click()              # Trash
     assert page.into_trash.isVisibleTo(page)
     _done(page)
     assert page.step_list.cards()[0].title.text() == "Empty 3 wells"
@@ -311,8 +311,8 @@ def test_the_kind_already_chosen_keeps_the_wells(app, page):
     _click(app, page, "B1")
     page.dest_kind.buttons[0].click()              # Wells, as it was
     assert page.plan.steps[0].dest.wells == ["B1"]
-    page.dest_kind.buttons[1].click()
-    page.dest_kind.buttons[1].click()              # Trash, as it was
+    page.dest_kind.buttons[2].click()
+    page.dest_kind.buttons[2].click()              # Trash, as it was
     assert page.plan.steps[0].dest.kind == "trash"
     page.dest_kind.buttons[0].click()
     assert page.left.currentWidget() is page.question
@@ -531,7 +531,7 @@ def test_no_internal_word_is_on_the_screen(app, page):
     page.first_step_button.click()
     _click(app, page, "A1")
     page.next_button.click()
-    page.dest_kind.buttons[1].click()
+    page.dest_kind.buttons[2].click()
     _done(page)
     widgets = (page.findChildren(QLabel) + page.findChildren(QAbstractButton)
                + page.add_menu.findChildren(QLabel))
@@ -599,7 +599,7 @@ def test_take_fields_only_for_wells_and_put_fields_only_for_wells(app, page):
     page.first_step_button.click()
     _click(app, page, "A1")
     page.next_button.click()
-    page.dest_kind.buttons[1].click()              # Trash
+    page.dest_kind.buttons[2].click()              # Trash
     page.next_button.click()
     form = page.card.form
     assert form.take_at.isVisibleTo(page)
@@ -618,7 +618,7 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     page.first_step_button.click()
     _click(app, page, "A1", "A2", "A3")
     page.next_button.click()
-    page.dest_kind.buttons[1].click()              # Trash
+    page.dest_kind.buttons[2].click()              # Trash
     page.next_button.click()
     form = page.card.form
     _type(form.volume, "100")
@@ -670,7 +670,7 @@ def test_extras_follow_the_ends_of_the_step(app, page):
     page.first_step_button.click()
     _click(app, page, "A1")
     page.next_button.click()
-    page.dest_kind.buttons[1].click()              # Trash
+    page.dest_kind.buttons[2].click()              # Trash
     _to_section(page, "extras")
     form = page.card.form
     assert not form.mix_box.isVisibleTo(page)      # the destination is no well
@@ -800,3 +800,213 @@ def test_every_kind_of_step_is_added_filled_in_and_run(app, window, page):
     run.pause_button.click()
     assert _until(app, lambda: run._ended is not None and not run.jog.busy)
     assert run._ended == "done", run._outcome
+
+
+# -- Points and By hand on the camera (#74) -----------------------------------
+
+
+POINT = (120.0, 90.0, 60.0)
+
+
+def _take_from(page, index):
+    """A new step, on Take from's A well, A point or By hand."""
+    page.first_step_button.click()
+    page.kinds["source"].buttons[index].click()
+
+
+def _point_button(page, name):
+    return page.point_buttons[name]
+
+
+def _went_to(window, point):
+    """Whether the tip was moved to `point`'s X and Y."""
+    return any(pose[:2] == pytest.approx(point[:2], abs=0.5)
+               for pose in window.session.robot.log)
+
+
+def _keys_on(page):
+    return any(s.isEnabled() for s in page.jog._shortcuts)
+
+
+def _free(app, window, page):
+    assert _until(app, lambda: not window.session.robot_lease.busy
+                  and not page.jog.busy)
+
+
+def test_a_step_takes_from_a_saved_point_and_runs(app, window, page):
+    window.session.remember("Reservoir", POINT)
+    _set_trash(app, page)
+    _take_from(page, 1)
+    assert page.on_camera.isVisibleTo(page)
+    assert page.card.rows[0].value.text() == "choose"
+    _point_button(page, "Reservoir").use.click()
+    assert page.card.rows[0].value.text() == "Point · Reservoir"
+    assert page.plan.steps[0].source.point == "Reservoir"
+    page.next_button.click()
+    _click(app, page, "B1")
+    _done(page)
+    _free(app, window, page)
+    _run_to_the_end(app, window)
+    assert _taken_and_put(window)[1][-1] == "B1"
+    assert _went_to(window, POINT)
+
+
+def test_setup_positions_are_never_points(app, window, page):
+    window.session.remember("tip_calib", POINT)
+    window.session.remember("Reservoir", POINT)
+    _take_from(page, 1)
+    assert set(page.point_buttons) == {"Reservoir"}
+
+
+def test_a_right_click_adds_a_memo_point_a_step_can_use(app, window, page,
+                                                        monkeypatch):
+    monkeypatch.setattr(page_module.moves, "tip_at_pixel",
+                        lambda *a, **k: (50.0, 60.0))
+    _take_from(page, 1)
+    page.view.right_clicked.emit(10.0, 20.0)
+    assert [p.name for p in window.session.memo_points] == ["M1"]
+    assert window.session.memo_points[0].z is None
+    assert set(page.point_buttons) == {"M1"}
+    assert page.point_buttons["M1"].star.text() == "☆"
+
+
+def test_a_memo_point_is_stored_as_a_spot_and_survives_a_restart(
+        app, window, page, tmp_path):
+    session = window.session
+    session.add_memo_point(120.0, 90.0, 60.0)
+    _set_trash(app, page)
+    _take_from(page, 1)
+    _point_button(page, "M1").use.click()
+    source = page.plan.steps[0].source
+    assert (source.kind, source.spot.name) == ("spot", "M1")
+    assert (source.spot.x, source.spot.y, source.spot.z) == POINT
+    assert page.card.rows[0].value.text() == "Point · M1"
+    assert page.kinds["source"].current() == 1     # still A point
+    page.next_button.click()
+    _click(app, page, "B1")
+    _done(page)
+
+    saved = tmp_path / "kept.json"
+    page.plan.save(saved)
+    session.delete_memo_point("M1")                # the program closed
+    session.set_liquid_plan(LiquidPlan.load(saved))
+    assert session.liquid_plan_problems() == {}
+    _free(app, window, page)
+    _run_to_the_end(app, window)
+    assert _went_to(window, POINT)
+
+
+def test_a_memo_point_with_no_z_takes_the_travel_height(app, window, page):
+    session = window.session
+    session.add_memo_point(120.0, 90.0, None)
+    _take_from(page, 1)
+    _point_button(page, "M1").use.click()
+    assert page.plan.steps[0].source.spot.z == session.point_z(
+        session.memo_point("M1"))
+    assert page.plan.steps[0].source.spot.z == session.motion.envelope.z[1]
+
+
+def test_the_star_saves_a_point_with_its_name_as_the_default(app, window, page,
+                                                             monkeypatch):
+    session = window.session
+    session.add_memo_point(120.0, 90.0, 60.0)
+    asked = []
+
+    def get_text(_parent, _title, _label, text=""):
+        asked.append(text)
+        return "Reservoir", True
+
+    monkeypatch.setattr(page_module.QInputDialog, "getText", get_text)
+    _take_from(page, 1)
+    _point_button(page, "M1").use.click()
+    _point_button(page, "M1").star.click()
+    assert asked == ["M1"]
+    assert session.saved_points()["Reservoir"] == POINT
+    assert session.memo_points == []
+    assert page.point_buttons["Reservoir"].star.text() == "★"
+    # The step it was in uses the kept point from now on.
+    assert page.plan.steps[0].source.kind == "point"
+    assert page.plan.steps[0].source.point == "Reservoir"
+
+
+def test_the_star_is_refused_for_a_name_in_use(app, window, page, monkeypatch):
+    session = window.session
+    session.remember("Reservoir", POINT)
+    session.add_memo_point(10.0, 20.0, 30.0)
+    said = []
+    monkeypatch.setattr(page_module.QInputDialog, "getText",
+                        lambda *a, **k: ("Reservoir", True))
+    monkeypatch.setattr(page_module, "show_toast",
+                        lambda _w, text, **k: said.append(text))
+    _take_from(page, 1)
+    _point_button(page, "M1").star.click()
+    assert said == ['A point is already called "Reservoir".']
+    assert session.memo_point("M1") is not None
+    assert session.saved_points()["Reservoir"] == POINT
+
+
+def test_use_this_spot_stores_the_tips_pose_and_the_run_comes_back(
+        app, window, page):
+    _set_trash(app, page)
+    _take_from(page, 2)
+    assert page.use_spot_button.isVisibleTo(page)
+    assert page.card.rows[0].value.text() == "choose"
+    assert _until(app, lambda: page.jog.pose is not None and
+                  page.use_spot_button.isEnabled())
+    pose = page.jog.pose
+    page.use_spot_button.click()
+    source = page.plan.steps[0].source
+    assert (source.spot.x, source.spot.y, source.spot.z) == pytest.approx(pose)
+    assert page.card.rows[0].value.text() == "By hand"
+    assert page.kinds["source"].current() == 2
+    page.next_button.click()
+    _click(app, page, "B1")
+    _done(page)
+    _free(app, window, page)
+    _run_to_the_end(app, window)
+
+
+def test_no_camera_is_said_and_is_not_a_dead_end(app, window, page,
+                                                 monkeypatch):
+    session = window.session
+    session.remember("Reservoir", POINT)
+    monkeypatch.setattr(type(session), "upper_camera_label",
+                        property(lambda _s: None))
+    asked = []
+    session.page_requested.connect(asked.append)
+    _take_from(page, 1)
+    assert page.no_camera.isVisibleTo(page)
+    _point_button(page, "Reservoir").use.click()   # a point needs no picture
+    assert page.plan.steps[0].source.point == "Reservoir"
+    page.no_camera_button.click()
+    assert asked == ["upper_camera"]
+
+
+def test_the_keys_are_on_only_while_the_pad_is_on_screen(app, window, page):
+    _take_from(page, 2)
+    assert _until(app, lambda: page.jog.pose is not None
+                  and not page.jog.busy)
+    assert not page.jog.pad.isVisibleTo(page.view)
+    assert not _keys_on(page)
+    page.controls_button.click()
+    assert page.jog.pad.isVisible()
+    assert _until(app, lambda: _keys_on(page))
+    page.kinds["source"].buttons[0].click()        # A well: the camera goes
+    app.processEvents()
+    assert not _keys_on(page)
+    page.kinds["source"].buttons[2].click()
+    assert _until(app, lambda: _keys_on(page))
+    window.show_step("deck")
+    app.processEvents()
+    assert not _keys_on(page)
+
+
+def test_a_point_takes_no_height_of_the_wells(app, page):
+    """The offset a new step has for a well is not put on a point."""
+    page.first_step_button.click()
+    page.kinds["source"].buttons[1].click()
+    step = page.plan.steps[0]
+    assert (step.take_at.offset_mm, step.take_at.aside_x_mm) == (0, 0)
+    page.kinds["source"].buttons[0].click()
+    assert page.plan.steps[0].take_at.ref == "bottom"
+    assert page.plan.steps[0].take_at.offset_mm == 2

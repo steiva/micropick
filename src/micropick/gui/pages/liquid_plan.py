@@ -28,8 +28,23 @@ move, the trash, a step added or deleted are one undo each (Ctrl+Z, and Undo
 over the plate), and so is a field typed in digit by digit. The widgets never
 reorder or change a plan themselves.
 
-Still to come, each with its ticket under #67: points and By hand (#74), the
-trash chooser, Try once and templates (#75).
+A point and By hand are on the live upper camera, with the X Y Z over it. Under
+the picture are the points as buttons: the saved ones (`Session.saved_points`,
+so never Robot setup's) and the memo points. A right click adds a memo point.
+Using a memo point stores a **spot** in the step, its coordinates kept in the
+plan, so it does not depend on what is in memory; one with no Z is stored at
+the travel height, as saving it does. The star keeps a point under a name: it
+becomes a saved point, for the steps using it too. Use this spot stores where
+the tip is. Controls opens the jog pad, the face of a panel that is never shown
+(`JogPanel.run_job` is the page's way to the robot); its keys go with it (#57),
+so they are on only while it is on screen. With no picture the points and the
+pad still work, and a banner goes to the camera's sheet.
+
+A place that is not wells has no height of its own in the step: a point is used
+at its Z, so the offset a new step has for a well is taken off it.
+
+Still to come, with its ticket under #67: the trash chooser, Try once and
+templates (#75).
 
 The plan is saved as it is edited, into `outputs/liquid/current.json`; the
 next start keeps only its trash and what a tip holds: steps are chosen for
@@ -44,25 +59,31 @@ from uuid import uuid4
 
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMenu, QPushButton,
-                               QStackedWidget, QVBoxLayout, QWidget,
-                               QWidgetAction)
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QInputDialog, QLabel, QMenu,
+                               QPushButton, QScrollArea, QStackedWidget,
+                               QToolButton, QVBoxLayout, QWidget, QWidgetAction)
 
 from ... import paths
 from ...core.liquid import Location, Program, ProgramError
-from ...core.liquid_plan import (BlowOutStep, Height, LiquidPlan, MixStep,
-                                 MoveLiquid, MoveTip, Place, WaitForMe,
-                                 WaitStep, by_row, chip, duration, move_step,
-                                 pairing, places, step_chips, step_title)
+from ...core.liquid_plan import (BY_HAND, BlowOutStep, Height, LiquidPlan,
+                                 MixStep, MoveLiquid, MoveTip, Place, Spot,
+                                 WaitForMe, WaitStep, by_row, chip, duration,
+                                 move_step, pairing, places, step_chips,
+                                 step_title)
+from .. import camera_moves as moves
+from ..auto_camera import CameraOpener
 from ..labware_kinds import facts, kind, well_depth
-from ..session import MEASURED, NOT_MEASURED, Session
+from ..position_marks import PositionMarks
+from ..session import MEASURED, NOT_MEASURED, Session, SessionError
 from ..theme import COLORS, SPACING
-from ..theme.factory import (caption, danger_text_button, double_spin_box,
-                             heading, muted_label, primary_button,
-                             secondary_button)
+from ..theme.factory import (caption, compact, danger_text_button,
+                             double_spin_box, heading, muted_label, primary_button,
+                             secondary_button, set_primary)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
+from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented
+from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
 from ..widgets.plan_forms import StepForm, uses_height
 from ..widgets.plate_grid import PlateGrid
@@ -82,6 +103,7 @@ SAVE_MS = 400
 CURRENT_FILE = "current.json"
 
 MAX_TIP_UL = 5000
+POINT_ROW_PX = 52
 
 NO_PLATE = "There is no plate on the deck. Add it on the Deck step."
 NOT_MEASURED_TEXT = ("The well center of this plate was not measured. The "
@@ -91,6 +113,14 @@ NO_HEIGHT = "A point and the trash are used at their own height."
 WAIT_HELP = "The robot does nothing for this long. Pause and Stop still work."
 WAITING_WHY = "You asked for this in the plan."
 NO_WELLS = "This step uses no wells."
+NO_CAMERA = ("There is no camera picture. The points and Controls still work.")
+POINTS_HELP = ("Right-click the picture to add a point. The star keeps a "
+               "point for later experiments.")
+BY_HAND_HELP = ("Bring the tip to the spot with Controls, then use it. The "
+                "robot comes back here every time.")
+NO_POSE = "The robot's position is not known yet."
+MOUSE_HELP = ["Right click   add a point"]
+NO_MAP = "Calibrate the camera first."
 BOTTOM_MEASURED = "Bottom measured in Well center"
 BOTTOM_DRAWN = "Bottom from the plate drawing"
 TOP_NOTE = "Top of the well"
@@ -141,15 +171,30 @@ BLOW_OUT_QUESTION = ("WHERE", "Where is the tip blown out?", "Click a well.",
 # The kinds a place can be: (place kind, on screen), by what asks it. One
 # choice is no choice, and a section without an entry has only wells.
 CHOICES = {
-    "dest": (("wells", "Wells"), ("trash", "Trash")),
-    "blow_out": (("wells", "A well"), ("trash", "Trash")),
+    "source": (("wells", "A well"), ("point", "A point"), ("spot", "By hand")),
+    "dest": (("wells", "Wells"), ("point", "A point"), ("trash", "Trash")),
+    "blow_out": (("wells", "A well"), ("point", "A point"),
+                 ("trash", "Trash")),
+    "move_tip": (("wells", "A well"), ("point", "A point"),
+                 ("spot", "By hand")),
 }
+# The field of the height that goes with a place of a step.
+HEIGHTS = {"source": "take_at", "dest": "put_at", "place": "at"}
 # Sections that are one well: a click replaces it.
 ONE_WELL = ("place", TRASH)
 
 # The heights a new step starts from (LiquidPlan.dc.html).
 TAKE_AT = Height(ref="bottom", offset_mm=2.0)
 PUT_AT = Height(ref="top", offset_mm=-1.0)
+
+
+def chosen_kind(place: Place) -> str:
+    """Which of `CHOICES` the place is: a memo point is stored as a spot and
+    is still A point."""
+    if place.kind == "spot" and place.spot is not None and (
+            place.spot.name != BY_HAND):
+        return "point"
+    return place.kind
 
 
 def plan_file() -> Path:
@@ -286,6 +331,27 @@ class _OpenCard(QWidget):
         column.addLayout(buttons)
 
 
+class _PointButton(QWidget):
+    """A point: its star and its name, which uses it. ★ is kept in the
+    profile; a click on ☆ keeps it."""
+
+    def __init__(self, name: str, saved: bool, parent: QWidget):
+        super().__init__(parent)
+        self.setObjectName("plain")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(2)
+        self.star = QToolButton(self)
+        self.star.setText("★" if saved else "☆")
+        self.star.setEnabled(not saved)
+        self.star.setToolTip("" if saved else "Keep this point.")
+        self.star.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addWidget(self.star)
+        self.use = secondary_button(name, self)
+        self.use.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addWidget(self.use)
+
+
 class _KindItem(QWidget):
     """A line of the Add a step menu: a kind over its help line."""
 
@@ -324,6 +390,10 @@ class LiquidPlanPage(QWidget):
         self._accepted: set[tuple[str, str]] = set()   # Use anyway
         self._locked = False
         self._typing: str | None = None          # the field of the last undo
+        self.point_buttons: dict[str, _PointButton] = {}
+        self._points_shown: list | None = None
+        self._looking = False                    # the camera section is up
+        self._camera_failed = False
         self._shown_steps: tuple | None = None
 
         self._save_timer = QTimer(self)
@@ -352,6 +422,9 @@ class LiquidPlanPage(QWidget):
         # A plate skipped on the Well center step.
         session.confirmations_changed.connect(self._deck_changed)
         session.robot_busy_changed.connect(self._robot_busy)
+        session.memo_points_changed.connect(self._show_points)
+        session.camera_opened.connect(lambda _l: self._show_camera())
+        session.camera_closed.connect(lambda _l: self._show_camera())
         self._install_shortcuts()
         session.set_liquid_plan(self.plan)
         self._deck_changed()
@@ -405,7 +478,8 @@ class LiquidPlanPage(QWidget):
         self.question_body = QStackedWidget(box)
         self.on_plate = self._on_plate()
         self.into_trash = self._into_trash()
-        for widget in (self.on_plate, self.into_trash):
+        self.on_camera = self._on_camera()
+        for widget in (self.on_plate, self.into_trash, self.on_camera):
             self.question_body.addWidget(widget)
         column.addWidget(self.question_body, 1)
         return box
@@ -452,6 +526,69 @@ class LiquidPlanPage(QWidget):
         self.rule.setObjectName("planRule")
         self.rule.setWordWrap(True)
         column.addWidget(self.rule)
+        return box
+
+    def _on_camera(self) -> QWidget:
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        self.no_camera = Banner(NO_CAMERA, tone="warn", parent=box)
+        self.no_camera_button = self.no_camera.add_action("Choose the camera")
+        self.no_camera_button.clicked.connect(
+            lambda: self.session.page_requested.emit("upper_camera"))
+        column.addWidget(self.no_camera)
+
+        self.opener = CameraOpener(self.session, self)
+        self.opener.failed.connect(self._camera_refused)
+        self.view = CameraView(box)
+        self.view.marks_default = True           # the points are drawn there
+        self.view.set_mouse_help(MOUSE_HELP)
+        self.view.right_clicked.connect(self._mark)
+        # Never shown: the pad over the picture is its face, and its keys go
+        # with the pad.
+        self.jog = JogPanel(self.session, shortcut_host=self, parent=self)
+        self.jog.hide()
+        self.jog.show_position_on(self.view)
+        self.jog.pose_changed.connect(lambda _p: self._show_use_spot())
+        self.jog.position_changed.connect(lambda _l: self._show_use_spot())
+        self.marks = PositionMarks.on(self.session, self.view)
+        self.controls_button = compact(secondary_button("Controls", self.view))
+        self.controls_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        # Opaque: an outlined button over a bright dish cannot be read.
+        self.controls_button.setStyleSheet(
+            f"QPushButton {{ background: {COLORS['raised']}; }}")
+        self.controls_button.clicked.connect(self._toggle_controls)
+        self.view.add_top_widget(self.controls_button)
+        column.addWidget(self.view, 1)
+
+        self.point_row = QHBoxLayout()
+        self.point_row.setContentsMargins(0, 0, 0, 0)
+        self.point_row.setSpacing(SPACING)
+        self.point_row.addStretch(1)
+        holder = QWidget(box)
+        holder.setObjectName("plain")
+        holder.setLayout(self.point_row)
+        self.point_area = QScrollArea(box)
+        self.point_area.setWidget(holder)
+        self.point_area.setWidgetResizable(True)
+        self.point_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.point_area.setFixedHeight(POINT_ROW_PX)
+        self.point_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        column.addWidget(self.point_area)
+
+        line = QHBoxLayout()
+        self.camera_help = muted_label("", box)
+        line.addWidget(self.camera_help, 1)
+        self.use_spot_button = primary_button("Use this spot", box)
+        self.use_spot_button.clicked.connect(self._use_spot)
+        line.addWidget(self.use_spot_button)
+        column.addLayout(line)
+        self.camera_rule = QLabel(box)
+        self.camera_rule.setObjectName("planRule")
+        self.camera_rule.setWordWrap(True)
+        column.addWidget(self.camera_rule)
         return box
 
     def _into_trash(self) -> QWidget:
@@ -668,6 +805,7 @@ class LiquidPlanPage(QWidget):
     def hideEvent(self, event) -> None:
         for shortcut in self._shortcuts:
             shortcut.setEnabled(False)
+        self._looking = False
         super().hideEvent(event)
 
     # -- the plan file -------------------------------------------------------
@@ -933,14 +1071,27 @@ class LiquidPlanPage(QWidget):
             self.plate.select_all()
 
     def _kind_chosen(self, key: str, index: int) -> None:
-        """A click on the kind already chosen is one too: it keeps the
-        wells."""
+        """A click on the kind already chosen is one too: it keeps what was
+        chosen."""
+        place_kind = CHOICES[key][index][0]
+        if chosen_kind(self._shown_place()) != place_kind:
+            self._set_place(Place(kind=place_kind))
+
+    def _set_place(self, place: Place) -> None:
+        """`place` for the section shown. See the module's docstring on what
+        a place that is not wells does to the height."""
         plan = self._edit()
         step = plan.steps[self._index(self.open_id)]
-        place_kind = CHOICES[key][index][0]
-        if getattr(step, self.section).kind == place_kind:
-            return
-        setattr(step, self.section, Place(kind=place_kind))
+        was_wells = getattr(step, self.section).kind == "wells"
+        setattr(step, self.section, place)
+        field = HEIGHTS.get(self.section)
+        if place.kind != "wells":
+            setattr(step, field, Height())
+        elif not was_wells:
+            setattr(step, field, {"source": TAKE_AT, "dest": PUT_AT}.get(
+                self.section, Height()))
+        if self.section == "dest" and place.kind != "wells":
+            step.mix_after = False
         self._commit(plan)
 
     def _use_anyway(self) -> None:
@@ -965,6 +1116,110 @@ class LiquidPlanPage(QWidget):
                 for role, place in places(step)
                 if place.kind == "wells" and place.slot == slot
                 and (step.id, role) != skip for well in place.wells}
+
+    # -- points and By hand --------------------------------------------------
+
+    def _toggle_controls(self) -> None:
+        pad = self.jog.pad
+        pad.setVisible(not pad.isVisible())
+        if pad.isVisible():
+            pad.raise_()
+
+    def _mark(self, u: float, v: float) -> None:
+        """A right click on the picture: a memo point where the tip would go
+        down at this pixel, at the travel height. Moves nothing."""
+        xy = moves.tip_at_pixel(self.session, self.jog, u, v, no_map=NO_MAP)
+        if xy is not None:
+            point = self.session.add_memo_point(xy[0], xy[1], None)
+            self.jog.tell(f"{point.name} at ({point.x:.2f}, {point.y:.2f}).")
+
+    def _use_point(self, name: str) -> None:
+        """A saved point by its name; a memo point as a spot of the step."""
+        point = self.session.point(name)
+        if point is None:
+            return
+        self._set_place(
+            Place(kind="point", point=name) if point.saved else
+            Place(kind="spot", spot=Spot(name=name, x=point.x, y=point.y,
+                                         z=self.session.point_z(point))))
+
+    def _keep_point(self, name: str) -> None:
+        """The star: asks its name, the memo point's by default. The steps
+        using it use the kept point from then on."""
+        new_name, chosen = QInputDialog.getText(
+            self, "Keep this point", "Name", text=name)
+        if not chosen:
+            return
+        point = self.session.memo_point(name)
+        try:
+            self.session.save_memo_point(name, new_name)
+        except SessionError as exc:
+            show_toast(self, str(exc))
+            return
+        plan = self._edit()
+        kept = Place(kind="point", point=new_name.strip())
+        used = False
+        for step in plan.steps:
+            for role, place in places(step):
+                if place.kind == "spot" and (place.spot.name, place.spot.x,
+                                             place.spot.y) == (
+                        name, point.x, point.y):
+                    setattr(step, role, kept)
+                    used = True
+        if used:
+            self._commit(plan)
+
+    def _use_spot(self) -> None:
+        pose = self.jog.pose
+        if pose is None:
+            return
+        self._set_place(Place(kind="spot", spot=Spot(
+            name=BY_HAND, x=pose[0], y=pose[1], z=pose[2])))
+        show_toast(self, "Spot saved for this step.")
+
+    def _camera_refused(self, _label: str, reason: str) -> None:
+        log.info("liquid plan: no picture: %s", reason)
+        self._camera_failed = True
+        self._show_camera()
+
+    def _show_camera(self) -> None:
+        label = self.session.upper_camera_label
+        self.view.set_camera(self.session.camera(label) if label else None)
+        self.no_camera.setVisible(self.view.camera is None and (
+            label is None or self._camera_failed))
+
+    def _show_use_spot(self) -> None:
+        known = self.jog.pose is not None
+        self.use_spot_button.setEnabled(known and not self._locked)
+        self.use_spot_button.setToolTip("" if known else NO_POSE)
+
+    def _show_points(self) -> None:
+        """A button per point, made again only when the points change."""
+        points = [(p.name, p.saved) for p in self.session.points]
+        if points != self._points_shown:
+            self._points_shown = points
+            for button in self.point_buttons.values():
+                self.point_row.removeWidget(button)
+                button.deleteLater()
+            self.point_buttons = {}
+            holder = self.point_area.widget()
+            saved_first = sorted(points, key=lambda point: not point[1])
+            for at, (name, saved) in enumerate(saved_first):
+                button = _PointButton(name, saved, holder)
+                button.use.clicked.connect(
+                    lambda _c=False, n=name: self._use_point(n))
+                button.star.clicked.connect(
+                    lambda _c=False, n=name: self._keep_point(n))
+                self.point_row.insertWidget(at, button)
+                self.point_buttons[name] = button
+        place = self._shown_place()
+        chosen = None
+        if place is not None and place.kind == "point":
+            chosen = place.point
+        elif place is not None and place.kind == "spot" and place.spot:
+            chosen = place.spot.name
+        for name, button in self.point_buttons.items():
+            set_primary(button.use, name == chosen)
 
     # -- what the shell asks -------------------------------------------------
 
@@ -998,7 +1253,8 @@ class LiquidPlanPage(QWidget):
         self.spacer.setVisible(not has_steps)
         self.locked_note.setVisible(locked)
         for widget in (self.new_plan_button, self.trash_row, self.tip_ul,
-                       self.add_button, self.card, self.first_step_button):
+                       self.add_button, self.card, self.first_step_button,
+                       self.point_area):
             widget.setEnabled(not locked)
         self._show_trash_row()
         self._show_card()
@@ -1033,6 +1289,21 @@ class LiquidPlanPage(QWidget):
             self.left.setCurrentWidget(self.overview)
         else:
             self.left.setCurrentWidget(self.empty_box)
+        self._camera_up()
+
+    def _camera_up(self) -> None:
+        """The picture and the pose as the camera section comes up."""
+        looking = (self.isVisible() and self.left.currentWidget() is
+                   self.question and self.question_body.currentWidget()
+                   is self.on_camera)
+        if looking and not self._looking:
+            self._camera_failed = False
+            self.opener.ensure(self.session.upper_camera_label)
+            self._show_camera()
+            if self.jog.controller is not None:
+                self.jog.controller.limits = self.session.motion.envelope
+            self.jog.refresh_position()
+        self._looking = looking
 
     def _choice(self, step) -> str | None:
         """What in `CHOICES` asks the section shown."""
@@ -1051,7 +1322,7 @@ class LiquidPlanPage(QWidget):
         self.question_caption.setStyleSheet(f"color: {COLORS[color]};")
         self.question_title.setText(title)
         place = self._shown_place()
-        place_kind = "wells" if place is None else place.kind
+        place_kind = "wells" if place is None else chosen_kind(place)
         choice = self._choice(step) if step is not None else None
         for key, control in self.kinds.items():
             control.setVisible(key == choice)
@@ -1061,9 +1332,30 @@ class LiquidPlanPage(QWidget):
         if place_kind == "trash":
             self._show_into_trash(step)
             self.question_body.setCurrentWidget(self.into_trash)
+        elif place_kind in ("point", "spot"):
+            self._show_on_camera(step, place_kind)
+            self.question_body.setCurrentWidget(self.on_camera)
         else:
             self._show_plate(step, asked)
             self.question_body.setCurrentWidget(self.on_plate)
+
+    def _show_on_camera(self, step, place_kind: str) -> None:
+        by_hand = place_kind == "spot"
+        self.point_area.setVisible(not by_hand)
+        self.camera_help.setText(BY_HAND_HELP if by_hand else POINTS_HELP)
+        self.use_spot_button.setVisible(by_hand)
+        self._show_points()
+        self._show_use_spot()
+        self._show_camera()
+        rule = pairing(step) if step.kind == "move_liquid" else None
+        warn = rule is not None and not rule.allowed
+        self.camera_rule.setText(("ⓘ " if warn else "")
+                                 + (rule.sentence if rule is not None else ""))
+        self.camera_rule.setVisible(bool(self.camera_rule.text()))
+        if self.camera_rule.property("warn") != warn:
+            self.camera_rule.setProperty("warn", warn)
+            self.camera_rule.style().unpolish(self.camera_rule)
+            self.camera_rule.style().polish(self.camera_rule)
 
     def _show_plate(self, step, asked: tuple) -> None:
         section = self.section

@@ -82,7 +82,8 @@ from .liquid import (GROUP_COLOURS, TIP_UL, VOLUME_TOL, Aspirate, BlowOut,
                      Dispense, Group, Location, Mix, MoveTo, Program,
                      ProgramError, Wait, ordered_wells, write_atomic)
 
-__all__ = ["CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height", "Spot",
+__all__ = ["BY_HAND", "CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height",
+           "Spot",
            "Place", "MoveLiquid", "MixStep", "BlowOutStep", "MoveTip",
            "WaitStep", "WaitForMe", "PlanStep", "LiquidPlan", "Pairing",
            "pairing", "chip", "move_step", "compile_step", "compiles",
@@ -96,6 +97,9 @@ CARRIER_SLOT = "plan-carrier"
 CARRIER_WELL = "A1"
 
 SPOT_PREFIX = "plan-spot:"
+
+# The name of a spot the tip was brought to; any other is a memo point's.
+BY_HAND = "By hand"
 
 # Notebook 03's slow lift: 4 rises of 0.1 mm, 0.2 s apart.
 SLOW_LIFT = {"lift_steps": 4, "lift_step_mm": 0.1, "lift_pause_s": 0.2}
@@ -252,10 +256,11 @@ def chip(place: Place) -> str:
         return "choose"
     if place.kind == "trash":
         return "Trash"
-    if place.kind == "spot":
-        return place.spot.name
-    if place.kind == "point":
-        return f"Point · {place.point}"
+    if place.kind == "spot" and place.spot.name == BY_HAND:
+        return BY_HAND
+    if place.kind in ("point", "spot"):
+        name = place.point if place.kind == "point" else place.spot.name
+        return f"Point · {name}"
     wells = place.wells
     if len(wells) == 1:
         return f"Slot {place.slot} · {wells[0]}"

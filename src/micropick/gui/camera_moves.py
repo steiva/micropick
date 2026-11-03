@@ -124,30 +124,36 @@ def move_to_pixel(session, jog, u: float, v: float, *,
     return jog.run_job(job, what="centering the camera")
 
 
-def move_tip_to_pixel(session, jog, u: float, v: float, *, no_map: str,
-                      then=None) -> bool:
-    """The tip over pixel (u, v) of the picture at the travel height,
-    through the pixel map and the measured tip offset; `then(said)` once
-    there. Without a map or a tip calibration, said and nothing moves."""
+def tip_at_pixel(session, jog, u: float, v: float, *, no_map: str):
+    """Where the tip goes down at pixel (u, v) of the picture, through the
+    pixel map and the measured tip offset. Without a map or a tip
+    calibration, said, and None."""
     profile, robot = session.profile, session.robot
     if profile is None or profile.pixel_map is None:
         jog.tell(no_map)
-        return False
+        return None
     offset = profile.calibration.pipette_offset
     if offset is None:
         jog.tell("Refused: no tip calibration.")
-        return False
+        return None
     if robot is None:
-        return False
+        return None
     pmap = PixelMap.from_config(profile.pixel_map)
     if not pmap.covers(u, v):
         jog.tell("Refused: outside the calibrated area.")
-        return False
+        return None
     gantry = jog.pose                    # not a read: see move_to_pixel
     if gantry is None:
-        return False
-    xy = tip_target(pmap, u, v, gantry[:2], offset)
-    if out_of_reach(session, jog, xy, "That point"):
+        return None
+    return tip_target(pmap, u, v, gantry[:2], offset)
+
+
+def move_tip_to_pixel(session, jog, u: float, v: float, *, no_map: str,
+                      then=None) -> bool:
+    """The tip over pixel (u, v) of the picture at the travel height;
+    `then(said)` once there. See `tip_at_pixel`: nothing moves without it."""
+    xy = tip_at_pixel(session, jog, u, v, no_map=no_map)
+    if xy is None or out_of_reach(session, jog, xy, "That point"):
         return False
     motion = session.motion
 
