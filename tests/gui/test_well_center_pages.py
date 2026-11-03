@@ -159,10 +159,35 @@ def test_the_step_shows_the_tip_and_the_pad_and_no_camera(app, session):
     page = _step(app, session)
     assert not page.findChildren(CameraView)
     assert page.pad.parent() is not page.jog       # out of the hidden panel
-    assert page.pad.keys.isHidden()                # no keys bound here
     page._show_pose((101.5, 52.25, 66.4))
     assert page.xy_readout.text() == "X 101.50   Y 52.25"
     assert page.z_readout.text() == "Z 66.40"
+    page.deleteLater()
+
+
+def test_keys_puts_the_keys_bound_on_the_pads_buttons(app, session):
+    """#58: the pad's Keys, as on every jog pad."""
+    from micropick.gui import keys
+    session.set_settings(session.settings.model_copy(
+        update={"keys": {"z+": "J"}}))
+    page = _step(app, session)
+    page.show()
+    pad = page.pad
+    assert not pad.keys.isHidden()
+    assert all(b.keycap == "" for b in pad.buttons.values())
+    pad.keys.click()
+    assert pad.buttons["x+"].keycap == "→"
+    assert pad.buttons["z+"].keycap == "J"            # as bound
+    assert pad.buttons["z-"].keycap == "PgDn"
+    assert pad.carousel.bigger.keycap == "+"
+    assert pad.carousel.smaller.keycap == "-"
+    assert not pad.key_list.isHidden()
+    text = pad.key_list.text()
+    for action_id in ("save", "undo", "help"):
+        assert keys.key_text(session.settings.keys, action_id) in text
+    pad.keys.click()
+    assert pad.buttons["x+"].keycap == "" and pad.key_list.isHidden()
+    page.hide()
     page.deleteLater()
 
 

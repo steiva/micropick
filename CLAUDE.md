@@ -361,8 +361,9 @@ center (`WellCenter`) is one per slot and plate type, set on the Well
 center step, one page in Liquid and Manual pick (`pages.well_center`,
 REDESIGN §6.7, `set_task`: the plates on the deck,
 `tasks.well_center_plates`, "Measured today" / "Not measured: using the
-drawing" / "Not measured yet"; Move the tip, It is centered, It is
-level, the well depth from the drawing, Save; in Liquid only Skip this plate, use the drawing -
+drawing" / "Not measured yet"; the jog pad under the tip's X Y Z, with
+its Keys; Move the tip, It is centered, It is level, the well depth from
+the drawing, Save; in Liquid only Skip this plate, use the drawing -
 `Session.skip_plate`, for the robot session only); Liquid handling only
 reads it. In Liquid the step is required and done when every plate is
 measured or skipped (`Session.well_center_status`); in Manual pick
@@ -512,7 +513,9 @@ Down and its own step carousel (`jog_pad.StepCarousel`), active only
 while it is the one lowering, through a jog panel that is never shown
 (its keys on itself, so they never fire); the page's own keys from the
 key actions (Z up / down, the lowering card's step sizes, H) while
-lowering, no XY, listed by Keys. Move the tip (over the dish center) is
+lowering, no XY; Keys puts them on Up, Down and the step arrows as
+keycaps (`jog_pad.KeycapButton`, the pad's look) and lists them, as
+bound (#58). Move the tip (over the dish center) is
 the first card's first button; It touches raises the tip by that card's
 step and the next card lowers; the last card's is Save dish bottom (a
 change over 3 mm asked first; the tip raised after); then "Dish bottom:

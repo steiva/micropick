@@ -212,7 +212,6 @@ class WellCenterPage(QWidget):
         # The hidden panel's own pad: it moves, steps and grays as the
         # panel says, and its keys are on while it is on screen.
         self.pad = self.jog.pad
-        self.pad.keys.hide()
         lines.addWidget(self.pad, 0, Qt.AlignmentFlag.AlignHCenter)
 
         # What the robot answered: a step refused, a move not possible.

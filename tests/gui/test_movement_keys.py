@@ -152,6 +152,7 @@ def test_the_keys_move_the_robot_on_a_robot_setup_sheet(app, window, item):
     window.open_setup_item(item)
     sheet = window.sheets[SETUP_PAGES[item]]
     assert sheet.isVisible()
+    assert sheet.jog.pad.keys.isVisible()             # Keys, #58
     # One step, the sheet's: the page under it takes none.
     assert _moves_x(app, window) == pytest.approx(sheet.jog.pad.step,
                                                   abs=0.01)

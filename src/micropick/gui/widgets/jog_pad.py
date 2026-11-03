@@ -44,7 +44,8 @@ from ..theme import COLORS, SIZES, mono_font
 from ..theme.factory import fold_arrow
 from ..theme.icons import icon
 
-__all__ = ["STEPS", "JogPad", "StepCarousel", "step_label", "step_color"]
+__all__ = ["STEPS", "JogPad", "KeycapButton", "StepCarousel", "key_row",
+           "keycap", "step_label", "step_color"]
 
 # The carousel's sizes, mm (§8.11): the jog controller's own.
 STEPS = tuple(DEFAULT_STEPS)
@@ -70,25 +71,18 @@ def step_color(mm: float) -> str:
     return COLORS["warn"] if mm <= 5 else COLORS["danger-text"]
 
 
-class _JogButton(QPushButton):
-    """A pad button that can carry a keycap in its corner."""
+class KeycapButton(QPushButton):
+    """A button that can carry a keycap in its corner, its key as bound:
+    the pad's, and a page's own robot buttons (Dish bottom's Up and Down,
+    #58)."""
 
-    def __init__(self, action: str, parent: QWidget):
-        super().__init__(parent)
-        self.action = action
+    def __init__(self, text: str = "", parent: QWidget | None = None):
+        super().__init__(text, parent)
         self.keycap = ""
-        self.hint = ""                  # the tooltip while it is enabled
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setAutoRepeat(False)
-        side = SIZES["jog-button"] + 4
-        self.setFixedSize(side if action[0] != "z" else side + 12, side)
-        self.setStyleSheet(
-            f"QPushButton {{ background: #22262D; border: none;"
-            f" border-radius: 8px; color: {COLORS['text']};"
-            f" font-weight: 600; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: #2C313A; }}"
-            f"QPushButton:pressed {{ background: {COLORS['selected-bg']}; }}"
-            f"QPushButton:disabled {{ color: {COLORS['faint']}; }}")
+
+    def set_keycap(self, text: str) -> None:
+        self.keycap = text
+        self.update()
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
@@ -106,6 +100,26 @@ class _JogButton(QPushButton):
         painter.setPen(QColor(COLORS["text-3"]))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.keycap)
         painter.end()
+
+
+class _JogButton(KeycapButton):
+    """A pad button."""
+
+    def __init__(self, action: str, parent: QWidget):
+        super().__init__(parent=parent)
+        self.action = action
+        self.hint = ""                  # the tooltip while it is enabled
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setAutoRepeat(False)
+        side = SIZES["jog-button"] + 4
+        self.setFixedSize(side if action[0] != "z" else side + 12, side)
+        self.setStyleSheet(
+            f"QPushButton {{ background: #22262D; border: none;"
+            f" border-radius: 8px; color: {COLORS['text']};"
+            f" font-weight: 600; font-size: 13px; }}"
+            f"QPushButton:hover {{ background: #2C313A; }}"
+            f"QPushButton:pressed {{ background: {COLORS['selected-bg']}; }}"
+            f"QPushButton:disabled {{ color: {COLORS['faint']}; }}")
 
 
 class StepCarousel(QWidget):
@@ -144,12 +158,12 @@ class StepCarousel(QWidget):
         carousel.addWidget(self.bigger)
         self.set_step(self.step)
 
-    def _arrow(self, name: str, tip: str) -> QPushButton:
-        button = QPushButton(self)
+    def _arrow(self, name: str, tip: str) -> KeycapButton:
+        button = KeycapButton(parent=self)
         button.setObjectName("quiet")
         button.setProperty("compact", True)
         button.setIcon(icon(name, COLORS["text-2"], 14, stroke=2.4))
-        button.setFixedWidth(28)
+        button.setFixedWidth(34)
         button.setToolTip(tip)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         return button
@@ -163,6 +177,12 @@ class StepCarousel(QWidget):
         self._paint_options()
         if emit:
             self.step_changed.emit(self.step)
+
+    def show_keycaps(self, bindings: dict | None) -> None:
+        """The step keys as bound on ‹ ›, or none (None)."""
+        on = bindings is not None
+        self.smaller.set_keycap(keycap(bindings, "step_down") if on else "")
+        self.bigger.set_keycap(keycap(bindings, "step_up") if on else "")
 
     def step_by(self, delta: int) -> None:
         """One size smaller or bigger: the step keys, and ‹ ›, which slide
@@ -354,18 +374,14 @@ class JogPad(QFrame):
         rows = [(f'Step size: <span style="color:{ink}">{escape(smaller)}'
                  f'</span> smaller, <span style="color:{ink}">'
                  f'{escape(bigger)}</span> bigger')]
-        for line in self.key_lines:
-            keys, sep, what = line.partition("   ")
-            rows.append(f'<span style="color:{ink}">{escape(keys.strip())}'
-                        f'</span> {escape(what.strip())}' if sep
-                        else escape(line))
+        rows += [key_row(line) for line in self.key_lines]
         self.key_list.setText("<br>".join(rows))
         self._show_keys(self.keys.isChecked())
 
     def _show_keys(self, on: bool) -> None:
         for action, button in self.buttons.items():
-            button.keycap = _keycap(self._bindings, action) if on else ""
-            button.update()
+            button.set_keycap(keycap(self._bindings, action) if on else "")
+        self.carousel.show_keycaps(self._bindings if on else None)
         self.key_list.setVisible(on and not self.folded)
 
     def set_xy_only(self, on: bool) -> None:
@@ -390,10 +406,20 @@ class JogPad(QFrame):
                                     else reason)
 
 
-def _keycap(bindings: dict, action: str) -> str:
+def key_row(line: str) -> str:
+    """A key line, "keys   what it does", as the pad lists it: the keys
+    brighter, in rich text."""
+    keys, sep, what = line.partition("   ")
+    if not sep:
+        return escape(line)
+    return (f'<span style="color:{COLORS["text-2"]}">{escape(keys.strip())}'
+            f'</span> {escape(what.strip())}')
+
+
+def keycap(bindings: dict | None, action: str) -> str:
     """The key, short enough for a corner of a button. From the portable
     name, which is the same on every system (macOS names PgUp "⇞")."""
-    text = key_actions.sequences(bindings, action)[0].toString(
+    text = key_actions.sequences(bindings or {}, action)[0].toString(
         QKeySequence.SequenceFormat.PortableText)
     return {"Left": "←", "Right": "→", "Up": "↑", "Down": "↓",
             "PgUp": "PgUp", "PgDown": "PgDn"}.get(text, text)

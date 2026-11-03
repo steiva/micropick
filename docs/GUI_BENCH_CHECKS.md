@@ -1557,7 +1557,9 @@ tip box and a 384 plate at hand.
   While lowering, PgUp / PgDn move the tip up and down and + / - change
   the step, as rebound in Settings' Keys; the arrow keys do nothing.
   Before Move the tip, and after saving, PgUp/PgDn do nothing. Keys (or
-  H) lists them under the buttons.
+  H) puts PgUp / PgDn on every card's Up and Down and - / + on its step
+  arrows, as keycaps like the jog pad's, and lists them under the cards
+  (#58). Rebind Z down in Settings: the keycap and the list follow.
 
 - [ ] **Busy.**
   While a run or Park has the robot, Move the tip, Up and Down are gray,
@@ -1715,6 +1717,11 @@ tip box and a 384 plate at hand.
 - [ ] **A run's plate.**
   During a liquid run into a plate, its Save is gray, the tooltip naming
   the run.
+
+- [ ] **Keys (#58).**
+  The pad's Keys (or H): ← ↑ → ↓, PgUp, PgDn on its buttons, - / + on
+  the step arrows, Space, U and H listed under it, as bound in Settings.
+  The position and camera calibration sheets' pads have Keys too.
 
 - [ ] **The movement keys (#57).**
   On Well center the arrows and PgUp / PgDn move the tip one step of the

@@ -9,7 +9,8 @@ it: the robot's Z in big numbers and, under it, three cards side by side,
 the tip lowered in finer steps from one to the next (`STAGES`: Coarse,
 Finer, Finest at 1, 0.5 and 0.1 mm). Each has Up and Down with its own
 step carousel (`jog_pad.StepCarousel`), active only while it is the one
-lowering; **Keys** lists their keys.
+lowering; **Keys** puts each one's key on it as a keycap, as the jog pad
+does (`jog_pad.KeycapButton`), and lists the keys under them (#58).
 
 1. **Move the tip**, in the first card: over the middle of the working
    circle - `circle_center`, a pixel of the picture taken at the position
@@ -66,7 +67,7 @@ from ..theme.factory import (caption, card, heading, muted_label,
 from ..theme.icons import icon
 from ..widgets.banner import Banner
 from ..widgets.checklist import BLOCKED, OK, TODO
-from ..widgets.jog_pad import StepCarousel
+from ..widgets.jog_pad import KeycapButton, StepCarousel, key_row, keycap
 from ..widgets.jog_panel import JogPanel
 from ..widgets.overlays import ConfirmDialog
 from ..widgets.step_card import StepCard, wrapped
@@ -153,7 +154,9 @@ class _Stage:
 
 
 def _z_button(text: str, name: str, parent: QWidget):
-    button = secondary_button(text, parent)
+    # A secondary button that can carry its key, as the pad's do (#58).
+    button = KeycapButton(text, parent)
+    button.setObjectName("secondary")
     button.setIcon(icon(name, COLORS["text"], 22, stroke=2.2))
     button.setFixedSize(*Z_BUTTON)
     button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -230,12 +233,13 @@ class DishBottomPage(QWidget):
         self.keys_button.setProperty("compact", True)
         self.keys_button.setCheckable(True)
         self.keys_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.keys_button.toggled.connect(
-            lambda on: self.keys_list.setVisible(on))
+        self.keys_button.toggled.connect(lambda _on: self._show_keycaps())
         lines.addSpacing(SPACING)
         lines.addWidget(self.keys_button, 0, Qt.AlignmentFlag.AlignHCenter)
-        self.keys_list = muted_label("", column)
-        self.keys_list.setFont(mono_font(SIZES["body"]))
+        # The pad's list: its look, the keys named as on the keycaps.
+        self.keys_list = QLabel(column)
+        self.keys_list.setObjectName("faint")
+        self.keys_list.setTextFormat(Qt.TextFormat.RichText)
         self.keys_list.hide()
         lines.addWidget(self.keys_list, 0, Qt.AlignmentFlag.AlignHCenter)
 
@@ -358,10 +362,22 @@ class DishBottomPage(QWidget):
                 self._shortcuts.append(shortcut)
         lines = []
         for first, second, what in KEYS:
-            names = [keys.key_text(bindings, a) for a in (first, second) if a]
+            names = [keycap(bindings, a) for a in (first, second) if a]
             lines.append(f"{'/'.join(names)}   {what}")
-        self.keys_list.setText("\n".join(lines))
+        self.keys_list.setText("<br>".join(key_row(line) for line in lines))
+        self._show_keycaps()
         self._enable_keys()
+
+    def _show_keycaps(self) -> None:
+        """Keys on: each card's Up, Down and step arrows with its key as
+        bound, as on the jog pad, and the list under them."""
+        on = self.keys_button.isChecked()
+        bindings = self.session.settings.keys
+        for stage in self.stages:
+            stage.up.set_keycap(keycap(bindings, "z+") if on else "")
+            stage.down.set_keycap(keycap(bindings, "z-") if on else "")
+            stage.carousel.show_keycaps(bindings if on else None)
+        self.keys_list.setVisible(on)
 
     def _enable_keys(self) -> None:
         """Only on screen - a window-wide key of a hidden page would
@@ -401,8 +417,11 @@ class DishBottomPage(QWidget):
     def _on_robot_busy(self, holder) -> None:
         """The robot let go: work begun elsewhere may have moved it - the
         Tip step's raise, still going as this page was shown (#56) - so
-        the pose is read again, where the tip ended."""
-        if holder is None and self.isVisible():
+        the pose is read again, where the tip ended. Not after a job of
+        this page's: its lease is let go before its end is delivered, and
+        a read then would take its place (`JogPanel._claim`)."""
+        if (holder is None and self.isVisible()
+                and not self.jog.job_pending):
             self.jog.refresh_position()
         self.refresh()
 

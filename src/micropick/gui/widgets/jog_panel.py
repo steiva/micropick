@@ -576,6 +576,12 @@ class JogPanel(QWidget):
         is done should wait for this to clear first."""
         return self._busy()
 
+    @property
+    def job_pending(self) -> bool:
+        """A job of this panel's has run and its end is still to be
+        delivered (or it still runs): its lease may be let go already."""
+        return self._worker is not None
+
     def run_job(self, fn, *, moves: bool = True, what: str | None = None,
                 then=None, run: bool = False, plates=()) -> bool:
         """Run `fn(log)` on this panel's worker, after any step in flight.
@@ -611,10 +617,8 @@ class JogPanel(QWidget):
 
     def refresh_position(self) -> None:
         """Read the pose again, if nothing is running: after the robot was
-        moved by something that did not go through this panel. Not while a
-        job's end is still to be delivered either: the read would take its
-        place and its `then` would be lost (`_claim`)."""
-        if self.controller is None or self._worker is not None:
+        moved by something that did not go through this panel."""
+        if self.controller is None or self._busy():
             return
         controller = self.controller
         self._run(Worker(lambda: (None, controller.status())), moves=False,

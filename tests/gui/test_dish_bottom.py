@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QApplication                       # noqa: E402
 from micropick.config.schema import PipetteOffset                # noqa: E402
 from micropick.config.schema import PixelMap as PixelMapConfig   # noqa: E402
 from micropick.core.deck import slot_center                      # noqa: E402
-from micropick.gui import keys                                   # noqa: E402
+from micropick.gui.widgets.jog_pad import keycap               # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import dish_bottom as page_module       # noqa: E402
 from micropick.gui.pages.dish_bottom import DishBottomPage, ago  # noqa: E402
@@ -297,12 +297,32 @@ def test_keys_lists_the_keys_bound(app, session, page):
     text = page.keys_list.text()
     assert not page.keys_list.isHidden()
     bindings = session.settings.keys
+    # Named as on the keycaps (#58).
     for action_id in ("z+", "z-", "step_up", "step_down", "help"):
-        assert keys.key_text(bindings, action_id) in text
+        assert keycap(bindings, action_id) in text
     for action_id in ("x-", "x+", "y+", "y-"):
-        assert keys.key_text(bindings, action_id) not in text
+        assert keycap(bindings, action_id) not in text
     _press(app, page, Qt.Key.Key_H)
     assert page.keys_list.isHidden()
+
+
+def test_keys_puts_the_keys_bound_on_up_down_and_the_step(app, session,
+                                                         page):
+    """#58: keycaps as on the jog pad, on every card's Up, Down and step
+    arrows, as bound in Settings."""
+    def caps():
+        return [(s.up.keycap, s.down.keycap, s.carousel.smaller.keycap,
+                 s.carousel.bigger.keycap) for s in page.stages]
+
+    assert caps() == [("", "", "", "")] * len(page.stages)
+    page.keys_button.click()
+    assert caps() == [("PgUp", "PgDn", "-", "+")] * len(page.stages)
+    session.set_settings(session.settings.model_copy(
+        update={"keys": {"z-": "K"}}))
+    assert caps() == [("PgUp", "K", "-", "+")] * len(page.stages)
+    assert "K" in page.keys_list.text()
+    page.keys_button.click()
+    assert caps() == [("", "", "", "")] * len(page.stages)
 
 
 def test_redo_goes_back_to_the_first_step_and_keeps_the_value(
