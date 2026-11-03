@@ -19,10 +19,6 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
   knows). A test that needs the program's theme takes `themed`
   (`tests/gui/conftest.py`), never `apply_theme` on the app: it stays for
   every later test, and a MainWindow then builds in 1.1 s, not 0.25 s.
-  An agent never runs the whole suite, not even at the end of a ticket
-  (this overrides the `implement` skill's "full test suite once at the
-  end"): only the test files of what was changed or added. The user runs
-  the whole suite by hand from time to time.
 - GUI: `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
 - `lab` has an unrelated package named `tests` installed, so
   `python -m tests.…` resolves to it, not to this repository's `tests/`.
