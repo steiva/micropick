@@ -500,7 +500,9 @@ the page's `JogPanel.run_job`), never while the robot's lease is held.
 Liquid's Tip step shows no calibration (`set_task`). Its
 cameras are the profile's upper and lower ones.
 The Dish bottom step (`pages.dish_bottom`, REDESIGN §6.4) has no camera:
-a big Z readout over three cards side by side, Coarse, Finer, Finest
+a big Z readout (read when shown and again whenever the robot is let
+go: a raise begun as Tip was left ends after it is shown, #56) over
+three cards side by side, Coarse, Finer, Finest
 (`dish_bottom.STAGES`, 1, 0.5, 0.1 mm, no numbers), each with Up and
 Down and its own step carousel (`jog_pad.StepCarousel`), active only
 while it is the one lowering, through a jog panel that is never shown

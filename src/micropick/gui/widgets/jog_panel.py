@@ -611,8 +611,10 @@ class JogPanel(QWidget):
 
     def refresh_position(self) -> None:
         """Read the pose again, if nothing is running: after the robot was
-        moved by something that did not go through this panel."""
-        if self.controller is None or self._busy():
+        moved by something that did not go through this panel. Not while a
+        job's end is still to be delivered either: the read would take its
+        place and its `then` would be lost (`_claim`)."""
+        if self.controller is None or self._worker is not None:
             return
         controller = self.controller
         self._run(Worker(lambda: (None, controller.status())), moves=False,

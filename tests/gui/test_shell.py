@@ -279,3 +279,48 @@ def test_liquids_plan_is_its_own_page_and_done_by_use_this_plan(app, window):
     window.step_bar.clicked.emit(4)                # Run
     assert window.current_page() is window.liquid_page
     assert window.liquid_page.program == page.program
+
+
+def test_dish_bottom_shows_the_z_a_raise_from_the_tip_step_ends_at(
+        app, window, monkeypatch):
+    """#56: Tip left while its raise is still going - Dish bottom, shown
+    meanwhile, reads the pose again once the raise lets the robot go."""
+    import threading
+    from micropick.hardware.protocols import move_to, xyz
+    _connect(app, window)
+    session = window.session
+    robot = session.robot
+    move_to(robot, (100.0, 100.0, 70.0), force_direct=True)
+    gate = threading.Event()
+
+    def slow_raise(*, log=None):
+        gate.wait(10)
+        x, y, _z = xyz(robot)
+        move_to(robot, (x, y, 118.0), force_direct=True)
+        return 118.0
+
+    monkeypatch.setattr(session.motion, "raise_tip", slow_raise)
+    window.home.tiles["auto"].clicked.emit()
+    window.step_bar.clicked.emit(1)                # Tip
+    assert window.current_page() is window.tip_calibration_page
+    window.step_bar.clicked.emit(2)                # Dish bottom, mid-raise
+    page = window.dish_bottom_page
+    assert window.current_page() is page
+    assert session.robot_lease.holder == "raising the tip"
+    _settle_reads(app, page)
+    gate.set()
+    _settle(app, window)
+    end = time.monotonic() + 5
+    while page.z_readout.text() != "Z 118.00" and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    assert page.z_readout.text() == f"Z {float(xyz(robot)[2]):.2f}"
+    assert page.z_readout.text() == "Z 118.00"
+
+
+def _settle_reads(app, page, timeout_s=5.0):
+    end = time.monotonic() + timeout_s
+    while page.jog.busy and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    app.processEvents()

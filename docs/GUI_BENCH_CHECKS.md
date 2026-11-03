@@ -1539,6 +1539,12 @@ tip box and a 384 plate at hand.
   value and the ✓ kept until a new one is saved. Only the current card's
   button is blue.
 
+- [ ] **The Z after the Tip step (#56).**
+  With the tip low over the crosshair on Tip, go to Dish bottom (Next,
+  or answer the fine-tune's Save / Discard): the tip rises, and once it
+  stops the Z readout shows where it stopped (about 118 mm), not the Z
+  from before the raise.
+
 - [ ] **Where the dish is.**
   On the right "Over the dish · slot 9" - the slot the camera is over,
   not the tip's (Robot setup's row says the same). Change: Robot setup's

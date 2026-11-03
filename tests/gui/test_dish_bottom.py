@@ -248,8 +248,8 @@ def test_nothing_moves_while_the_robot_is_busy_elsewhere(app, session, page):
         assert not page.down_button.isEnabled()
     finally:
         lease.release()
-    app.processEvents()
-    assert page.up_button.isEnabled()
+    # Let go, the pose is read again (#56), then Up is back.
+    assert _until(app, lambda: page.up_button.isEnabled())
 
 
 def _press(app, page, key):

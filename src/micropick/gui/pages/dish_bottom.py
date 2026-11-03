@@ -182,7 +182,7 @@ class DishBottomPage(QWidget):
         layout.addWidget(scroll_column(self._panel(), PANEL_WIDTH))
 
         session.robot_state_changed.connect(self._on_robot)
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_busy_changed.connect(self._on_robot_busy)
         session.profile_changed.connect(lambda _p: self.refresh())
         session.confirmations_changed.connect(self._on_confirmations)
         session.settings_changed.connect(lambda _s: self._bind_keys())
@@ -396,6 +396,14 @@ class DishBottomPage(QWidget):
         super().showEvent(event)
         # The robot may have moved while another page was shown.
         self.jog.refresh_position()
+        self.refresh()
+
+    def _on_robot_busy(self, holder) -> None:
+        """The robot let go: work begun elsewhere may have moved it - the
+        Tip step's raise, still going as this page was shown (#56) - so
+        the pose is read again, where the tip ended."""
+        if holder is None and self.isVisible():
+            self.jog.refresh_position()
         self.refresh()
 
     def refresh(self) -> None:
