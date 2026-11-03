@@ -68,8 +68,8 @@ from ...core.liquid import Location, Program, ProgramError
 from ...core.liquid_plan import (BY_HAND, BlowOutStep, Height, LiquidPlan,
                                  MixStep, MoveLiquid, MoveTip, Place, Spot,
                                  WaitForMe, WaitStep, by_row, chip, duration,
-                                 move_step, pairing, places, step_chips,
-                                 step_title)
+                                 height_words, move_step, pairing, places,
+                                 step_chips, step_title)
 from .. import camera_moves as moves
 from ..auto_camera import CameraOpener
 from ..labware_kinds import facts, kind, well_depth
@@ -252,7 +252,7 @@ def how(step) -> str:
                 f"{step.flow_ul_s:g} µl/s")
     if step.kind == "blow_out":
         return f"{step.flow_ul_s:g} µl/s"
-    return "at its height"
+    return height_words(step.at)
 
 
 def section_value(step, section: str) -> str:

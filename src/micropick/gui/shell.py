@@ -701,6 +701,8 @@ class MainWindow(QMainWindow):
             # Noticed from across the room (REDESIGN §12.5).
             QApplication.alert(self)
         self._activity = activity
+        if hasattr(owner, "run_label"):
+            text = owner.run_label() or text
         self.top.set_status(*RUN_ACTIVITY.get(activity, (text, "busy")))
         _holder, task, _step = self._run
         self.home.show_run(

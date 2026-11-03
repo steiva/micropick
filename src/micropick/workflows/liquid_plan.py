@@ -64,7 +64,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from ..core.liquid import (VOLUME_TOL, Group, Location, Pause, Program, Wait,
+from ..core.liquid import (VOLUME_TOL, Group, Location, Program,
                            aspirate_volume)
 from ..core.liquid_plan import (CARRIER_SLOT, CARRIER_WELL, SPOT_PREFIX,
                                 LiquidPlan, compile_step, compiles,
@@ -73,7 +73,7 @@ from .liquid import (LiquidState, Plate, do_step, gate, play, problems, run,
                      trash_problems)
 from .motion import Motion
 
-__all__ = ["PlanState", "run_plan", "plan_problems", "one_program"]
+__all__ = ["PlanState", "run_plan", "plan_problems", "compile_plan"]
 
 # The trash the steps are checked with while the plan's cannot be used.
 STAND_IN_TRASH = f"{SPOT_PREFIX}trash"
@@ -81,6 +81,9 @@ STAND_IN_TRASH = f"{SPOT_PREFIX}trash"
 # What the engine puts before a problem to say where: a step says that itself.
 ENGINE_WHERE = re.compile(r"^group '.*?'(?:, step \d+(?: at \S+)?)?: ")
 NO_BOTTOM = re.compile(r"^the measured bottom of slot (\S+) is not known")
+
+# A plan's pause after the first well, said as the Run step says it.
+FIRST_WELL_DONE = "First well done. Check it, then continue."
 
 # How often a Wait looks at Pause and Stop.
 WAIT_SLICE_S = 0.05
@@ -297,10 +300,10 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
                 on_progress(done, total, gi,
                             None if _on_carrier(program) else well)
 
-        def paused(message, program=program, index=index):
+        def paused(_message, program=program, index=index):
             if on_paused is not None:
-                on_paused(f"check step {index + 1}, then press Resume."
-                          if _on_carrier(program) else message)
+                on_paused(f"Check step {index + 1}, then continue."
+                          if _on_carrier(program) else FIRST_WELL_DONE)
             report("waiting")
 
         try:
@@ -313,26 +316,13 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
         report("done")
 
 
-def one_program(plan: LiquidPlan, plates: dict[str, Plate],
-                positions: dict) -> tuple[Program, dict, dict]:
-    """The bridge to the Run page that runs a `Program` (#72, until #76):
-    the whole plan as one, a Wait and a Wait for me on the carrier, with the
-    `plates` and `positions` it needs. A plan with problems does not
-    compile."""
+def compile_plan(plan: LiquidPlan, plates: dict[str, Plate]) -> tuple[
+        dict[str, Program], dict[str, Plate]]:
+    """Every step that compiles, as a program by the step's id, with the
+    `plates` they need. A plan with problems does not compile."""
     plates = _with_carrier(plates)
-    groups: list[Group] = []
-    for index, step in enumerate(plan.steps):
-        if compiles(step):
-            groups += compile_step(plan, index, plates).groups
-        else:
-            groups.append(Group(
-                name=f"Step {index + 1}", color=step.color, slot=CARRIER_SLOT,
-                load_name=CARRIER_SLOT, wells=[CARRIER_WELL],
-                steps=[Wait(seconds=step.seconds) if step.kind == "wait"
-                       else Pause(message=step.message)]))
-    program = Program(name=plan.name, tip_ul=plan.tip_ul, trash=plan.trash,
-                      groups=groups)
-    return program, plates, {**positions, **spots(plan)}
+    return {step.id: compile_step(plan, index, plates)
+            for index, step in enumerate(plan.steps) if compiles(step)}, plates
 
 
 def _screen(message: str) -> str:

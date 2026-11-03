@@ -13,8 +13,8 @@ current one ringed (Picking §6.5, Dispense §6.6). A click on a well there
 emits `well_clicked` and chooses nothing.
 
 Geometry comes from the plate's `ordering` - columns, each a list of
-well names top to bottom - and the labels from `core.routine.grid_labels`,
-as in `plate_view`: no well name is parsed here.
+well names top to bottom - and the labels from `core.routine.grid_labels`:
+no well name is parsed here.
 
 Every plate is drawn in its real proportions (LIQUID R5): a box of the SBS
 footprint (`plate_rect`), the same at the same widget size whatever the
@@ -73,6 +73,11 @@ def _toned_down(color: QColor) -> QColor:
         (color.blue(), empty.blue()))))
 
 
+def dim_color(color: str) -> str:
+    """`color` as `set_dim_fills` draws it, for a legend."""
+    return _toned_down(QColor(color)).name()
+
+
 class PlateGrid(QWidget):
     selection_changed = Signal(object)    # set of well names
     history_changed = Signal()            # can_undo / can_redo may differ
@@ -80,10 +85,12 @@ class PlateGrid(QWidget):
     hovered = Signal(object)              # a name, or None off the wells
 
     def __init__(self, *, mini: bool = False, planning: bool = False,
-                 parent: QWidget | None = None):
+                 read_only: bool = False, parent: QWidget | None = None):
+        """`read_only`: a click chooses nothing; `hovered` still says."""
         super().__init__(parent)
         self.mini = mini
         self.planning = planning
+        self.read_only = read_only
         # The count a well newly planned takes.
         self.new_count = 1
         self.setMouseTracking(True)
@@ -336,7 +343,7 @@ class PlateGrid(QWidget):
     # -- mouse -------------------------------------------------------------
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and not self.read_only:
             self._press = event.position()
             self._band = None
         super().mousePressEvent(event)

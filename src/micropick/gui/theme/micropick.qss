@@ -248,6 +248,11 @@ QPushButton#planRow:hover { background: @hover; }
 QPushButton#planRow[selected="true"] { background: @selected-bg; }
 QLabel#planRowValue[missing="true"] { color: @warn; }
 QLabel#planRule[warn="true"] { color: @warn; }
+QFrame#runEnd {
+    background: @bar;
+    border: 1px solid @card-border;
+    border-radius: 16px;
+}
 QFrame#planForm {
     background: @bar;
     border: 1px solid @card-border;

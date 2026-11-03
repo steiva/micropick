@@ -160,6 +160,10 @@ class PlanStepCard(QFrame):
         self.warning = QLabel("Not finished", self.header)
         self.warning.setObjectName("stepWarning")
         top.addWidget(self.warning)
+        self.status = QLabel(self.header)
+        self.status.setObjectName("stepStatus")
+        self.status.hide()
+        top.addWidget(self.status)
         self.more = QToolButton(self.header)
         self.more.setObjectName("stepMore")
         self.more.setText("⋯")
@@ -236,6 +240,22 @@ class PlanStepCard(QFrame):
 
     def _show_warning(self) -> None:
         self.warning.setVisible(self._unfinished and not self.is_open)
+
+    def set_read_only(self) -> None:
+        """A card only to read, as the Run step lists the plan: nothing on it
+        moves or opens it."""
+        self.more.hide()
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    def show_status(self, text: str, color: str, *, current: bool) -> None:
+        """How far the run got with it. `current`: the step in hand,
+        outlined."""
+        self.status.setText(text)
+        self.status.setStyleSheet(f"color: {color};")
+        self.status.setVisible(bool(text))
+        if self.property("open") != current:
+            self.setProperty("open", current)
+            _restyle(self)
 
     def set_open(self, shown: bool) -> None:
         self.is_open = shown

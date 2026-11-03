@@ -11,7 +11,7 @@ from micropick.core.liquid_plan import (CARRIER_SLOT, BlowOutStep, Height,
                                         LiquidPlan, MixStep, MoveLiquid,
                                         MoveTip, Place, Spot, WaitForMe,
                                         WaitStep, compile_step, height_words,
-                                        move_step, pairing, spot_name,
+                                        move_step, pairing, pairs, spot_name,
                                         step_chips, step_title)
 
 ORDERING = [["A1", "B1"], ["A2", "B2"], ["A3", "B3"]]
@@ -494,3 +494,24 @@ def test_a_steps_chips_are_its_places(step, chips):
 ])
 def test_a_height_reads_as_words_never_plus_and_minus(height, words):
     assert height_words(height) == words
+
+
+@pytest.mark.parametrize("step, expected", [
+    (MoveLiquid(source=_wells("A1"), dest=_wells("B1", "B2")),
+     [("A1", "B1"), ("A1", "B2")]),
+    (MoveLiquid(source=_wells("A1", "A2"), dest=_wells("B1", "B2")),
+     [("A1", "B1"), ("A2", "B2")]),
+    (MoveLiquid(source=_wells("A1", "A2"), dest=_wells("B1")),
+     [("A1", "B1"), ("A2", "B1")]),
+    (MoveLiquid(source=_wells("A2", "A1"), dest=TO_TRASH),
+     [("A1", None), ("A2", None)]),
+    (MoveLiquid(source=_spot(), dest=_wells("B1", "B2")),
+     [(None, "B1"), (None, "B2")]),
+    (MoveLiquid(source=_spot(), dest=TO_TRASH), [(None, None)]),
+    (MixStep(wells=_wells("A1", "A2")), [(None, "A1"), (None, "A2")]),
+    (BlowOutStep(), [(None, None)]),
+    (BlowOutStep(place=_wells("A1")), [(None, "A1")]),
+    (MoveTip(place=_wells("A1")), [(None, "A1")]),
+])
+def test_pairs_are_the_wells_of_each_compiled_well_in_its_order(step, expected):
+    assert pairs(step, PLATES) == expected

@@ -87,8 +87,8 @@ __all__ = ["BY_HAND", "CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height",
            "Place", "MoveLiquid", "MixStep", "BlowOutStep", "MoveTip",
            "WaitStep", "WaitForMe", "PlanStep", "LiquidPlan", "Pairing",
            "pairing", "chip", "move_step", "compile_step", "compiles",
-           "by_row", "duration", "goes_to_trash", "height_words", "places",
-           "spot_name", "spots", "step_chips", "step_title"]
+           "by_row", "duration", "goes_to_trash", "height_words", "pairs",
+           "places", "spot_name", "spots", "step_chips", "step_title"]
 
 PLAN_VERSION = 1
 
@@ -386,6 +386,21 @@ def by_row(place: Place, plates: dict) -> list[str]:
                                   load_name=place.load_name or "",
                                   wells=place.wells), plate.ordering)
     return ordered + [w for w in place.wells if w not in ordered]
+
+
+def pairs(step, plates: dict) -> list[tuple[str | None, str | None]]:
+    """(source well, destination well) of each well the step compiles to,
+    in the order they run; None for an end that is not a well. A place that
+    is all the step has is its destination."""
+    if step.kind in ("mix", "blow_out", "move_tip"):
+        place = step.wells if step.kind == "mix" else step.place
+        wells = by_row(place, plates) if place.kind == "wells" else [None]
+        return [(None, well) for well in wells]
+    froms, tos = (by_row(place, plates) if place.kind == "wells" else [None]
+                  for place in (step.source, step.dest))
+    count = max(len(froms), len(tos))
+    return list(zip(froms * count if len(froms) == 1 else froms,
+                    tos * count if len(tos) == 1 else tos))
 
 
 def _level(height: Height, slot: str, plates: dict) -> str:

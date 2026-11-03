@@ -1,9 +1,8 @@
 """The OT-2 deck's geometry, in the robot's deck frame and in millimetres.
 
 The numbers are the deck definition's: slot pitch and the slot opening.
-`gui.widgets.deck_view` draws the deck with them, and the jog envelope
-(`workflows.motion`) raises its floor over a deck module's slots with them,
-so they live here, with no Qt, rather than in the widget.
+The jog envelope (`workflows.motion`) raises its floor over a deck module's
+slots with them, so they live here, with no Qt.
 """
 
 from __future__ import annotations
