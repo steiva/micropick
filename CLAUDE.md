@@ -260,16 +260,13 @@ panel's Go to, and the picking run's own moves to them) is reached no
 higher than that travel height (`Motion.reachable`): taught after a
 retract, it is out of bounds for the robot.
 
-On Manual pick's Work step (`pages.manual`, REDESIGN §6.6) a **single
-left** click moves - the camera or the tip, as "A click moves the [Camera
-| Tip]" over the picture's top right says, beside Camera / Tip back to
-center (the dish center, `observe`) - checked against the jog envelope
-(`Motion.refused`) and through `JogPanel.run_job`; a click on a detected
-cuboid sends the tip down to it at the pickup height - except while the
-Aspirate card takes its spot By hand: then a click chooses the spot (a
-cuboid with Snap to found cuboids, else the point itself) and moves
-nothing, a click beside every cuboid with Snap on still moves. A double click
-moves nothing. A **right** click (`CameraView.right_clicked`) marks a
+On Manual pick's Run step (`pages.manual`, REDESIGN §6.6) a **single
+left** click moves only the camera (#59), on a detected cuboid or not -
+checked against the jog envelope (`Motion.refused`) and through
+`JogPanel.run_job`; a click never lowers the tip. The Camera | Tip choice
+is not shown (its code stays, `click_mode`, fixed to Camera, as Picking's
+pickup clips switch); there is no Camera / Tip back to center (Picking
+keeps Camera to dish center). A double click moves nothing. A **right** click (`CameraView.right_clicked`) marks a
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
 never in the profile); each is deleted by its × (`Session.delete_memo_point`).
@@ -282,9 +279,19 @@ on the "points" layer (`position_marks.memo_items`); on Work only while
 "At a point" is chosen in an open Aspirate or Dispense card
 (`PositionMarks.show_memo`), and listed there
 (`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
-settings as one line with Change (height above the dish bottom, or a
-well's bottom; volume; speed), From In a well / At a point / By hand,
-enabled once a source is chosen, the TipGauge its answer. Dispense opens
+settings as one line with Change (height above a well's bottom, or By
+hand's; volume; speed), From In a well / At a point / By hand,
+enabled once a source is chosen, the TipGauge its answer. By hand (#60)
+takes from under the camera's crosshair (the picture's center through
+the pixel map, plus the measured tip offset); no spot is clicked: a
+click moves the camera, with Snap to found cuboids onto a cuboid's
+center (beside every cuboid, to the point). Its height is Z | Above the
+dish bottom, the latter only while the dish bottom was measured or reused
+in this robot session (`Session.is_confirmed("dish_bottom")`) and the
+default then. Aspirate is enabled whenever a tip is on and the robot is
+free: one job remembers the camera's pose, the tip to the spot at the
+travel height (`Motion.tip_to`), down, aspirate, the camera back to that
+pose; with Aspirate as soon as I click, a click aims and does it. Dispense opens
 by itself when the tip holds something: All | Part, In a well (a mini map
 of the plan's plate; a well's bottom plus the deposit offset, from its
 well center) / At a point / Here, its button saying what it does ("Go

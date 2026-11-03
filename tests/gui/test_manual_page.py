@@ -1,6 +1,7 @@
-"""Manual Work (REDESIGN §6.6, #18): a left click moves the camera or the
-tip, a right click marks a point, Look at, past picks, the tip gauge and
-the sizes after Analyze the dish."""
+"""Manual pick's Run step (REDESIGN §6.6, #18, #59, #60): a left click
+moves the camera, By hand aspirates under the crosshair, a right click
+marks a point, Look at, past picks, the tip gauge and the sizes after
+Analyze the dish."""
 
 import os
 
@@ -119,18 +120,46 @@ def test_a_single_left_click_moves_the_camera_there(app, page, session):
     assert _xy(session) == pytest.approx((150.0 + 100 * K, 150.0), abs=0.05)
 
 
-def test_in_tip_mode_a_click_sends_the_tip_over_the_clicked_point(
-        app, page, session):
+def _cuboid_at(page, u, v, half=20):
+    """A detected cuboid, a square of side 2 * `half` px centered on (u, v),
+    as Analyze the dish would leave it."""
+    from micropick.core.calibration.pixel_map import PixelMap
+    contour = np.array([[u - half, v - half], [u + half, v - half],
+                        [u + half, v + half], [u - half, v + half]],
+                       dtype=np.int32).reshape(-1, 1, 2)
+    df = pd.DataFrame({"contour": [contour], "cX": [float(u)],
+                       "cY": [float(v)], "diameter_microns": [300.0]})
+    empty = df.iloc[0:0]
+    detection = Detection(np.empty((0, 4)), np.empty(0), df, empty, empty,
+                          empty, {}, classified=False, standin=False)
+    pmap = PixelMap.from_config(page.session.profile.calibration.pixel_map)
+    world = pmap.to_robot(u, v, np.array(page.jog.pose[:2]))
+    page._cuboids_found(((H, W, 3), detection, np.array([world]),
+                         np.array([True])))
+
+
+def test_a_click_on_a_cuboid_moves_only_the_camera(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
     _wait(app, page)
-    page.click_mode.buttons[1].click()
-    assert page.center_button.text() == "Tip back to center"
     _over_the_deck(app, page, session)
-    # The tip is the pipette offset further than the camera's point.
+    page.source.buttons[0].click()                     # In a well
+    _cuboid_at(page, W / 2 + 100, H / 2)
+    assert page.view._overlay                           # the cuboid is drawn
     _left_click(app, page, W / 2 + 100, H / 2)
-    assert _xy(session) == pytest.approx((150.0 + 100 * K + 10.0, 145.0),
-                                         abs=0.05)
+    pos = session.robot.get_position(verbose=False)[0]
+    assert (pos["x"], pos["y"]) == pytest.approx((150.0 + 100 * K, 150.0),
+                                                 abs=0.05)
+    # Never down to the pickup height: the camera at the travel height.
+    assert pos["z"] > session.profile.picking.pickup_height + 10
+
+
+def test_no_click_choice_and_no_way_back_to_center(page):
+    from PySide6.QtWidgets import QAbstractButton, QLabel
+    texts = [w.text() for w in page.findChildren(QLabel)
+             + page.findChildren(QAbstractButton) if w.isVisibleTo(page)]
+    assert not [t for t in texts if "back to center" in t
+                or "A click moves" in t]
 
 
 def test_a_click_outside_the_jog_envelope_moves_nothing(app, page, session):
@@ -249,6 +278,10 @@ def test_the_aspirate_settings_are_one_line_and_change_unfolds_them(page):
     page.above_bottom.setValue(0.5)
     page.volume.setValue(15.0)
     page.flow_rate.setValue(50.0)
+    page.hand_z.setValue(70.0)
+    # By hand without a dish bottom in this robot session: a Z.
+    assert page.settings_line.text() == "Z 70 mm · 15 µl · 50 µl/s"
+    page.source.buttons[0].click()                       # In a well
     assert page.settings_line.text() == (
         "0.5 mm above the bottom · 15 µl · 50 µl/s")
     assert not page.settings_box.isVisibleTo(page)
@@ -263,37 +296,112 @@ def _ready_by_hand(app, page, session):
     _tip_on(session)
     _over_the_deck(app, page, session)
     page.source.buttons[2].click()                     # By hand
-    page.snap.setChecked(False)
     page.volume.setValue(15.0)
     page.above_bottom.setValue(0.5)
 
 
-def test_by_hand_a_click_chooses_the_spot_and_aspirate_goes_there(
+def _aspirated_at(session):
+    """Where the tip was at each aspirate, (x, y, z)."""
+    robot, at = session.robot, []
+    aspirate = robot.aspirate_in_place
+
+    def record(*args, **kwargs):
+        pos = robot.get_position(verbose=False)[0]
+        at.append((pos["x"], pos["y"], pos["z"]))
+        return aspirate(*args, **kwargs)
+    robot.aspirate_in_place = record
+    return at
+
+
+def _pose(session):
+    pos = session.robot.get_position(verbose=False)[0]
+    return pos["x"], pos["y"], pos["z"]
+
+
+def test_by_hand_aspirate_is_enabled_with_a_tip_on_and_no_click(
+        app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    page.source.buttons[2].click()                     # By hand
+    assert not page.aspirate_button.isEnabled()         # no tip yet
+    _tip_on(session)
+    app.processEvents()
+    assert page.aspirate_button.isEnabled()
+    lease = session.robot_lease.claim("someone else")
+    try:
+        page._refresh()
+        assert not page.aspirate_button.isEnabled()     # the robot is not free
+    finally:
+        lease.release()
+
+
+def test_by_hand_aspirates_under_the_crosshair_and_comes_back(
         app, page, session):
     _ready_by_hand(app, page, session)
-    assert not page.aspirate_button.isEnabled()         # no source yet
-    before = _xy(session)
-    _left_click(app, page, W / 2 + 100, H / 2)
-    assert _xy(session) == pytest.approx(before)        # choosing moves nothing
-    assert page.hand_hint.text() == "Spot selected. Press Aspirate."
-    assert page.aspirate_button.isEnabled()
+    at = _aspirated_at(session)
+    before = _pose(session)
+    page.height_mode.buttons[0].click()                 # Z
+    page.hand_z.setValue(70.0)
     page.aspirate_button.click()
     _wait(app, page)
-    pos = session.robot.get_position(verbose=False)[0]
-    assert (pos["x"], pos["y"]) == pytest.approx(
-        (150.0 + 100 * K + 10.0, 145.0), abs=0.05)
-    bottom = session.profile.picking.dish_bottom
-    assert pos["z"] == pytest.approx(bottom + 0.5, abs=0.05)
+    # The crosshair is the picture's center: the camera's point, and the
+    # tip the pipette offset from it.
+    assert at == [pytest.approx((150.0 + 10.0, 150.0 - 5.0, 70.0), abs=0.05)]
     assert session.in_tip == pytest.approx(15.0)
-    assert page.gauge.volume.text() == "15 µl"
     assert len(page._picks) == 1                         # a past pick
+    assert _pose(session) == pytest.approx(before, abs=0.05)
+
+
+def test_by_hand_above_the_bottom_only_with_a_bottom_this_session(
+        app, page, session):
+    _ready_by_hand(app, page, session)
+    above = page.height_mode.buttons[1]
+    assert not above.isEnabled()
+    assert page.height_mode.current() == 0               # Z
+    session.confirm("dish_bottom")
+    app.processEvents()
+    assert above.isEnabled()
+    assert page.height_mode.current() == 1               # the default then
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    bottom = session.profile.picking.dish_bottom
+    assert at[0][2] == pytest.approx(bottom + 0.5, abs=0.05)
+
+
+def test_by_hand_snap_puts_the_crosshair_on_the_cuboid(app, page, session):
+    _ready_by_hand(app, page, session)
+    assert page.snap.isChecked()
+    _cuboid_at(page, W / 2 + 100, H / 2 + 40)
+    # Clicked 8 px off the cuboid's center, inside its outline.
+    _left_click(app, page, W / 2 + 108, H / 2 + 40)
+    assert _xy(session) == pytest.approx((150.0 + 100 * K, 150.0 + 40 * K),
+                                         abs=0.01)
+    assert session.in_tip == 0.0                         # aimed, not taken
+
+
+def test_by_hand_a_click_beside_every_cuboid_moves_to_the_point(
+        app, page, session):
+    _ready_by_hand(app, page, session)
+    _cuboid_at(page, W / 2 + 100, H / 2 + 40)
+    _left_click(app, page, W / 2 - 200, H / 2)
+    assert _xy(session) == pytest.approx((150.0 - 200 * K, 150.0), abs=0.01)
 
 
 def test_by_hand_aspirate_as_soon_as_i_click(app, page, session):
     _ready_by_hand(app, page, session)
     page.aspirate_on_click.setChecked(True)
+    page.height_mode.buttons[0].click()                 # Z
+    page.hand_z.setValue(70.0)
+    at = _aspirated_at(session)
     _left_click(app, page, W / 2 + 100, H / 2)
+    aimed = (150.0 + 100 * K, 150.0)
+    assert at == [pytest.approx((aimed[0] + 10.0, aimed[1] - 5.0, 70.0),
+                                abs=0.05)]
     assert session.in_tip == pytest.approx(15.0)
+    # The camera back over the spot it aimed at.
+    assert _xy(session) == pytest.approx(aimed, abs=0.05)
 
 
 def test_dispense_opens_by_itself_and_gives_back_part_then_all(
@@ -434,19 +542,13 @@ def test_without_a_pixel_map_a_click_moves_nothing(app, page, session):
     assert page.view.mouse_help[0] == "Use the arrows to move the camera."
 
 
-def test_without_a_pixel_map_by_hand_still_takes_the_click(
+def test_without_a_pixel_map_a_click_by_hand_moves_nothing(
         app, page, session):
-    # Choosing a spot moves nothing: the click reaches the page, which
-    # says why it cannot place the spot rather than ignoring it.
     session.profile.calibration.pixel_map = None
     _open_upper(app, page, session)
     _over_the_deck(app, page, session)
     page.source.buttons[2].click()                     # By hand
-    page.snap.setChecked(False)
-    before = _xy(session)
     clicks = []
     page.view.clicked.connect(lambda u, v: clicks.append((u, v)))
     _mouse_click(app, page.view, 400, 300)
-    assert len(clicks) == 1
-    assert _xy(session) == pytest.approx(before)
-    assert "Camera calibration" in page.jog._message
+    assert clicks == []

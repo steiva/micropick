@@ -1,24 +1,25 @@
-"""Manual Work (REDESIGN §6.6): the robot by hand, from the picture.
+"""Manual pick's Run step (REDESIGN §6.6): the robot by hand, from the
+picture.
 
 The jog pad drives the axes as before. What this page adds is the picture
-as a way of pointing: a **left click moves**, a **right click marks a
-point**.
+as a way of pointing: a **left click moves the camera**, a **right click
+marks a point**.
 
-* **A click moves the Camera** - the default, chosen over the picture's top
-  right ("A click moves the [Camera | Tip]"). The gantry travels so that
-  the clicked point comes under the pixel map's reference pixel - the
-  crosshair in the middle of the upper camera's view. Near the edge of the
-  frame the map is extrapolating, and the move still happens, with a note
-  that it is approximate.
-* **Or the Tip**: the tip goes over the clicked point - the pixel map, then
-  the pipette offset (`workflows.manual.tip_target`) - and stays at the
-  travel height, so it shows where it would go down without going down.
-  Only inside the area the map was fitted over: outside it the map is
-  extrapolating, and a tip is not something to put somewhere
-  approximately.
-* **A click on a detected cuboid sends the tip to it**, at the profile's
-  pickup height (dish bottom + pickup offset), one number shared with the
-  run - unless Aspirate is choosing its spot by hand (see "Aspirate").
+The gantry travels so that the clicked point comes under the pixel map's
+reference pixel - the crosshair in the middle of the upper camera's view.
+Near the edge of the frame the map is extrapolating, and the move still
+happens, with a note that it is approximate. A click on a detected cuboid
+is a click like any other: the tip goes down only by Aspirate (#59), since
+a click that lowers the tip by surprise is one into whatever is there.
+
+The tip could also be sent over the clicked point (`click_mode`, "Tip":
+the pixel map, then the pipette offset, `workflows.manual.tip_target`, at
+the travel height). The choice is not shown and stays on Camera, as
+Picking's pickup clips switch: one click, one meaning.
+
+There is no way back to the dish center here: the work is often not from
+the source dish, so a button aimed at it has no target the operator can
+guess. Picking keeps its Camera to dish center.
 
 Every click-move is checked against the jog envelope first
 (`Motion.refused`: the soft limits and the deck modules' tops) and refused
@@ -27,10 +28,6 @@ on the picture when it falls outside, and goes through the jog panel's
 another page's work. There is no Click to move switch any more (§12.7):
 the click itself is the deliberate act. A double click is not a click
 (`CameraView`): it moves nothing and, here, does not fit the picture.
-
-Beside the segmented choice, **Camera back to center** puts the camera over
-the dish again (the position over the dish, `observe`), and **Tip back to
-center** puts the tip over that same spot at the travel height.
 
 Over the top left is the **TipGauge**: what is in the tip, as the session
 counts it (`Session.in_tip`, from aspirates and dispenses, emptied when the
@@ -90,17 +87,25 @@ dish_bottom`) by hand, the well's bottom in a well. From:
 
 * **In a well** - a plate the robot session holds and its well.
 * **At a point** - a memo point, at its own Z.
-* **By hand** - a click on the picture chooses the spot, and moves
-  nothing. With Snap to found cuboids on, a click on a detected cuboid
-  chooses that cuboid, and a click beside every cuboid moves as any click
-  does; off, the clicked point itself is the spot, which is how plain
-  liquid is taken. With Aspirate as soon as I click, the choice is the
-  go-ahead.
+* **By hand** - the spot under the camera's crosshair (#60): the
+  picture's center through the pixel map, plus the measured tip offset.
+  The operator aims with the picture: a click moves the camera, and with
+  Snap to found cuboids on, a click on a detected cuboid moves it so the
+  crosshair is on the cuboid's center (a click beside every cuboid moves
+  to the point). The height is a Z, or a height above the dish bottom -
+  offered only while the dish bottom was measured or reused in this robot
+  session (`Session.is_confirmed`), the default then: an older bottom is
+  not one to lower a tip to. Aspirate remembers the camera's pose, takes
+  the tip to the spot at the travel height (`Motion.tip_to`), lowers it,
+  aspirates, and brings the camera back - one job, so nothing comes
+  between. With Aspirate as soon as I click, a click aims and does all
+  that.
 
-Aspirate is enabled once there is a source. It goes there (through the
-jog panel's `run_job`, after the jog envelope's check) and aspirates
-(`Session.aspirate`); the spot is a past pick. Refused unless the robot
-reports a tip on.
+Aspirate is enabled once there is a source - By hand always has one, so
+there it is enabled whenever a tip is on and the robot is free. It goes
+there (through the jog panel's `run_job`, after the jog envelope's check)
+and aspirates (`Session.aspirate`); the spot is a past pick. Refused
+unless the robot reports a tip on.
 
 Dispense
 --------
@@ -163,7 +168,6 @@ from .. import keys
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
 from ..labware_kinds import facts, kind
-from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (Section, card, combo_box, compact,
@@ -213,27 +217,16 @@ FROM = ("In a well", "At a point", "By hand")
 AMOUNT = ("All", "Part")
 WHERE = ("In a well", "At a point", "Here")
 
-# By hand, what to do next.
-HAND_HINT = "Click the spot to aspirate from on the picture."
-HAND_CUBOID = "Cuboid selected. Press Aspirate."
-HAND_SPOT = "Spot selected. Press Aspirate."
-
-# The spot chosen by hand, when it is not a cuboid: a ring, BGR.
-SPOT_COLOR = (0, 220, 255)
-SPOT_RADIUS_PX = 18
+# By hand's height: a Z, or above the dish bottom of this robot session.
+HEIGHT = ("Z", "Above the dish bottom")
 
 # What the mouse does on the picture, its row along the bottom (§3).
 MOUSE_HELP = ("Right click   mark a point", "Wheel   zoom",
               "Middle-drag   pan")
 CLICK_HELP = "Left click   move"
 
-# "A click moves the [Camera | Tip]", in this order; the button beside it.
+# What a click moves, in this order: never shown, fixed to Camera.
 CLICK_MOVES = ("Camera", "Tip")
-CENTER = ("Camera back to center", "Tip back to center")
-
-# A plate behind the picture's words, as the TipGauge's.
-OVER_PICTURE = ("color: #C9CED6; font-weight: 600; padding: 6px 8px; "
-                "border-radius: 6px; background: rgba(10, 12, 14, 0.84);")
 
 
 def _number_box(parent: QWidget, value: float, span, suffix: str,
@@ -254,14 +247,18 @@ def _memo_z_text(z) -> str:
     return TRAVEL_TEXT if z is None else f"{z:g}"
 
 
-def _row(box, label: str, widget) -> None:
-    row = QHBoxLayout()
-    name = QLabel(label)
+def _row(box, label: str, widget) -> QWidget:
+    """A labeled row added to `box`; returned, to be hidden as one."""
+    row = QWidget(box)
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    name = QLabel(label, row)
     name.setMinimumWidth(90)
-    row.addWidget(name)
-    row.addWidget(widget)
-    row.addStretch(1)
-    box.layout().addLayout(row)
+    layout.addWidget(name)
+    layout.addWidget(widget)
+    layout.addStretch(1)
+    box.layout().addWidget(row)
+    return row
 
 
 class _WellPicker(QWidget):
@@ -346,10 +343,9 @@ class ManualPage(QWidget):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        # The spot Aspirate takes from by hand: the tip's (x, y), and the
-        # pixel it was clicked at when it is not a cuboid (drawn as a ring).
-        self._spot = None
-        self._spot_px = None
+        # Whether the dish bottom was known in this robot session when last
+        # looked: Above the dish bottom becomes the default as it becomes so.
+        self._bottom_known = False
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
         self._forget_targets(redraw=False)
@@ -364,7 +360,9 @@ class ManualPage(QWidget):
         self.gauge = TipGauge(parent=self)
         self.gauge.set_position(None)       # the view's X, Y, Z is under it
         self.view.add_top_left_widget(self.gauge)
-        self.view.add_top_widget(self._click_row())
+        # Kept, never shown: see the module's docstring.
+        self.click_mode = Segmented(list(CLICK_MOVES), parent=self)
+        self.click_mode.hide()
         # The host is this page: its shortcuts are window-wide while the page
         # is showing, and go quiet with it.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
@@ -403,6 +401,7 @@ class ManualPage(QWidget):
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._show_deck())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
+        session.confirmations_changed.connect(self._bottom_changed)
         self._shortcuts = []
         self._install_shortcuts()
         session.settings_changed.connect(lambda _s: self._rebind())
@@ -410,28 +409,12 @@ class ManualPage(QWidget):
         self._on_profile_changed()
         self._show_plan()
         self.gauge.set_volume(session.in_tip)
+        self._bottom_changed()
         self._source_changed()
         self._target_changed()
         self._show_camera()
 
     # -- construction --------------------------------------------------------
-
-    def _click_row(self) -> QWidget:
-        """Over the picture's top right: "A click moves the [Camera | Tip]"
-        and the way back to the dish center for the one chosen."""
-        row = QWidget(self)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING)
-        label = QLabel("A click moves the", row)
-        label.setStyleSheet(OVER_PICTURE)
-        self.click_mode = Segmented(list(CLICK_MOVES), parent=row)
-        self.click_mode.changed.connect(lambda _i: self._refresh())
-        self.center_button = compact(secondary_button(CENTER[0], row))
-        self.center_button.clicked.connect(self._back_to_center)
-        for widget in (label, self.click_mode, self.center_button):
-            layout.addWidget(widget)
-        return row
 
     def _tip_moves(self) -> bool:
         return self.click_mode.current() == CLICK_MOVES.index("Tip")
@@ -483,16 +466,26 @@ class ManualPage(QWidget):
         body.addLayout(row)
         self.settings_box = QWidget(self)
         QVBoxLayout(self.settings_box).setContentsMargins(0, 0, 0, 0)
+        # By hand's height: Z, or above the dish bottom.
+        self.height_mode = Segmented(list(HEIGHT), parent=self)
+        self.height_mode.changed.connect(lambda _i: self._source_changed())
+        self.height_row = _row(self.settings_box, "Height", self.height_mode)
+        self.hand_z = _number_box(self, 70.0, (0.0, Z_TOP_MM), " mm")
+        self.hand_z.setToolTip("Z of the tip's end.")
         self.above_bottom = _number_box(self, 0.5, ABOVE_BOTTOM_RANGE, " mm")
         self.above_bottom.setToolTip(
             "Above the dish bottom, or the well's bottom.")
         self.volume = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
         self.flow_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1, 1.0)
-        for label, box in (("Height", self.above_bottom),
+        rows = {}
+        for label, box in (("Z", self.hand_z),
+                           ("Above bottom", self.above_bottom),
                            ("Volume", self.volume),
                            ("Speed", self.flow_rate)):
-            _row(self.settings_box, label, box)
+            rows[label] = _row(self.settings_box, label, box)
             box.valueChanged.connect(lambda _v: self._show_settings_line())
+        self.hand_z_row = rows["Z"]
+        self.above_row = rows["Above bottom"]
         self.settings_box.setVisible(False)
         body.addWidget(self.settings_box)
 
@@ -538,12 +531,11 @@ class ManualPage(QWidget):
         hand.setContentsMargins(0, 0, 0, 0)
         self.snap = Switch("Snap to found cuboids", checked=True,
                            parent=self.hand_box)
-        self.snap.setToolTip("A click on a found cuboid chooses it.")
+        self.snap.setToolTip(
+            "A click on a found cuboid puts the crosshair on its center.")
         self.aspirate_on_click = Switch("Aspirate as soon as I click",
                                         parent=self.hand_box)
-        self.hand_hint = muted_label(HAND_HINT, self.hand_box)
-        self.hand_hint.setWordWrap(True)
-        for widget in (self.snap, self.aspirate_on_click, self.hand_hint):
+        for widget in (self.snap, self.aspirate_on_click):
             hand.addWidget(widget)
         body.addWidget(self.hand_box)
 
@@ -642,9 +634,29 @@ class ManualPage(QWidget):
     # -- liquid ------------------------------------------------------------------
 
     def _show_settings_line(self) -> None:
+        height = (f"Z {self.hand_z.value():g} mm" if self._hand_z_chosen()
+                  else f"{self.above_bottom.value():g} mm above the bottom")
         self.settings_line.setText(
-            f"{self.above_bottom.value():g} mm above the bottom · "
-            f"{self.volume.value():g} µl · {self.flow_rate.value():g} µl/s")
+            f"{height} · {self.volume.value():g} µl · "
+            f"{self.flow_rate.value():g} µl/s")
+
+    def _hand_z_chosen(self) -> bool:
+        """By hand, at a Z rather than above the dish bottom."""
+        return (FROM[self.source.current()] == "By hand"
+                and HEIGHT[self.height_mode.current()] == "Z")
+
+    def _bottom_changed(self) -> None:
+        """Above the dish bottom only while it was measured or reused in
+        this robot session, and the default as it becomes so."""
+        known = self.session.is_confirmed("dish_bottom")
+        above = self.height_mode.buttons[HEIGHT.index("Above the dish bottom")]
+        above.setEnabled(known)
+        above.setToolTip("" if known else "Dish bottom: Not set.")
+        if known != self._bottom_known:
+            self.height_mode.set_current(HEIGHT.index(
+                "Above the dish bottom" if known else "Z"))
+            self._bottom_known = known
+            self._source_changed()
 
     def _source_changed(self) -> None:
         """From's own controls under it; the points drawn or not."""
@@ -652,8 +664,10 @@ class ManualPage(QWidget):
         self.source_wells.setVisible(chosen == "In a well")
         self.point_box.setVisible(chosen == "At a point")
         self.hand_box.setVisible(chosen == "By hand")
-        if chosen != "By hand" and self._spot is not None:
-            self._forget_spot()
+        self.height_row.setVisible(chosen == "By hand")
+        self.hand_z_row.setVisible(self._hand_z_chosen())
+        self.above_row.setVisible(not self._hand_z_chosen())
+        self._show_settings_line()
         self._points_toggled()
         self._refresh()
 
@@ -670,14 +684,14 @@ class ManualPage(QWidget):
         self._refresh()
 
     def _by_hand(self) -> bool:
-        """Aspirate is choosing its spot from the picture."""
+        """Aspirate takes from under the crosshair."""
         return (self.aspirate_card.is_open()
                 and FROM[self.source.current()] == "By hand")
 
     def _source(self):
         """("well", (slot, labware id, definition, well)), ("point",
-        MemoPoint) or ("hand", xy): what Aspirate takes from; None while
-        nothing is chosen."""
+        MemoPoint) or ("hand", None), under the crosshair: what Aspirate
+        takes from; None while nothing is chosen."""
         chosen = FROM[self.source.current()]
         if chosen == "In a well":
             well = self.source_wells.chosen()
@@ -685,7 +699,7 @@ class ManualPage(QWidget):
         if chosen == "At a point":
             point = self.session.memo_point(self.memo_table.chosen_name or "")
             return None if point is None else ("point", point)
-        return None if self._spot is None else ("hand", self._spot)
+        return ("hand", None)
 
     def _target(self):
         """("well", ...), ("point", MemoPoint) or ("here", None): where
@@ -722,7 +736,7 @@ class ManualPage(QWidget):
 
     def _go_to(self, target, z: float | None):
         """The move to `target` - a well (`z` above its bottom), a point
-        (its own Z), the tip's spot by hand (at `z`) - as a job's first part,
+        (its own Z) - as a job's first part,
         and what to call it; (None, "here") for no move. Raises ValueError
         with the reason when it is out of reach."""
         kind, what = target
@@ -749,16 +763,6 @@ class ManualPage(QWidget):
             def go(log):
                 motion.tip_to(xy, to_z, log=log)
             return go, point.name
-        if kind == "hand":
-            xy = np.asarray(what, dtype=float)
-            why = motion.refused((xy[0], xy[1], z))
-            if why:
-                raise ValueError(f"UNREACHABLE: tip to ({xy[0]:.2f}, "
-                                 f"{xy[1]:.2f}) at z {z:g} - {why}")
-
-            def go(log):
-                motion.tip_to(xy, z, log=log)
-            return go, f"({xy[0]:.2f}, {xy[1]:.2f})"
         return None, "here"
 
     def _aspirate_from_source(self) -> None:
@@ -766,17 +770,17 @@ class ManualPage(QWidget):
         source = self._source()
         if source is None:
             return
-        above = float(self.above_bottom.value())
-        z = (float(self.session.profile.picking.dish_bottom) + above
-             if source[0] == "hand" else above)
-        self._aspirate(source, z)
+        if source[0] == "hand":
+            self._aspirate_by_hand()
+        else:
+            self._aspirate(source, float(self.above_bottom.value()))
 
     def _aspirate_here(self) -> None:
         self._aspirate(("here", None), None)
 
     def _aspirate(self, source, z) -> None:
         """Aspirate's volume and speed at `source` (see `_go_to`); the
-        spot is a past pick, and one by hand is taken."""
+        spot is a past pick."""
         problem = self._tip_problem("aspirate")
         if problem:
             self.jog.tell(problem)
@@ -798,13 +802,80 @@ class ManualPage(QWidget):
 
         def then(at):
             self.record_pick(at)
-            if source[0] == "hand":
-                self._forget_spot()
             return f"aspirated {volume:g} µl at {rate:g} µl/s, {where}"
 
         # In place nothing moves: what is detected on the picture stands.
         if not self.jog.run_job(job, moves=go is not None, then=then):
             self.jog.tell(self.session.robot_lease.refusal)
+
+    def _hand_z(self) -> float:
+        """By hand's height: the Z, or above the dish bottom."""
+        if self._hand_z_chosen():
+            return float(self.hand_z.value())
+        return (float(self.session.profile.picking.dish_bottom)
+                + float(self.above_bottom.value()))
+
+    def _aspirate_by_hand(self, aim=None) -> None:
+        """By hand: the camera to `aim` first if given (gantry xy); then,
+        from the camera's pose, the tip to the spot under the crosshair,
+        down, aspirate, and the camera back to that pose. One job."""
+        problem = self._tip_problem("aspirate") or self._crosshair_problem()
+        if problem:
+            self.jog.tell(problem)
+            return
+        motion = self.session.motion
+        gantry = np.asarray(self.jog.pose[:2] if aim is None else aim,
+                            dtype=float)
+        spot = self._crosshair_spot(gantry)
+        z = self._hand_z()
+        what = f"tip to ({spot[0]:.2f}, {spot[1]:.2f}) at z {z:g}"
+        why = motion.refused((spot[0], spot[1], z))
+        if why:
+            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            return
+        session, robot = self.session, self.session.robot
+        volume, rate = self._liquid_amount()
+        log.info("aspirate by hand: %s", what)
+
+        def job(log_):
+            if aim is not None:
+                motion.camera_to(aim, log=log_)
+            camera = np.array(xyz(robot), dtype=float)
+            motion.tip_to(spot, z, log=log_)
+            log_(f"aspirate {volume:g} µl at {rate:g} µl/s")
+            session.aspirate(volume, rate)
+            at = xyz(robot)[:2]
+            motion.tip_to(camera[:2], camera[2], log=log_)
+            return at
+
+        def then(at):
+            self.record_pick(at)
+            return (f"aspirated {volume:g} µl at {rate:g} µl/s, "
+                    f"({spot[0]:.2f}, {spot[1]:.2f})")
+
+        if not self.jog.run_job(job, then=then):
+            self.jog.tell(self.session.robot_lease.refusal)
+
+    def _crosshair_problem(self) -> str:
+        """Why the spot under the crosshair cannot be known now, or ""."""
+        problems = self._map_problems()
+        if problems:
+            return problems[0]
+        if self.session.profile.calibration.pipette_offset is None:
+            return "Refused: no tip calibration."
+        if self.jog.pose is None:
+            return "Robot busy."
+        return ""
+
+    def _crosshair_spot(self, gantry) -> np.ndarray:
+        """Where the tip goes down under the crosshair with the gantry at
+        `gantry`: the picture's center through the pixel map, plus the
+        measured tip offset."""
+        profile = self.session.profile
+        config = profile.calibration.pixel_map
+        return moves.tip_target(PixelMap.from_config(config), config.cu,
+                                config.cv, np.asarray(gantry, dtype=float),
+                                profile.calibration.pipette_offset)
 
     def _dispense_to_target(self) -> None:
         target = self._target()
@@ -981,7 +1052,6 @@ class ManualPage(QWidget):
         self._cuboids = detection
         self._cuboid_worlds = worlds
         self._cuboid_covered = covered
-        self._chosen = None
         log.info("cuboids: %s", detection.summary.replace("\n", " | "))
         self._show_sizes()
         self._redraw()
@@ -998,45 +1068,33 @@ class ManualPage(QWidget):
     # -- clicking ---------------------------------------------------------------
 
     def _click_reaches(self) -> bool:
-        """Whether a left click is sent to the page: one that moves only
-        through the pixel map; By hand's choice of a spot moves nothing,
-        so it is sent without one too, and the page says what is missing."""
-        return self.session.has_pixel_map() or self._by_hand()
+        """Whether a left click is sent to the page: it moves, and only
+        through the pixel map."""
+        return self.session.has_pixel_map()
 
     def _clicked(self, u: float, v: float) -> None:
-        """A left click on the picture, in sensor pixels: the camera or the
-        tip there, or the tip down to a detected cuboid."""
+        """A left click on the picture, in sensor pixels: the camera there
+        (see the module's docstring); By hand, onto a cuboid's center with
+        Snap, and the aspirate after it with Aspirate as soon as I click."""
         problems = self._map_problems()
         if problems:
             self.jog.tell("Click: " + problems[0])
             return
         if self._busy() or self.jog.busy:
             return
-        if self._by_hand() and self._hand_click(u, v):
-            return
         profile, robot = self.session.profile, self.session.robot
         motion = self.session.motion
         pmap = PixelMap.from_config(profile.pixel_map)
-        target = self._target_at(u, v)
+        gantry = np.array(xyz(robot)[:2])
+        hand = self._by_hand()
+        cuboid = (self._target_at(u, v)
+                  if hand and self.snap.isChecked() else None)
         notes = []
 
-        if target is not None:
-            index, world = target
-            offset = profile.calibration.pipette_offset
-            if offset is None:
-                self.jog.tell("Refused: no tip calibration.")
-                return
-            xy = np.asarray(world) + np.array([offset.dx, offset.dy])
-            z = float(profile.picking.pickup_height)
-            self._chosen = index
-            self._redraw()
-            what = f"tip to cuboid ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}"
-            position = (xy[0], xy[1], z)
-
-            def job(log):
-                motion.tip_to(xy, z, log=log)
-                return None
-            then = None
+        if cuboid is not None:
+            # Its center under the crosshair, the reference pixel.
+            xy = np.asarray(cuboid[1], dtype=float)
+            what = f"camera to cuboid ({xy[0]:.2f}, {xy[1]:.2f})"
         elif self._tip_moves():
             # Inside the map only: outside it the map extrapolates, and a
             # camera a few hundred microns off is imprecise where a tip there
@@ -1048,122 +1106,31 @@ class ManualPage(QWidget):
             if offset is None:
                 self.jog.tell("Refused: no tip calibration.")
                 return
-            gantry = np.array(xyz(robot)[:2])
             xy = moves.tip_target(pmap, u, v, gantry, offset)
             what = f"tip over ({xy[0]:.2f}, {xy[1]:.2f}) at the travel height"
-            position = (xy[0], xy[1], xyz(robot)[2])
-
-            def job(log):
-                # The gantry at the travel height is the tip at it: the same
-                # move as a camera move, to the tip's target.
-                motion.camera_to(xy, log=log)
-                return None
-            then = None
         else:
-            gantry = np.array(xyz(robot)[:2])
             xy = moves.camera_target(pmap, u, v, gantry)
             if not pmap.covers(u, v):
                 notes.append("approximate: outside the calibrated area")
             what = f"camera to ({xy[0]:.2f}, {xy[1]:.2f})"
-            position = (xy[0], xy[1], xyz(robot)[2])
 
-            def job(log):
-                motion.camera_to(xy, log=log)
-                return None
-            then = None
-
-        why = motion.refused(position)
+        why = motion.refused((xy[0], xy[1], xyz(robot)[2]))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
+        if hand and self.aspirate_on_click.isChecked():
+            self._aspirate_by_hand(aim=xy)
+            return
         log.info("%s", "; ".join([what] + notes))
 
-        def run(log_):
-            done = job(log_)
-            if then is not None:
-                return done
-            return "; ".join(notes + ([done] if done else []))
-
-        if not self.jog.run_job(run, then=then):
-            self.jog.tell(self.session.robot_lease.refusal)
-
-    def _hand_click(self, u: float, v: float) -> bool:
-        """By hand: the click chooses the spot to aspirate from, and moves
-        nothing. False when it is not one - snapping, and no cuboid there -
-        and the click moves as any does."""
-        snap = self.snap.isChecked()
-        target = self._target_at(u, v) if snap else None
-        if snap and target is None:
-            return False
-        profile = self.session.profile
-        offset = profile.calibration.pipette_offset
-        if offset is None:
-            self.jog.tell("Refused: no tip calibration.")
-            return True
-        if target is not None:
-            index, world = target
-            xy = np.asarray(world) + np.array([offset.dx, offset.dy])
-            pixel = None
-        else:
-            pmap = PixelMap.from_config(profile.pixel_map)
-            pose = self.jog.pose
-            if not pmap.covers(u, v):
-                self.jog.tell("Refused: outside the calibrated area.")
-                return True
-            if pose is None:
-                self.jog.tell("Robot busy.")
-                return True
-            xy = moves.tip_target(pmap, u, v, np.asarray(pose[:2]), offset)
-            index, pixel = None, (u, v)
-        self._spot = np.asarray(xy, dtype=float)
-        self._spot_px = pixel
-        self._chosen = index
-        self._redraw()
-        self._refresh()
-        if self.aspirate_on_click.isChecked():
-            self._aspirate_from_source()
-        return True
-
-    def _forget_spot(self) -> None:
-        self._spot = self._spot_px = None
-        self._chosen = None
-        self._redraw()
-        self._refresh()
-
-    def _back_to_center(self) -> None:
-        """The camera over the dish again (the position over the dish), or
-        the tip over that same spot at the travel height."""
-        where = self._stored_dish()
-        if where is None or self.jog.busy:
-            return
-        motion = self.session.motion
-        if self._tip_moves():
-            profile = self.session.profile
-            offset = profile.calibration.pipette_offset
-            if offset is None:
-                self.jog.tell("Refused: no tip calibration.")
-                return
-            xy = np.asarray(where[:2], dtype=float) + np.array(
-                [offset.dx, offset.dy])
-            why = motion.refused((xy[0], xy[1], where[2]))
-            if why:
-                self.jog.tell(f"UNREACHABLE: tip over the dish center - {why}")
-                return
-
-            def job(log):
-                motion.camera_to(xy, log=log)
-                return "tip over the dish center"
-        else:
-            def job(log):
-                motion.tip_to(where[:2], where[2], log=log)
-                return "camera over the dish center"
+        def job(log_):
+            # The gantry at the travel height is the tip at it: the same
+            # move for the camera's target as for the tip's.
+            motion.camera_to(xy, log=log_)
+            return "; ".join(notes)
 
         if not self.jog.run_job(job):
             self.jog.tell(self.session.robot_lease.refusal)
-
-    def _stored_dish(self):
-        profile = self.session.profile
-        return None if profile is None else profile.positions.get(DISH_POSITION)
 
     # -- memo points -------------------------------------------------------------
 
@@ -1424,9 +1391,6 @@ class ManualPage(QWidget):
         self._cuboid_worlds = np.empty((0, 2))
         self._cuboid_covered = np.empty(0, dtype=bool)
         self._frame_shape = None
-        self._chosen = None
-        # The spot was chosen on that picture: its ring would sit elsewhere.
-        self._spot = self._spot_px = None
         if redraw:
             self._show_sizes()
             self._redraw()
@@ -1441,14 +1405,6 @@ class ManualPage(QWidget):
                 pickable=detection.pickable if detection.classified else None,
                 isolated=detection.isolated if detection.classified else None,
                 bubbles=detection.bubbles if detection.classified else None)
-            if self._chosen is not None:
-                row = detection.df.iloc[[self._chosen]]
-                items += overlays.items(self._frame_shape, chosen=row)
-        if self._spot_px is not None:
-            u, v = self._spot_px
-            items.append(overlays.Circle(color=SPOT_COLOR,
-                                         center=(int(round(u)), int(round(v))),
-                                         radius=SPOT_RADIUS_PX))
         self.view.set_overlay_items(items)
 
     def _refresh(self) -> None:
@@ -1457,16 +1413,18 @@ class ManualPage(QWidget):
         self.cuboid_button.setEnabled(not busy and not problems)
         self._refresh_memo_buttons()
         has_robot = self.session.robot is not None
-        self.aspirate_button.setEnabled(has_robot
-                                        and self._source() is not None)
+        source = self._source()
+        if source is not None and source[0] == "hand":
+            # Under the crosshair: a tip on and the robot free is enough.
+            self.aspirate_button.setEnabled(
+                has_robot and self.session.tip.attached is True
+                and not self.session.robot_lease.busy)
+        else:
+            self.aspirate_button.setEnabled(has_robot and source is not None)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
         self.dispense_button.setEnabled(has_robot and target is not None
                                         and self.session.in_tip > 0)
-        self.hand_hint.setText(
-            HAND_HINT if self._spot is None
-            else HAND_SPOT if self._spot_px is not None else HAND_CUBOID)
-        self._refresh_center_button()
         # The found count is on the picture, as on Picking.
         self.view.set_status(
             [f"{len(self._cuboids.df)} cuboids found"]
@@ -1481,18 +1439,6 @@ class ManualPage(QWidget):
             text = "Stand-in cuboid detector: bright blobs, not the model."
         self.state.setText(text)
 
-    def _refresh_center_button(self) -> None:
-        tip = self._tip_moves()
-        self.center_button.setText(CENTER[int(tip)])
-        if self._stored_dish() is None:
-            self.center_button.setEnabled(False)
-            self.center_button.setToolTip("Position over the dish: Not set.")
-        else:
-            self.center_button.setEnabled(self.session.robot is not None)
-            self.center_button.setToolTip(
-                "Move the tip over the dish center." if tip
-                else "Move the camera over the dish center.")
-
     def _on_profile_changed(self) -> None:
         profile = self.session.profile
         self._show_deck()
@@ -1505,6 +1451,7 @@ class ManualPage(QWidget):
                 # The run's own numbers as the starting point; what is typed
                 # here afterwards stays while this profile is loaded.
                 self.above_bottom.setValue(profile.picking.pickup_offset)
+                self.hand_z.setValue(profile.picking.pickup_height)
                 self.volume.setValue(profile.picking.vol)
                 self.flow_rate.setValue(profile.picking.flow_rate)
                 self.part.setValue(profile.picking.vol)

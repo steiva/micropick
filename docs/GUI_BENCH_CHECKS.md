@@ -1618,25 +1618,18 @@ tip box and a 384 plate at hand.
 
 - [ ] **Over the picture.**
   Manual pick › Work at 1920×1080: top left the tip gauge ("IN THE TIP",
-  0 µl, an empty tip drawn) with X, Y, Z under it; top right "A click
-  moves the [Camera | Tip]" and Camera back to center (Tip back to center
-  with Tip chosen); bottom left one row "Left click move · Right click
+  0 µl, an empty tip drawn) with X, Y, Z under it; nothing over the top
+  right (no "A click moves the [Camera | Tip]", no Camera / Tip back to
+  center, #59); bottom left one row "Left click move · Right click
   mark a point · Wheel zoom · Middle-drag pan". No camera name, no Click
   to move, no Mark points.
 
-- [ ] **A left click moves.**
-  Camera: one click and the clicked spot comes under the crosshair, once
-  (a double click moves nothing). Tip: the tip goes over the clicked spot
-  at the travel height - check it against the real tip. A click near the
-  deck's edge that would leave the envelope: "UNREACHABLE: …" under the
-  position and nothing moves. While another page's job has the robot: a
-  click says "Robot busy." and nothing moves.
-
-- [ ] **Back to center.**
-  With the position over the dish set: Camera back to center puts the dish
-  center under the crosshair; Tip back to center puts the tip over it, at
-  the travel height. Not set: the button is gray, its tooltip "Position
-  over the dish: Not set."
+- [ ] **A left click moves the camera.**
+  One click and the clicked spot comes under the crosshair, once (a
+  double click moves nothing); the tip stays at the travel height. A
+  click near the deck's edge that would leave the envelope: "UNREACHABLE:
+  …" under the position and nothing moves. While another page's job has
+  the robot: a click says "Robot busy." and nothing moves.
 
 - [ ] **Points.**
   A right click marks M1 where the tip would go down, opens Points and
@@ -1652,26 +1645,32 @@ tip box and a 384 plate at hand.
 
 - [ ] **Analyze the dish and Look at.**
   Analyze the dish draws the contours and "N cuboids found" on the
-  picture; a click on a cuboid sends the tip down to it at the pickup
-  height. Look at: the dropdown shows the whole deck with what is on it;
+  picture; a click on a cuboid only moves the camera there, the tip
+  stays up. Look at: the dropdown shows the whole deck with what is on it;
   a slot chosen sends the camera over its center (check slot 8 by eye).
 
 ## Redesign — Manual Work: Aspirate and Dispense (#19)
 
 - [ ] **Aspirate's settings line.**
-  Manual pick › Work: the Aspirate card reads "0.5 mm above the bottom ·
-  10 µl · 50 µl/s" (the profile's pickup offset, volume and flow rate);
-  Change unfolds Height, Volume and Speed, and the line follows them. No
+  Manual pick › Run, From In a well: the Aspirate card reads "0.5 mm
+  above the bottom · 10 µl · 50 µl/s" (the profile's pickup offset,
+  volume and flow rate); By hand at a Z: "Z 66.6 mm · …". Change unfolds
+  the height, Volume and Speed, and the line follows them. No
   step numbers on the cards, no moved-cuboids counter, no Finish.
 
-- [ ] **By hand.**
-  From: By hand, Snap to found cuboids on. Analyze the dish, click a
-  cuboid: it is ringed, "Cuboid selected. Press Aspirate.", nothing moves.
-  Aspirate: the tip goes down to it at the dish bottom + the height and
-  aspirates; the gauge is the only answer. Snap off: a click anywhere
-  marks a yellow ring, "Spot selected. Press Aspirate." Aspirate as soon
-  as I click: one click goes and aspirates. With Snap on, a click beside
-  every cuboid moves the camera as before.
+- [ ] **By hand: under the crosshair (#60).**
+  From: By hand, a tip on: Aspirate is enabled at once, no click needed,
+  and no hint to click a spot. Without a dish bottom in this robot
+  session Change shows Height Z | Above the dish bottom with Above gray
+  and Z chosen; after Dish bottom (or Use it) Above is enabled and chosen.
+  Put the crosshair on liquid, Aspirate: the tip goes over the crosshair's
+  spot at the travel height, down to the height, aspirates, and the
+  camera comes back to where it was - the same spot under the crosshair;
+  the gauge is the only answer. Snap to found cuboids on: Analyze the
+  dish, click a cuboid off its center: the camera puts the crosshair on
+  its center, nothing is aspirated. A click beside every cuboid moves to
+  the point. Aspirate as soon as I click: one click aims, aspirates and
+  comes back over the spot.
 
 - [ ] **In a well, At a point.**
   In a well: Plate and Well; Aspirate goes to the well's bottom + the
