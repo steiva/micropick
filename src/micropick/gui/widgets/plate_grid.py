@@ -16,10 +16,17 @@ Geometry comes from the plate's `ordering` - columns, each a list of
 well names top to bottom - and the labels from `core.routine.grid_labels`,
 as in `plate_view`: no well name is parsed here.
 
+Every plate is drawn in its real proportions (LIQUID R5): a box of the SBS
+footprint (`plate_rect`), the same at the same widget size whatever the
+plate, and the wells a square pitch filling the footprint's well area, so
+a 6-well plate has six big wells and a 96-well plate 96 small ones.
+
 What a well looks like is the page's to say, by name: `set_fills` (a
 color per well), `set_counts` (a number inside, shown only when the page
 gives one - §12.11: only when more than one cuboid goes per well) and
 `set_current` (the white ring). The selection is drawn over those.
+`set_dim_fills` is the wells other plan steps use, toned down towards an
+empty well so they never read as chosen, and under all of the above.
 
 `planning=True` is the Plan step's grid (#43): a **plan** - the wells
 planned, each with its count, drawn in every planned well, "1" included -
@@ -50,6 +57,21 @@ __all__ = ["PlateGrid", "PlateTools"]
 HEADER = 22            # px for the row letters and column numbers
 DRAG_SLOP = 4          # px a press travels before it is a box
 
+# The SBS footprint, and the part of it the wells fill: a 6-well plate's span
+# (117 × 78 mm); a 96-well plate's, 108 × 72 mm, comes out a little larger.
+PLATE_MM = (127.76, 85.48)
+WELLS_MM = (116.0, 78.0)
+DIM = 0.35             # how much of its color a dim fill keeps
+EMPTY_WELL = "#23272E"
+
+
+def _toned_down(color: QColor) -> QColor:
+    """`color` most of the way to an empty well."""
+    empty = QColor(EMPTY_WELL)
+    return QColor(*(round(a * DIM + b * (1 - DIM)) for a, b in (
+        (color.red(), empty.red()), (color.green(), empty.green()),
+        (color.blue(), empty.blue()))))
+
 
 class PlateGrid(QWidget):
     selection_changed = Signal(object)    # set of well names
@@ -75,6 +97,7 @@ class PlateGrid(QWidget):
         self._selected: set[str] = set()
         self._plan: dict[str, int] = {}
         self._fills: dict[str, QColor] = {}
+        self._dim_fills: dict[str, QColor] = {}
         self._counts: dict[str, int] = {}
         self._current: str | None = None
         self._hover: str | None = None
@@ -118,6 +141,12 @@ class PlateGrid(QWidget):
 
     def set_fills(self, fills: dict) -> None:
         self._fills = {n: QColor(c) for n, c in (fills or {}).items()}
+        self.update()
+
+    def set_dim_fills(self, fills: dict) -> None:
+        """A color per well used elsewhere; see the module docstring."""
+        self._dim_fills = {n: _toned_down(QColor(c))
+                           for n, c in (fills or {}).items()}
         self.update()
 
     def set_counts(self, counts: dict) -> None:
@@ -248,18 +277,29 @@ class PlateGrid(QWidget):
 
     # -- geometry ----------------------------------------------------------
 
+    def _shape(self) -> tuple[int, int]:
+        return (max(1, len(self._columns)),
+                max(1, max((len(c) for c in self._columns), default=1)))
+
+    def plate_rect(self) -> QRectF:
+        """The plate's outer box, the same for every plate at one size."""
+        head = 0 if self.mini else HEADER
+        room_w, room_h = self.width() - head, self.height() - head
+        scale = min(room_w / PLATE_MM[0], room_h / PLATE_MM[1])
+        width, height = PLATE_MM[0] * scale, PLATE_MM[1] * scale
+        return QRectF(head + (room_w - width) / 2,
+                      head + (room_h - height) / 2, width, height)
+
     def _layout(self) -> tuple[float, float, float]:
         """Cell size and the top left of well A1's cell."""
-        cols = max(1, len(self._columns))
-        rows = max(1, max((len(c) for c in self._columns), default=1))
-        head = 0 if self.mini else HEADER
-        cell = min((self.width() - head) / cols, (self.height() - head) / rows)
-        cell = max(2.0, cell)
-        left = head + (self.width() - head - cell * cols) / 2
-        top = head + (self.height() - head - cell * rows) / 2
-        return cell, left, top
+        cols, rows = self._shape()
+        box = self.plate_rect()
+        scale = box.width() / PLATE_MM[0]
+        cell = max(2.0, min(WELLS_MM[0] / cols, WELLS_MM[1] / rows) * scale)
+        return (cell, box.center().x() - cell * cols / 2,
+                box.center().y() - cell * rows / 2)
 
-    def _well_rect(self, name: str) -> QRectF:
+    def well_rect(self, name: str) -> QRectF:
         cell, left, top = self._layout()
         c, r = self._at[name]
         gap = max(1.0, cell * (0.14 if not self.mini else 0.18))
@@ -282,20 +322,16 @@ class PlateGrid(QWidget):
         return None
 
     def sizeHint(self) -> QSize:
-        cols = max(1, len(self._columns))
-        rows = max(1, max((len(c) for c in self._columns), default=1))
-        cell = 10 if self.mini else 32
+        width = 120 if self.mini else 384
         head = 0 if self.mini else HEADER
-        return QSize(head + cols * cell, head + rows * cell)
+        return QSize(head + width, self.heightForWidth(head + width))
 
     def hasHeightForWidth(self) -> bool:
         return True
 
     def heightForWidth(self, width: int) -> int:
-        cols = max(1, len(self._columns))
-        rows = max(1, max((len(c) for c in self._columns), default=1))
         head = 0 if self.mini else HEADER
-        return round(head + (width - head) / cols * rows)
+        return round(head + (width - head) * PLATE_MM[1] / PLATE_MM[0])
 
     # -- mouse -------------------------------------------------------------
 
@@ -326,7 +362,7 @@ class PlateGrid(QWidget):
             return
         if self._band is not None:
             inside = [n for n in self._at
-                      if self._band.contains(self._well_rect(n).center())]
+                      if self._band.contains(self.well_rect(n).center())]
             self._band = None
             self.choose(inside, add=self._adding(event))
         else:
@@ -373,9 +409,14 @@ class PlateGrid(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         cell, left, top = self._layout()
-        empty = QColor("#23272E")
+        empty = QColor(EMPTY_WELL)
         ring = QColor(COLORS["text"])
         hover_c, hover_r = self._at.get(self._hover, (-1, -1))
+        box = self.plate_rect()
+
+        painter.setPen(QPen(QColor(COLORS["card-border"]), 1))
+        painter.setBrush(QColor(COLORS["card"]))
+        painter.drawRoundedRect(box, box.width() * 0.02, box.width() * 0.02)
 
         if not self.mini:
             painter.setFont(mono_font(10, 500))
@@ -383,28 +424,31 @@ class PlateGrid(QWidget):
                 hot = c == hover_c
                 painter.setPen(QColor(COLORS["text"] if hot
                                       else COLORS["muted"]))
-                painter.drawText(QRectF(left + c * cell, top - HEADER, cell,
-                                        HEADER), Qt.AlignmentFlag.AlignCenter,
-                                 text)
+                painter.drawText(QRectF(left + c * cell, box.top() - HEADER,
+                                        cell, HEADER),
+                                 Qt.AlignmentFlag.AlignCenter, text)
             for r, text in enumerate(self._row_labels):
                 hot = r == hover_r
                 painter.setPen(QColor(COLORS["text"] if hot
                                       else COLORS["muted"]))
-                painter.drawText(QRectF(left - HEADER, top + r * cell, HEADER,
-                                        cell), Qt.AlignmentFlag.AlignCenter,
-                                 text)
+                painter.drawText(QRectF(box.left() - HEADER, top + r * cell,
+                                        HEADER, cell),
+                                 Qt.AlignmentFlag.AlignCenter, text)
 
         radius = max(1.5, cell * 0.12)
         number_font = mono_font(max(7, int(cell * 0.38)), 600)
         for name in self._at:
-            rect = self._well_rect(name)
+            rect = self.well_rect(name)
             fill = self._fills.get(name)
             if self.planning and name in self._plan:
                 fill = self.selection_color
             selected = name in self._selected
+            dim = self._dim_fills.get(name)
             color = (self.selection_color if selected and not self.mini
-                     else fill if fill is not None else empty)
-            if name == self._hover and not selected and fill is None:
+                     else fill if fill is not None
+                     else dim if dim is not None else empty)
+            if (name == self._hover and not selected and fill is None
+                    and dim is None):
                 color = QColor("#2C313A")
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(color)
