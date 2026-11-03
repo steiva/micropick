@@ -2013,3 +2013,23 @@ plate at hand.
 - [ ] **The run keeps its words.**
   Auto's Run is the Picking page: Start picking, and the footer and the
   pill say PICKING / "Picking" while it runs, as before.
+
+## Reordering plan steps (#71)
+
+`StepList` has no page until #72: these run on the Plan step once it does.
+The tests use Qt's own drag loop; Windows' native one is only seen here.
+
+- [ ] **A drag.**
+  Press ⠿ on the third card and move: the card follows the pointer, a dashed
+  place stays where it was, a line shows between the cards. Release above the
+  first: it is first, the numbers read 1, 2, 3, the colors stayed with their
+  steps. Ctrl+Z puts it back.
+
+- [ ] **Esc cancels the drag and stops nothing.**
+  During a run the list is locked, so try this with no run. Drag a card, press
+  Esc: it stays where it was, no "stopping" is said anywhere. Then press Esc
+  with no drag: Stop answers as it does on every page.
+
+- [ ] **A long plan.**
+  With more steps than fit, hold a card near the bottom edge: the list scrolls.
+  Release outside the list: nothing moved.

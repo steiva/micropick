@@ -86,7 +86,7 @@ __all__ = ["CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height", "Spot",
            "Place", "MoveLiquid", "MixStep", "BlowOutStep", "MoveTip",
            "WaitStep", "WaitForMe", "PlanStep", "LiquidPlan", "Pairing",
            "pairing", "chip", "move_step", "compile_step", "compiles",
-           "goes_to_trash", "spot_name", "spots"]
+           "goes_to_trash", "spot_name", "spots", "step_chips", "step_title"]
 
 PLAN_VERSION = 1
 
@@ -259,6 +259,34 @@ def chip(place: Place) -> str:
     if len(wells) == 1:
         return f"Slot {place.slot} · {wells[0]}"
     return f"Slot {place.slot} · {wells[0]}–{wells[-1]} ({len(wells)})"
+
+
+def _duration(seconds: float) -> str:
+    minutes, rest = divmod(seconds, 60)
+    if not minutes:
+        return f"{rest:g} s"
+    return f"{minutes:g} min {rest:g} s" if rest else f"{minutes:g} min"
+
+
+def step_title(step) -> str:
+    """The verb of the step's sentence: `Move 50 µl`, `Wait 5 min`."""
+    if step.kind == "move_liquid":
+        if step.dest.kind == "trash":
+            count = step.source.count
+            return f"Empty {count} well{'' if count == 1 else 's'}"
+        return f"Move {step.volume_ul:g} µl"
+    if step.kind == "mix":
+        count = step.wells.count
+        return f"Mix {count} well{'' if count == 1 else 's'} · {step.cycles}×"
+    if step.kind == "wait":
+        return f"Wait {_duration(step.seconds)}"
+    return {"blow_out": "Blow out", "move_tip": "Move the tip",
+            "wait_for_me": "Wait for me"}[step.kind]
+
+
+def step_chips(step) -> list[str]:
+    """The step's places as `chip`s, from before to."""
+    return [chip(place) for _role, place in _places(step)]
 
 
 class Pairing(NamedTuple):

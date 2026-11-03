@@ -204,6 +204,40 @@ QFrame#card {
     border-radius: 12px;
     padding: 0;
 }
+/* Liquid's plan steps (LIQUID.md §3.1, §5). */
+QFrame#planStepCard {
+    background: @card;
+    border: 1px solid @card-border;
+    border-radius: 14px;
+}
+QFrame#planStepCard:focus { border-color: @control-border; }
+QFrame#planStepCard[open="true"] {
+    background: @raised;
+    border-color: @accent;
+}
+QFrame#stepPlaceholder {
+    background: @bg;
+    border: 1px dashed @control-border;
+    border-radius: 14px;
+}
+QFrame#stepInsertion { background: @accent; }
+QLabel#stepHandle { color: @faint; }
+QToolButton#stepMore::menu-indicator { image: none; }
+QLabel#stepNumber { color: @on-accent; font-weight: 600; }
+QLabel#stepWarning { color: @warn; }
+QLabel#chipFrom {
+    color: @tips;
+    background: @tips-bg;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+QLabel#chipTo {
+    color: @plate;
+    background: @plate-bg;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+QLabel#chipFrom[missing="true"], QLabel#chipTo[missing="true"] { color: @warn; }
 QFrame#raisedCard {
     background: @raised;
     border: 1px solid @control-border;

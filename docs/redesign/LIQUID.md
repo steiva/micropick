@@ -558,19 +558,19 @@ make it pass §9 before anything else.**
   known pitfall, and the card's state goes with it. It also cannot draw our
   placeholder.
 - Build `gui/widgets/step_list.py: StepList(QWidget)`:
-  - a `QScrollArea` containing a column (`QVBoxLayout`) of `StepCard`
-    widgets;
-  - the drag starts in `StepCard`'s handle (`mousePressEvent` /
+  - a `QScrollArea` containing a column (`QVBoxLayout`) of `PlanStepCard`
+    widgets (`StepCard` is the calibration pages');
+  - the drag starts in `PlanStepCard`'s handle (`mousePressEvent` /
     `mouseMoveEvent`) with a `QDrag`, mime type
     `application/x-micropick-plan-step`, payload = the step's `id`;
-  - the `StepList` viewport accepts drops (`dragEnterEvent`, `dragMoveEvent`,
+  - the `StepList` accepts drops (`dragEnterEvent`, `dragMoveEvent`,
     `dropEvent`) and paints the insertion line in an overlay widget above the
     cards;
   - a `QTimer` drives the autoscroll while the pointer is near an edge.
 - On drop, the widget **does not reorder itself**. It emits
   `moveRequested(step_id, new_index)`. The page applies the move to
   `LiquidPlan.steps` (one undo entry), then calls `StepList.set_steps(...)`,
-  which reuses the existing `StepCard` widgets by `id` and only re-lays them
+  which reuses the existing `PlanStepCard` widgets by `id` and only re-lays them
   out. The model is the single source of order.
 - Pure function in `core/liquid_plan.py`: `move_step(plan, step_id,
   new_index) -> LiquidPlan`. It is easy to test and the widget uses it too.

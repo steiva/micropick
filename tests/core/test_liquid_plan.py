@@ -11,7 +11,8 @@ from micropick.core.liquid_plan import (CARRIER_SLOT, BlowOutStep, Height,
                                         LiquidPlan, MixStep, MoveLiquid,
                                         MoveTip, Place, Spot, WaitForMe,
                                         WaitStep, compile_step, move_step,
-                                        pairing, spot_name)
+                                        pairing, spot_name, step_chips,
+                                        step_title)
 
 ORDERING = [["A1", "B1"], ["A2", "B2"], ["A3", "B3"]]
 
@@ -440,3 +441,37 @@ def test_a_wait_after_each_well_comes_after_the_mixing():
 def test_no_wait_after_each_well_by_default():
     program = _compiled(MoveLiquid(source=_wells("A1"), dest=_wells("A2")))
     assert "wait" not in [s.action for s in program.groups[0].steps]
+
+
+@pytest.mark.parametrize("step, title", [
+    (MoveLiquid(volume_ul=50), "Move 50 µl"),
+    (MoveLiquid(source=_wells(*[f"A{n}" for n in range(1, 13)]),
+                dest=TO_TRASH), "Empty 12 wells"),
+    (MoveLiquid(source=_wells("A1"), dest=TO_TRASH), "Empty 1 well"),
+    (MixStep(wells=_wells(*[f"A{n}" for n in range(1, 13)]), cycles=3),
+     "Mix 12 wells · 3×"),
+    (BlowOutStep(), "Blow out"),
+    (MoveTip(), "Move the tip"),
+    (WaitStep(seconds=300), "Wait 5 min"),
+    (WaitStep(seconds=90), "Wait 1 min 30 s"),
+    (WaitStep(seconds=45), "Wait 45 s"),
+    (WaitForMe(), "Wait for me"),
+])
+def test_a_steps_title_is_the_verb_of_its_sentence(step, title):
+    assert step_title(step) == title
+
+
+@pytest.mark.parametrize("step, chips", [
+    (MoveLiquid(source=_wells("A2", slot="6"),
+                dest=_wells("B1", "B2", "B3", slot="2")),
+     ["Slot 6 · A2", "Slot 2 · B1–B3 (3)"]),
+    (MoveLiquid(source=RESERVOIR), ["Point · Reservoir", "choose"]),
+    (MoveLiquid(source=_spot(), dest=TO_TRASH), ["By hand", "Trash"]),
+    (MixStep(), ["choose"]),
+    (BlowOutStep(), ["Trash"]),
+    (MoveTip(place=RESERVOIR), ["Point · Reservoir"]),
+    (WaitStep(), []),
+    (WaitForMe(), []),
+])
+def test_a_steps_chips_are_its_places(step, chips):
+    assert step_chips(step) == chips
