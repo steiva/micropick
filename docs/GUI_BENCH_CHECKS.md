@@ -1710,6 +1710,14 @@ tip box and a 384 plate at hand.
   During a liquid run into a plate, its Save is gray, the tooltip naming
   the run.
 
+- [ ] **The movement keys (#57).**
+  On Well center the arrows and PgUp / PgDn move the tip one step of the
+  pad's, as rebound in Settings' Keys (no restart). Then on Dish bottom
+  (while lowering), Manual pick's Work, Picking, the Tip step's fine-tune
+  and Robot setup's position and camera calibration sheets: each moves
+  the robot by one step, never two. On Home and Liquid's Plan and Run
+  they move nothing.
+
 ## Redesign — Liquid Plan step (#22)
 
 - [ ] **The plate.**

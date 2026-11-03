@@ -326,6 +326,28 @@ def test_the_fine_tune_follows_the_lower_camera_in_xy_only(app, page, ready):
     assert not any("PgUp" in line for line in jog.help_lines)
 
 
+def test_the_movement_keys_move_the_tip_in_the_fine_tune(app, page, ready):
+    """The fine-tune's pad has the keys (#57), the host's none."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    session = page.session
+    _calibrate(app, page)
+    page.show()
+    page.activateWindow()
+    assert QTest.qWaitForWindowActive(page)
+    assert _until(app, lambda: not page.touch_jog.busy)
+    assert page.touch_jog.isVisibleTo(page)
+    x0, y0, _z = tip_page.xyz(session.robot)
+    QTest.keyClick(page, Qt.Key.Key_Right)       # right on the picture
+    assert _until(app, lambda: tip_page.xyz(session.robot)[1] != y0)
+    assert _until(app, lambda: not page.touch_jog.busy)
+    x1, y1, _z = tip_page.xyz(session.robot)
+    # Through TipTarget.axes: right on the picture is robot +Y, one step.
+    assert y1 - y0 == pytest.approx(page.touch_jog.pad.step, abs=0.02)
+    assert abs(x1 - x0) < 0.1
+    page.hide()
+
+
 def test_the_pages_arrows_follow_the_lower_camera_when_it_is_shown(
         app, page, ready):
     """The calibration leaves the tip over the crosshair, seen from below,

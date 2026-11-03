@@ -42,9 +42,11 @@ a page tab, a combo box that was just clicked. The cv2 window
 behaves the same way, and it is what an operator with one hand on the keyboard
 and eyes on the picture expects; a shortcut that works only while the right
 widget has focus is one that silently stops working after a click somewhere
-else. They are disabled while the panel is hidden, because two pages each
-holding one would otherwise both claim the arrow keys and leave Qt to guess
-between them.
+else. They are disabled while the panel's pad is off screen, because two
+pages each holding one would otherwise both claim the arrow keys and leave
+Qt to guess between them. The pad, not the panel: a page may hide the panel
+and put its pad in a layout of its own (Well center), and the keys are the
+pad's buttons (#57).
 
 The layout is jog's, the keys are Settings'
 -------------------------------------------
@@ -352,6 +354,8 @@ class JogPanel(QWidget):
 
         self._host = shortcut_host or self
         self._install_shortcuts(self._host)
+        # The keys go with the pad on screen, wherever a page put it.
+        self.pad.installEventFilter(self)
         # A click beside the fields; see "A field has the keys".
         self._host.installEventFilter(self)
         QApplication.instance().focusChanged.connect(self._focus_moved)
@@ -782,7 +786,12 @@ class JogPanel(QWidget):
     def eventFilter(self, watched, event) -> bool:
         """Enter in a field, a click on the picture or the page: the
         keyboard off the field. Nothing is taken from anyone: the field
-        still gets its Enter, the picture its click."""
+        still gets its Enter, the picture its click. And the pad shown or
+        hidden: the keys follow it."""
+        if watched is self.pad and event.type() in (QEvent.Type.Show,
+                                                    QEvent.Type.Hide):
+            self._set_enabled(self._worker is None)
+            return False
         if not self._typing:
             return False
         kind = event.type()
@@ -969,11 +978,12 @@ class JogPanel(QWidget):
         self.pad.set_enabled_reason(
             usable, NO_ROBOT_REASON if self.controller is None
             else f"Robot busy: {holder}." if holder else "")
-        # Only while on screen: a robot connect enables every panel, and a
-        # window-wide shortcut on a hidden page would compete with the one on
-        # the page that is showing. hideEvent keeps this true afterwards.
+        # Only while the pad is on screen: a robot connect enables every
+        # panel, and a window-wide shortcut on a hidden page would compete
+        # with the one on the page that is showing. The pad's Show and Hide
+        # keep this true afterwards (`eventFilter`).
         for shortcut in self._shortcuts:
-            shortcut.setEnabled(usable and self.isVisible()
+            shortcut.setEnabled(usable and self.pad.isVisible()
                                 and not (self._xy_only
                                          and shortcut in self._z_shortcuts))
         self._enabled = usable
@@ -990,13 +1000,13 @@ class JogPanel(QWidget):
             self.refresh_position()
 
     def hideEvent(self, event) -> None:
-        """Give up the arrow keys.
+        """Give up the arrow keys, unless the pad is still on screen
+        elsewhere (`eventFilter`).
 
         Two pages hold a panel each, and both sets of shortcuts exist for the
         life of the window. Left enabled they would both claim the same keys
         and Qt would pick one of them without saying which.
         """
-        for shortcut in self._shortcuts:
-            shortcut.setEnabled(False)
         super().hideEvent(event)
         self._sync_pad()
+        self._set_enabled(self._worker is None)

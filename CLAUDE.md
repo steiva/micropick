@@ -210,7 +210,10 @@ belongs in that list too; what the mouse does goes in the picture's mouse
 row. A text or number field with the keyboard keeps the keys it uses
 (never taken from it: the robot would move while a digit is corrected);
 the pad then says so (`jog_panel.TYPING_HELP`), and Enter in the field or
-a click on the picture or the page gives them back.
+a click on the picture or the page gives them back. A panel's keys are
+on while its pad is on screen, wherever the page put it (Well center
+hides the panel and shows its pad in its own column), and off while the
+pad is hidden, so no page out of sight takes a key (#57).
 
 A camera's focus is tuned only in Robot setup's camera sheet: while the
 chosen camera opens, a spinner and "Opening camera…" over the picture

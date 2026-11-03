@@ -7,9 +7,9 @@ drawing, and a step near the bottom needs the real one.
 
 On the left, **no camera** (the upper one does not see the tip at a
 well): where the tip is, Z in big numbers as on the Dish bottom step, and
-the jog pad under it - the face of a jog panel that is never shown, so it
-binds no keys and its Keys toggle is hidden; the operator watches the
-robot. On the right "Well center and depth", the plates on the
+the jog pad under it - the face of a jog panel that is never shown, whose
+keys go with the pad on screen, as on every page (#57); the operator
+watches the robot. On the right "Well center and depth", the plates on the
 deck - each "Measured today", "Not measured: using the drawing" (skipped,
 a ✓ in yellow) or "Not measured yet" (`Session.well_center_status`) - and,
 for the one selected, four steps:
@@ -203,7 +203,7 @@ class WellCenterPage(QWidget):
         lines.addSpacing(SPACING * 3)
 
         # The hidden panel's own pad: it moves, steps and grays as the
-        # panel says. Its keys are not bound while the panel is hidden.
+        # panel says, and its keys are on while it is on screen.
         self.pad = self.jog.pad
         self.pad.keys.hide()
         lines.addWidget(self.pad, 0, Qt.AlignmentFlag.AlignHCenter)
