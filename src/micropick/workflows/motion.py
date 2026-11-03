@@ -44,7 +44,8 @@ axis at a time (`goto_xy`, the calibration sweep's way) or up-over-down
 (the robot's own arc planning, which would undo the point of having raised
 the tip). A tip target then comes straight down. `move_to` reads the pose
 back and raises if the robot declined the move, so a refusal is a message,
-not a gantry that silently stayed put.
+not a gantry that silently stayed put. That pose is what a move returns: a
+caller that shows where the robot is need not ask it again.
 
 Threads
 -------
@@ -252,30 +253,33 @@ class Motion:
             pose[2] = min(float(pose[2]), _travel(top))
         return pose
 
-    def camera_to(self, xy, *, log=None) -> None:
-        """The tip up, then the gantry to `xy` at the travel height."""
+    def camera_to(self, xy, *, log=None) -> np.ndarray:
+        """The tip up, then the gantry to `xy` at the travel height.
+        Returns the pose reached."""
         robot = self._need_robot()
         top = self.raise_tip(log=log)
         if log is not None:
             log(f"camera to ({xy[0]:.2f}, {xy[1]:.2f})")
-        _straight(robot, xy, _travel(top))
+        return _straight(robot, xy, _travel(top))
 
-    def park(self, *, log=None) -> None:
-        """The head out of the way, to `PARK_XY` at the travel height."""
-        self.camera_to(PARK_XY, log=log)
+    def park(self, *, log=None) -> np.ndarray:
+        """The head out of the way, to `PARK_XY` at the travel height.
+        Returns the pose reached."""
+        return self.camera_to(PARK_XY, log=log)
 
-    def tip_to(self, xy, z: float, *, log=None) -> None:
+    def tip_to(self, xy, z: float, *, log=None) -> np.ndarray:
         """The tip up, across to `xy`, then down to `z`, or to the travel
-        height if `z` is above it."""
+        height if `z` is above it. Returns the pose reached."""
         robot = self._need_robot()
         top = self.raise_tip(log=log)
         travel = _travel(top)
         z = min(float(z), travel)
         if log is not None:
             log(f"tip to ({xy[0]:.2f}, {xy[1]:.2f}) at z {z:g}")
-        _straight(robot, xy, travel)
+        reached = _straight(robot, xy, travel)
         if z < travel:
-            _straight(robot, xy, z)
+            reached = _straight(robot, xy, z)
+        return reached
 
     def to_well(self, labware_id: str, well: str, level: str, offset, *,
                 log=None) -> None:
@@ -314,7 +318,8 @@ def _travel(top: float) -> float:
     return top - TRAVEL_BELOW_TOP_MM
 
 
-def _straight(robot: Robot, xy, z: float) -> None:
-    """One direct move, verified; see "Then one straight line"."""
-    move_to(robot, (float(xy[0]), float(xy[1]), float(z)), min_z_height=1.0,
+def _straight(robot: Robot, xy, z: float) -> np.ndarray:
+    """One direct move, verified; see "Then one straight line". Returns the
+    pose reached."""
+    return move_to(robot, (float(xy[0]), float(xy[1]), float(z)), min_z_height=1.0,
             force_direct=True)

@@ -39,7 +39,7 @@ import numpy as np
 
 from ..core.calibration.pixel_map import PixelMap
 from ..core.deck import nearest_slot, slot_center
-from ..hardware.protocols import xyz
+from ..workflows.jog import Reached
 from ..workflows.manual import camera_target, tip_target
 from .position_marks import CAMERA_POSITIONS
 
@@ -89,8 +89,8 @@ def move_over_slot(session, jog, slot: int, *, then=None) -> bool:
     motion = session.motion
 
     def job(log_):
-        motion.camera_to(xy, log=log_)
-        return f"Camera over slot {slot}."
+        return Reached(motion.camera_to(xy, log=log_),
+                       f"Camera over slot {slot}.")
 
     log.info("camera to slot %s (%.1f, %.1f)", slot, xy[0], xy[1])
     return jog.run_job(job, what=f"moving the camera over slot {slot}",
@@ -108,14 +108,18 @@ def move_to_pixel(session, jog, u: float, v: float, *,
     if robot is None:
         return False
     pmap = PixelMap.from_config(profile.pixel_map)
-    xy = camera_target(pmap, u, v, xyz(robot))
+    # The pose the panel shows, not one read here: a read is a robot
+    # command, and the window would wait on it (#36).
+    gantry = jog.pose
+    if gantry is None:
+        return False
+    xy = camera_target(pmap, u, v, gantry)
     if out_of_reach(session, jog, xy, "That point"):
         return False
     motion = session.motion
 
     def job(log_):
-        motion.camera_to(xy, log=log_)
-        return None
+        return Reached(motion.camera_to(xy, log=log_))
 
     return jog.run_job(job, what="centering the camera")
 
@@ -139,14 +143,17 @@ def move_tip_to_pixel(session, jog, u: float, v: float, *, no_map: str,
     if not pmap.covers(u, v):
         jog.tell("Refused: outside the calibrated area.")
         return False
-    xy = tip_target(pmap, u, v, xyz(robot)[:2], offset)
+    gantry = jog.pose                    # not a read: see move_to_pixel
+    if gantry is None:
+        return False
+    xy = tip_target(pmap, u, v, gantry[:2], offset)
     if out_of_reach(session, jog, xy, "That point"):
         return False
     motion = session.motion
 
     def job(log_):
-        motion.camera_to(xy, log=log_)
-        return "Tip over the point clicked."
+        return Reached(motion.camera_to(xy, log=log_),
+                       "Tip over the point clicked.")
 
     log.info("tip to (%.2f, %.2f) at the travel height", xy[0], xy[1])
     return jog.run_job(job, what="moving the tip over the point clicked",

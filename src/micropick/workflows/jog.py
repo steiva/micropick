@@ -28,7 +28,7 @@ import numpy as np
 from ..hardware.protocols import Robot, xyz
 from ..viz import window as window_fit
 
-__all__ = ["Limits", "MoveResult", "JogController", "jog_in_window",
+__all__ = ["Limits", "MoveResult", "Reached", "JogController", "jog_in_window",
            "jog_with_hotkeys", "DEFAULT_STEPS", "Key", "LAYOUT", "help_lines"]
 
 # Ten sizes, the same on the GUI's step carousel (`gui.widgets.jog_pad`).
@@ -92,6 +92,17 @@ class MoveResult:
     @property
     def clamped(self) -> bool:
         return self.ok and abs(self.performed) < abs(self.requested) - 1e-9
+
+
+@dataclass(frozen=True)
+class Reached:
+    """A move's end with its pose already read (a `Motion` move returns
+    it), and what to say: a GUI job returns it so the pose shown is made
+    from that, not from one more read - a robot command the job's end
+    would wait on (#36)."""
+
+    pose: tuple
+    said: str | None = None
 
 
 class JogController:

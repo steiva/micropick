@@ -178,6 +178,7 @@ from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
 from ...workflows import well_center
+from ...workflows.jog import Reached
 from .. import keys
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
@@ -1136,12 +1137,16 @@ class ManualPage(QWidget):
         if problems:
             self.jog.tell("Click: " + problems[0])
             return
-        if self._busy() or self.jog.busy:
+        # The pose the panel shows, not one read here: a read is a robot
+        # command, and the window - the picture with it - would wait on it
+        # (#36).
+        pose = self.jog.pose
+        if self._busy() or self.jog.busy or pose is None:
             return
-        profile, robot = self.session.profile, self.session.robot
+        profile = self.session.profile
         motion = self.session.motion
         pmap = PixelMap.from_config(profile.pixel_map)
-        gantry = np.array(xyz(robot)[:2])
+        gantry = np.array(pose[:2])
         hand = self._by_hand()
         cuboid = (self._target_at(u, v)
                   if hand and self.snap.isChecked() else None)
@@ -1170,7 +1175,7 @@ class ManualPage(QWidget):
                 notes.append("approximate: outside the calibrated area")
             what = f"camera to ({xy[0]:.2f}, {xy[1]:.2f})"
 
-        why = motion.refused((xy[0], xy[1], xyz(robot)[2]))
+        why = motion.refused((xy[0], xy[1], pose[2]))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
@@ -1182,8 +1187,7 @@ class ManualPage(QWidget):
         def job(log_):
             # The gantry at the travel height is the tip at it: the same
             # move for the camera's target as for the tip's.
-            motion.camera_to(xy, log=log_)
-            return "; ".join(notes)
+            return Reached(motion.camera_to(xy, log=log_), "; ".join(notes))
 
         if not self.jog.run_job(job):
             self.jog.tell(self.session.robot_lease.refusal)
@@ -1311,8 +1315,8 @@ class ManualPage(QWidget):
         """Camera to: the camera over the chosen point at the travel
         height; its Z is not used."""
         point = self.session.point(self.chosen_point() or "")
-        robot = self.session.robot
-        if point is None or robot is None or self.jog.busy:
+        pose = self.jog.pose                # not a read: see _clicked
+        if point is None or pose is None or self.jog.busy:
             return
         offset = self.session.profile.calibration.pipette_offset
         if offset is None:
@@ -1320,15 +1324,15 @@ class ManualPage(QWidget):
             return
         xy = np.array([point.x - offset.dx, point.y - offset.dy])
         what = f"camera over {point.name} ({xy[0]:.2f}, {xy[1]:.2f})"
-        why = self.session.motion.refused((xy[0], xy[1], xyz(robot)[2]))
+        why = self.session.motion.refused((xy[0], xy[1], pose[2]))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
         log.info("%s", what)
 
         def job(log_):
-            self.session.motion.camera_to(xy, log=log_)
-            return f"camera over {point.name}"
+            return Reached(self.session.motion.camera_to(xy, log=log_),
+                           f"camera over {point.name}")
 
         if not self.jog.run_job(job):
             self.jog.tell(self.session.robot_lease.refusal)
@@ -1362,8 +1366,8 @@ class ManualPage(QWidget):
         z = float("inf") if point.z is None else point.z
 
         def job(log_):
-            self.session.motion.tip_to(xy, z, log=log_)
-            return f"at {point.name}"
+            return Reached(self.session.motion.tip_to(xy, z, log=log_),
+                           f"at {point.name}")
 
         if not self.jog.run_job(job):
             self.jog.tell(self.session.robot_lease.refusal)
@@ -1398,8 +1402,8 @@ class ManualPage(QWidget):
         """Look at: the camera over the slot's center, at the travel height.
         The center is in the robot's frame, which is the tip's: the camera
         is over it with the gantry a pipette offset short of it."""
-        robot = self.session.robot
-        if robot is None or self.jog.busy:
+        pose = self.jog.pose                # not a read: see _clicked
+        if pose is None or self.jog.busy:
             return
         profile = self.session.profile
         offset = (profile.calibration.pipette_offset
@@ -1410,15 +1414,15 @@ class ManualPage(QWidget):
         xy = (np.asarray(slot_center(slot), dtype=float)
               - np.array([offset.dx, offset.dy]))
         what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
-        why = self.session.motion.refused((xy[0], xy[1], xyz(robot)[2]))
+        why = self.session.motion.refused((xy[0], xy[1], pose[2]))
         if why:
             self.jog.tell(f"UNREACHABLE: {what} - {why}")
             return
         log.info("%s", what)
 
         def job(log_):
-            self.session.motion.camera_to(xy, log=log_)
-            return f"over slot {slot}"
+            return Reached(self.session.motion.camera_to(xy, log=log_),
+                           f"over slot {slot}")
 
         if not self.jog.run_job(job):
             self.jog.tell(self.session.robot_lease.refusal)

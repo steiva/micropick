@@ -136,7 +136,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,
                                QMessageBox, QPlainTextEdit, QTextEdit,
                                QVBoxLayout, QWidget)
 
-from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
+from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController, Reached
 from .. import keys
 from ..position_marks import PositionMarks
 from ..session import Session
@@ -548,7 +548,7 @@ class JogPanel(QWidget):
         controls grey out for all of them. It claims the robot's lease
         (`Session.robot_lease`), so it cannot overlap work on another page
         either. `fn` may return a MoveResult, None, or a sentence to show
-        under the position. Returns False, and runs nothing, while the panel
+        under the position, or a `Reached`. Returns False, and runs nothing, while the panel
         is busy, the robot is busy elsewhere, or there is no robot.
 
         `then(result)`, if given, is called on the GUI thread with what `fn`
@@ -562,7 +562,10 @@ class JogPanel(QWidget):
         controller = self.controller
 
         def job(log):
-            return fn(log), controller.status()
+            result = fn(log)
+            if isinstance(result, Reached):
+                return result.said, controller.status(result.pose)
+            return result, controller.status()
 
         # `moves=False` for a job that leaves the gantry where it is, such
         # as an aspirate: what was detected on the picture still stands.

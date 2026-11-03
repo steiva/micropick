@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
 
 from .. import _version as version
 from .. import paths
+from ..workflows.jog import Reached
 from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
                     dish_bottom, home, labware, liquid, liquid_plan, manual,
@@ -807,7 +808,8 @@ class MainWindow(QMainWindow):
         panels = [panel for panel in
                   self.current_page().findChildren(JogPanel)
                   if panel.isVisible()]
-        if panels and panels[0].run_job(lambda log: motion.park(log=log)):
+        if panels and panels[0].run_job(
+                lambda log: Reached(motion.park(log=log))):
             return
         lease = self.session.robot_lease.claim("Park")
         if lease is None:

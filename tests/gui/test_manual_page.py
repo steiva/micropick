@@ -120,6 +120,34 @@ def test_a_single_left_click_moves_the_camera_there(app, page, session):
     assert _xy(session) == pytest.approx((150.0 + 100 * K, 150.0), abs=0.05)
 
 
+def test_a_click_reads_no_pose_on_the_gui_thread(app, page, session,
+                                                 monkeypatch):
+    """#36: a pose read is a robot command, and on the GUI thread the
+    window and its picture waited on it. The click takes the pose the
+    panel shows; the job reads one to see the tip is at the travel
+    height and one to verify the move, and the panel's line is made from
+    that last one, not from a read of its own."""
+    import threading
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    robot, reads = session.robot, []
+    real = robot.get_position
+
+    def get_position(*args, **kwargs):
+        thread = threading.current_thread().name
+        if not thread.startswith("grab-"):     # the mock camera's scene
+            reads.append(thread)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(robot, "get_position", get_position)
+    _left_click(app, page, W / 2 + 100, H / 2)
+    assert len(reads) == 2
+    assert "MainThread" not in reads
+    assert page.jog.pose[0] == pytest.approx(150.0 + 100 * K, abs=0.05)
+
+
 def _cuboid_at(page, u, v, half=20):
     """A detected cuboid, a square of side 2 * `half` px centered on (u, v),
     as Analyze the dish would leave it."""
