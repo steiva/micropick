@@ -4,7 +4,7 @@ A **task** is one of the three kinds of work started from Home, and a
 fixed order of **steps** (REDESIGN §4, GLOSSARY):
 
     Auto pick    Deck → Tip → Dish bottom → Plan → Picking
-    Manual pick  Deck → Tip → Dish bottom → Work
+    Manual pick  Deck → Tip → Dish bottom → Well center → Work
     Liquid       Deck → Tip → Well center → Plan → Run
 
 Deck, Tip and Dish bottom are one step each, shared: the same screen and
@@ -29,9 +29,12 @@ and no deck problem - no confirmation, so a change to the deck clears
 nothing. A step done by a confirmation (`Session.confirm`) is confirmed
 by its screen: Dish bottom by Save dish bottom or Use it, the
 Liquid plan by Use this plan, Run by a liquid run that ended, a plate by
-"Skip this plate" (`Session.skip_plate`). Well center counts the plates on the deck until the
-Liquid plan says which it uses. Run does not need Well center: an
-unmeasured plate is used on purpose, after a warning (REDESIGN §6.8).
+"Skip this plate" (`Session.skip_plate`). Well center counts the plates
+it shows (`well_center_plates`): those on the deck until the Liquid plan
+says which it uses. Run does not need Well center: an unmeasured plate is
+used on purpose, after a warning (REDESIGN §6.8). In Manual pick Well
+center is optional and has no Skip (#63): a plate not measured uses its
+drawing, and the step is done only when every plate is measured.
 """
 
 from __future__ import annotations
@@ -42,13 +45,15 @@ from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
 __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
-           "SETUP_POSITIONS", "StepState", "missing_setup", "setup_done",
-           "step_state", "steps", "title"]
+           "SETUP_POSITIONS", "StepState", "missing_setup", "optional",
+           "setup_done", "step_state", "steps", "title",
+           "well_center_plates"]
 
 # task -> (its name on screen, its steps in order)
 TASKS = {
     "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "plan", "picking")),
-    "manual": ("Manual pick", ("deck", "tip", "dish_bottom", "work")),
+    "manual": ("Manual pick", ("deck", "tip", "dish_bottom", "well_center",
+                               "work")),
     "liquid": ("Liquid", ("deck", "tip", "well_center", "liquid_plan",
                           "run")),
 }
@@ -211,12 +216,13 @@ def _done(session, task: str, step: str) -> bool:
         routine = session.routine
         return routine is not None and routine.is_done()
     if step == "well_center":
-        # Measured or skipped. The session imports this module: here, not
-        # at the top.
-        from .session import NOT_MEASURED
-        plates = session.plates()
+        # Measured, or in Liquid skipped. The session imports this module:
+        # here, not at the top.
+        from .session import MEASURED, SKIPPED
+        counted = (MEASURED, SKIPPED) if task == "liquid" else (MEASURED,)
+        plates = well_center_plates(session, task)
         return bool(plates) and all(
-            session.well_center_status(slot, entry.load_name) != NOT_MEASURED
+            session.well_center_status(slot, entry.load_name) in counted
             for slot, entry, _definition in plates)
     if step in ("liquid_plan", "run"):
         # Confirmed by Use this plan, and by a liquid run that ended.
@@ -225,12 +231,25 @@ def _done(session, task: str, step: str) -> bool:
     return False
 
 
-# Steps a task can go past without: Work is a toolbox, never "done".
-OPTIONAL = {"work"}
+def well_center_plates(session, task: str) -> list:
+    """The plates the Well center step shows in `task`, as
+    `Session.plates` gives them."""
+    return session.plates()
+
+
+# Steps a task can go past without, by task: Work is a toolbox, never
+# "done"; Well center is optional but in Liquid, a plate not measured
+# using its drawing.
+OPTIONAL = {"manual": {"well_center", "work"}}
+
+
+def optional(task: str, step: str) -> bool:
+    return step in OPTIONAL.get(task, ())
 
 
 def step_state(session, task: str, step: str) -> StepState:
     """Whether `step` of `task` is done now, and its first unmet need."""
     need = next((n for n in _needs(task, step)
                  if not _met(session, task, n)), None)
-    return StepState(_done(session, task, step), need, step in OPTIONAL)
+    return StepState(_done(session, task, step), need,
+                     optional(task, step))

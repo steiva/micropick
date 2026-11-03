@@ -1,4 +1,5 @@
-"""The Well center step (REDESIGN §6.7): Liquid's third.
+"""The Well center step (REDESIGN §6.7): Liquid's third, Manual pick's
+fourth (#63), the same page in each.
 
 For each plate on the deck, the real well center and the bottom
 (`config.schema.WellCenter`, one per slot and plate type, saved by
@@ -26,8 +27,10 @@ for the one selected, four steps:
    that depth. The bottom is the top less the depth.
 
 **Skip this plate, use the drawing** marks it skipped for this robot
-session (`Session.skip_plate`). The step is done when every plate is
-measured or skipped (`tasks.step_state`).
+session (`Session.skip_plate`), in Liquid only: elsewhere the step is
+optional and a plate not measured uses its drawing anyway (`set_task`).
+The plates are the task's (`tasks.well_center_plates`); the step is done
+when every one is measured, or in Liquid skipped (`tasks.step_state`).
 
 A plate a run goes into keeps its center: Save is gray while one does
 (`well_center.run_using`). Robot commands go through the jog panel's
@@ -44,6 +47,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
 from ...workflows import well_center
+from .. import tasks
 from ..session import MEASURED, SKIPPED, Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
 from ..theme.factory import (caption, double_spin_box, heading, muted_label,
@@ -67,6 +71,8 @@ MARK_PX = 24
 
 INTRO = ("Measure every plate you will use. A plate you skip still works, "
          "with the depth from its drawing.")
+# Where there is no Skip: the step is optional.
+INTRO_OPTIONAL = "A plate not measured uses its drawing."
 NOT_MEASURED_YET = "Not measured yet"
 USING_THE_DRAWING = "Not measured: using the drawing"
 
@@ -157,6 +163,7 @@ class WellCenterPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
+        self._task = "liquid"
         self._measurement = well_center.Measurement()
         self._at = TO_WELL
         # (slot, load name) of the plate selected, and the rows shown.
@@ -222,7 +229,8 @@ class WellCenterPage(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
         column.addWidget(heading("Well center and depth", 1, panel))
-        column.addWidget(wrapped(INTRO))
+        self.intro = wrapped(INTRO)
+        column.addWidget(self.intro)
 
         self.plate_list = QVBoxLayout()
         self.plate_list.setSpacing(2)
@@ -284,8 +292,17 @@ class WellCenterPage(QWidget):
 
     # -- the plates ----------------------------------------------------------
 
+    def set_task(self, task: str) -> None:
+        """The task the step is shown in: its plates, and Skip in Liquid
+        only."""
+        self._task = task
+        skips = task == "liquid"
+        self.skip_button.setVisible(skips)
+        self.intro.setText(INTRO if skips else INTRO_OPTIONAL)
+        self._list_plates()
+
     def _plates(self):
-        return self.session.plates()
+        return tasks.well_center_plates(self.session, self._task)
 
     def _list_plates(self) -> None:
         """The rows again, after a change to the deck; the selection is

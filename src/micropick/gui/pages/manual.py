@@ -124,13 +124,8 @@ The well center
 Dispense into a well goes from the plate's measured well center where
 there is one (`config.schema.WellCenter`, per slot and plate type): its x
 and y are added to the profile's well offsets, as a picking run adds them
-to its deposit, and the level keeps the robot's own heights. It is the same
-measurement as the Liquid handling page's, and is taken here the same
-way, in the folded Well center card: Go to well top puts the tip where the
-robot thinks the chosen well's top center is, the jog panel walks it onto
-the real center level with the rim, and Set well center stores the
-difference. Forget well center drops it, and the wells are where the
-labware definition puts them again.
+to its deposit, and the level keeps the robot's own heights. It is
+measured on the step before, Well center (`pages.well_center`, #63).
 
 Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
@@ -154,7 +149,7 @@ import cv2
 import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QVBoxLayout,
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
@@ -357,9 +352,6 @@ class ManualPage(QWidget):
         self._spot_px = None
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
-        # The last Go to well top: the robot's own idea of that well's top
-        # center, which Set well center measures the real one against.
-        self._measurement = well_center.Measurement()
         self._forget_targets(redraw=False)
 
         self.opener = CameraOpener(session, self)
@@ -380,15 +372,15 @@ class ManualPage(QWidget):
         self.view.set_mouse_help(MOUSE_HELP)
         self.view.set_click_to_move(CLICK_HELP, self._click_reaches)
         self.jog.moved.connect(self._forget_targets)
-        # Emitted whenever a job ends: Go to well top's nominal is in, and
-        # the buttons greyed for the job come back.
+        # Emitted whenever a job ends: the buttons greyed for the job come
+        # back.
         self.jog.position_changed.connect(lambda _lines: self._refresh())
         self.jog.set_page_help(self._page_help())
 
         self.marks = PositionMarks.on(session, self.view)
         panel = CardColumns([self._tools_card(), self._sizes_card(),
                              self._aspirate_card(), self._dispense_card(),
-                             self._center_card(), self.jog], self)
+                             self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -618,44 +610,6 @@ class ManualPage(QWidget):
             "cuboid_size_threshold, the shaded band.", self)
         self.sizes.body.layout().addWidget(self.histogram)
         return self.sizes
-
-    def _center_card(self) -> QWidget:
-        """Folded: the plate's measured well center, the same one the Liquid
-        handling page sets: see "The well center" in the module docstring."""
-        self.center_card = FoldCard("Well center", parent=self)
-        box = self.center_card.body
-        self.center_wells = _WellPicker(self)
-        self.center_wells.changed.connect(self._refresh)
-        self.plate_choice = self.center_wells.plate
-        self.well_choice = self.center_wells.well
-        box.layout().addWidget(self.center_wells)
-        self.well_state = QLabel()
-        self.well_state.setWordWrap(True)
-        box.layout().addWidget(self.well_state)
-        self.center_state = QLabel()
-        self.center_state.setWordWrap(True)
-        box.layout().addWidget(self.center_state)
-        self.go_top_button = secondary_button("Go to well top", self)
-        self.go_top_button.setToolTip(
-            "Move the tip to the chosen well's top center from the labware "
-            "definition.")
-        self.go_top_button.clicked.connect(self._go_to_well_top)
-        self.set_center_button = primary_button("Set well center", self)
-        self.set_center_button.setToolTip(
-            "Save the current tip position as this plate's well center and "
-            "rim.")
-        self.set_center_button.clicked.connect(self._set_well_center)
-        self.forget_center_button = secondary_button("Forget well center",
-                                                     self)
-        self.forget_center_button.setToolTip(
-            well_center.FORGET_TIP)
-        self.forget_center_button.clicked.connect(self._forget_well_center)
-        row = QHBoxLayout()
-        for button in (self.go_top_button, self.set_center_button):
-            row.addWidget(button, 1)
-        box.layout().addLayout(row)
-        box.layout().addWidget(self.forget_center_button)
-        return self.center_card
 
     def _install_shortcuts(self) -> None:
         """A and D, window-wide while this page is showing - the jog panel's
@@ -1412,8 +1366,7 @@ class ManualPage(QWidget):
         deck map with them."""
         self._show_deck()
         plates = self.session.plates()
-        for picker in (self.source_wells, self.target_wells,
-                       self.center_wells):
+        for picker in (self.source_wells, self.target_wells):
             picker.set_plates(plates)
 
     # -- the well center ----------------------------------------------------------
@@ -1422,120 +1375,6 @@ class ManualPage(QWidget):
         profile = self.session.profile
         return (profile.deck.well_center(slot, load_name)
                 if profile is not None else None)
-
-    def _chosen_well(self):
-        """(slot, labware id, definition, well) chosen in the Well center
-        card, or None while the well typed is not one of the plate's."""
-        return self.center_wells.chosen()
-
-    def _run_using(self, slot, load_name: str) -> str | None:
-        """The run going into this plate now, if any
-        (`well_center.run_using`)."""
-        return well_center.run_using(self.session.robot_lease, slot,
-                                     load_name)
-
-    def _shown_nominal(self):
-        """The last Go to well top, while its plate is still the chosen one."""
-        data = self.plate_choice.currentData()
-        if data is None:
-            return None
-        return self._measurement.for_plate(data[0], data[2].load_name)
-
-    def _go_to_well_top(self) -> None:
-        chosen, robot = self._chosen_well(), self.session.robot
-        if chosen is None or robot is None or self.jog.busy:
-            return
-        slot, labware_id, definition, well = chosen
-        load_name, motion = definition.load_name, self.session.motion
-
-        def job(log):
-            return well_center.go_to_top(motion, labware_id, well, log=log)
-
-        def reached(pose):
-            # On the GUI thread, once the job has ended.
-            self._measurement.started(slot, load_name, well, pose)
-            self._refresh()
-            return well_center.AT_TOP.format(well=well)
-
-        log.info("manual control: to the top of %s in slot %s", well, slot)
-        if not self.jog.run_job(job, then=reached):
-            self.jog.tell(self.session.robot_lease.refusal)
-
-    def _set_well_center(self) -> None:
-        nominal, pose = self._shown_nominal(), self.jog.pose
-        if (nominal is None or pose is None or self.jog.busy
-                or self._run_using(nominal.slot, nominal.load_name)):
-            return
-        slot, load_name, well = nominal.slot, nominal.load_name, nominal.well
-        offset = self._measurement.offset(pose)
-        if self._well_center(slot, load_name) is not None:
-            answer = QMessageBox.question(
-                self, "Set well center",
-                f"Replace the measured center of {load_name} in slot "
-                f"{slot}?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        depth = well_center.definition_depth(
-            self.plate_choice.currentData()[2], well)
-        try:
-            self.session.set_well_center(slot, load_name, offset, well,
-                                         depth_mm=depth)
-        except Exception as exc:                 # noqa: BLE001
-            self.jog.tell(f"not saved: {exc}")
-            return
-        # Measured: measuring again starts from Go to well top.
-        self._measurement.forget()
-        self._refresh()
-        self.jog.tell(f"well center of slot {slot} saved: ({offset[0]:+.2f}, "
-                      f"{offset[1]:+.2f}, {offset[2]:+.2f}) mm")
-
-    def _forget_well_center(self) -> None:
-        data = self.plate_choice.currentData()
-        if data is None:
-            return
-        slot, load_name = data[0], data[2].load_name
-        if (self._well_center(slot, load_name) is None
-                or self._run_using(slot, load_name)):
-            return
-        answer = QMessageBox.question(
-            self, "Forget well center",
-            f"Forget the measured center of {load_name} in slot {slot}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        if answer == QMessageBox.StandardButton.Yes:
-            self.session.forget_well_center(slot, load_name)
-
-    def _show_center(self, has_robot: bool) -> None:
-        """The well center line and its buttons, for the chosen plate."""
-        data = self.plate_choice.currentData()
-        idle = not self.jog.busy
-        center = (self._well_center(data[0], data[2].load_name)
-                  if data is not None else None)
-        nominal = self._shown_nominal()
-        running = (self._run_using(data[0], data[2].load_name)
-                   if data is not None else None)
-        self.go_top_button.setEnabled(idle and has_robot
-                                      and self._chosen_well() is not None)
-        self.set_center_button.setEnabled(idle and nominal is not None
-                                          and self.jog.pose is not None
-                                          and running is None)
-        self.forget_center_button.setEnabled(idle and center is not None
-                                             and running is None)
-        self.forget_center_button.setToolTip(
-            well_center.FORGET_TIP if running is None
-            else well_center.in_use_tip(running))
-        if data is None:
-            text = ""
-        elif center is not None:
-            text = f"Well center {center.describe()}."
-        else:
-            text = "Well center not measured."
-        if nominal is not None:
-            text += "\n" + well_center.AT_TOP.format(well=nominal.well)
-        self.center_state.setText(text)
-        self.center_state.setVisible(bool(text))
 
     # -- the worker ----------------------------------------------------------------
 
@@ -1627,12 +1466,6 @@ class ManualPage(QWidget):
         self.hand_hint.setText(
             HAND_HINT if self._spot is None
             else HAND_SPOT if self._spot_px is not None else HAND_CUBOID)
-        has_plate = self.plate_choice.count() > 0
-        self.well_state.setText(
-            "" if has_plate else
-            "No plate loaded.")
-        self.well_state.setVisible(not has_plate)
-        self._show_center(has_robot)
         self._refresh_center_button()
         # The found count is on the picture, as on Picking.
         self.view.set_status(
@@ -1683,7 +1516,6 @@ class ManualPage(QWidget):
         self._refresh()
 
     def _robot_changed(self, _state: str) -> None:
-        self._measurement.forget()
         self._reload_plates()
         self._show_deck()
 

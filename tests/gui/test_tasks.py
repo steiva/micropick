@@ -34,7 +34,8 @@ def session(app, tmp_path, monkeypatch):
 def test_each_task_is_its_steps_in_order():
     assert tasks.steps("auto") == ["deck", "tip", "dish_bottom", "plan",
                                    "picking"]
-    assert tasks.steps("manual") == ["deck", "tip", "dish_bottom", "work"]
+    assert tasks.steps("manual") == ["deck", "tip", "dish_bottom",
+                                     "well_center", "work"]
     assert tasks.steps("liquid") == ["deck", "tip", "well_center",
                                      "liquid_plan", "run"]
     assert [tasks.title(s) for s in tasks.steps("auto")] == [
@@ -217,6 +218,28 @@ def test_well_center_is_done_when_every_plate_is_measured_or_skipped(session):
     assert not tasks.step_state(session, "liquid", "well_center").done
 
 
+def test_manuals_well_center_is_optional_and_done_when_all_are_measured(
+        session):
+    """#63: no Skip there, so only a measurement makes it done."""
+    from micropick.config.labware import resolve_definition
+    from micropick.config.schema import WellCenter
+    _connect(session)
+    session.load_profile("mock")
+    plate = "corning_96_wellplate_360ul_flat"
+    session.load_labware(resolve_definition(plate), 5)
+    session.load_labware(resolve_definition(plate), 6)
+    state = tasks.step_state(session, "manual", "well_center")
+    assert state.optional and not state.done
+    assert not tasks.step_state(session, "liquid", "well_center").optional
+    session.skip_plate(6, plate)                # Liquid's, not Manual's
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=5, load_name=plate, offset=(0.1, 0.2, 0.0), well="A1"))
+    assert not tasks.step_state(session, "manual", "well_center").done
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=6, load_name=plate, offset=(0.1, 0.2, 0.0), well="A1"))
+    assert tasks.step_state(session, "manual", "well_center").done
+
+
 def test_liquid_plan_and_run_are_confirmed_by_their_screens(session):
     _connect(session)
     _fill_deck(session)
@@ -237,6 +260,7 @@ def test_liquid_plan_and_run_are_confirmed_by_their_screens(session):
     ("auto", "plan", "plate", "deck"),
     ("auto", "picking", "step", "tip"),
     ("manual", "work", "step", "tip"),
+    ("manual", "well_center", "step", "tip"),
     ("liquid", "well_center", "step", "tip"),
     ("liquid", "liquid_plan", None, None),
     ("liquid", "run", "step", "tip"),

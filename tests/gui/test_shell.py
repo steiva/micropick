@@ -212,10 +212,11 @@ def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):
     window.top.home_clicked.emit()
     window.home.tiles["manual"].clicked.emit()
     assert window.top.path == ["Manual pick"]
-    assert window.step == "work"
+    assert window.step == "work"                   # Well center optional
     assert window.current_page() is window.manual_page
     assert _chips(window) == [("Deck", True), ("Tip", True),
-                              ("Dish bottom", True), ("Work", False)]
+                              ("Dish bottom", True), ("Well center", False),
+                              ("Work", False)]
     assert window.footer.isVisible() and not window.footer.next.isVisible()
 
 

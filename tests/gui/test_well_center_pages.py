@@ -1,6 +1,5 @@
-"""Measuring a plate's well center on Manual control and on Liquid's Well
-center step: the same measurement, saved for the plate whichever page took
-it, and read by Liquid handling."""
+"""Measuring a plate's well center on the Well center step, one page in
+Liquid and Manual pick: saved for the plate, and read by Liquid handling."""
 
 import os
 import time
@@ -18,7 +17,6 @@ from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages import liquid_plan                      # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
-from micropick.gui.pages.manual import ManualPage                # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
@@ -60,17 +58,6 @@ def _jog(app, session, panel, dx, dy, dz):
     _settle(app, panel)
 
 
-def _manual(app, session):
-    page = ManualPage(session)
-    _settle(app, page.jog)
-    page.plate_choice.setCurrentIndex(page.plate_choice.findText(
-        next(page.plate_choice.itemText(i)
-             for i in range(page.plate_choice.count())
-             if "5" in page.plate_choice.itemText(i))))
-    page.well_choice.setCurrentText("B2")
-    return page
-
-
 def _liquid(app, session):
     page = liquid_page.LiquidHandlingPage(session)
     _settle(app, page.jog)
@@ -86,27 +73,17 @@ def _step(app, session):
 
 
 def _go_to_top(app, page):
-    if isinstance(page, step_page.WellCenterPage):
-        page.move_button.click()
-        _settle(app, page.jog)
-        # The tip at the robot's well top: centering is next.
-        assert page.centered_button.isEnabled()
-        assert not page.save_button.isEnabled()
-    else:
-        page._go_to_well_top()
-        _settle(app, page.jog)
-        # The measurement in hand, said under the well center line.
-        assert "At the top of B2" in page.center_state.text()
-        assert page.set_center_button.isEnabled()
+    page.move_button.click()
+    _settle(app, page.jog)
+    # The tip at the robot's well top: centering is next.
+    assert page.centered_button.isEnabled()
+    assert not page.save_button.isEnabled()
 
 
 def _save(page):
-    if isinstance(page, step_page.WellCenterPage):
-        page.centered_button.click()
-        page.level_button.click()
-        page.save_button.click()
-    else:
-        page._set_well_center()
+    page.centered_button.click()
+    page.level_button.click()
+    page.save_button.click()
 
 
 def _measure(app, session, page, jog):
@@ -115,19 +92,6 @@ def _measure(app, session, page, jog):
     _jog(app, session, page.jog, *jog)
     _save(page)
     return at
-
-
-@pytest.mark.parametrize("make", [_manual],
-                         ids=["manual control"])
-def test_set_well_center_saves_the_jog_from_the_robots_well_top(
-        app, session, make):
-    page = make(app, session)
-    _measure(app, session, page, (0.4, -0.3, -1.5))
-    center = session.profile.deck.well_center(5, PLATE)
-    assert center is not None and center.well == "B2"
-    assert center.offset == pytest.approx([0.4, -0.3, -1.5], abs=0.05)
-    assert center.depth_mm == pytest.approx(10.67, abs=0.01)  # the definition's
-    page.deleteLater()
 
 
 def test_the_step_saves_the_jog_from_the_robots_well_top(app, session):
@@ -212,16 +176,24 @@ def test_skip_is_done_for_the_well_center_step(app, session):
     page.deleteLater()
 
 
-@pytest.mark.parametrize("make", [_manual, _step],
-                         ids=["manual control", "well center step"])
-def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session,
-                                                           make):
-    page = make(app, session)
+@pytest.mark.parametrize("task, skip", [("liquid", True),
+                                        ("manual", False)])
+def test_skip_is_only_in_liquid(app, session, task, skip):
+    """#63: optional in Manual pick, where a plate not measured uses its
+    drawing; Liquid asks about every plate."""
+    page = _step(app, session)
+    page.set_task(task)
+    assert page.skip_button.isHidden() is not skip
+    assert set(page._rows) == {("5", PLATE)}
+    page.deleteLater()
+
+
+def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session):
+    page = _step(app, session)
     _measure(app, session, page, (0.4, -0.3, -1.5))
     session.set_well_depth(5, PLATE, 9.5)
-    if make is _step:
-        page.select_plate(5, PLATE)
-        page.well_choice.setCurrentText("B2")
+    page.select_plate(5, PLATE)
+    page.well_choice.setCurrentText("B2")
     _measure(app, session, page, (0.1, 0.2, -1.0))
     center = session.profile.deck.well_center(5, PLATE)
     assert center.offset == pytest.approx([0.1, 0.2, -1.0], abs=0.05)
@@ -229,49 +201,11 @@ def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session,
     page.deleteLater()
 
 
-def test_a_center_measured_on_one_page_is_the_other_pages(app, session):
-    manual = _manual(app, session)
-    _measure(app, session, manual, (0.4, -0.3, -1.5))
+def test_a_center_measured_on_the_step_is_liquid_handlings(app, session):
+    page = _step(app, session)
+    _measure(app, session, page, (0.4, -0.3, -1.5))
     plate = liquid_plan.plates_for(session)["5"]
     assert plate.center == pytest.approx((0.4, -0.3, -1.5), abs=0.05)
-    manual.deleteLater()
-
-
-@pytest.mark.parametrize("make", [_manual], ids=["manual control"])
-def test_a_center_a_run_uses_is_not_forgotten_under_it(app, session, make):
-    page = make(app, session)
-    _measure(app, session, page, (0.4, -0.3, -1.5))
-    page._refresh()
-    assert page.forget_center_button.isEnabled()
-    run = session.robot_lease.claim("liquid run", run=True,
-                                    plates={("5", PLATE)})
-    try:
-        app.processEvents()
-        assert not page.forget_center_button.isEnabled()
-        assert "liquid run" in page.forget_center_button.toolTip()
-        if hasattr(page, "well_depth"):
-            assert not page.well_depth.isEnabled()
-        page._forget_well_center()
-        assert session.profile.deck.well_center(5, PLATE) is not None
-    finally:
-        run.release()
-    app.processEvents()
-    assert page.forget_center_button.isEnabled()
-    page.deleteLater()
-
-
-def test_a_run_on_another_plate_leaves_this_ones_center_alone(app, session):
-    page = _manual(app, session)
-    _measure(app, session, page, (0.4, -0.3, -1.5))
-    run = session.robot_lease.claim("liquid run", run=True,
-                                    plates={("2", PLATE)})
-    try:
-        app.processEvents()
-        page._refresh()
-        # The robot is busy, so no Go to; but this plate is not the run's.
-        assert page.forget_center_button.isEnabled()
-    finally:
-        run.release()
     page.deleteLater()
 
 
@@ -320,21 +254,14 @@ def test_a_picking_run_says_it_goes_into_the_plans_plate(app, session,
     page.deleteLater()
 
 
-@pytest.mark.parametrize("make", [_manual, _step],
-                         ids=["manual control", "well center step"])
 def test_the_measurement_in_hand_outlives_a_change_elsewhere_on_the_deck(
-        app, session, make):
-    page = make(app, session)
+        app, session):
+    page = _step(app, session)
     _go_to_top(app, page)
     session.load_labware(resolve_definition(PLATE), 2)
     app.processEvents()
-    if make is _step:
-        assert page._selected == ("5", PLATE)
-        assert page.centered_button.isEnabled()
-    else:
-        page._refresh()
-        assert "At the top of B2" in page.center_state.text()
-        assert page.set_center_button.isEnabled()
+    assert page._selected == ("5", PLATE)
+    assert page.centered_button.isEnabled()
     page.deleteLater()
 
 
@@ -355,26 +282,18 @@ def test_save_says_which_run_uses_the_plate(app, session):
     page.deleteLater()
 
 
-@pytest.mark.parametrize("make", [_manual, _step],
-                         ids=["manual control", "well center step"])
-def test_a_center_a_run_uses_is_not_replaced_under_it(app, session, make):
-    page = make(app, session)
+def test_a_center_a_run_uses_is_not_replaced_under_it(app, session):
+    page = _step(app, session)
     _go_to_top(app, page)
     _jog(app, session, page.jog, 0.4, -0.3, -1.5)
-    if make is _step:
-        page.centered_button.click()
-        page.level_button.click()
+    page.centered_button.click()
+    page.level_button.click()
     run = session.robot_lease.claim("picking run", run=True,
                                     plates={("5", PLATE)})
     try:
         app.processEvents()
-        if make is _step:
-            assert not page.save_button.isEnabled()
-            page._save()
-        else:
-            page._refresh()
-            assert not page.set_center_button.isEnabled()
-            page._set_well_center()
+        assert not page.save_button.isEnabled()
+        page._save()
         assert session.profile.deck.well_center(5, PLATE) is None
     finally:
         run.release()
@@ -405,6 +324,29 @@ def test_liquids_well_center_step_is_this_page_and_skip_marks_it_done(
         app.processEvents()
         assert tasks.step_state(session, "liquid", "well_center").done
         assert w.footer.next.isEnabled()
+    finally:
+        session.shutdown()
+        w.deleteLater()
+
+
+def test_manuals_well_center_step_is_this_page_without_skip(
+        app, tmp_path, monkeypatch):
+    """#63: optional, so Next is enabled with nothing measured."""
+    from micropick.gui.shell import MainWindow
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    w = MainWindow(Options(mock=True))
+    session = w.session
+    try:
+        session.probe_robot()
+        session.new_run()
+        session.load_labware(resolve_definition(PLATE), 5)
+        w.open_task_step("manual", "well_center")
+        page = w.stack.currentWidget()
+        assert isinstance(page, step_page.WellCenterPage)
+        assert page.skip_button.isHidden()
+        assert w.footer.next.isEnabled()
+        w.open_task_step("liquid", "well_center")
+        assert not page.skip_button.isHidden()
     finally:
         session.shutdown()
         w.deleteLater()

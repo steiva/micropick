@@ -40,7 +40,7 @@ def window(app, tmp_path, monkeypatch):
     # Every step's needs met: the keys are what is tested, not the steps.
     real = tasks.step_state
     monkeypatch.setattr(tasks, "step_state", lambda s, t, step: tasks.StepState(
-        real(s, t, step).done, None, step in tasks.OPTIONAL))
+        real(s, t, step).done, None, tasks.optional(t, step)))
     w = MainWindow(Options(mock=True))
     w.show()
     w.session.probe_robot()

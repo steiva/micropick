@@ -1009,7 +1009,8 @@ Kept for the record of what washing needs when it returns as a program.
   measured center". Forget well center: Go to well goes to the
   definition's center again.
 
-- [ ] **Set well center from Manual control.**
+- [ ] **Set well center from Manual control.** (Gone, #63: Manual
+  pick's Well center step.)
   Choose the plate and one well, Go to well top: the tip stops where the
   definition has its top, and the card says to jog onto the real center.
   Jog there, level with the rim, Set well center: the line shows the new
@@ -1686,9 +1687,8 @@ tip box and a 384 plate at hand.
   the deposit height. At a point: "Go to M1 and dispense".
 
 - [ ] **Well center.**
-  The folded Well center card measures a plate as before (Go to well top,
-  jog, Set well center) and Dispense in a well then goes to the measured
-  center.
+  Work has no Well center card (#63: it is Manual pick's step before).
+  A plate measured there: Dispense in a well goes to the measured center.
 
 ## Redesign — Well center step and skipped plates (#21)
 
@@ -1939,3 +1939,20 @@ plate at hand.
 - [ ] **The run keeps it.**
   Fill 20 µl, then run Picking: each deposit and return gives back only
   the cuboids' volume; at the end the tip still holds about 20 µl.
+
+## Well center step in Manual pick (#63)
+
+- [ ] **The step.**
+  Manual pick's steps: Deck, Tip, Dish bottom, Well center, Work. With
+  Dish bottom done the task opens on Work, not on Well center. Well center
+  lists the plates on the deck, with no Skip this plate; "A plate not
+  measured uses its drawing." Next is enabled with nothing measured.
+
+- [ ] **Done.**
+  Measure every plate: the step's chip is checked. A plate skipped in
+  Liquid in this robot session does not count in Manual pick: its chip
+  stays open until that plate is measured.
+
+- [ ] **Liquid unchanged.**
+  Liquid › Well center still has Skip this plate, and Next stays gray
+  until every plate is measured or skipped.

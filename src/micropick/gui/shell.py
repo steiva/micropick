@@ -473,7 +473,7 @@ class MainWindow(QMainWindow):
         when all are."""
         self._set_task(task)
         steps = tasks.steps(task)
-        first = next((s for s in steps if s not in tasks.OPTIONAL
+        first = next((s for s in steps if not tasks.optional(task, s)
                       and not tasks.step_state(self.session, task, s).done),
                      steps[-1])
         self.show_step(first)
@@ -484,7 +484,9 @@ class MainWindow(QMainWindow):
         self.show_step(step)
 
     def show_step(self, step: str) -> None:
-        # Liquid's Tip step has no calibration.
+        # Liquid's Tip step has no calibration; its Well center has Skip,
+        # elsewhere optional.
+        self.well_center_page.set_task(self.task)
         self.tip_calibration_page.set_task(self.task)
         self._show(STEP_PAGES[step], [tasks.TASKS[self.task][0]],
                    in_task=True)
