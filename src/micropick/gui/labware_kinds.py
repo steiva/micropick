@@ -17,7 +17,8 @@ import logging
 from ..config.labware import (LabwareDefinition, LabwareError,
                               local_definitions, shared_definitions)
 
-__all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind", "well_volume"]
+__all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind", "well_depth",
+           "well_volume"]
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +66,14 @@ def well_volume(definition: LabwareDefinition) -> float | None:
     first = wells.get(definition.wells[0]) if definition.wells else None
     volume = (first or {}).get("totalLiquidVolume")
     return float(volume) if volume else None
+
+
+def well_depth(definition: LabwareDefinition) -> float | None:
+    """How deep its first well is in mm, if the definition says."""
+    wells = definition.data.get("wells") or {}
+    first = wells.get(definition.wells[0]) if definition.wells else None
+    depth = (first or {}).get("depth")
+    return float(depth) if depth else None
 
 
 def facts(definition: LabwareDefinition) -> str:

@@ -86,8 +86,8 @@ __all__ = ["CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height", "Spot",
            "Place", "MoveLiquid", "MixStep", "BlowOutStep", "MoveTip",
            "WaitStep", "WaitForMe", "PlanStep", "LiquidPlan", "Pairing",
            "pairing", "chip", "move_step", "compile_step", "compiles",
-           "by_row", "goes_to_trash", "places", "spot_name", "spots",
-           "step_chips", "step_title"]
+           "by_row", "duration", "goes_to_trash", "height_words", "places",
+           "spot_name", "spots", "step_chips", "step_title"]
 
 PLAN_VERSION = 1
 
@@ -262,11 +262,27 @@ def chip(place: Place) -> str:
     return f"Slot {place.slot} · {wells[0]}–{wells[-1]} ({len(wells)})"
 
 
-def _duration(seconds: float) -> str:
+def duration(seconds: float) -> str:
+    """`5 min`, `1 min 30 s`, `45 s`."""
     minutes, rest = divmod(seconds, 60)
     if not minutes:
         return f"{rest:g} s"
     return f"{minutes:g} min {rest:g} s" if rest else f"{minutes:g} min"
+
+
+def height_words(height: Height) -> str:
+    """Where in a well, as it is said: `2 mm above the bottom`, `in the
+    middle`, then any shift aside. Never + and −."""
+    offset, ref = height.offset_mm, height.ref
+    if offset:
+        words = f"{abs(offset):g} mm {'above' if offset > 0 else 'below'} the {ref}"
+    else:
+        words = "in the middle" if ref == "middle" else f"at the {ref}"
+    for mm, more, less in ((height.aside_x_mm, "right", "left"),
+                           (height.aside_y_mm, "back", "front")):
+        if mm:
+            words += f", {abs(mm):g} mm to the {more if mm > 0 else less}"
+    return words
 
 
 def step_title(step) -> str:
@@ -280,7 +296,7 @@ def step_title(step) -> str:
         count = step.wells.count
         return f"Mix {count} well{'' if count == 1 else 's'} · {step.cycles}×"
     if step.kind == "wait":
-        return f"Wait {_duration(step.seconds)}"
+        return f"Wait {duration(step.seconds)}"
     return {"blow_out": "Blow out", "move_tip": "Move the tip",
             "wait_for_me": "Wait for me"}[step.kind]
 

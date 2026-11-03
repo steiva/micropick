@@ -7,25 +7,29 @@ while the plan has no problems (`Session.liquid_plan_problems`), and until
 then Next is gray with one sentence (`next_reason`, read by the shell).
 
 **Right:** Start from, the Trash row, the steps (`widgets.step_list`) and Add
-a step. One card is open at a time; its rows choose the section, what the left
-area asks. Take from comes before Put into.
+a step, and beside the Trash row what a tip holds. One card is open at a time;
+its rows choose the section. Take from comes before Put into; Amount and Extras
+are fields in the card (`widgets.plan_forms`), as are the other kinds' How. A
+step's sections are `sections`.
 
 **Left:** what the open section asks: the plate from the `MiniDeckDropdown`,
 its wells clicked, the wells of other steps dim, and under it the rule of how
 sources pair with destinations (`core.liquid_plan.pairing`), warn-colored with
 what would work. A plate not measured (nor skipped on the Well center step)
 shows a warning with **Measure now** and **Use anyway**: it is not blocked,
-the robot then uses the plate's drawing. With no card open: the whole plan's
-wells in each step's color and a legend; with no steps, the first step's
-button.
+the robot then uses the plate's drawing. For Amount and How, the heights drawn
+(`widgets.well_heights`) following the fields; for Extras the step's plate, to
+look at; for a Wait the time, for a Wait for me how its message will read. With
+no card open: the whole plan's wells in each step's color and a legend; with
+no steps, the first step's button.
 
 The page holds the plan, every edit a new copy on its undo list: wells, a
 move, the trash, a step added or deleted are one undo each (Ctrl+Z, and Undo
-over the plate). The widgets never reorder or change a plan themselves.
+over the plate), and so is a field typed in digit by digit. The widgets never
+reorder or change a plan themselves.
 
-Still to come, each with its ticket under #67: Amount and Extras and the
-forms of the other kinds (#73; a new step takes the prototype's heights),
-points and By hand (#74), the trash chooser, Try once and templates (#75).
+Still to come, each with its ticket under #67: points and By hand (#74), the
+trash chooser, Try once and templates (#75).
 
 The plan is saved as it is edited, into `outputs/liquid/current.json`; the
 next start keeps only its trash and what a tip holds: steps are chosen for
@@ -48,20 +52,23 @@ from ... import paths
 from ...core.liquid import Location, Program, ProgramError
 from ...core.liquid_plan import (BlowOutStep, Height, LiquidPlan, MixStep,
                                  MoveLiquid, MoveTip, Place, WaitForMe,
-                                 WaitStep, by_row, chip, move_step, pairing,
-                                 places, step_chips, step_title)
-from ..labware_kinds import facts, kind
+                                 WaitStep, by_row, chip, duration, move_step,
+                                 pairing, places, step_chips, step_title)
+from ..labware_kinds import facts, kind, well_depth
 from ..session import MEASURED, NOT_MEASURED, Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (caption, danger_text_button, heading, muted_label,
-                             primary_button, secondary_button)
+from ..theme.factory import (caption, danger_text_button, double_spin_box,
+                             heading, muted_label, primary_button,
+                             secondary_button)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
 from ..widgets.controls import Segmented
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
+from ..widgets.plan_forms import StepForm, uses_height
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
+from ..widgets.well_heights import WellSection
 
 __all__ = ["LiquidPlanPage", "CURRENT_FILE"]
 
@@ -74,10 +81,20 @@ PANEL_WIDTH = 460
 SAVE_MS = 400
 CURRENT_FILE = "current.json"
 
+MAX_TIP_UL = 5000
+
 NO_PLATE = "There is no plate on the deck. Add it on the Deck step."
 NOT_MEASURED_TEXT = ("The well center of this plate was not measured. The "
                      "robot will use the plate's drawing.")
 LOCKED = "The plan cannot change during a run."
+NO_HEIGHT = "A point and the trash are used at their own height."
+WAIT_HELP = "The robot does nothing for this long. Pause and Stop still work."
+WAITING_WHY = "You asked for this in the plan."
+NO_WELLS = "This step uses no wells."
+BOTTOM_MEASURED = "Bottom measured in Well center"
+BOTTOM_DRAWN = "Bottom from the plate drawing"
+TOP_NOTE = "Top of the well"
+MIDDLE_NOTE = "Middle of the well"
 
 # The Add a step menu: (kind, on screen, its help line).
 KINDS = (
@@ -90,14 +107,22 @@ KINDS = (
     ("wait_for_me", "Wait for me", "The robot stops until you press Continue."),
 )
 
-# What a kind asks on the left: (the step's field, its row).
-SECTIONS = {
-    "move_liquid": (("source", "Take from"), ("dest", "Put into")),
-    "mix": (("wells", "Wells"),),
-    "move_tip": (("place", "Where"),),
-}
 # The section of the Trash row, for the plan and not a step.
 TRASH = "trash"
+# What a section's row says it is, and in which color.
+LABELS = {"source": ("Take from", "tips"), "dest": ("Put into", "plate"),
+          "wells": ("Wells", "plate"), "place": ("Where", "plate"),
+          "amount": ("Amount", "text-2"), "extras": ("Extras", "text-2"),
+          "how": ("How", "text-2"), "wait": ("How long", "text-2"),
+          "message": ("Message", "text-2")}
+# section -> (caption, title), of a section answered with fields.
+ANSWERS = {
+    "amount": ("AMOUNT AND HEIGHT", "How much, and how deep the tip goes"),
+    "extras": ("EXTRAS", "Anything else in this step?"),
+    "how": ("HOW", "How is it done?"),
+    "wait": ("WAIT", "How long does the robot wait?"),
+    "message": ("WAIT FOR ME", "What should the robot say?"),
+}
 # section -> (caption, title, the hint under the plate, its color).
 QUESTIONS = {
     "source": ("TAKE FROM", "Where is the liquid taken from?",
@@ -111,10 +136,18 @@ QUESTIONS = {
     TRASH: ("THE TRASH", "Where does leftover liquid go?",
             "Click the well that is the trash.", "plate"),
 }
+BLOW_OUT_QUESTION = ("WHERE", "Where is the tip blown out?", "Click a well.",
+                     "plate")
+# The kinds a place can be: (place kind, on screen), by what asks it. One
+# choice is no choice, and a section without an entry has only wells.
+CHOICES = {
+    "dest": (("wells", "Wells"), ("trash", "Trash")),
+    "blow_out": (("wells", "A well"), ("trash", "Trash")),
+}
 # Sections that are one well: a click replaces it.
 ONE_WELL = ("place", TRASH)
 
-# The prototype's heights (LiquidPlan.dc.html), until the Amount fields.
+# The heights a new step starts from (LiquidPlan.dc.html).
 TAKE_AT = Height(ref="bottom", offset_mm=2.0)
 PUT_AT = Height(ref="top", offset_mm=-1.0)
 
@@ -138,8 +171,58 @@ def new_step(step_kind: str, color: str):
     }[step_kind]()
 
 
+def sections(step) -> tuple:
+    """What an open step asks, in order."""
+    if step.kind == "move_liquid":
+        return ("source", "dest", "amount", "extras")
+    if step.kind == "mix":
+        return ("wells", "how")
+    if step.kind == "blow_out":
+        return ("place", "how")
+    if step.kind == "move_tip":
+        return ("place", "how") if uses_height(step) else ("place",)
+    return ("wait",) if step.kind == "wait" else ("message",)
+
+
 def amount(step: MoveLiquid) -> str:
-    return f"{step.volume_ul:g} µl per well · {step.take_flow_ul_s:g} µl/s"
+    take, put = step.take_flow_ul_s, step.put_flow_ul_s
+    speed = f"{take:g} µl/s" if take == put else f"{take:g} and {put:g} µl/s"
+    return f"{step.volume_ul:g} µl per well · {speed}"
+
+
+def extras(step: MoveLiquid) -> str:
+    """The extras that are on, in a few words."""
+    said = [text for on, text in (
+        (step.mix_after and step.dest.kind == "wells", "mix after"),
+        (step.pause_after_first, "pause after the first well"),
+        (step.slow_lift and step.source.kind == "wells", "lift out slowly"),
+        (step.wait_after_s > 0, f"wait {step.wait_after_s:g} s"),
+        (not step.empty_at_end, "keep what is left")) if on]
+    return ", ".join(said) or "none"
+
+
+def how(step) -> str:
+    if step.kind == "mix":
+        return (f"{step.cycles}× · {step.volume_ul:g} µl · "
+                f"{step.flow_ul_s:g} µl/s")
+    if step.kind == "blow_out":
+        return f"{step.flow_ul_s:g} µl/s"
+    return "at its height"
+
+
+def section_value(step, section: str) -> str:
+    """What a section's row says was answered."""
+    if section == "amount":
+        return amount(step)
+    if section == "extras":
+        return extras(step)
+    if section == "how":
+        return how(step)
+    if section == "wait":
+        return duration(step.seconds)
+    if section == "message":
+        return step.message or "choose"
+    return chip(getattr(step, section))
 
 
 def trash_place(trash: Location) -> str:
@@ -188,12 +271,11 @@ class _OpenCard(QWidget):
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 4, 0, 0)
         column.setSpacing(4)
-        self.rows = [_Row(self), _Row(self)]
+        self.rows = [_Row(self) for _section in range(4)]
         for row in self.rows:
             column.addWidget(row)
-        self.amount = muted_label("", self)
-        self.amount.setContentsMargins(8, 0, 8, 0)
-        column.addWidget(self.amount)
+        self.form = StepForm(self)
+        column.addWidget(self.form)
         buttons = QHBoxLayout()
         buttons.setContentsMargins(0, 6, 0, 0)
         self.delete_button = danger_text_button("Delete", self)
@@ -241,6 +323,7 @@ class LiquidPlanPage(QWidget):
         self._overview_slot: str | None = None
         self._accepted: set[tuple[str, str]] = set()   # Use anyway
         self._locked = False
+        self._typing: str | None = None          # the field of the last undo
         self._shown_steps: tuple | None = None
 
         self._save_timer = QTimer(self)
@@ -255,9 +338,9 @@ class LiquidPlanPage(QWidget):
         self.left = QStackedWidget(self)
         self.empty_box = self._empty()
         self.question = self._question()
-        self.into_trash = self._into_trash()
+        self.answer = self._answer()
         self.overview = self._overview()
-        for widget in (self.empty_box, self.question, self.into_trash,
+        for widget in (self.empty_box, self.question, self.answer,
                        self.overview):
             self.left.addWidget(widget)
         layout.addWidget(self.left, 1)
@@ -310,11 +393,28 @@ class LiquidPlanPage(QWidget):
         titles.addWidget(self.question_caption)
         titles.addWidget(self.question_title)
         top.addLayout(titles, 1)
-        self.dest_kind = Segmented(["Wells", "Trash"], parent=box)
-        self.dest_kind.changed.connect(self._dest_kind_chosen)
-        top.addWidget(self.dest_kind)
+        self.kinds: dict[str, Segmented] = {}
+        for key, choices in CHOICES.items():
+            self.kinds[key] = Segmented([text for _kind, text in choices],
+                                        parent=box)
+            self.kinds[key].changed.connect(
+                lambda index, key=key: self._kind_chosen(key, index))
+            top.addWidget(self.kinds[key])
+        self.dest_kind = self.kinds["dest"]
         column.addLayout(top)
+        self.question_body = QStackedWidget(box)
+        self.on_plate = self._on_plate()
+        self.into_trash = self._into_trash()
+        for widget in (self.on_plate, self.into_trash):
+            self.question_body.addWidget(widget)
+        column.addWidget(self.question_body, 1)
+        return box
 
+    def _on_plate(self) -> QWidget:
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
         tools = QHBoxLayout()
         self.dropdown = MiniDeckDropdown(box, placeholder="Choose the plate")
         self.dropdown.slot_chosen.connect(self._plate_chosen)
@@ -359,13 +459,7 @@ class LiquidPlanPage(QWidget):
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        column.addWidget(caption("PUT INTO", box))
-        top = QHBoxLayout()
-        top.addWidget(heading("Into the trash", 2, box), 1)
-        self.trash_kind = Segmented(["Wells", "Trash"], current=1, parent=box)
-        self.trash_kind.changed.connect(self._dest_kind_chosen)
-        top.addWidget(self.trash_kind)
-        column.addLayout(top)
+        column.addWidget(heading("Into the trash", 3, box))
         self.trash_where = muted_label("", box)
         column.addWidget(self.trash_where)
         self.trash_rule = muted_label("", box)
@@ -374,6 +468,78 @@ class LiquidPlanPage(QWidget):
         self.change_trash_button.clicked.connect(self._choose_trash)
         column.addWidget(self.change_trash_button,
                          alignment=Qt.AlignmentFlag.AlignLeft)
+        column.addStretch(1)
+        return box
+
+    def _answer(self) -> QWidget:
+        """The left side of a section answered in the card."""
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        self.answer_caption = caption("", box)
+        self.answer_title = heading("", 2, box)
+        column.addWidget(self.answer_caption)
+        column.addWidget(self.answer_title)
+        self.answer_body = QStackedWidget(box)
+        self.heights_box = self._heights()
+        self.step_plate_box = self._step_plate()
+        self.wait_box = self._wait_shown()
+        self.message_box = self._message_shown()
+        for widget in (self.heights_box, self.step_plate_box, self.wait_box,
+                       self.message_box):
+            self.answer_body.addWidget(widget)
+        column.addWidget(self.answer_body, 1)
+        return box
+
+    def _heights(self) -> QWidget:
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        row.setSpacing(SPACING * 3)
+        self.take_section = WellSection(box)
+        self.put_section = WellSection(box)
+        row.addWidget(self.take_section, 1)
+        row.addWidget(self.put_section, 1)
+        column.addLayout(row, 1)
+        self.no_height = muted_label(NO_HEIGHT, box)
+        column.addWidget(self.no_height)
+        return box
+
+    def _step_plate(self) -> QWidget:
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        self.step_plate_name = muted_label("", box)
+        column.addWidget(self.step_plate_name)
+        self.step_plate = PlateGrid(parent=box)
+        self.step_plate.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        column.addWidget(self.step_plate, 1)
+        return box
+
+    def _wait_shown(self) -> QWidget:
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.addStretch(1)
+        self.wait_time = heading("", 1, box)
+        column.addWidget(self.wait_time, alignment=Qt.AlignmentFlag.AlignHCenter)
+        column.addWidget(muted_label(WAIT_HELP, box),
+                         alignment=Qt.AlignmentFlag.AlignHCenter)
+        column.addStretch(1)
+        return box
+
+    def _message_shown(self) -> QWidget:
+        box = QWidget(self)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        column.addWidget(muted_label("The Run step will show:", box))
+        self.message_strip = Banner("", tone="warn", parent=box)
+        column.addWidget(self.message_strip)
+        column.addWidget(muted_label(WAITING_WHY, box))
         column.addStretch(1)
         return box
 
@@ -428,7 +594,17 @@ class LiquidPlanPage(QWidget):
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         row.addWidget(self.trash_text, 1)
         row.addWidget(self.trash_action)
-        column.addWidget(self.trash_row)
+        self.trash_text.setWordWrap(True)
+        beside = QHBoxLayout()
+        beside.addWidget(self.trash_row, 1)
+        beside.addWidget(QLabel("A tip holds", panel))
+        self.tip_ul = double_spin_box(panel)
+        self.tip_ul.setRange(1, MAX_TIP_UL)
+        self.tip_ul.setDecimals(0)
+        self.tip_ul.setSuffix(" µl")
+        self.tip_ul.valueChanged.connect(self._tip_typed)
+        beside.addWidget(self.tip_ul)
+        column.addLayout(beside)
 
         self.step_list = StepList(panel)
         self.step_list.moveRequested.connect(self._moved)
@@ -458,6 +634,7 @@ class LiquidPlanPage(QWidget):
         self.card.hide()
         self.next_button = self.card.next_button
         self.next_button.clicked.connect(self._next_section)
+        self.card.form.edited.connect(self._edited)
         self.card.delete_button.clicked.connect(
             lambda: self.delete_step(self.open_id))
         for n, row_ in enumerate(self.card.rows):
@@ -521,9 +698,12 @@ class LiquidPlanPage(QWidget):
         """A copy of the plan to change and give to `_commit`."""
         return self.plan.model_copy(deep=True)
 
-    def _commit(self, plan: LiquidPlan) -> None:
-        """`plan` is the plan now: one undo."""
-        self._undo.append(self.plan)
+    def _commit(self, plan: LiquidPlan, typing: str | None = None) -> None:
+        """`plan` is the plan now: one undo, with what was before it. Typing
+        on in the same field (`typing`) is still that undo."""
+        if typing is None or typing != self._typing:
+            self._undo.append(self.plan)
+        self._typing = typing
         self._redo.clear()
         self._adopt(plan)
 
@@ -535,11 +715,13 @@ class LiquidPlanPage(QWidget):
 
     def undo(self) -> None:
         if self._undo and not self._locked:
+            self._typing = None
             self._redo.append(self.plan)
             self._adopt(self._undo.pop())
 
     def redo(self) -> None:
         if self._redo and not self._locked:
+            self._typing = None
             self._undo.append(self.plan)
             self._adopt(self._redo.pop())
 
@@ -569,6 +751,20 @@ class LiquidPlanPage(QWidget):
                                "color": plan.next_color()}))
         self._commit(plan)
 
+    def _edited(self, key: str, values: dict) -> None:
+        """A field of the open card."""
+        plan = self._edit()
+        step = plan.steps[self._index(self.open_id)]
+        for field, value in values.items():
+            setattr(step, field, value)
+        self._commit(plan, typing=f"{step.id}:{key}")
+
+    def _tip_typed(self, value: float) -> None:
+        if value != self.plan.tip_ul:
+            plan = self._edit()
+            plan.tip_ul = value
+            self._commit(plan, typing="tip_ul")
+
     def _moved(self, step_id: str, to: int) -> None:
         self._commit(move_step(self.plan, self._index(step_id), to))
         show_toast(self, f"Step moved to position {to + 1}")
@@ -583,7 +779,7 @@ class LiquidPlanPage(QWidget):
 
     def _sections(self) -> tuple:
         step = self._open_step()
-        return SECTIONS.get(step.kind, ()) if step is not None else ()
+        return sections(step) if step is not None else ()
 
     def _opened(self, step_id: str) -> None:
         """The one card's rows go into the card that is open."""
@@ -598,24 +794,25 @@ class LiquidPlanPage(QWidget):
         else:
             self.card.hide()
             self.card.setParent(self)
-        sections = self._sections()
-        self.section = sections[0][0] if sections else None
+        asked = self._sections()
+        self.section = asked[0] if asked else None
         self._show_card()
         self._show_left()
 
     def _select(self, section: str | None) -> None:
         self.section = section
+        self._typing = None
         self._show_card()
         self._show_left()
 
     def _row_clicked(self, n: int) -> None:
-        self._select(self._sections()[n][0])
+        self._select(self._sections()[n])
 
     def _next_section(self) -> None:
-        sections = [role for role, _label in self._sections()]
-        at = sections.index(self.section) if self.section in sections else -1
-        if at + 1 < len(sections):
-            self._select(sections[at + 1])
+        asked = self._sections()
+        at = asked.index(self.section) if self.section in asked else -1
+        if at + 1 < len(asked):
+            self._select(asked[at + 1])
             return
         number = self._index(self.open_id) + 1
         self.step_list.set_open("")
@@ -625,20 +822,19 @@ class LiquidPlanPage(QWidget):
         step = self._open_step()
         if step is None:
             return
-        sections = self._sections()
+        asked = self._sections()
+        if self.section not in (*asked, TRASH):  # a place changed what it asks
+            self.section = asked[-1]
         for n, row in enumerate(self.card.rows):
-            row.setVisible(n < len(sections))
-            if n < len(sections):
-                role, label = sections[n]
-                row.show_row(label, chip(getattr(step, role)),
-                             QUESTIONS[role][3], role == self.section)
-        self.card.amount.setVisible(step.kind == "move_liquid")
-        if step.kind == "move_liquid":
-            self.card.amount.setText(amount(step))
-        roles = [role for role, _label in sections]
-        at = roles.index(self.section) if self.section in roles else -1
-        self.next_button.setText(f"Next: {sections[at + 1][1]}"
-                                 if at + 1 < len(sections) else "Done")
+            row.setVisible(n < len(asked))
+            if n < len(asked):
+                label, color = LABELS[asked[n]]
+                row.show_row(label, section_value(step, asked[n]), color,
+                             asked[n] == self.section)
+        self.card.form.show_section(step, self.section)
+        at = asked.index(self.section) if self.section in asked else -1
+        self.next_button.setText(f"Next: {LABELS[asked[at + 1]][0]}"
+                                 if at + 1 < len(asked) else "Done")
 
     # -- the wells -----------------------------------------------------------
 
@@ -665,7 +861,7 @@ class LiquidPlanPage(QWidget):
     def _shown_place(self) -> Place | None:
         """The place the section asks about; None for the trash."""
         step = self._open_step()
-        if step is None or self.section in (None, TRASH):
+        if step is None or self.section in (None, TRASH, *ANSWERS):
             return None
         return getattr(step, self.section)
 
@@ -736,14 +932,15 @@ class LiquidPlanPage(QWidget):
                 self.section not in ONE_WELL) and not self._locked:
             self.plate.select_all()
 
-    def _dest_kind_chosen(self, index: int) -> None:
+    def _kind_chosen(self, key: str, index: int) -> None:
         """A click on the kind already chosen is one too: it keeps the
         wells."""
         plan = self._edit()
         step = plan.steps[self._index(self.open_id)]
-        if (step.dest.kind == "trash") == bool(index):
+        place_kind = CHOICES[key][index][0]
+        if getattr(step, self.section).kind == place_kind:
             return
-        step.dest = Place(kind="trash" if index else "wells")
+        setattr(step, self.section, Place(kind=place_kind))
         self._commit(plan)
 
     def _use_anyway(self) -> None:
@@ -800,8 +997,8 @@ class LiquidPlanPage(QWidget):
         self.step_list.setVisible(has_steps)
         self.spacer.setVisible(not has_steps)
         self.locked_note.setVisible(locked)
-        for widget in (self.new_plan_button, self.trash_row, self.add_button,
-                       self.card, self.first_step_button):
+        for widget in (self.new_plan_button, self.trash_row, self.tip_ul,
+                       self.add_button, self.card, self.first_step_button):
             widget.setEnabled(not locked)
         self._show_trash_row()
         self._show_card()
@@ -813,6 +1010,10 @@ class LiquidPlanPage(QWidget):
             f"Trash · {trash_place(trash)} · used by every step"
             if trash is not None else "Not set yet. Needed before running.")
         self.trash_action.setText("Change" if trash is not None else "Set")
+        if self.tip_ul.value() != self.plan.tip_ul:
+            self.tip_ul.blockSignals(True)
+            self.tip_ul.setValue(self.plan.tip_ul)
+            self.tip_ul.blockSignals(False)
         missing = trash is None
         if self.trash_row.property("missing") != missing:
             self.trash_row.setProperty("missing", missing)
@@ -821,31 +1022,52 @@ class LiquidPlanPage(QWidget):
 
     def _show_left(self) -> None:
         step = self._open_step()
-        place = self._shown_place()
-        if self.section == TRASH or (place is not None
-                                     and place.kind == "wells"):
+        if self.section in ANSWERS and step is not None:
+            self._show_answer(step)
+            self.left.setCurrentWidget(self.answer)
+        elif self.section == TRASH or self._shown_place() is not None:
             self._show_question(step)
             self.left.setCurrentWidget(self.question)
-        elif place is not None and place.kind == "trash":
-            self._show_into_trash(step)
-            self.left.setCurrentWidget(self.into_trash)
         elif self.plan.steps:
             self._show_overview()
             self.left.setCurrentWidget(self.overview)
         else:
             self.left.setCurrentWidget(self.empty_box)
 
+    def _choice(self, step) -> str | None:
+        """What in `CHOICES` asks the section shown."""
+        if self.section == "place":
+            return step.kind if step.kind in CHOICES else None
+        return self.section if self.section in CHOICES else None
+
     def _show_question(self, step) -> None:
         section = self.section
-        title_caption, title, hint, color = QUESTIONS[section]
+        asked = (BLOW_OUT_QUESTION if section == "place"
+                 and step.kind == "blow_out" else QUESTIONS[section])
+        title_caption, title, _hint, color = asked
         number = (f"STEP {self._index(step.id) + 1} · "
                   if section != TRASH else "")
         self.question_caption.setText(number + title_caption)
         self.question_caption.setStyleSheet(f"color: {COLORS[color]};")
         self.question_title.setText(title)
-        self.dest_kind.setVisible(section == "dest")
-        self.dest_kind.set_current(0)
+        place = self._shown_place()
+        place_kind = "wells" if place is None else place.kind
+        choice = self._choice(step) if step is not None else None
+        for key, control in self.kinds.items():
+            control.setVisible(key == choice)
+            if key == choice:
+                control.set_current([k for k, _text in CHOICES[key]]
+                                    .index(place_kind))
+        if place_kind == "trash":
+            self._show_into_trash(step)
+            self.question_body.setCurrentWidget(self.into_trash)
+        else:
+            self._show_plate(step, asked)
+            self.question_body.setCurrentWidget(self.on_plate)
 
+    def _show_plate(self, step, asked: tuple) -> None:
+        section = self.section
+        _caption, _title, hint, color = asked
         held = self._plates()
         slot = self._shown_slot()
         entry = held.get(slot)
@@ -899,15 +1121,82 @@ class LiquidPlanPage(QWidget):
 
     def _show_into_trash(self, step) -> None:
         trash = self.plan.trash
-        self.trash_kind.set_current(1)
         self.trash_where.setText(
             f"{trash_place(trash)}. It is set once for the whole plan; every "
             "step can use it." if trash is not None
             else "The trash is not set yet.")
-        self.trash_rule.setText(pairing(step).sentence)
+        self.trash_rule.setText(pairing(step).sentence
+                                if step.kind == "move_liquid" else "")
         self.change_trash_button.setText(
             "Change where the trash is" if trash is not None
             else "Set the trash")
+
+    def _show_answer(self, step) -> None:
+        section = self.section
+        title_caption, title = ANSWERS[section]
+        self.answer_caption.setText(
+            f"STEP {self._index(step.id) + 1} · {title_caption}")
+        self.answer_title.setText(title)
+        if section in ("amount", "how"):
+            self._show_heights(step)
+            self.answer_body.setCurrentWidget(self.heights_box)
+        elif section == "extras":
+            self._show_step_plate(step)
+            self.answer_body.setCurrentWidget(self.step_plate_box)
+        elif section == "wait":
+            self.wait_time.setText(duration(step.seconds))
+            self.answer_body.setCurrentWidget(self.wait_box)
+        else:
+            self.message_strip.set_text(step.message)
+            self.answer_body.setCurrentWidget(self.message_box)
+
+    def _note(self, height: Height, slot: str | None) -> str:
+        """Where the height comes from, as the plate is now."""
+        if height.ref != "bottom":
+            return TOP_NOTE if height.ref == "top" else MIDDLE_NOTE
+        plate = self.session.liquid_plates().get(slot)
+        return (BOTTOM_MEASURED if plate is not None and plate.has_bottom
+                else BOTTOM_DRAWN)
+
+    def _depth(self, slot: str | None) -> float | None:
+        entry = self._plates().get(slot)
+        return well_depth(entry[1]) if entry is not None else None
+
+    def _show_heights(self, step) -> None:
+        if step.kind == "move_liquid":
+            shown = [(step.source, "Take it at", "tips", step.take_at),
+                     (step.dest, "Put it at", "plate", step.put_at)]
+        else:
+            place = step.wells if step.kind == "mix" else step.place
+            shown = [(place, "Height", "plate", step.at), None]
+        sections_ = (self.take_section, self.put_section)
+        used = False
+        for section, end in zip(sections_, shown):
+            wells = end is not None and end[0].kind == "wells"
+            section.setVisible(wells)
+            if wells:
+                used = True
+                place, title, color, height = end
+                section.show_height(title, color, height,
+                                    self._note(height, place.slot),
+                                    self._depth(place.slot))
+        self.no_height.setVisible(not used)
+
+    def _show_step_plate(self, step) -> None:
+        """The wells it puts into, else those it takes from."""
+        place = next((p for p in (step.dest, step.source)
+                      if p.kind == "wells" and not p.empty), None)
+        self.step_plate.setVisible(place is not None)
+        self.step_plate_name.setText(chip(place) if place is not None
+                                     else NO_WELLS)
+        if place is None:
+            return
+        entry = self._plates().get(place.slot)
+        if self.step_plate.property("slot") != place.slot:
+            self.step_plate.setProperty("slot", place.slot)
+            self.step_plate.set_ordering(entry[1].ordering if entry else [])
+        self.step_plate.set_fills({well: step.color for well in place.wells})
+        self.step_plate.set_dim_fills(self._fills(place.slot))
 
     def _show_overview(self) -> None:
         steps = self.plan.steps

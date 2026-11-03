@@ -10,9 +10,9 @@ from micropick.core.liquid import (Aspirate, BlowOut, Dispense, Location, Mix,
 from micropick.core.liquid_plan import (CARRIER_SLOT, BlowOutStep, Height,
                                         LiquidPlan, MixStep, MoveLiquid,
                                         MoveTip, Place, Spot, WaitForMe,
-                                        WaitStep, compile_step, move_step,
-                                        pairing, spot_name, step_chips,
-                                        step_title)
+                                        WaitStep, compile_step, height_words,
+                                        move_step, pairing, spot_name,
+                                        step_chips, step_title)
 
 ORDERING = [["A1", "B1"], ["A2", "B2"], ["A3", "B3"]]
 
@@ -475,3 +475,22 @@ def test_a_steps_title_is_the_verb_of_its_sentence(step, title):
 ])
 def test_a_steps_chips_are_its_places(step, chips):
     assert step_chips(step) == chips
+
+
+@pytest.mark.parametrize("height, words", [
+    (Height(ref="bottom", offset_mm=2), "2 mm above the bottom"),
+    (Height(ref="bottom", offset_mm=-0.5), "0.5 mm below the bottom"),
+    (Height(ref="bottom"), "at the bottom"),
+    (Height(ref="top", offset_mm=-1), "1 mm below the top"),
+    (Height(ref="top", offset_mm=3), "3 mm above the top"),
+    (Height(ref="top"), "at the top"),
+    (Height(ref="middle"), "in the middle"),
+    (Height(ref="middle", offset_mm=1.5), "1.5 mm above the middle"),
+    (Height(ref="bottom", offset_mm=2.5, aside_x_mm=-2),
+     "2.5 mm above the bottom, 2 mm to the left"),
+    (Height(ref="top", aside_x_mm=1, aside_y_mm=-3),
+     "at the top, 1 mm to the right, 3 mm to the front"),
+    (Height(ref="top", aside_y_mm=0.5), "at the top, 0.5 mm to the back"),
+])
+def test_a_height_reads_as_words_never_plus_and_minus(height, words):
+    assert height_words(height) == words

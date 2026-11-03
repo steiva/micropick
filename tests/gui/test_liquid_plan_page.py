@@ -101,6 +101,13 @@ def _run_to_the_end(app, window):
     assert run._ended == "done", run._outcome
 
 
+def _done(page):
+    """Next through what is left of the open card, then Done."""
+    while page.next_button.text() != "Done":
+        page.next_button.click()
+    page.next_button.click()
+
+
 def _taken_and_put(window):
     calls = window.session.robot.calls
     return ([c[2] for c in calls if c[0] == "aspirate"],
@@ -115,7 +122,7 @@ def test_a_wells_to_wells_step_is_built_by_mouse_and_runs(app, window, page):
     page.next_button.click()
     assert page.section == "dest"
     _click(app, page, "B1", "B2")
-    page.next_button.click()                       # Done
+    _done(page)
     _run_to_the_end(app, window)
     taken, put = _taken_and_put(window)
     assert taken[-2:] == ["A1", "A2"]
@@ -129,7 +136,7 @@ def test_a_wells_to_trash_step_is_built_by_mouse_and_runs(app, window, page):
     page.next_button.click()
     page.dest_kind.buttons[1].click()              # Trash
     assert page.into_trash.isVisibleTo(page)
-    page.next_button.click()
+    _done(page)
     assert page.step_list.cards()[0].title.text() == "Empty 3 wells"
     _run_to_the_end(app, window)
     taken, put = _taken_and_put(window)
@@ -152,7 +159,7 @@ def test_from_is_asked_before_to_and_the_rule_says_what_would_work(app, page):
     _click(app, page, "A1", "A2", "A3")
     page.next_button.click()
     assert page.question_caption.text() == "STEP 1 · PUT INTO"
-    assert page.next_button.text() == "Done"
+    assert page.next_button.text() == "Next: Amount"
     assert page.rule.text() == "Click the wells it goes into."
     _click(app, page, "B1", "B2")
     assert page.rule.text() == "ⓘ Take from 1 well, or from as many wells as it goes into (2)."
@@ -168,16 +175,15 @@ def test_a_card_with_a_problem_says_not_finished_and_choose(app, page):
     card = page.step_list.cards()[0]
     rows = page.card.rows
     assert [(r.label.text(), r.value.text()) for r in rows] == [
-        ("Take from", "choose"), ("Put into", "choose")]
+        ("Take from", "choose"), ("Put into", "choose"),
+        ("Amount", "50 µl per well · 10 µl/s"), ("Extras", "none")]
     assert rows[0].value.property("missing") is True
-    assert page.card.amount.text() == "50 µl per well · 10 µl/s"
     assert [c.text() for c in card.chips] == ["choose", "choose"]
     assert not card.warning.isVisibleTo(page)      # open: the rows say it
     _click(app, page, "A1")
     assert rows[0].value.text() == "Slot 5 · A1"
     assert rows[0].value.property("missing") is False
-    page.next_button.click()
-    page.next_button.click()                       # Done, with nothing chosen
+    _done(page)                                    # with nothing chosen
     assert card.warning.isVisibleTo(page)
     assert card.warning.text() == "Not finished"
     assert card.chips[1].text() == "choose"
@@ -225,7 +231,7 @@ def _three_steps(app, page):
         _click(app, page, f"{row}1")
         page.next_button.click()
         _click(app, page, f"{row}2")
-        page.next_button.click()
+        _done(page)
     app.processEvents()
     return [s.id for s in page.plan.steps]
 
@@ -306,9 +312,9 @@ def test_the_kind_already_chosen_keeps_the_wells(app, page):
     page.dest_kind.buttons[0].click()              # Wells, as it was
     assert page.plan.steps[0].dest.wells == ["B1"]
     page.dest_kind.buttons[1].click()
-    page.trash_kind.buttons[1].click()             # Trash, as it was
+    page.dest_kind.buttons[1].click()              # Trash, as it was
     assert page.plan.steps[0].dest.kind == "trash"
-    page.trash_kind.buttons[0].click()
+    page.dest_kind.buttons[0].click()
     assert page.left.currentWidget() is page.question
     page.undo()
     page.undo()
@@ -398,7 +404,7 @@ def test_add_a_step_lists_every_kind_with_its_help_line(app, page):
     page.add_menu.actions()[4].trigger()           # Wait
     assert page.plan.steps[0].kind == "wait"
     assert page.open_id == page.plan.steps[0].id
-    assert page.left.currentWidget() is page.overview
+    assert page.left.currentWidget() is page.answer
     assert page.next_button.text() == "Done"
 
 
@@ -506,7 +512,7 @@ def test_a_plate_taken_off_the_deck_makes_the_step_not_finished(app, window,
     _click(app, page, "A1")
     page.next_button.click()
     _click(app, page, "B1")
-    page.next_button.click()
+    _done(page)
     assert window.footer.next.isEnabled()
     window.session.run_state.labware.pop("5")
     window.session.labware_changed.emit(window.session.run_state)
@@ -526,8 +532,271 @@ def test_no_internal_word_is_on_the_screen(app, page):
     _click(app, page, "A1")
     page.next_button.click()
     page.dest_kind.buttons[1].click()
-    page.next_button.click()
+    _done(page)
     widgets = (page.findChildren(QLabel) + page.findChildren(QAbstractButton)
                + page.add_menu.findChildren(QLabel))
     said = [w.text() for w in widgets] + [w.toolTip() for w in widgets]
     assert not [text for text in said if banned.search(text)]
+
+
+# -- Amount, Extras and the other kinds (#73) ---------------------------------
+
+
+def _to_section(page, name):
+    while page.section != name:
+        page.next_button.click()
+
+
+def _type(box, value):
+    box.selectAll()
+    QTest.keyClicks(box, str(value))
+
+
+def _step(page, index=0):
+    return page.plan.steps[index]
+
+
+def test_the_drawing_and_its_sentence_follow_the_fields_live(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    page.next_button.click()
+    assert page.question_caption.isHidden() or page.section == "amount"
+    assert page.answer_caption.text() == "STEP 1 · AMOUNT AND HEIGHT"
+    form = page.card.form
+    take, put = page.take_section, page.put_section
+    assert take.sentence.text() == "2 mm above the bottom"
+    assert put.sentence.text() == "1 mm below the top"
+    before = take.drawing.tip_y()
+    _type(form.take_at.offset, "4")
+    assert take.sentence.text() == "4 mm above the bottom"
+    assert take.drawing.tip_y() < before           # higher up the picture
+    _type(form.take_at.offset, "-1")
+    assert take.sentence.text() == "1 mm below the bottom"
+    form.put_at.ref.setCurrentIndex(form.put_at.ref.findData("middle"))
+    _type(form.put_at.offset, "0")
+    assert put.sentence.text() == "in the middle"
+    assert "+" not in take.sentence.text() + put.sentence.text()
+    assert "−" not in take.sentence.text() + put.sentence.text()
+
+
+def test_the_note_says_where_the_bottom_comes_from(app, window, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    page.next_button.click()
+    assert page.take_section.note.text() == "Bottom from the plate drawing"
+    assert page.put_section.note.text() == "Top of the well"
+    session = window.session
+    session.set_well_center("5", PLATE, (0.1, 0.2, 40.0), "A1", 10.0)
+    page._show()
+    assert page.take_section.note.text() == "Bottom measured in Well center"
+
+
+def test_take_fields_only_for_wells_and_put_fields_only_for_wells(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    page.dest_kind.buttons[1].click()              # Trash
+    page.next_button.click()
+    form = page.card.form
+    assert form.take_at.isVisibleTo(page)
+    assert not form.put_at.isVisibleTo(page)
+    assert page.take_section.isVisibleTo(page)
+    assert not page.put_section.isVisibleTo(page)
+
+
+def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
+                                                                    window,
+                                                                    page):
+    """Notebook 03's wash: take beside the cuboid, slowly, empty fast; refill
+    from the reservoir, checking the first well."""
+    from micropick.core.liquid_plan import compile_step
+    _set_trash(app, page)
+    page.first_step_button.click()
+    _click(app, page, "A1", "A2", "A3")
+    page.next_button.click()
+    page.dest_kind.buttons[1].click()              # Trash
+    page.next_button.click()
+    form = page.card.form
+    _type(form.volume, "100")
+    _type(form.put_flow, "200")
+    _type(form.take_at.offset, "2.5")
+    _type(form.take_at.aside_x, "-2")
+    page.next_button.click()
+    assert page.section == "extras"
+    form.slow_lift.click()
+    page.next_button.click()                       # Done
+
+    page.add_step("move_liquid")
+    _click(app, page, "H1")
+    page.next_button.click()
+    _click(app, page, "A1", "A2", "A3")
+    _to_section(page, "extras")
+    form.pause_after_first.click()
+    assert page.card.rows[3].value.text() == "pause after the first well"
+    page.next_button.click()
+
+    plates = window.session.liquid_plates()
+    first = compile_step(page.plan, 0, plates).groups[0]
+    take, put = first.steps
+    assert first.wells == ["A1", "A2", "A3"]
+    assert take.volume_ul == 100 and take.flow_rate == 10
+    assert take.location.offset == [-2, 0, 2.5]
+    assert (take.lift_steps, take.lift_step_mm, take.lift_pause_s) == (
+        4, 0.1, 0.2)
+    assert put.auto_empty and put.flow_rate == 200
+    second = compile_step(page.plan, 1, plates).groups[0]
+    assert second.pause_after_first
+
+
+def test_extras_show_the_steps_plate_to_look_at(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1", "B2")
+    _to_section(page, "extras")
+    assert page.answer_title.text() == "Anything else in this step?"
+    assert page.step_plate.isVisibleTo(page)
+    assert set(page.step_plate._fills) == {"B1", "B2"}
+    assert page.step_plate.testAttribute(
+        Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    assert page.step_plate_name.text() == "Slot 5 · B1–B2 (2)"
+
+
+def test_extras_follow_the_ends_of_the_step(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    page.dest_kind.buttons[1].click()              # Trash
+    _to_section(page, "extras")
+    form = page.card.form
+    assert not form.mix_box.isVisibleTo(page)      # the destination is no well
+    assert form.lift_box.isVisibleTo(page)
+    assert form.empty_at_end.isChecked()
+
+
+def test_mixing_after_opens_its_times_and_volume(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    _to_section(page, "extras")
+    form = page.card.form
+    assert not form.mix_fields.isVisibleTo(page)
+    form.mix_after.click()
+    assert form.mix_fields.isVisibleTo(page)
+    _type(form.mix_cycles, "5")
+    _type(form.mix_ul, "30")
+    assert form.mix_help.text() == "Pipettes up and down 5 times in each well."
+    assert (_step(page).mix_cycles, _step(page).mix_ul) == (5, 30)
+
+
+def test_digits_typed_into_a_field_are_one_undo(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    page.next_button.click()
+    box = page.card.form.volume
+    _type(box, "120")
+    assert _step(page).volume_ul == 120
+    assert box.value() == 120
+    page.undo()
+    assert _step(page).volume_ul == 50
+    assert box.value() == 50
+    page.redo()
+    assert _step(page).volume_ul == 120
+
+
+def test_what_a_tip_holds_is_beside_the_trash_row(app, page):
+    assert page.tip_ul.value() == page.plan.tip_ul
+    _type(page.tip_ul, "300")
+    assert page.plan.tip_ul == 300
+    page.undo()
+    assert page.tip_ul.value() == page.plan.tip_ul != 300
+
+
+def test_a_wait_shows_its_time_and_says_stop_still_works(app, page):
+    page.add_step("wait")
+    form = page.card.form
+    assert page.card.rows[0].label.text() == "How long"
+    assert page.answer_body.currentWidget() is page.wait_box
+    _type(form.minutes, "5")
+    _type(form.seconds, "0")
+    assert _step(page).seconds == 300
+    assert page.wait_time.text() == "5 min"
+    assert page.step_list.cards()[0].title.text() == "Wait 5 min"
+
+
+def test_a_wait_for_me_previews_its_message(app, page):
+    page.add_step("wait_for_me")
+    form = page.card.form
+    form.message.clear()
+    QTest.keyClicks(form.message, "Add the drug")
+    assert _step(page).message == "Add the drug"
+    assert page.message_strip.label.text() == "Add the drug"
+
+
+def test_a_blow_out_goes_to_the_trash_or_a_well(app, page):
+    page.add_step("blow_out")
+    assert page.question_title.text() == "Where is the tip blown out?"
+    assert page.into_trash.isVisibleTo(page)
+    page.kinds["blow_out"].buttons[0].click()      # A well
+    _click(app, page, "C3")
+    assert _step(page).place.wells == ["C3"]
+    page.next_button.click()
+    form = page.card.form
+    _type(form.how_flow, "75")
+    assert _step(page).flow_ul_s == 75
+    assert form.at.isVisibleTo(page)
+    assert page.take_section.isVisibleTo(page)
+
+
+def test_a_mix_asks_its_times_volume_speed_and_height(app, page):
+    page.add_step("mix")
+    _click(app, page, "A1")
+    page.next_button.click()
+    form = page.card.form
+    _type(form.cycles, "4")
+    _type(form.how_ul, "25")
+    _type(form.how_flow, "30")
+    _type(form.at.offset, "1")
+    step = _step(page)
+    assert (step.cycles, step.volume_ul, step.flow_ul_s) == (4, 25, 30)
+    assert page.take_section.sentence.text() == "1 mm above the bottom"
+    assert page.step_list.cards()[0].title.text() == "Mix 1 well · 4×"
+
+
+def test_every_kind_of_step_is_added_filled_in_and_run(app, window, page):
+    _set_trash(app, page)
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    _done(page)
+    page.add_step("mix")
+    _click(app, page, "B1")
+    _done(page)
+    page.add_step("blow_out")
+    _done(page)
+    page.add_step("move_tip")
+    _click(app, page, "C1")
+    _done(page)
+    page.add_step("wait")
+    _type(page.card.form.minutes, "0")
+    _type(page.card.form.seconds, "0.1")
+    _done(page)
+    page.add_step("wait_for_me")
+    _done(page)
+    assert not page.session.liquid_plan_problems()
+    run = window.pages["liquid"]
+    window.footer.next.click()
+    assert _until(app, run._startable), run.run_status()
+    run.start_button.click()
+    assert _until(app, lambda: run.run_activity() == "waiting")
+    run.pause_button.click()
+    assert _until(app, lambda: run._ended is not None and not run.jog.busy)
+    assert run._ended == "done", run._outcome
