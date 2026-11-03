@@ -258,8 +258,8 @@ def well_center_plates(session, task: str) -> list:
 
 
 # Steps a task can go past without, by task: Work is a toolbox, never
-# "done"; Well center is optional but in Liquid, a plate not measured
-# using its drawing.
+# "done"; Well center is optional everywhere but Liquid, a plate not
+# measured using its drawing.
 OPTIONAL = {"auto": {"well_center"}, "manual": {"well_center", "work"}}
 
 
