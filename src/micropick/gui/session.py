@@ -50,6 +50,7 @@ from ..config.schema import (CALIBRATION_MODULE,  # noqa: E402
                              DeckConfig, DeckModule, ModuleType,
                              PickingConfig, WellCenter,
                              ProfileMeta)
+from ..core.liquid_plan import SPOT_PREFIX            # noqa: E402
 from ..hardware import devices as camera_devices   # noqa: E402
 from ..hardware import labware                      # noqa: E402
 from ..hardware import robot_clock                  # noqa: E402
@@ -588,6 +589,8 @@ class Session(QObject):
                      if stored == name), None)
         if item is not None:
             return f"{name} is set in Robot setup, {SETUP_TITLES[item]}."
+        if name.startswith(SPOT_PREFIX):
+            return f"A point's name cannot begin with {SPOT_PREFIX}"
         positions = self.profile.positions if self.profile is not None else {}
         if name != own and (name in positions or self.memo_point(name)):
             return f'A point is already called "{name}".'

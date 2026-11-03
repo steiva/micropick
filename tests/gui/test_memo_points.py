@@ -86,6 +86,7 @@ def test_save_turns_a_memo_point_into_a_saved_point_kept_in_the_profile(
     ("observe", "observe is set in Robot setup, Position over the dish."),
     ("shake", "shake is set in Robot setup, Shake position."),
     ("  ", "A point needs a name."),
+    ("plan-spot:x", "A point's name cannot begin with plan-spot:"),
 ])
 def test_save_refuses_a_used_name_and_a_setup_positions_name(session, name,
                                                              said):
