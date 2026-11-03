@@ -56,6 +56,10 @@ _Avoid_: profile (the profile is how it is stored, never shown)
 The stored position the upper camera looks at the crosshair disc on the calibration module from. The tip calibration starts by going there.
 _Avoid_: disc position, tip_calib (on screen)
 
+**Setup position**:
+One of the three positions set only in Robot setup: the calibration position, the shake position and the position over the dish. Never listed or drawn among the points.
+_Avoid_: system point, saved point
+
 **Shake position**:
 The stored position of the tip in the hole of the source dish's holder. It is set with a calibrated tip on, so it comes after the calibration position.
 _Avoid_: shake (on screen)
@@ -84,6 +88,13 @@ _Avoid_: mode, workflow
 **Step**:
 One screen of a task. A step is done when the state it sets up holds now, never because it was visited. Deck, Tip and Dish bottom are the same steps, with the same state, in every task that has them.
 
+**Run step**:
+The last step of every task, where the work itself is done. In Manual pick it holds no run: each action there is a short job.
+_Avoid_: Work, Picking (as a step name)
+
+**Well center**:
+The measured center of a plate's wells, one per slot and plate type. Measuring it is a step in every task; only Liquid needs it done.
+
 **Plate plan**:
 Which wells of a plate get cuboids, how many each, and in what order.
 _Avoid_: routine (on screen), program
@@ -98,3 +109,11 @@ _Avoid_: preset
 
 **Skipped plate**:
 A plate whose well center the user chose not to measure in this robot session; its drawing is used instead.
+
+**Memo point**:
+A point marked with a right click on the picture, named M1, M2 ... It lasts until the program closes.
+_Avoid_: mark
+
+**Saved point**:
+A point with a name the user gave it, kept in the profile between days. Made by saving a memo point.
+_Avoid_: position (positions are Robot setup's), preset
