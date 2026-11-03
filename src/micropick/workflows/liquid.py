@@ -71,9 +71,11 @@ tip holds enough for the dispenses after it, else what tops it up - and is
 not driven to when it takes nothing. An auto empty dispense is skipped, and
 not driven to, while the tip can take the next aspirate
 (`core.liquid.empties_now`); when it does empty, it is a dispense of
-everything and a blow out, as below. No aspirate and no mix may put more in
-the tip than the program's `tip_ul`: the run raises `Overfill` before the
-tip moves, and `problems` plays the run through on paper to say so first.
+everything and a blow out, as below. A group's `empty_after` is the same
+over the program's trash, once after its last well. No aspirate and no mix
+may put more in the tip than the program's `tip_ul`: the run raises
+`Overfill` before the tip moves, and `problems` plays the run through on
+paper to say so first.
 
 Blowing out
 -----------
@@ -105,8 +107,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..core.liquid import (MEASURED_BOTTOM, BlowOut, Group, Location,
-                           Program, aspirate_volume, empties_now,
+from ..core.liquid import (MEASURED_BOTTOM, BlowOut, Dispense, Group,
+                           Location, Program, aspirate_volume, empties_now,
                            needed_after, ordered_wells, refills)
 from ..hardware.protocols import (Robot, move_relative, move_to,
                                   prepare_to_aspirate, require_ok, xyz)
@@ -114,7 +116,7 @@ from . import manual as moves
 from .motion import Motion
 
 __all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "chosen", "problems",
-           "plan", "go",
+           "trash_problems", "play", "plan", "go",
            "do_step", "run", "run_step", "slots_used", "points_used",
            "step_words"]
 
@@ -132,6 +134,10 @@ APPROACH_MM = 2.0
 
 # Volumes are compared with this much slack: 0.1 + 0.2 is not 0.3.
 VOLUME_TOL = 1e-6
+
+# How fast `Group.empty_after` empties, which carries no speed of its own:
+# what a wash empties at.
+EMPTY_FLOW = 200.0
 
 
 class Stopped(RuntimeError):
@@ -318,7 +324,7 @@ def problems(program: Program, plates: dict[str, Plate],
     if not program.groups:
         return ["no group chosen to run."]
     if trash:
-        out += _trash_problems(program.trash, plates, positions)
+        out += trash_problems(program.trash, plates, positions)
         if program.trash is not None:
             in_tip = 0.0
     for group in program.groups:
@@ -361,12 +367,12 @@ def problems(program: Program, plates: dict[str, Plate],
                 out.append(f"{where}: there is no saved point "
                            f"{location.point!r} in the profile.")
     if volumes:
-        out += _volume_problems(program, plates, in_tip)
+        out += play(program, plates, in_tip)[0]
     return out
 
 
-def _trash_problems(location: Location | None, plates: dict[str, Plate],
-                    positions: dict) -> list[str]:
+def trash_problems(location: Location | None, plates: dict[str, Plate],
+                   positions: dict) -> list[str]:
     if location is None:
         return ["no trash: choose the well or point the tip is blown out "
                 "over before a run."]
@@ -390,11 +396,12 @@ def _trash_problems(location: Location | None, plates: dict[str, Plate],
     return ["trash: a well or a saved point."]
 
 
-def _volume_problems(program: Program, plates: dict[str, Plate],
-                     in_tip: float = 0.0) -> list[str]:
+def play(program: Program, plates: dict[str, Plate],
+         in_tip: float = 0.0) -> tuple[list[str], float]:
     """The run played through on paper: a dispense of more than the tip
     holds at that moment, or an aspirate or a mix of more than it can take,
-    is a program written wrong."""
+    is a program written wrong. What is wrong, stopping at the first, and
+    what the tip holds at the end."""
     out, tip = [], program.tip_ul
     for group in program.groups:
         steps = group.steps
@@ -407,12 +414,12 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
             where = f"group {group.name!r}, step {si}"
             if step.volume_ul > tip + VOLUME_TOL:
                 return out + [f"{where}: refills to {step.volume_ul:g} µl, "
-                              f"but a tip holds {tip:g} µl."]
+                              f"but a tip holds {tip:g} µl."], in_tip
             need = needed_after(steps, si - 1)
             if need is not None and need > step.volume_ul + VOLUME_TOL:
                 return out + [f"{where}: the dispenses after it take "
                               f"{need:g} µl, more than the {step.volume_ul:g} "
-                              f"µl it refills to."]
+                              f"µl it refills to."], in_tip
         for wi, well in enumerate(wells):
             last_well = wi == len(wells) - 1
             for si, step in enumerate(steps, 1):
@@ -422,13 +429,13 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
                     if in_tip > tip + VOLUME_TOL:
                         return out + [
                             f"{where}: the tip would hold {in_tip:g} µl, "
-                            f"more than the {tip:g} µl it takes."]
+                            f"more than the {tip:g} µl it takes."], in_tip
                 elif step.action == "mix":
                     if in_tip + step.volume_ul > tip + VOLUME_TOL:
                         return out + [
                             f"{where}: mixing {step.volume_ul:g} µl with "
                             f"{in_tip:g} µl in the tip is more than the "
-                            f"{tip:g} µl it takes."]
+                            f"{tip:g} µl it takes."], in_tip
                 elif step.action == "dispense" and step.auto_empty:
                     if empties_now(steps, si - 1, in_tip, tip, last_well):
                         in_tip = 0.0
@@ -437,11 +444,13 @@ def _volume_problems(program: Program, plates: dict[str, Plate],
                     if volume > in_tip + VOLUME_TOL:
                         return out + [
                             f"{where}: dispenses {volume:g} µl, but the tip "
-                            f"holds {in_tip:g} µl then."]
+                            f"holds {in_tip:g} µl then."], in_tip
                     in_tip -= volume
                 elif step.action == "blow_out":
                     in_tip = 0.0
-    return out
+        if group.empty_after:
+            in_tip = 0.0
+    return out, in_tip
 
 
 def plan(program: Program, plates: dict[str, Plate],
@@ -872,6 +881,9 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
     for gi, _group, well in jobs:
         first_well.setdefault(gi, well)
     state.at = None
+    if program.trash is None and any(g.empty_after for _gi, g, _w in jobs):
+        raise ValueError("a group empties the tip at its end, and the "
+                         "program has no trash")
     try:
         if clear_first and program.trash is not None and jobs:
             _, group, well = jobs[0]
@@ -916,6 +928,16 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
                                on_paused=paused, capacity=capacity)
                 state.resume[(gi, well)] = si + 1
                 _log_row(log_path, group=group.name, well=well, step=si + 1,
+                         in_tip=f"{state.in_tip:g}", note=said)
+            if (group.empty_after and well == last[gi]
+                    and state.in_tip > VOLUME_TOL):
+                empty = Dispense(location=program.trash, auto_empty=True,
+                                 flow_rate=EMPTY_FLOW)
+                say(f"{group.name} · {well} · {step_words(empty)}")
+                said = do_step(motion, empty, group, well, plates, positions,
+                               state, pause=pause, stop=stop, log=log,
+                               capacity=capacity)
+                _log_row(log_path, group=group.name, well=well, step="empty",
                          in_tip=f"{state.in_tip:g}", note=said)
             state.resume.pop((gi, well), None)
             state.done.append((gi, well))

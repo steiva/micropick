@@ -82,7 +82,7 @@ __all__ = ["LEVELS", "MEASURED_BOTTOM", "LEVEL_NAMES", "KINDS", "ACTIONS", "Loca
            "Program", "ProgramError", "ordered_wells", "describe",
            "describe_location", "new_step", "GROUP_COLOURS",
            "needed_after", "aspirate_volume", "refills", "empties_now",
-           "TIP_UL"]
+           "TIP_UL", "write_atomic"]
 
 # The robot's own well origins; the same as workflows.motion.WELL_LEVELS,
 # restated because core does not import workflows.
@@ -124,6 +124,20 @@ class ProgramError(ValueError):
 
 class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def write_atomic(path: str | Path, text: str) -> None:
+    """`text` into `path` whole, or the file as it was."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 class Location(_Model):
@@ -238,7 +252,13 @@ def new_step(action: str):
 class Group(_Model):
     """`pause_after_first`: hold the run once the group's first well is
     done, for the operator to look at it - in washing, whether the cuboid
-    is still there - before the rest."""
+    is still there - before the rest.
+
+    `empty_after`: after the group's last well, what is left in the tip is
+    dispensed over the program's trash and blown out. Before the well is
+    counted done, so a stop during it is resumed; with an empty tip it makes
+    no trip. An auto empty cannot do this: in a refill chain it would empty
+    after every well."""
 
     name: str
     color: str = GROUP_COLOURS[0]
@@ -248,6 +268,7 @@ class Group(_Model):
     order: Literal["by_row", "by_column"] = "by_row"
     steps: list[Step] = Field(default_factory=list)
     pause_after_first: bool = False
+    empty_after: bool = False
 
 
 class Program(_Model):
@@ -274,16 +295,7 @@ class Program(_Model):
     def save(self, path: str | Path) -> None:
         """Atomic, as every file this application writes: a crash mid-write
         leaves the previous program, not half of this one."""
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write(self.model_dump_json(indent=2) + "\n")
-            os.replace(tmp, path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
+        write_atomic(path, self.model_dump_json(indent=2) + "\n")
 
     @classmethod
     def load(cls, path: str | Path) -> "Program":
