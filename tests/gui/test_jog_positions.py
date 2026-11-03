@@ -76,43 +76,10 @@ def test_the_points_layer_follows_the_panels_pose(app, session):
     host.deleteLater()
 
 
-
-
-@pytest.mark.parametrize("name", ["tip_calib", "shake", "observe"])
-def test_save_point_refuses_a_setup_positions_name(app, session,
-                                                   monkeypatch, name):
-    from PySide6.QtWidgets import QInputDialog
-    host = QWidget()
-    panel = JogPanel(session, shortcut_host=host, parent=host)
-    _settle(app, panel)
-    session.profile.positions.pop(name, None)
-    asked = []
-    monkeypatch.setattr(
-        QInputDialog, "getText",
-        lambda *args, **kwargs: (asked.append(args[1]), (name, True))[1])
-    panel._command("save")
-    _settle(app, panel)
-    assert asked == ["Save point"]
-    assert name not in session.profile.positions
-    assert "REFUSED" in panel._message
-    host.deleteLater()
-
-
-def test_save_point_saves_a_named_point(app, session, monkeypatch):
-    from PySide6.QtWidgets import QInputDialog
-    host = QWidget()
-    panel = JogPanel(session, shortcut_host=host, parent=host)
-    _settle(app, panel)
-    monkeypatch.setattr(QInputDialog, "getText",
-                        lambda *args, **kwargs: ("trough", True))
-    panel._command("save")
-    _settle(app, panel)
-    assert "trough" in session.profile.positions
-    host.deleteLater()
-
-
-def test_the_space_key_reads_save_point():
+def test_space_saves_no_point():
+    """A saved point is a memo point kept on Manual pick (#62): the jog
+    panel has no save key, and its key list does not name one."""
     from micropick.gui import keys
-    from micropick.workflows.jog import LAYOUT
-    assert keys.action("save").label == "Save point"
-    assert [k.help for k in LAYOUT if k.command == "save"] == ["save point"]
+    from micropick.gui.widgets.jog_panel import HANDLED, UNBOUND
+    assert "save" not in {a.id for a in keys.ACTIONS}
+    assert "save" in UNBOUND and "save" not in HANDLED

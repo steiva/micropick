@@ -256,3 +256,10 @@ def test_a_well_location_on_the_deck_is_not_marked_missing(page, session):
     where = page.editor.where
     assert "not on the deck" not in where.labware.currentText()
     assert where.location() == step.location
+
+
+def test_at_a_point_lists_saved_points_not_robot_setups(page, session):
+    for name in ("observe", "shake", "tip_calib", "trough"):
+        session.remember(name, (100.0, 100.0, 80.0))
+    for editor in (page.trash, page.editor.where, page.source_where):
+        assert editor._points == ["trough"]

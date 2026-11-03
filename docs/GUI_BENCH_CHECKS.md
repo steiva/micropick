@@ -933,10 +933,11 @@ Kept for the record of what washing needs when it returns as a program.
   reservoir and empties there.
 
 - [ ] **A saved point.**
-  Jog the tip over a spot, Save this position… as "waste". It is offered
-  under Where = a saved point at once. Tick "points" on the picture: a cyan
-  ring with the name sits where the tip was, and follows the deck as the
-  gantry is jogged. On Manual control the same box is there.
+  On Manual pick, save a memo point as "waste" (see Points there). It is
+  offered under At a point at once; the calibration position, the shake
+  position and the position over the dish never are. Tick "points" on the
+  picture: a green ring with the name sits where the point is, and follows
+  the deck as the gantry is jogged.
 
 - [ ] **The run.**
   Start asks first, then does A1's whole chain before A2's. The map rings
@@ -1288,8 +1289,9 @@ cameras.
   too.
 
 - [ ] **Keys.**
-  Keys (or H): ← ↑ → ↓ PgUp PgDn on the buttons, the step keys, Space, U,
-  H and the page's keys (A, D on Manual control) under them. Rebind Z up in
+  Keys (or H): ← ↑ → ↓ PgUp PgDn on the buttons, the step keys, U, H and
+  the page's keys (A, D on Manual control) under them; no Space (#62),
+  and Space saves nothing. Rebind Z up in
   Settings: the keycap follows. Click into a number field: the pad says
   the keys are the field's; Enter gives them back.
 
@@ -1638,6 +1640,16 @@ tip box and a 384 plate at hand.
   point from the list and the picture; the next right click takes its
   number. Nothing moves when marking.
 
+- [ ] **Saved points (#61, #62).**
+  With the three Robot setup positions set: none of them is in the points
+  list, and none is drawn on the picture (no "observe"). Give M1 a Z (Save
+  is gray until then), Save, name it "trough": the row reads trough with
+  "Saved", a green ring on the picture. Save another as "trough" or
+  "shake": refused, said under the position, the memo point stays.
+  Double-click trough's name, type "bench", Enter: renamed. × on bench
+  asks "Delete point bench?"; Keep keeps it. Restart: bench is listed
+  again, the memo points are gone.
+
 - [ ] **Tip gauge and past picks.**
   Tip on, Aspirate 15 µl: the gauge reads 15 µl and fills; Dispense: 0 µl.
   Drop the tip: 0 µl. Show past picks (filled while on): a violet ring at
@@ -1719,7 +1731,7 @@ tip box and a 384 plate at hand.
 
 - [ ] **Keys (#58).**
   The pad's Keys (or H): ← ↑ → ↓, PgUp, PgDn on its buttons, - / + on
-  the step arrows, Space, U and H listed under it, as bound in Settings.
+  the step arrows, U and H listed under it, as bound in Settings.
   The position and camera calibration sheets' pads have Keys too.
 
 - [ ] **The movement keys (#57).**

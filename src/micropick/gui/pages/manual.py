@@ -43,8 +43,10 @@ the × deletes one (`Session.delete_memo_point`), and under Dispense's. They
 are drawn on the picture only while "At a point" is chosen in an open
 Aspirate or Dispense card, and marking one chooses it in Aspirate when
 neither shows them. The tip goes to one by Go to, or by Aspirate or
-Dispense from it. They last until the program closes; a point to keep is a
-saved position (`profile.positions`). Marking moves nothing.
+Dispense from it. They last until the program closes; Save in a point's
+row keeps it as a saved point (`Session.save_memo_point`, #62), listed
+with them (`Session.points`) and drawn as the profile's positions are.
+Robot setup's positions are not points (#61). Marking moves nothing.
 
 A point the tip cannot go to is said where it is made and shown in red,
 on the picture and in its Z (`Session.memo_problem`): the jog envelope's
@@ -86,7 +88,7 @@ where the tip goes down: the measured dish bottom (`PickingConfig.
 dish_bottom`) by hand, the well's bottom in a well. From:
 
 * **In a well** - a plate the robot session holds and its well.
-* **At a point** - a memo point, at its own Z.
+* **At a point** - a memo or saved point, at its own Z.
 * **By hand** - the spot under the camera's crosshair (#60): the
   picture's center through the pixel map, plus the measured tip offset.
   The operator aims with the picture: a click moves the camera, and with
@@ -117,7 +119,7 @@ All or Part (µl, no more than is in the tip: `Session.dispense`), where:
   the wells a run left empty can be filled by hand. The tip goes to the
   well's bottom plus the picking settings' deposit offset, from the
   plate's well center, as a run deposits.
-* **At a point** - a memo point.
+* **At a point** - a memo or saved point.
 * **Here** - where the tip is.
 
 Its button says what it does - "Go to A7 and dispense", "Dispense here" -
@@ -241,6 +243,9 @@ def _number_box(parent: QWidget, value: float, span, suffix: str,
     box.setMinimumWidth(110)
     box.setValue(value)
     return box
+
+
+POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
 
 
 def _memo_z_text(z) -> str:
@@ -502,9 +507,10 @@ class ManualPage(QWidget):
         points = QVBoxLayout(self.point_box)
         points.setContentsMargins(0, 0, 0, 0)
         self.memo_table = MemoTable(self.session, self)
-        self.memo_table.setToolTip("Double-click X, Y or Z to change it.")
+        self.memo_table.setToolTip(POINTS_TIP)
         self.memo_table.chosen.connect(self._memo_chosen)
         self.memo_table.z_typed.connect(self._memo_z_typed)
+        self.memo_table.said.connect(self.jog.tell)
         points.addWidget(self.memo_table)
         points.addWidget(muted_label("Right-click the picture to add a point.",
                                      self))
@@ -584,8 +590,9 @@ class ManualPage(QWidget):
         body.addWidget(self.plan_box)
 
         self.target_points = MemoTable(self.session, self)
-        self.target_points.setToolTip("Double-click X, Y or Z to change it.")
+        self.target_points.setToolTip(POINTS_TIP)
         self.target_points.chosen.connect(lambda _name: self._refresh())
+        self.target_points.said.connect(self.jog.tell)
         body.addWidget(self.target_points)
 
         self.dispense_button = primary_button("Dispense here", self)
@@ -697,7 +704,7 @@ class ManualPage(QWidget):
             well = self.source_wells.chosen()
             return None if well is None else ("well", well)
         if chosen == "At a point":
-            point = self.session.memo_point(self.memo_table.chosen_name or "")
+            point = self.session.point(self.memo_table.chosen_name or "")
             return None if point is None else ("point", point)
         return ("hand", None)
 
@@ -709,7 +716,7 @@ class ManualPage(QWidget):
             well = self.target_wells.chosen()
             return None if well is None else ("well", well)
         if chosen == "At a point":
-            point = self.session.memo_point(
+            point = self.session.point(
                 self.target_points.chosen_name or "")
             return None if point is None else ("point", point)
         return ("here", None)
@@ -1193,7 +1200,7 @@ class ManualPage(QWidget):
         self._say_memo_problem(self.memo_table.chosen_name)
 
     def _say_memo_problem(self, name) -> None:
-        point = self.session.memo_point(name or "")
+        point = self.session.point(name or "")
         problem = self.session.memo_problem(point) if point else ""
         if problem:
             self.jog.tell(f"{point.name} NOT REACHABLE: {problem}")
@@ -1214,14 +1221,14 @@ class ManualPage(QWidget):
         if name is None or pose is None:
             return
         z = round(float(pose[2]), 2)
-        self.session.change_memo_point(name, z=z)
+        self.session.change_point(name, z=z)
         self._set_new_z(z)
         self.jog.tell(f"{name}: z {z:g}")
         self._say_memo_problem(name)
 
     def _go_to_memo(self) -> None:
         """The button: the only way to a point, as the jog panel's Go to."""
-        point = self.session.memo_point(self.memo_table.chosen_name or "")
+        point = self.session.point(self.memo_table.chosen_name or "")
         if point is not None:
             self._drive_to_memo(point)
 

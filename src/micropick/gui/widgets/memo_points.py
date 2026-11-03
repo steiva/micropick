@@ -1,13 +1,22 @@
-"""The memo points' list on Manual control: one row a point, X, Y and Z.
+"""The points' list on Manual control: one row a point, X, Y and Z.
 
-The points are the session's (`Session.memo_points`); this shows them and
-writes an edit back, and the "points" layer of the picture follows the same
-list. A cell is edited by a double click, in a number box that takes Enter;
-Z's box goes down to "travel height", which is a point with no Z of its own
-(the tip stays at the travel height over it). A Z the tip cannot go to -
-below the top of a deck module there, say (`Session.memo_problem`) - is
-red, with the reason under the pointer. The × at the end of a row deletes
-that point (`Session.delete_memo_point`).
+The points are the session's (`Session.points`): the memo points, then the
+saved points (#62), the profile's positions less Robot setup's. This shows
+them and writes an edit back, and the "points" layer of the picture
+follows the same list. A cell is edited by a double click, in a number box
+that takes Enter; a memo point's Z box goes down to "travel height", which
+is a point with no Z of its own (the tip stays at the travel height over
+it), and a saved point's does not. A Z the tip cannot go to - below the
+top of a deck module there, say (`Session.memo_problem`) - is red, with the
+reason under the pointer.
+
+A memo point's row has Save, gray until it has a Z: it asks for a name and
+moves the point into the profile (`Session.save_memo_point`); a saved
+point's has "Saved" there, and its name is renamed by a double click
+(`Session.rename_saved_point`). A name in use or Robot setup's is refused,
+said through `said`. The × at the end of a row deletes that point: a memo
+point at once (`Session.delete_memo_point`), a saved one once asked
+(`Session.delete_saved_point`).
 
 The table takes no focus: the arrows and PageUp/PageDown are the robot's
 keys on this page, and a table with the keyboard would scroll on them
@@ -20,18 +29,20 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (QAbstractItemView, QHeaderView,
-                               QStyledItemDelegate, QTableWidget,
-                               QTableWidgetItem, QToolButton)
+                               QInputDialog, QStyledItemDelegate,
+                               QTableWidget, QTableWidgetItem, QToolButton)
 
-from ..session import Session
-from ..theme.factory import double_spin_box
+from ..session import Session, SessionError
+from ..theme.factory import double_spin_box, muted_label
+from .overlays import ConfirmDialog
 
 __all__ = ["MemoTable", "TRAVEL_TEXT", "Z_TOP_MM"]
 
-COLUMNS = ("Point", "X", "Y", "Z", "")
+COLUMNS = ("Point", "X", "Y", "Z", "", "")
 _KEYS = {1: "x", 2: "y", 3: "z"}
 Z_COLUMN = 3
-DELETE_COLUMN = 4
+SAVE_COLUMN = 4
+DELETE_COLUMN = 5
 
 # What a point with no Z shows, and the bottom of Z's box that means it.
 TRAVEL_TEXT = "travel height"
@@ -41,6 +52,8 @@ XY_RANGE = (-20.0, 420.0)
 Z_TOP_MM = 200.0
 
 _VALUE = Qt.ItemDataRole.UserRole
+# On a row's name: True for a saved point.
+_SAVED = Qt.ItemDataRole.UserRole + 1
 
 # A Z the tip cannot go to (`Session.memo_problem`), with the reason as
 # the cell's tooltip.
@@ -52,28 +65,39 @@ def _text(value) -> str:
 
 
 class _NumberDelegate(QStyledItemDelegate):
-    """A number box for X, Y and Z; Z's lowest value is "travel height"."""
+    """A number box for X, Y and Z; a memo point's Z's lowest value is
+    "travel height". A saved point's name is a text field."""
 
     def createEditor(self, parent, option, index):
+        if index.column() == 0:
+            return super().createEditor(parent, option, index)
         box = double_spin_box(parent)
         box.setDecimals(2)
         box.setSingleStep(0.1)
         box.setFrame(False)
         if index.column() == Z_COLUMN:
             box.setRange(0.0, Z_TOP_MM)
-            box.setSpecialValueText(TRAVEL_TEXT)
+            if not index.siblingAtColumn(0).data(_SAVED):
+                box.setSpecialValueText(TRAVEL_TEXT)
         else:
             box.setRange(*XY_RANGE)
         return box
 
     def setEditorData(self, editor, index) -> None:
+        if index.column() == 0:
+            super().setEditorData(editor, index)
+            return
         value = index.data(_VALUE)
         editor.setValue(editor.minimum() if value is None else float(value))
 
     def setModelData(self, editor, model, index) -> None:
+        if index.column() == 0:
+            super().setModelData(editor, model, index)
+            return
         editor.interpretText()
         value = editor.value()
-        if index.column() == Z_COLUMN and value <= editor.minimum():
+        if (index.column() == Z_COLUMN and editor.specialValueText()
+                and value <= editor.minimum()):
             value = None
         model.setData(index, value, _VALUE)
 
@@ -83,6 +107,8 @@ class MemoTable(QTableWidget):
     chosen = Signal(object)
     # A point's Z was typed: the height (None: travel height).
     z_typed = Signal(object)
+    # A refusal, as a sentence: a name in use, say.
+    said = Signal(str)
 
     def __init__(self, session: Session, parent=None):
         super().__init__(0, len(COLUMNS), parent)
@@ -93,8 +119,9 @@ class MemoTable(QTableWidget):
         header = self.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(DELETE_COLUMN,
-                                    QHeaderView.ResizeMode.ResizeToContents)
+        for column in (SAVE_COLUMN, DELETE_COLUMN):
+            header.setSectionResizeMode(
+                column, QHeaderView.ResizeMode.ResizeToContents)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -117,22 +144,50 @@ class MemoTable(QTableWidget):
         item = self.item(rows[0].row(), 0)
         return None if item is None else item.text()
 
+    def _row(self, name: str) -> int | None:
+        return next((row for row in range(self.rowCount())
+                     if self.item(row, 0).text() == name), None)
+
     def delete_button(self, name: str) -> QToolButton | None:
         """The × of the point named `name`."""
-        for row in range(self.rowCount()):
-            if self.item(row, 0).text() == name:
-                return self.cellWidget(row, DELETE_COLUMN)
-        return None
+        row = self._row(name)
+        return None if row is None else self.cellWidget(row, DELETE_COLUMN)
 
-    def _delete_button(self, name: str) -> QToolButton:
+    def save_button(self, name: str) -> QToolButton | None:
+        """The Save of the memo point named `name`; None for a saved one."""
+        row = self._row(name)
+        widget = None if row is None else self.cellWidget(row, SAVE_COLUMN)
+        return widget if isinstance(widget, QToolButton) else None
+
+    def is_saved(self, name: str) -> bool:
+        row = self._row(name)
+        return row is not None and bool(self.item(row, 0).data(_SAVED))
+
+    def _button(self, text: str, tip: str, then) -> QToolButton:
         button = QToolButton(self)
-        button.setText("×")
+        button.setText(text)
         button.setAutoRaise(True)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.setToolTip(f"Delete {name}.")
-        button.clicked.connect(
-            lambda: self.session.delete_memo_point(name))
+        button.setToolTip(tip)
+        button.clicked.connect(then)
         return button
+
+    def _delete(self, name: str, saved: bool) -> None:
+        if not saved:
+            self.session.delete_memo_point(name)
+        elif ConfirmDialog.confirm(self, f"Delete point {name}?",
+                                   safe="Keep", destructive="Delete"):
+            self.session.delete_saved_point(name)
+
+    def _save(self, name: str) -> None:
+        new, ok = QInputDialog.getText(self, "Save point",
+                                       f"Name for {name}:")
+        if not ok or not new.strip():
+            return
+        try:
+            self.session.save_memo_point(name, new)
+        except SessionError as exc:
+            self.said.emit(str(exc))
 
     def choose(self, name: str | None) -> None:
         for row in range(self.rowCount()):
@@ -145,9 +200,11 @@ class MemoTable(QTableWidget):
         """The rows again from the session, the chosen one kept. Rewritten
         in place when the points are the same ones: an edit's own echo then
         does not pull the table out from under the box that made it."""
-        points = self.session.memo_points
+        points = self.session.points
         names = [p.name for p in points]
-        same = names == [self.item(r, 0).text() for r in range(self.rowCount())]
+        same = [(p.name, p.saved) for p in points] == [
+            (self.item(r, 0).text(), bool(self.item(r, 0).data(_SAVED)))
+            for r in range(self.rowCount())]
         chosen = self.chosen_name
         self._filling = True
         self.blockSignals(True)
@@ -156,11 +213,10 @@ class MemoTable(QTableWidget):
                 self.setRowCount(len(points))
             for row, point in enumerate(points):
                 if not same:
-                    name = QTableWidgetItem(point.name)
-                    name.setFlags(name.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    self.setItem(row, 0, name)
-                    self.setCellWidget(row, DELETE_COLUMN,
-                                       self._delete_button(point.name))
+                    self._fill_name(row, point)
+                save = self.cellWidget(row, SAVE_COLUMN)
+                if isinstance(save, QToolButton):
+                    save.setEnabled(point.z is not None)
                 for column, key in _KEYS.items():
                     value = getattr(point, key)
                     item = self.item(row, column) if same else None
@@ -185,11 +241,49 @@ class MemoTable(QTableWidget):
             self.choose(chosen if chosen in names else None)
             self.chosen.emit(self.chosen_name)
 
+    def _fill_name(self, row: int, point) -> None:
+        """The name and the buttons of a row: Save or "Saved", and ×."""
+        name = QTableWidgetItem(point.name)
+        name.setData(_VALUE, point.name)
+        name.setData(_SAVED, point.saved)
+        if not point.saved:
+            name.setFlags(name.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        self.setItem(row, 0, name)
+        if point.saved:
+            self.setCellWidget(row, SAVE_COLUMN, muted_label("Saved", self))
+        else:
+            self.setCellWidget(row, SAVE_COLUMN, self._button(
+                "Save", f"Keep {point.name} as a saved point.",
+                lambda: self._save(point.name)))
+        self.setCellWidget(row, DELETE_COLUMN, self._button(
+            "×", f"Delete {point.name}.",
+            lambda: self._delete(point.name, point.saved)))
+
     def _edited(self, item: QTableWidgetItem) -> None:
-        if self._filling or item.column() not in _KEYS:
+        if self._filling:
+            return
+        if item.column() == 0:
+            self._renamed(item)
+            return
+        if item.column() not in _KEYS:
             return
         name = self.item(item.row(), 0).text()
         key, value = _KEYS[item.column()], item.data(_VALUE)
-        self.session.change_memo_point(name, **{key: value})
+        try:
+            self.session.change_point(name, **{key: value})
+        except SessionError as exc:
+            self.said.emit(str(exc))
+            self.refresh()
+            return
         if key == "z":
             self.z_typed.emit(value)
+
+    def _renamed(self, item: QTableWidgetItem) -> None:
+        old, new = item.data(_VALUE), item.text()
+        try:
+            self.session.rename_saved_point(old, new)
+        except SessionError as exc:
+            self.said.emit(str(exc))
+            self._filling = True
+            item.setText(old)
+            self._filling = False

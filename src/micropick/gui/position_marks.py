@@ -1,29 +1,19 @@
-"""The profile's saved positions, drawn on the upper camera's picture.
+"""The saved points, drawn on the upper camera's picture.
 
-A position is a gantry pose, and a pose means one of two things, which the
-marks draw differently:
-
-- **A pipette point** - most positions: `shake`, the liquid-handling points,
-  anything saved with the jog panel. The operator saved it with the tip on
-  the spot, so what matters is the deck point the tip was over, which is the
-  pose less the pipette offset - `workflows.manual.tip_target` the other way
-  round - and the pixel it appears at in a frame taken from the current pose
-  is the pixel map inverted (`PixelMap.to_pixel`). A ring: the tip goes down
-  here, which is what an operator aiming the next one wants to see.
-- **A camera pose** - the names in `CAMERA_POSITIONS`, each set on its own
-  page and read by a workflow as where the upper camera looks from. A ring
-  where the tip would go would sit a pipette offset away from anything that
-  matters. What matters is the center of the picture the camera takes from
-  there, which is the pose itself with no offset: a square of the ring's
-  size, open at the middle of each side - a viewfinder - with a dot in it.
-  Standing at the pose, it is at the picture's center.
-
-Both are the same green; the shape says which is which.
+The saved points are the profile's positions less Robot setup's
+(`Session.saved_points`, #61): `observe`, `shake` and `tip_calib` are each
+set in their own sheet and never drawn as points. A saved point is a
+gantry pose saved with the tip on the spot, so what matters is the deck
+point the tip was over, which is the pose less the pipette offset -
+`workflows.manual.tip_target` the other way round - and the pixel it
+appears at in a frame taken from the current pose is the pixel map
+inverted (`PixelMap.to_pixel`). A green ring: the tip goes down here,
+which is what an operator aiming the next one wants to see.
 
 And the memo points (`Session.memo_points`), marked by a click on Manual
 control's picture and kept until the program closes: a ring with a cross in
-it, in cyan, named with its Z when it has one. Tip points like most
-positions, drawn the same way; the one chosen in Manual control's list is
+it, in cyan, named with its Z when it has one. Tip points like the saved
+points, drawn the same way; the one chosen in Manual control's list is
 drawn thicker, and one the tip cannot go to (`Session.memo_problem`: below
 a deck module's top, say) in red with a "!". A page may hide them
 (`PositionMarks.show_memo`): Manual Work draws them only while the points
@@ -32,10 +22,6 @@ are shown there.
 And the past picks a page hands over (`PositionMarks.set_picks`): where the
 tip took something, a violet ring each, the last bright and the older ones
 faint (REDESIGN §6.6).
-
-Which is which is decided by the name, never by the operator: a camera pose
-is only taught by the button of the page that uses it, and the jog panel
-refuses those names, so there is no switch to set wrong.
 
 The map was fitted at one height, so a position saved far above or below it
 is drawn with the parallax that height difference gives: near enough to find
@@ -61,15 +47,17 @@ from ..viz import overlays
 __all__ = ["MARK", "MEMO", "PICK", "CAMERA_POSITIONS", "mark_items",
            "memo_items", "pick_items", "axis_directions", "PositionMarks"]
 
-# The camera poses, by name, with the Robot setup item that sets each. The
-# names are the workflows': `PickingSession` reads `observe`
+# The camera poses, by name, with the Robot setup item that sets each: a
+# camera position's slot is the camera's (`camera_moves`). The names are
+# the workflows': `PickingSession` reads `observe`
 # (`pages.picking.DISH_POSITION`) and the pipette calibration `tip_calib`
-# (`pages.calibration_pipette.POSITION_NAME`).
+# (`pages.calibration_pipette.POSITION_NAME`). Not drawn: Robot setup's
+# positions are not points.
 CAMERA_POSITIONS = {"observe": "Position over the dish",
                     "tip_calib": "Calibration position"}
 
-# BGR, as every overlay colour. A light green, for both kinds: paler than
-# the pure green of the isolated cuboids, so the two are not confused.
+# BGR, as every overlay colour. A light green, paler than the pure green
+# of the isolated cuboids, so the two are not confused.
 MARK = (120, 255, 120)
 # The memo points': a cyan nothing else on the picture uses.
 MEMO = (255, 220, 0)
@@ -79,8 +67,6 @@ MEMO_BAD = (0, 0, 255)
 PICK = (250, 155, 169)
 PICK_OLD = (120, 75, 80)
 RADIUS_PX = 22
-# Half the gap in the middle of each side of a camera pose's square.
-GAP_PX = 8
 LABEL_SCALE = 1.4
 
 
@@ -110,43 +96,14 @@ def _tip_items(name, pose, pmap, pipette_offset, gantry_xy, image_size):
             _label(name, center)]
 
 
-def _camera_items(name, pose, pmap, gantry_xy, image_size):
-    """A square open at the middle of each side, the ring's size, where the
-    center of the camera's picture would be, and a dot in it."""
-    width, height = image_size
-    # The reference pixel is where the pose itself is seen (`to_robot` of it
-    # is the gantry), so the pose is the deck point to draw.
-    pixel = pmap.to_pixel(float(pose[0]), float(pose[1]), gantry_xy)
-    if pixel is None or not _inside(*pixel, width, height):
-        return []
-    cx, cy = int(round(pixel[0])), int(round(pixel[1]))
-    r, g = RADIUS_PX, GAP_PX
-    out = []
-    # Each corner as an L of two arms stopping short of the side's middle.
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            corner = (cx + sx * r, cy + sy * r)
-            out.append(overlays.Polyline(
-                points=np.array([(cx + sx * g, cy + sy * r), corner,
-                                 (cx + sx * r, cy + sy * g)], np.int32),
-                closed=False, color=MARK, thickness=2))
-    out.append(overlays.Circle(center=(cx, cy), radius=3, color=MARK,
-                               thickness=-1, fill=True))
-    out.append(_label(name, (cx, cy)))
-    return out
-
-
 def mark_items(positions: dict, pmap: PixelMap, pipette_offset, gantry_xy,
                image_size) -> list:
-    """The marks of every position inside the frame: a ring for a pipette
-    point, a viewfinder square for a camera pose."""
+    """The marks of every position inside the frame: a ring where the tip
+    goes down."""
     out = []
     for name, pose in sorted(positions.items()):
-        if name in CAMERA_POSITIONS:
-            out += _camera_items(name, pose, pmap, gantry_xy, image_size)
-        else:
-            out += _tip_items(name, pose, pmap, pipette_offset, gantry_xy,
-                              image_size)
+        out += _tip_items(name, pose, pmap, pipette_offset, gantry_xy,
+                          image_size)
     return out
 
 
@@ -294,7 +251,7 @@ class PositionMarks(QObject):
             self.view.set_marks([])
             return
         pmap, offset = found
-        positions = dict(self.session.profile.positions or {})
+        positions = self.session.saved_points()
         size = pmap.config.image_size
         items = (mark_items(positions, pmap, offset, pose[:2], size)
                  + pick_items(self.picks, pmap, offset, pose[:2], size))

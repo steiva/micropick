@@ -205,8 +205,9 @@ from Undo step and Keys (`JogPad.set_folded`; folded from the start on
 Picking, the keys still bound), and only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
 Undo step is on the pad. A jog panel has no Move or Positions section
-(removed, #27; do not bring them back): saved positions are drawn on the
-picture's "points" layer (`show_position_on`) and set on their own pages. There is no keys box: the pad's Keys toggle (H) puts
+(removed, #27; do not bring them back): saved points are drawn on the
+picture's "points" layer (`show_position_on`), Robot setup's positions
+never (#61), each set on its own sheet. There is no keys box: the pad's Keys toggle (H) puts
 the keys as bound on its buttons and lists the step keys, the panel's
 other keys and the page's own (`add_help`) under it. A key added to a page
 belongs in that list too; what the mouse does goes in the picture's mouse
@@ -270,6 +271,14 @@ keeps Camera to dish center). A double click moves nothing. A **right** click (`
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
 never in the profile); each is deleted by its × (`Session.delete_memo_point`).
+Its Save (gray until it has a Z) asks a name and moves it into the
+profile as a **saved point** (`Session.save_memo_point`, #62), refused
+for a name in use or a setup position's (`Session.point_name_refusal`).
+Saved points (`Session.saved_points`: the profile's positions less
+`tasks.SETUP_POSITIONS`, which are never listed or drawn as points, #61)
+are in the same table after the memo points (`Session.points`, `point`,
+`change_point`), marked Saved, a Z always; the name renamed by double
+click (`rename_saved_point`), × asking "Delete point <name>?" first.
 There is no Click to move and no Mark points. The tip goes to one only by
 the card's Go to. A point below
 a deck module's top is flagged (`Session.memo_problem`, the jog
@@ -355,10 +364,10 @@ with progress on the left, no camera; the footer as Picking's
 WAITING FOR YOU / DONE / NOT READY, the sentence the run's own,
 `LiquidState.status`), Back + Start (+ Continue after a stop), Pause /
 Resume + Stop run. A run to its end makes the step done
-(`confirm("liquid_run")`). Saved
-points are `profile.positions`, not a list of the page's own, saved with
-a jog panel's **Save point** (Space, `jog_panel.setup_name_refusal`:
-never under Robot setup's `observe`, `shake`, `tip_calib`). The "points"
+(`confirm("liquid_run")`). Its points
+are the saved points (`Session.saved_points`), not a list of the page's
+own, made on Manual pick only: a jog panel saves nothing (no Space, #62;
+`jog_panel.UNBOUND`). The "points"
 box on the picture comes from `JogPanel.show_position_on`, so every page
 with a jog panel has it. Washing is a program written with these blocks
 (measured well center, auto empty, slow lift, pause after the first well),

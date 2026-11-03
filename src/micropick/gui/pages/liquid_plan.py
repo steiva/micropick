@@ -917,7 +917,7 @@ class LiquidPlanPage(QWidget):
 
     def _offer_choices(self) -> None:
         plates = plate_choices(self.session)
-        points = list(positions_for(self.session))
+        points = list(self.session.saved_points())
         for editor in (self.editor, self.trash, self.source_where):
             editor.blockSignals(True)
             editor.set_choices(plates, points)

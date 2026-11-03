@@ -552,3 +552,120 @@ def test_without_a_pixel_map_a_click_by_hand_moves_nothing(
     page.view.clicked.connect(lambda u, v: clicks.append((u, v)))
     _mouse_click(app, page.view, 400, 300)
     assert clicks == []
+
+
+# -- saved points (#61, #62) --------------------------------------------------
+
+def _names(table):
+    return [table.item(r, 0).text() for r in range(table.rowCount())]
+
+
+def test_the_table_lists_memo_and_saved_points_not_robot_setups(
+        app, page, session):
+    from micropick.viz import overlays
+    for name in ("observe", "shake", "tip_calib"):
+        session.remember(name, (150.0, 150.0, 80.0))
+    session.remember("trough", (150.0, 150.0, 30.0))
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page.view.right_clicked.emit(W / 2 + 100, H / 2)
+    _wait(app, page)
+    for table in (page.memo_table, page.target_points):
+        assert _names(table) == ["M1", "trough"]
+        assert table.save_button("M1") is not None
+        assert table.save_button("trough") is None
+        assert table.is_saved("trough") and not table.is_saved("M1")
+    labels = [i.text for i in page.view._marks
+              if isinstance(i, overlays.Text)]
+    assert "trough" in labels
+    assert not {"observe", "shake", "tip_calib"} & set(labels)
+
+
+def test_save_names_a_memo_point_and_refuses_a_used_name(
+        app, page, session, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+    session.remember("trough", (150.0, 150.0, 30.0))
+    session.add_memo_point(100.0, 100.0, 12.0)
+    page.memo_table.choose("M1")
+    said = []
+    page.memo_table.said.connect(said.append)
+    answers = iter([("trough", True), ("shake", True), ("bench", True)])
+    monkeypatch.setattr(QInputDialog, "getText",
+                        lambda *a, **k: next(answers))
+    page.memo_table.save_button("M1").click()
+    assert said == ['A point is already called "trough".']
+    page.memo_table.save_button("M1").click()
+    assert said[-1] == "shake is set in Robot setup, Shake position."
+    page.memo_table.save_button("M1").click()
+    assert _names(page.memo_table) == ["trough", "bench"]
+    assert session.profile.positions["bench"] == (100.0, 100.0, 12.0)
+
+
+def test_save_is_gray_until_the_point_has_a_z(app, page, session):
+    session.add_memo_point(100.0, 100.0, None)
+    assert not page.memo_table.save_button("M1").isEnabled()
+    session.change_memo_point("M1", z=5.0)
+    assert page.memo_table.save_button("M1").isEnabled()
+
+
+def test_a_saved_points_cross_asks_then_deletes(app, page, session,
+                                                monkeypatch):
+    from micropick.gui.widgets.overlays import ConfirmDialog
+    session.remember("trough", (150.0, 150.0, 30.0))
+    asked, answers = [], iter([False, True])
+    monkeypatch.setattr(
+        ConfirmDialog, "confirm",
+        classmethod(lambda cls, host, q, **k: (asked.append(q),
+                                               next(answers))[1]))
+    page.memo_table.delete_button("trough").click()
+    assert asked == ["Delete point trough?"]
+    assert "trough" in session.profile.positions
+    page.memo_table.delete_button("trough").click()
+    assert "trough" not in session.profile.positions
+    assert _names(page.memo_table) == []
+
+
+def test_a_saved_point_is_renamed_by_editing_its_name(app, page, session):
+    session.remember("trough", (150.0, 150.0, 30.0))
+    session.add_memo_point(100.0, 100.0, None)
+    said = []
+    page.memo_table.said.connect(said.append)
+    page.memo_table.item(1, 0).setText("M1")              # in use
+    assert said == ['A point is already called "M1".']
+    assert _names(page.memo_table) == ["M1", "trough"]
+    page.memo_table.item(1, 0).setText("bench")
+    assert _names(page.memo_table) == ["M1", "bench"]
+    session.load_profile("mock")
+    assert "bench" in session.profile.positions
+    assert "trough" not in session.profile.positions
+
+
+def test_a_memo_points_name_is_not_edited(page, session):
+    from PySide6.QtCore import Qt
+    session.add_memo_point(100.0, 100.0, None)
+    session.remember("trough", (150.0, 150.0, 30.0))
+    editable = Qt.ItemFlag.ItemIsEditable
+    assert not page.memo_table.item(0, 0).flags() & editable
+    assert page.memo_table.item(1, 0).flags() & editable
+
+
+def test_space_no_longer_saves_a_point(page, session):
+    from micropick.gui import keys
+    assert "save" not in {a.id for a in keys.ACTIONS}
+    page.jog.pad.keys.click()
+    assert "save point" not in page.jog.pad.key_list.text().lower()
+
+
+def test_a_saved_points_z_box_has_no_travel_height(page, session):
+    from micropick.gui.widgets.memo_points import Z_COLUMN
+    session.remember("trough", (150.0, 150.0, 30.0))
+    table = page.memo_table
+    index = table.model().index(0, Z_COLUMN)
+    delegate = table.itemDelegate()
+    box = delegate.createEditor(table.viewport(), None, index)
+    assert box.specialValueText() == ""
+    box.setValue(0.0)
+    delegate.setModelData(box, table.model(), index)
+    assert session.saved_points()["trough"] == (150.0, 150.0, 0.0)

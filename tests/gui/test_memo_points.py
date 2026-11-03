@@ -2,6 +2,7 @@
 number is the next new point's."""
 
 import os
+import re
 
 import pytest
 
@@ -47,3 +48,82 @@ def test_deleting_a_point_that_is_not_there_changes_nothing(session):
     assert session.delete_memo_point("M7") is False
     assert [p.name for p in session.memo_points] == ["M1"]
     assert changes == []
+
+
+# -- saved points (#61, #62) --------------------------------------------------
+
+def _setup_positions(session):
+    for name in ("observe", "shake", "tip_calib"):
+        session.profile.remember(name, (100.0, 100.0, 80.0))
+
+
+def test_setup_positions_are_not_saved_points(session):
+    _setup_positions(session)
+    session.profile.remember("trough", (50.0, 60.0, 30.0))
+    assert session.saved_points() == {"trough": (50.0, 60.0, 30.0)}
+    session.add_memo_point(10, 20, 5.0)
+    assert [(p.name, p.saved) for p in session.points] == [
+        ("M1", False), ("trough", True)]
+    assert session.point("trough").z == 30.0
+    assert session.point("observe") is None
+
+
+def test_save_turns_a_memo_point_into_a_saved_point_kept_in_the_profile(
+        session):
+    session.add_memo_point(10, 20, 5.0)
+    changes = []
+    session.memo_points_changed.connect(lambda: changes.append(1))
+    session.save_memo_point("M1", "trough")
+    assert session.memo_points == []
+    assert changes
+    session.load_profile("mock")
+    assert session.saved_points() == {"trough": (10.0, 20.0, 5.0)}
+
+
+@pytest.mark.parametrize("name, said", [
+    ("trough", 'A point is already called "trough".'),
+    ("M2", 'A point is already called "M2".'),
+    ("observe", "observe is set in Robot setup, Position over the dish."),
+    ("shake", "shake is set in Robot setup, Shake position."),
+    ("  ", "A point needs a name."),
+])
+def test_save_refuses_a_used_name_and_a_setup_positions_name(session, name,
+                                                             said):
+    from micropick.gui.session import SessionError
+    session.profile.remember("trough", (1.0, 2.0, 3.0))
+    session.add_memo_point(10, 20, 5.0)
+    session.add_memo_point(30, 20, 5.0)
+    with pytest.raises(SessionError, match=f"^{re.escape(said)}$"):
+        session.save_memo_point("M1", name)
+    assert [p.name for p in session.memo_points] == ["M1", "M2"]
+
+
+def test_save_needs_a_z(session):
+    from micropick.gui.session import SessionError
+    session.add_memo_point(10, 20, None)
+    with pytest.raises(SessionError, match="Give M1 a Z first"):
+        session.save_memo_point("M1", "trough")
+
+
+def test_a_saved_point_is_renamed_changed_and_deleted_in_the_profile(
+        session):
+    from micropick.gui.session import SessionError
+    _setup_positions(session)
+    session.profile.remember("trough", (1.0, 2.0, 3.0))
+    session.rename_saved_point("trough", "bench")
+    session.change_point("bench", z=7.5)
+    session.load_profile("mock")
+    assert session.saved_points() == {"bench": (1.0, 2.0, 7.5)}
+    with pytest.raises(SessionError):
+        session.rename_saved_point("bench", "tip_calib")
+    with pytest.raises(SessionError):
+        session.change_point("bench", z=None)          # no travel height
+    assert session.delete_saved_point("bench") is True
+    session.load_profile("mock")
+    assert session.saved_points() == {}
+    assert "tip_calib" in session.profile.positions
+
+
+def test_a_new_memo_point_does_not_take_a_saved_points_name(session):
+    session.profile.remember("M1", (1.0, 2.0, 3.0))
+    assert session.add_memo_point(10, 20, None).name == "M2"

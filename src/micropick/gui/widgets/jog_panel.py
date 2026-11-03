@@ -29,11 +29,9 @@ The old GUI's folded Move and Positions sections are gone (#27): nobody
 used the list of saved poses beside the pad, and the poses a page needs
 are set and gone to on that page (Robot setup's sheets). The saved
 positions are still the profile's, drawn on the picture's "points" layer
-(see the end of this note). The save key, Save point, still names the
-pose and stores it in `profile.positions` - a point Liquid's steps go to;
-Robot setup's three positions (`observe`, `shake`, `tip_calib`:
-`tasks.SETUP_POSITIONS`) are only taught in their own sheets, so saving
-under one of those names is refused.
+(see the end of this note). Nothing is saved from here: a saved point is
+a memo point kept with Save on Manual pick (#62), so the save key (Space)
+is not bound.
 
 `shortcut_host` is the widget the key bindings are registered on, normally the
 page. They are `WindowShortcut`: while the panel is on screen the keys reach
@@ -134,7 +132,7 @@ from dataclasses import replace
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,
-                               QHBoxLayout, QInputDialog, QLineEdit,
+                               QHBoxLayout, QLineEdit,
                                QMessageBox, QPlainTextEdit, QTextEdit,
                                QVBoxLayout, QWidget)
 
@@ -142,7 +140,6 @@ from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController
 from .. import keys
 from ..position_marks import PositionMarks
 from ..session import Session
-from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
 from ..theme.factory import card, heading, secondary_button
 from .jog_pad import JogPad
@@ -171,18 +168,6 @@ __all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "HOME_TITLE",
            "HOME_DETAIL", "view_move", "check_view_axes"]
 
 log = logging.getLogger(__name__)
-
-def setup_name_refusal(name: str) -> str | None:
-    """Why `name` cannot be given to a saved point, or None. Robot setup's
-    positions are taught in their sheets, the camera or the tip on the
-    spot; saved from this panel a point would be taken for one and driven
-    to as one."""
-    item = next((item for item, stored in SETUP_POSITIONS.items()
-                 if stored == name), None)
-    if item is None:
-        return None
-    return f"{name!r} is set in Robot setup, {SETUP_TITLES[item]}"
-
 
 PANEL_WIDTH = 400
 
@@ -218,10 +203,11 @@ def action_id(key) -> str:
 # one that was forgotten.
 UNBOUND: dict[str, str] = {
     "finish": "the cv2 window's loop ends on Enter; this page has no loop",
+    "save": "a saved point is a memo point kept with Save on Manual pick",
 }
 
 # The commands this backend implements. Checked against the layout below.
-HANDLED = {"step_up", "step_down", "save", "undo", "help"}
+HANDLED = {"step_up", "step_down", "undo", "help"}
 
 
 def _check_layout() -> None:
@@ -496,40 +482,11 @@ class JogPanel(QWidget):
             return
         controller = self.controller
 
-        if command == "save":
-            # The same act as the button: one store, and it asks for a name.
-            # It used to put the pose in the controller's own dict under a
-            # generated name, which is the list nothing else could see.
-            self._remember()
-        elif command == "undo":
+        if command == "undo":
             self._run(Worker(lambda: _stepped(controller,
                                               controller.undo())))
         else:                                  # _check_layout rules this out
             raise RuntimeError(f"unhandled jog command {command!r}")
-
-    def _remember(self) -> None:
-        if self.controller is None or self._busy():
-            return
-        if self.session.profile is None:
-            self._say("no profile loaded", firm=True)
-            return
-        name, ok = QInputDialog.getText(
-            self, "Save point",
-            f"Name this point in profile {self.session.profile.name!r}:")
-        name = name.strip()
-        if not ok or not name:
-            return
-        why = setup_name_refusal(name)
-        if why is not None:
-            self._say(why, firm=True)
-            return
-        controller, session = self.controller, self.session
-
-        def job():
-            session.remember(name, controller.position)
-            return None, controller.status()
-
-        self._run(Worker(job), moves=False, robot_work=False)
 
     def _home(self) -> None:
         if not self._confirm(HOME_TITLE, HOME_DETAIL):

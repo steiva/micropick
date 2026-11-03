@@ -183,7 +183,7 @@ def test_keys_puts_the_keys_bound_on_the_pads_buttons(app, session):
     assert pad.carousel.smaller.keycap == "-"
     assert not pad.key_list.isHidden()
     text = pad.key_list.text()
-    for action_id in ("save", "undo", "help"):
+    for action_id in ("undo", "help"):
         assert keys.key_text(session.settings.keys, action_id) in text
     pad.keys.click()
     assert pad.buttons["x+"].keycap == "" and pad.key_list.isHidden()

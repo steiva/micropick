@@ -67,7 +67,7 @@ from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
 from .camera_moves import pose_slot                 # noqa: E402
 from .readiness import DISH_POSITION, SHAKE_POSITION  # noqa: E402
-from .tasks import SETUP_POSITIONS                  # noqa: E402
+from .tasks import SETUP_POSITIONS, SETUP_TITLES   # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
            "MemoPoint", "MEASURED", "SKIPPED", "NOT_MEASURED",
@@ -241,17 +241,20 @@ class DeckProblem:
 
 @dataclass
 class MemoPoint:
-    """A point marked on Manual control's picture, for this start only.
+    """A point marked on Manual control's picture, for this start only; or,
+    `saved`, a saved point (`Session.saved_points`) in the same shape.
 
     Where the tip goes, in the robot's frame - a position's coordinates, so
     it is drawn as a position is. `z` None: over it at the travel height,
-    not down to anything, until a height is given.
+    not down to anything, until a height is given. A saved point always
+    has one.
     """
 
     name: str
     x: float
     y: float
     z: float | None = None
+    saved: bool = False
 
 
 class SessionError(RuntimeError):
@@ -493,8 +496,9 @@ class Session(QObject):
     def add_memo_point(self, x: float, y: float,
                        z: float | None) -> MemoPoint:
         """A new point, named with the lowest free number: M1, M2 ... in the
-        order marked, and a deleted point's number is the next one's."""
-        taken = {p.name for p in self.memo_points}
+        order marked, and a deleted point's number is the next one's. A
+        saved point's name is not free."""
+        taken = {p.name for p in self.points}
         number = 1
         while f"M{number}" in taken:
             number += 1
@@ -542,6 +546,105 @@ class Session(QObject):
         log.info("memo point %s deleted", name)
         self.memo_points_changed.emit()
         return True
+
+    # -- saved points ----------------------------------------------------------
+    #
+    # A memo point kept: one of the profile's positions, listed with the
+    # memo points and changed the same way (`point`, `change_point`). Robot
+    # setup's positions are profile positions too, but never points (#61):
+    # each is set in its own sheet, and a camera pose taken for a tip point
+    # would be driven to as one.
+
+    def saved_points(self) -> dict[str, tuple[float, float, float]]:
+        """The profile's positions less Robot setup's."""
+        if self.profile is None:
+            return {}
+        setup = set(SETUP_POSITIONS.values())
+        return {name: pose for name, pose in self.profile.positions.items()
+                if name not in setup}
+
+    @property
+    def points(self) -> list[MemoPoint]:
+        """The memo points, then the saved points (`saved`)."""
+        return self.memo_points + [
+            MemoPoint(name, float(x), float(y), float(z), saved=True)
+            for name, (x, y, z) in self.saved_points().items()]
+
+    def point(self, name: str) -> MemoPoint | None:
+        """The memo or saved point named `name`."""
+        return next((p for p in self.points if p.name == name), None)
+
+    def point_name_refusal(self, name: str, own: str | None = None) -> str:
+        """Why a point cannot be called `name`, or "". `own`: the point's
+        name now, which is not in use by another."""
+        name = name.strip()
+        if not name:
+            return "A point needs a name."
+        item = next((item for item, stored in SETUP_POSITIONS.items()
+                     if stored == name), None)
+        if item is not None:
+            return f"{name} is set in Robot setup, {SETUP_TITLES[item]}."
+        positions = self.profile.positions if self.profile is not None else {}
+        if name != own and (name in positions or self.memo_point(name)):
+            return f'A point is already called "{name}".'
+        return ""
+
+    def save_memo_point(self, name: str, new_name: str) -> None:
+        """The memo point `name` into the profile as `new_name`; refused
+        (SessionError, a sentence) for a name in use or Robot setup's, and
+        for a point with no Z, which a saved point always has."""
+        point = self.memo_point(name)
+        if point is None or self.profile is None:
+            raise SessionError(f"There is no point {name}.")
+        if point.z is None:
+            raise SessionError(f"Give {name} a Z first.")
+        new_name = new_name.strip()
+        why = self.point_name_refusal(new_name, own=name)
+        if why:
+            raise SessionError(why)
+        self.memo_points = [p for p in self.memo_points if p.name != name]
+        self.remember(new_name, (point.x, point.y, point.z))
+        self.memo_points_changed.emit()
+
+    def rename_saved_point(self, old: str, new: str) -> None:
+        new = new.strip()
+        why = self.point_name_refusal(new, own=old)
+        if why:
+            raise SessionError(why)
+        if new == old:
+            return
+        self.profile.rename(old, new)
+        log.info("saved point %r renamed %r", old, new)
+        self.profile_changed.emit(self.profile)
+        self.memo_points_changed.emit()
+
+    def delete_saved_point(self, name: str) -> bool:
+        if name not in self.saved_points():
+            return False
+        self.profile.forget(name)
+        log.info("saved point %r deleted", name)
+        self.profile_changed.emit(self.profile)
+        self.memo_points_changed.emit()
+        return True
+
+    def change_point(self, name: str, **values) -> None:
+        """`change_memo_point` for a memo or a saved point. A saved point's
+        Z is a height: None is refused."""
+        point = self.point(name)
+        if point is None:
+            return
+        if not point.saved:
+            self.change_memo_point(name, **values)
+            return
+        if "z" in values and values["z"] is None:
+            raise SessionError("A saved point needs a Z.")
+        pose = {"x": point.x, "y": point.y, "z": point.z}
+        for key, value in values.items():
+            if key not in pose:
+                raise ValueError(f"a point has no {key!r}")
+            pose[key] = float(value)
+        self.remember(name, (pose["x"], pose["y"], pose["z"]))
+        self.memo_points_changed.emit()
 
     # -- state ---------------------------------------------------------------
 
