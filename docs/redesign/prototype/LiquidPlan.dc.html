@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Liquid plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box}
+.line{width:28px;height:1px;background:#2E333B}
+.seg{display:flex;padding:3px;border-radius:12px;background:#111317;border:1px solid #23272E;gap:3px}
+.seg button{height:40px;padding:0 18px;border:none;border-radius:9px;font:600 14px 'Inter',sans-serif;cursor:pointer}
+.tool{height:40px;padding:0 14px;border-radius:10px;border:1px solid #2E333B;background:transparent;color:#C9CED6;font:500 14px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.tool:hover{background:#1E2228;color:#E8EAED}
+.lbl{border:none;background:transparent;color:#8A919B;font:500 12px 'JetBrains Mono',monospace;cursor:pointer;border-radius:4px;padding:0}
+.lbl:hover{background:#262B33;color:#E8EAED}
+.w{border-radius:50%;padding:0;cursor:pointer;aspect-ratio:1;justify-self:center;align-self:center;box-sizing:border-box}
+.scard{display:flex;flex-direction:column;border-radius:14px;background:#171A1F;border:1px solid #23272E;overflow:hidden}
+.shead{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 8px;border:none;background:transparent;color:#E8EAED;font-family:inherit;cursor:pointer;text-align:left;width:100%}
+.shead:hover{background:#1C2026}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap}
+.srow{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:0 12px;box-sizing:border-box;border:none;border-radius:10px;background:transparent;color:#E8EAED;font-family:inherit;text-align:left;cursor:pointer}
+.srow:hover{background:#1E2228}
+.mbtn{height:34px;padding:0 12px;border-radius:9px;border:1px solid #2E333B;background:transparent;color:#C9CED6;font:600 13px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.mbtn:hover{background:#1E2228;color:#E8EAED}
+.fld{height:36px;box-sizing:border-box;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 10px;font:500 14px 'JetBrains Mono',monospace;text-align:right;width:76px}
+.sel{position:relative;display:inline-block}
+.sel select{height:36px;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 32px 0 10px;font:500 14px 'Inter',sans-serif;appearance:none;-webkit-appearance:none}
+.sel svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none}
+.sw{display:flex;align-items:flex-start;gap:12px;padding:10px 0;border:none;background:transparent;color:#E8EAED;font:500 14px 'Inter',sans-serif;cursor:pointer;text-align:left;width:100%}
+.knob{width:34px;height:20px;border-radius:999px;position:relative;flex:none;margin-top:1px}
+.knob span{position:absolute;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.menu{position:absolute;left:0;right:0;bottom:52px;z-index:7;padding:6px;border-radius:14px;background:#1B1E24;border:1px solid #2E333B;box-shadow:0 16px 40px rgba(0,0,0,.5);display:flex;flex-direction:column}
+.mi{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:none;border-radius:9px;background:transparent;color:#E8EAED;font-family:inherit;text-align:left;cursor:pointer}
+.mi:hover{background:#262B33}
+.mono{font-family:'JetBrains Mono',monospace}
+.toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:9}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Liquid</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Well center</span><span class="line"></span>
+    <span class="st" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">4</span>Plan</span><span class="line"></span>
+    <a class="st" href="Run.dc.html"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">5</span>Run</a>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0">
+
+    <!-- LEFT: always the thing the current question is about -->
+    <section style="flex:1; min-width:0; padding:20px 28px; box-sizing:border-box; display:flex; flex-direction:column; gap:14px">
+
+      <!-- Question header -->
+      <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+        <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:280px">
+          <span class="cap" style="color:{{q.capColor}}">{{q.cap}}</span>
+          <span style="font-size:22px; font-weight:600">{{q.title}}</span>
+        </div>
+        <sc-if value="{{q.hasSeg}}" hint-placeholder-val="{{ true }}">
+          <div class="seg" role="group" aria-label="Kind of place">
+            <sc-for list="{{q.seg}}" as="o" hint-placeholder-count="3">
+              <button type="button" onClick="{{o.pick}}" style="background:{{o.bg}}; color:{{o.fg}}">{{o.label}}</button>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- PLATE (a well as source or destination) -->
+      <sc-if value="{{showPlate}}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:12px">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+            <div style="position:relative">
+              <button type="button" onClick="{{toggleDeck}}" aria-expanded="{{deckOpen}}" style="height:44px; display:inline-flex; align-items:center; gap:10px; padding:0 14px; border-radius:10px; border:1px solid {{dropBd}}; background:#171A1F; color:#E8EAED; font:600 16px 'Inter',sans-serif; cursor:pointer">
+                <span style="color:#8DB8FF">Slot {{plate.slot}}</span>{{plate.name}}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <sc-if value="{{deckOpen}}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute; top:52px; left:0; z-index:6; width:340px; padding:14px; border-radius:14px; background:#1B1E24; border:1px solid #2E333B; box-shadow:0 16px 40px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:10px">
+                  <div class="cap">Plates on the deck</div>
+                  <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px">
+                    <sc-for list="{{miniDeck}}" as="m" hint-placeholder-count="12">
+                      <button type="button" onClick="{{m.pick}}" style="height:56px; border-radius:8px; border:{{m.bd}}; background:{{m.bg}}; color:{{m.fg}}; font:600 11px 'Inter',sans-serif; cursor:{{m.cursor}}; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; padding:6px 8px; text-align:left"><span style="letter-spacing:.08em; color:#8A919B">{{m.n}}</span><span>{{m.name}}</span></button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+            <span style="font-size:14px; color:#B3B9C2">{{plate.facts}}</span>
+            <div style="flex:1"></div>
+            <button class="tool" type="button" onClick="{{selectAll}}">Select all</button>
+            <button class="tool" type="button" onClick="{{clearWells}}">Clear</button>
+          </div>
+          <div style="flex:1; min-height:0; display:grid; grid-template-columns:18px minmax(0, 1fr); grid-template-rows:22px minmax(0, 1fr); gap:8px; padding:20px; border-radius:16px; background:#14171B; border:1px solid #22262C; box-sizing:border-box">
+            <span></span>
+            <div style="display:grid; grid-template-columns:repeat({{plate.cols}}, minmax(0, 1fr)); gap:8px">
+              <sc-for list="{{plate.colLabels}}" as="c" hint-placeholder-count="12"><button class="lbl" type="button" onClick="{{c.pick}}" aria-label="Column {{c.n}}">{{c.n}}</button></sc-for>
+            </div>
+            <div style="display:grid; grid-template-rows:repeat({{plate.rows}}, minmax(0, 1fr)); gap:8px">
+              <sc-for list="{{plate.rowLabels}}" as="r" hint-placeholder-count="8"><button class="lbl" type="button" onClick="{{r.pick}}" aria-label="Row {{r.n}}">{{r.n}}</button></sc-for>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat({{plate.cols}}, minmax(0, 1fr)); grid-template-rows:repeat({{plate.rows}}, minmax(0, 1fr)); gap:8px; min-height:0">
+              <sc-for list="{{plate.cells}}" as="w" hint-placeholder-count="96">
+                <button class="w" type="button" aria-label="{{w.id}}" onClick="{{w.pick}}" style="background:{{w.bg}}; border:{{w.bd}}; width:{{plate.cellSize}}; height:auto; max-height:100%"></button>
+              </sc-for>
+            </div>
+          </div>
+          <!-- The rule this selection makes, in words -->
+          <div style="display:flex; align-items:center; gap:10px; min-height:24px; font-size:15px; color:{{q.ruleColor}}">
+            <sc-if value="{{q.hasRule}}" hint-placeholder-val="{{ false }}">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+            </sc-if>
+            <span>{{q.rule}}</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CAMERA (a point, or by hand) -->
+      <sc-if value="{{showCamera}}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative; flex:1; min-height:0; border-radius:14px; overflow:hidden; background:#050607; border:1px solid #22262C">
+          <svg viewBox="0 0 800 560" preserveAspectRatio="xMidYMid slice" style="position:absolute; inset:0; width:100%; height:100%" role="img" aria-label="Camera picture of the deck">
+            <rect width="800" height="560" fill="#16181c"></rect>
+            <rect x="120" y="90" width="560" height="380" rx="26" fill="#1f2328" stroke="#30353c" stroke-width="4"></rect>
+            <rect x="150" y="120" width="500" height="320" rx="16" fill="#2a4652" opacity=".55"></rect>
+            <g fill="#4FC9E0" font-family="Inter, sans-serif" font-size="15" font-weight="700">
+              <circle cx="300" cy="230" r="8"></circle><text x="314" y="226">Reservoir</text>
+              <circle cx="480" cy="320" r="8" opacity=".7"></circle><text x="494" y="316" opacity=".7">M1</text>
+            </g>
+            <g stroke="#ffffff" stroke-opacity=".55" stroke-width="1.5"><line x1="400" y1="260" x2="400" y2="300"></line><line x1="380" y1="280" x2="420" y2="280"></line></g>
+          </svg>
+          <div style="position:absolute; left:16px; top:16px; padding:8px 12px; border-radius:8px; background:rgba(10,12,14,.8); font:500 13px 'JetBrains Mono',monospace">X 212.4  Y 88.1  Z 72.0</div>
+          <div style="position:absolute; left:16px; right:16px; bottom:16px; display:flex; align-items:flex-end; gap:12px">
+            <div style="flex:1; display:flex; flex-direction:column; gap:8px; padding:12px 14px; border-radius:12px; background:rgba(10,12,14,.86)">
+              <sc-if value="{{camIsPoint}}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <div style="display:flex; gap:8px; flex-wrap:wrap">
+                    <sc-for list="{{points}}" as="p" hint-placeholder-count="3">
+                      <button type="button" onClick="{{p.pick}}" style="height:36px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; border-radius:9px; border:1px solid {{p.bd}}; background:{{p.bg}}; color:#E8EAED; font:600 13px 'Inter',sans-serif; cursor:pointer">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="{{p.starFill}}" stroke="#F5B841" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"></path></svg>{{p.name}}
+                      </button>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:13px; color:#B3B9C2">Right-click the picture to add a point. The star keeps a point for later experiments.</span>
+                </div>
+              </sc-if>
+              <sc-if value="{{camIsHand}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; align-items:center; gap:12px">
+                  <span style="flex:1; font-size:14px; color:#C9CED6">Bring the tip to the spot with Controls, then use it. The robot comes back here every time.</span>
+                  <button class="btn btn-p" type="button" onClick="{{useSpot}}" style="height:40px">Use this spot</button>
+                </div>
+              </sc-if>
+            </div>
+            <button class="btn" type="button" style="background:rgba(10,12,14,.86); height:40px">Controls</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- TRASH as a destination -->
+      <sc-if value="{{showTrash}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1; min-height:0; display:flex; align-items:center; justify-content:center; border-radius:16px; background:#14171B; border:1px solid #22262C">
+          <div style="display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; max-width:420px">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>
+            <span style="font-size:20px; font-weight:600">Into the trash</span>
+            <span style="font-size:15px; color:#B3B9C2; line-height:1.5">{{trashLine}}</span>
+            <button class="mbtn" type="button" onClick="{{openTrash}}">Change where the trash is</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- HEIGHTS: drawn, so "bottom" and "top" mean something -->
+      <sc-if value="{{showHeights}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1; min-height:0; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px">
+          <sc-for list="{{wellsDrawn}}" as="d" hint-placeholder-count="2">
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; border-radius:16px; background:#14171B; border:1px solid #22262C; padding:20px">
+              <span class="cap" style="color:{{d.color}}">{{d.cap}}</span>
+              <svg width="220" height="300" viewBox="0 0 220 300" role="img" aria-label="{{d.cap}}: {{d.where}}">
+                <path d="M40 30v240h140V30" fill="none" stroke="#5B626C" stroke-width="4"></path>
+                <rect x="42" y="{{d.liquidY}}" width="136" height="{{d.liquidH}}" fill="#1B3A4A"></rect>
+                <line x1="20" y1="30" x2="200" y2="30" stroke="#3A4049" stroke-dasharray="4 4"></line>
+                <line x1="20" y1="270" x2="200" y2="270" stroke="#3A4049" stroke-dasharray="4 4"></line>
+                <path d="M98 0h24l-6 {{d.tipY}}h-12z" fill="#C9CED6"></path>
+                <line x1="20" y1="{{d.tipY}}" x2="200" y2="{{d.tipY}}" stroke="{{d.color}}" stroke-width="2"></line>
+                <text x="204" y="34" fill="#8A919B" font-family="Inter, sans-serif" font-size="12">top</text>
+                <text x="204" y="274" fill="#8A919B" font-family="Inter, sans-serif" font-size="12">bottom</text>
+              </svg>
+              <span style="font-size:16px; font-weight:600">{{d.where}}</span>
+              <span style="font-size:13px; color:#8A919B">{{d.note}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- OVERVIEW: the whole plan on one picture -->
+      <sc-if value="{{showOverview}}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:12px">
+          <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:10px; padding:18px; border-radius:16px; background:#14171B; border:1px solid #22262C">
+            <span style="font-size:14px; color:#B3B9C2">Slot 2 · Corning 96</span>
+            <div style="flex:1; min-height:0; display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); grid-template-rows:repeat(8, minmax(0, 1fr)); gap:8px">
+              <sc-for list="{{overCells}}" as="w" hint-placeholder-count="96"><span class="w" style="background:{{w.bg}}; width:78%; cursor:default"></span></sc-for>
+            </div>
+          </div>
+          <div style="display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:#B3B9C2">
+            <sc-for list="{{legend}}" as="l" hint-placeholder-count="3"><span style="display:flex; align-items:center; gap:6px"><span style="width:12px; height:12px; border-radius:50%; background:{{l.color}}"></span>{{l.text}}</span></sc-for>
+          </div>
+        </div>
+      </sc-if>
+    </section>
+
+    <!-- RIGHT: the plan as a list of steps, each a sentence -->
+    <aside style="width:460px; flex:none; padding:18px 20px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:12px; min-height:0">
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px">
+        <button type="button" style="display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:12px; border:1px solid #2E333B; background:transparent; color:#E8EAED; font-family:inherit; text-align:left; cursor:pointer"><span style="font-size:14px; font-weight:600">A template</span><span style="font-size:12px; color:#B3B9C2">Open a saved plan</span></button>
+        <button type="button" style="display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:12px; border:1px solid #6CA6FF; background:#1A2130; color:#E8EAED; font-family:inherit; text-align:left; cursor:pointer"><span style="font-size:14px; font-weight:600">New plan</span><span style="font-size:12px; color:#B3B9C2">Build it step by step</span></button>
+      </div>
+
+      <!-- Trash: once per plan -->
+      <button type="button" onClick="{{openTrash}}" style="display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:12px; border:1px solid {{trashBd}}; background:{{trashBg}}; color:#E8EAED; font-family:inherit; text-align:left; cursor:pointer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{trashIcon}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"></path><path d="M9 7V4h6v3"></path><path d="M6 7l1 13h10l1-13"></path></svg>
+        <span style="flex:1; display:flex; flex-direction:column; gap:2px"><span style="font-size:14px; font-weight:600">Trash</span><span style="font-size:13px; color:{{trashTextColor}}">{{trashSummary}}</span></span>
+        <span style="font-size:13px; font-weight:600; color:#8DB8FF">{{trashAction}}</span>
+      </button>
+
+      <div style="display:flex; align-items:baseline; justify-content:space-between; padding-top:2px">
+        <span class="cap">Steps</span><span style="font-size:12px; color:#8A919B">drag ⠿ to reorder</span>
+      </div>
+
+      <div style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:2px">
+        <sc-for list="{{stepCards}}" as="s" hint-placeholder-count="3">
+          <section class="scard" style="border-color:{{s.bd}}; background:{{s.bg}}">
+            <button class="shead" type="button" onClick="{{s.open}}" aria-expanded="{{s.active}}">
+              <svg width="14" height="18" viewBox="0 0 14 18" fill="#5B626C" aria-hidden="true"><circle cx="4" cy="3" r="1.6"></circle><circle cx="10" cy="3" r="1.6"></circle><circle cx="4" cy="9" r="1.6"></circle><circle cx="10" cy="9" r="1.6"></circle><circle cx="4" cy="15" r="1.6"></circle><circle cx="10" cy="15" r="1.6"></circle></svg>
+              <span class="num" style="background:{{s.color}}; color:#0F1114">{{s.n}}</span>
+              <span style="flex:1; display:flex; flex-direction:column; gap:6px; min-width:0">
+                <span style="font-size:15px; font-weight:600">{{s.title}}</span>
+                <span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap">
+                  <span class="chip" style="background:#15282A; color:#7FDCCF">{{s.fromChip}}</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                  <span class="chip" style="background:#221E35; color:#C9BFFF">{{s.toChip}}</span>
+                </span>
+              </span>
+              <sc-if value="{{s.hasIssue}}" hint-placeholder-val="{{ false }}"><span style="font-size:12px; font-weight:600; color:#F5B841">{{s.issue}}</span></sc-if>
+            </button>
+
+            <sc-if value="{{s.active}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:2px; padding:0 8px 10px">
+                <sc-for list="{{s.rows}}" as="r" hint-placeholder-count="4">
+                  <button class="srow" type="button" onClick="{{r.pick}}" style="background:{{r.bg}}">
+                    <span style="width:88px; flex:none; font-size:13px; font-weight:600; color:{{r.labelColor}}">{{r.label}}</span>
+                    <span style="flex:1; font-size:14px; color:{{r.valueColor}}">{{r.value}}</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6F7781" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+                  </button>
+                </sc-for>
+
+                <!-- Amount: fields in place -->
+                <sc-if value="{{secAmount}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:10px; margin:4px 4px 0; padding:12px; border-radius:10px; background:#14171B; border:1px solid #22262C; font-size:14px; color:#B3B9C2">
+                    <div style="display:flex; align-items:center; gap:10px"><span style="flex:1">Volume per well</span><input class="fld" type="text" value="50" aria-label="Volume per well"><span style="width:28px">µl</span></div>
+                    <div style="display:flex; align-items:center; gap:10px"><span style="flex:1">Speed</span><span class="sel"><select aria-label="Speed"><option>Normal</option><option>Slow</option><option>Fast</option></select><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span><span style="width:28px"></span></div>
+                    <div style="display:flex; align-items:center; gap:10px"><span style="flex:1; color:#7FDCCF">Take it at</span><span class="sel"><select aria-label="Take height"><option>Bottom</option><option>Middle</option><option>Top</option></select><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span><input class="fld" type="text" value="+2.0" aria-label="Take offset"><span style="width:28px">mm</span></div>
+                    <div style="display:flex; align-items:center; gap:10px"><span style="flex:1; color:#C9BFFF">Put it at</span><span class="sel"><select aria-label="Put height"><option>Top</option><option>Middle</option><option>Bottom</option></select><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span><input class="fld" type="text" value="-1.0" aria-label="Put offset"><span style="width:28px">mm</span></div>
+                  </div>
+                </sc-if>
+
+                <!-- Extras: each says what it does -->
+                <sc-if value="{{secExtras}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; margin:4px 4px 0; padding:4px 12px; border-radius:10px; background:#14171B; border:1px solid #22262C">
+                    <sc-for list="{{extras}}" as="x" hint-placeholder-count="3">
+                      <button class="sw" type="button" onClick="{{x.toggle}}" aria-pressed="{{x.on}}">
+                        <span class="knob" style="background:{{x.knobBg}}"><span style="left:{{x.knobX}}px"></span></span>
+                        <span style="display:flex; flex-direction:column; gap:2px"><span style="font-weight:600">{{x.label}}</span><span style="font-size:13px; color:#8A919B">{{x.help}}</span></span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <div style="display:flex; gap:8px; padding:10px 4px 0">
+                  <button class="mbtn" type="button" onClick="{{tryOnce}}">Try once</button>
+                  <button class="mbtn" type="button" onClick="{{deleteStep}}" style="color:#FF8A8F; border-color:#4A2A2E">Delete</button>
+                  <div style="flex:1"></div>
+                  <button class="mbtn" type="button" onClick="{{nextSection}}" style="background:#6CA6FF; border-color:#6CA6FF; color:#0B1220">{{nextLabel}}</button>
+                </div>
+              </div>
+            </sc-if>
+          </section>
+        </sc-for>
+      </div>
+
+      <div style="position:relative">
+        <button class="btn" type="button" onClick="{{toggleAdd}}" style="width:100%; border-style:dashed; color:#C9CED6">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add a step
+        </button>
+        <sc-if value="{{addOpen}}" hint-placeholder-val="{{ false }}">
+          <div class="menu">
+            <button class="mi" type="button" onClick="{{addTransfer}}"><span style="font-size:15px; font-weight:600">Move liquid</span><span style="font-size:13px; color:#8A919B">From a well or a point into wells, or into the trash.</span></button>
+            <button class="mi" type="button" onClick="{{addOther}}"><span style="font-size:15px; font-weight:600">Mix</span><span style="font-size:13px; color:#8A919B">Pipette up and down in wells, so what was added mixes in.</span></button>
+            <button class="mi" type="button" onClick="{{addOther}}"><span style="font-size:15px; font-weight:600">Wait</span><span style="font-size:13px; color:#8A919B">The robot does nothing for a set time, e.g. 5 min.</span></button>
+            <button class="mi" type="button" onClick="{{addOther}}"><span style="font-size:15px; font-weight:600">Wait for me</span><span style="font-size:13px; color:#8A919B">The robot stops until you press Continue.</span></button>
+          </div>
+        </sc-if>
+      </div>
+    </aside>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <sc-if value="{{blocked}}" hint-placeholder-val="{{ false }}">
+      <span style="display:flex; align-items:center; gap:8px; font-size:14px; color:#F5D48A"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>{{blockedText}}</span>
+    </sc-if>
+    <div style="flex:1"></div>
+    <button class="btn" type="button" onClick="{{saveTpl}}">Save as template</button>
+    <span style="width:1px; height:28px; background:#2A2E35"></span>
+    <button class="btn" type="button">Back</button>
+    <a class="btn btn-p" href="Run.dc.html" style="opacity:{{nextOpacity}}">Next
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","options":["Editing: take from a well","Editing: take from a point","Editing: put into wells","Editing: amount and height","Editing: extras","Whole plan","Trash not set yet"],"default":"Editing: take from a well"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const row = (r, n) => { const a = []; for (let c = 1; c <= n; c++) a.push(r + c); return a; };
+    this.state = {
+      init: false, active: 0, sec: 'from', trash: true, deck: false, add: false, flash: '', point: 'Reservoir',
+      steps: [
+        { from: { type: 'well', slot: '6', wells: ['A1'] }, to: { type: 'well', slot: '2', wells: row('A', 12) }, vol: 50, mix: false, pause: true, blow: true },
+        { from: { type: 'well', slot: '6', wells: ['A2'] }, to: { type: 'well', slot: '2', wells: row('B', 12) }, vol: 50, mix: true, pause: false, blow: true },
+        { from: { type: 'well', slot: '2', wells: row('D', 12) }, to: { type: 'trash', slot: null, wells: [] }, vol: 50, mix: false, pause: false, blow: true }
+      ]
+    };
+  }
+  scenarioState() {
+    const s = this.props.scenario ?? 'Editing: take from a well';
+    const M = {
+      'Editing: take from a well': { active: 0, sec: 'from' },
+      'Editing: take from a point': { active: 0, sec: 'from', pointMode: true },
+      'Editing: put into wells': { active: 0, sec: 'to' },
+      'Editing: amount and height': { active: 0, sec: 'amount' },
+      'Editing: extras': { active: 1, sec: 'extras' },
+      'Whole plan': { active: null, sec: 'from' },
+      'Trash not set yet': { active: null, sec: 'from', noTrash: true }
+    };
+    return M[s];
+  }
+  renderVals() {
+    let st = this.state;
+    if (!st.init) {
+      const sc = this.scenarioState();
+      const steps = st.steps.map((x) => JSON.parse(JSON.stringify(x)));
+      if (sc.pointMode) steps[0].from = { type: 'point', slot: null, wells: [], point: 'Reservoir' };
+      st = Object.assign({}, st, { active: sc.active, sec: sc.sec, trash: !sc.noTrash, steps: steps });
+    }
+    const commit = (patch) => this.setState(Object.assign({}, st, patch, { init: true }));
+    const COLORS = ['#4FC9B8', '#F0A35E', '#EE93BE', '#8DB8FF', '#C9BFFF'];
+    const DIMS = ['#1D3B38', '#3A2C1C', '#3A2230', '#1E2C44', '#2C2840'];
+    const PL = {
+      '1': { name: 'Reservoir', rows: ['A'], cols: 1, facts: '1 well · 290 ml' },
+      '2': { name: 'Corning 96', rows: 'ABCDEFGH'.split(''), cols: 12, facts: '96 wells · 360 µl · measured' },
+      '6': { name: '6-well plate', rows: ['A', 'B'], cols: 3, facts: '6 wells · 16.8 ml · from drawing' }
+    };
+    const steps = st.steps;
+    const range = (ws) => {
+      if (!ws.length) return 'choose';
+      if (ws.length === 1) return ws[0];
+      return ws[0] + '–' + ws[ws.length - 1] + ' (' + ws.length + ')';
+    };
+    const place = (p) => {
+      if (p.type === 'trash') return 'Trash';
+      if (p.type === 'point') return 'Point · ' + (p.point || 'choose');
+      if (p.type === 'hand') return 'By hand';
+      return 'Slot ' + p.slot + ' · ' + range(p.wells);
+    };
+    const rule = (s) => {
+      const n = s.from.type === 'well' ? s.from.wells.length : 1;
+      const m = s.to.type === 'well' ? s.to.wells.length : 1;
+      if (s.to.type === 'trash') return { ok: n > 0, text: 'Empty each of the ' + n + ' wells into the trash.' };
+      if (n === 0) return { ok: false, text: 'Choose where to take the liquid from.' };
+      if (m === 0) return { ok: false, text: 'Choose where it goes.' };
+      if (n === 1) return { ok: true, text: 'One source, ' + s.vol + ' µl into each of ' + m + ' wells. The robot refills when the tip runs low.' };
+      if (n === m) return { ok: true, text: 'Well by well: first to first, second to second, ' + s.vol + ' µl each.' };
+      return { ok: false, text: 'Take from 1 well, or from as many wells as it goes into (' + m + ').' };
+    };
+    const a = st.active;
+    const cur = a === null ? null : steps[a];
+    const color = a === null ? '#8DB8FF' : COLORS[a % COLORS.length];
+    const setStep = (fn) => { const copy = steps.map((x) => JSON.parse(JSON.stringify(x))); fn(copy[a]); commit({ steps: copy }); };
+
+    // ---- question header
+    const segFrom = [['well', 'A well'], ['point', 'A point'], ['hand', 'By hand']];
+    const segTo = [['well', 'Wells'], ['point', 'A point'], ['trash', 'Trash']];
+    let q = { cap: '', title: '', capColor: '#8A919B', hasSeg: false, seg: [], rule: '', ruleColor: '#B3B9C2', hasRule: false };
+    let side = null;
+    if (a === null) {
+      q.cap = 'The whole plan'; q.title = steps.length + ' steps, in this order';
+    } else if (st.sec === 'from' || st.sec === 'to') {
+      side = st.sec === 'from' ? cur.from : cur.to;
+      q.cap = 'Step ' + (a + 1) + (st.sec === 'from' ? ' · take from' : ' · put into');
+      q.capColor = st.sec === 'from' ? '#7FDCCF' : '#C9BFFF';
+      q.title = st.sec === 'from' ? 'Where is the liquid taken from?' : 'Where does it go?';
+      q.hasSeg = true;
+      q.seg = (st.sec === 'from' ? segFrom : segTo).map((o) => ({
+        label: o[1], bg: side.type === o[0] ? '#2A303A' : 'transparent', fg: side.type === o[0] ? '#E8EAED' : '#B3B9C2',
+        pick: () => setStep((s) => { const t = st.sec === 'from' ? s.from : s.to; t.type = o[0]; if (o[0] === 'well' && !t.slot) { t.slot = '2'; t.wells = []; } })
+      }));
+      const r = rule(cur);
+      q.rule = st.sec === 'to' || cur.from.wells.length > 1 ? r.text : 'Click a well. Click several wells to take from each of them.';
+      q.hasRule = st.sec === 'to' && !r.ok;
+      q.ruleColor = q.hasRule ? '#F5B841' : '#B3B9C2';
+    } else if (st.sec === 'amount') {
+      q.cap = 'Step ' + (a + 1) + ' · amount and height'; q.title = 'How much, and how deep the tip goes';
+    } else {
+      q.cap = 'Step ' + (a + 1) + ' · extras'; q.title = 'Anything else in this step?';
+    }
+
+    // ---- plate view
+    const showPlate = a !== null && (((st.sec === 'from' || st.sec === 'to') && side.type === 'well') || st.sec === 'extras');
+    const plateSide = st.sec === 'extras' && cur ? (cur.to.type === 'well' ? cur.to : cur.from) : side;
+    let plate = { slot: '', name: '', facts: '', rows: 1, cols: 1, cells: [], rowLabels: [], colLabels: [], cellSize: '80%' };
+    if (showPlate && plateSide) {
+      const P = PL[plateSide.slot];
+      const isFrom = plateSide === cur.from;
+      const sel = {}; plateSide.wells.forEach((w) => { sel[w] = true; });
+      const other = {};
+      steps.forEach((s, i) => { if (i === a) return; [s.from, s.to].forEach((p) => { if (p.type === 'well' && p.slot === plateSide.slot) p.wells.forEach((w) => { other[w] = i; }); }); });
+      const toggle = (ids) => setStep((s) => {
+        const t = isFrom ? s.from : s.to;
+        const all = ids.every((id) => t.wells.indexOf(id) >= 0);
+        if (all) t.wells = t.wells.filter((w) => ids.indexOf(w) < 0);
+        else ids.forEach((id) => { if (t.wells.indexOf(id) < 0) t.wells.push(id); });
+      });
+      const cols = []; for (let c = 1; c <= P.cols; c++) cols.push(c);
+      const cells = [];
+      P.rows.forEach((r) => cols.forEach((c) => {
+        const id = r + c, on = !!sel[id], oi = other[id];
+        cells.push({ id: id,
+          bg: on ? (isFrom ? '#4FC9B8' : '#A99BFA') : (oi !== undefined ? DIMS[oi % DIMS.length] : '#262A31'),
+          bd: on ? '3px solid #E8EAED' : '3px solid transparent',
+          pick: () => { if (st.sec !== 'extras') toggle([id]); } });
+      }));
+      plate = { slot: plateSide.slot, name: P.name, facts: P.facts, rows: P.rows.length, cols: P.cols, cells: cells,
+        cellSize: P.cols <= 3 ? '62%' : '82%',
+        rowLabels: P.rows.map((r) => ({ n: r, pick: () => toggle(cols.map((c) => r + c)) })),
+        colLabels: cols.map((c) => ({ n: c, pick: () => toggle(P.rows.map((r) => r + c)) })) };
+    }
+    const miniDeck = ['10', '11', '12', '7', '8', '9', '4', '5', '6', '1', '2', '3'].map((n) => {
+      const isPlate = !!PL[n];
+      const on = plate.slot === n;
+      const names = { '10': 'Tips', '12': 'Trash', '3': 'Petri dish' };
+      return { n: 'SLOT ' + n, name: isPlate ? PL[n].name : (names[n] || ''),
+        bg: on ? '#1A2130' : (isPlate ? '#221E35' : '#16191D'), fg: isPlate ? '#E8EAED' : '#5B626C',
+        bd: on ? '2px solid #6CA6FF' : (isPlate ? '1px solid #3A3360' : '1px solid #22262C'), cursor: isPlate ? 'pointer' : 'default',
+        pick: () => { if (isPlate) { const copy = steps.map((x) => JSON.parse(JSON.stringify(x))); const t = st.sec === 'from' ? copy[a].from : copy[a].to; t.slot = n; t.wells = []; commit({ steps: copy, deck: false }); } } };
+    });
+
+    // ---- camera
+    const showCamera = a !== null && (st.sec === 'from' || st.sec === 'to') && (side.type === 'point' || side.type === 'hand');
+    const curPoint = side && side.point ? side.point : st.point;
+    const points = [['Reservoir', true], ['Waste dish', true], ['M1', false]].map((p) => ({
+      name: p[0], starFill: p[1] ? '#F5B841' : 'none',
+      bg: curPoint === p[0] ? '#1A2130' : 'transparent', bd: curPoint === p[0] ? '#6CA6FF' : '#3A4049',
+      pick: () => setStep((s) => { const t = st.sec === 'from' ? s.from : s.to; t.point = p[0]; })
+    }));
+
+    // ---- trash
+    const showTrash = a !== null && st.sec === 'to' && side.type === 'trash';
+    const trashLine = st.trash ? 'The waste dish in slot 3. It is set once for the whole plan; every step can use it.' : 'The trash is not set yet. Set it once for the whole plan.';
+
+    // ---- heights
+    const showHeights = a !== null && st.sec === 'amount';
+    const wellsDrawn = cur ? [
+      { cap: 'Take it at', color: '#4FC9B8', where: '2 mm above the bottom', note: cur.from.slot === '6' ? 'Bottom from the plate drawing' : 'Bottom measured in Well center', tipY: 248, liquidY: 120, liquidH: 150 },
+      { cap: 'Put it at', color: '#A99BFA', where: '1 mm below the top', note: 'Top of the well', tipY: 40, liquidY: 200, liquidH: 70 }
+    ] : [];
+
+    // ---- overview
+    const overSel = {};
+    steps.forEach((s, i) => [s.from, s.to].forEach((p) => { if (p.type === 'well' && p.slot === '2') p.wells.forEach((w) => { overSel[w] = COLORS[i % COLORS.length]; }); }));
+    const overCells = [];
+    'ABCDEFGH'.split('').forEach((r) => { for (let c = 1; c <= 12; c++) overCells.push({ bg: overSel[r + c] || '#262A31' }); });
+    const legend = steps.map((s, i) => ({ color: COLORS[i % COLORS.length], text: 'Step ' + (i + 1) + ': ' + place(s.from) + ' → ' + place(s.to) }));
+
+    // ---- step cards
+    const SECS = ['from', 'to', 'amount', 'extras'];
+    const stepCards = steps.map((s, i) => {
+      const on = i === a;
+      const r = rule(s);
+      const extrasOn = [s.mix ? 'mix after' : null, s.pause ? 'pause after the first well' : null].filter(Boolean);
+      const rows = [
+        ['from', 'Take from', place(s.from)],
+        ['to', 'Put into', place(s.to)],
+        ['amount', 'Amount', s.vol + ' µl per well · normal speed'],
+        ['extras', 'Extras', extrasOn.length ? extrasOn.join(', ') : 'none']
+      ].map((x) => ({ label: x[1], value: x[2],
+        bg: on && st.sec === x[0] ? '#1A2130' : 'transparent',
+        labelColor: x[0] === 'from' ? '#7FDCCF' : (x[0] === 'to' ? '#C9BFFF' : '#B3B9C2'),
+        valueColor: x[2].indexOf('choose') >= 0 ? '#F5B841' : '#E8EAED',
+        pick: () => commit({ active: i, sec: x[0], deck: false }) }));
+      return {
+        n: i + 1, color: COLORS[i % COLORS.length], active: on,
+        title: s.to.type === 'trash' ? 'Empty ' + s.from.wells.length + ' wells' : 'Move ' + s.vol + ' µl',
+        fromChip: place(s.from), toChip: place(s.to),
+        hasIssue: !r.ok && !on, issue: 'Not finished',
+        bd: on ? '#6CA6FF' : '#23272E', bg: on ? '#171C26' : '#171A1F',
+        rows: rows,
+        open: () => commit({ active: on ? null : i, sec: 'from', deck: false })
+      };
+    });
+    const extras = cur ? [
+      ['mix', 'Mix after putting it in', 'Pipettes up and down 3 times in each well.'],
+      ['pause', 'Pause after the first well', 'So you can check it before the rest.'],
+      ['blow', 'Empty the tip into the trash at the end', 'Leftover liquid goes to the trash.']
+    ].map((x) => ({ label: x[1], help: x[2], on: !!cur[x[0]],
+      knobBg: cur[x[0]] ? '#6CA6FF' : '#3A4049', knobX: cur[x[0]] ? 16 : 2,
+      toggle: () => setStep((s) => { s[x[0]] = !s[x[0]]; }) })) : [];
+    const idx = SECS.indexOf(st.sec);
+    const allOk = steps.every((s) => rule(s).ok);
+    const blocked = !st.trash || !allOk;
+    return {
+      q: q, showPlate: showPlate, plate: plate, miniDeck: miniDeck,
+      deckOpen: st.deck, dropBd: st.deck ? '#6CA6FF' : '#2E333B',
+      toggleDeck: () => commit({ deck: !st.deck }),
+      selectAll: () => setStep((s) => { const t = st.sec === 'from' ? s.from : s.to; const P = PL[t.slot]; const all = []; P.rows.forEach((r) => { for (let c = 1; c <= P.cols; c++) all.push(r + c); }); t.wells = all; }),
+      clearWells: () => setStep((s) => { const t = st.sec === 'from' ? s.from : s.to; t.wells = []; }),
+      showCamera: showCamera, camIsPoint: showCamera && side.type === 'point', camIsHand: showCamera && side.type === 'hand',
+      points: points,
+      useSpot: () => commit({ flash: 'Spot saved for this step.' }),
+      showTrash: showTrash, trashLine: trashLine,
+      showHeights: showHeights, wellsDrawn: wellsDrawn,
+      showOverview: a === null, overCells: overCells, legend: legend,
+      trashSummary: st.trash ? 'Waste dish · slot 3 · used by every step' : 'Not set yet. Needed before running.',
+      trashTextColor: st.trash ? '#B3B9C2' : '#F5D48A', trashIcon: st.trash ? '#8A919B' : '#F5B841',
+      trashBd: st.trash ? '#23272E' : '#5A4A22', trashBg: st.trash ? '#171A1F' : '#2A2213',
+      trashAction: st.trash ? 'Change' : 'Set',
+      openTrash: () => commit({ trash: true, flash: 'Trash set: waste dish in slot 3.' }),
+      stepCards: stepCards, extras: extras,
+      secAmount: a !== null && st.sec === 'amount', secExtras: a !== null && st.sec === 'extras',
+      nextLabel: idx < 3 ? 'Next: ' + ['Put into', 'Amount', 'Extras'][idx] : 'Done',
+      nextSection: () => { if (idx < 3) commit({ sec: SECS[idx + 1], deck: false }); else commit({ active: null, flash: 'Step ' + (a + 1) + ' ready.' }); },
+      tryOnce: () => commit({ flash: 'Step ' + (a + 1) + ': trying on the first well.' }),
+      deleteStep: () => { const copy = steps.filter((_, i) => i !== a); commit({ steps: copy, active: null, flash: 'Step deleted.' }); },
+      addOpen: st.add, toggleAdd: () => commit({ add: !st.add }),
+      addTransfer: () => { const copy = steps.concat([{ from: { type: 'well', slot: '2', wells: [] }, to: { type: 'well', slot: '2', wells: [] }, vol: 50, mix: false, pause: false, blow: true }]); commit({ steps: copy, active: copy.length - 1, sec: 'from', add: false }); },
+      addOther: () => commit({ add: false, flash: 'In the prototype only "Move liquid" is drawn.' }),
+      saveTpl: () => commit({ flash: 'Saved as a template.' }),
+      blocked: blocked, blockedText: !st.trash ? 'Set the trash to run this plan.' : 'Finish every step to run this plan.',
+      nextOpacity: blocked ? 0.4 : 1,
+      hasToast: !!st.flash, toast: st.flash
+    };
+  }
+}
+</script>
+</body>
+</html>

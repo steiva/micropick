@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Liquid run</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+.app{width:100%;height:900px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font:500 14px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 15px 'Inter',sans-serif;text-decoration:none}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;text-decoration:none;color:#B3B9C2;font-size:15px;font-weight:500}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box;flex:none}
+.line{width:28px;height:1px;background:#2E333B}
+.seg{display:flex;padding:3px;border-radius:12px;background:#111317;border:1px solid #23272E;gap:3px}
+.seg button{flex:1;height:40px;padding:0 14px;border:none;border-radius:9px;font:600 14px 'Inter',sans-serif;cursor:pointer}
+.w{border-radius:50%;aspect-ratio:1;justify-self:center;align-self:center;box-sizing:border-box}
+.chip{display:inline-flex;align-items:center;height:26px;padding:0 9px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Liquid</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Well center</span><span class="line"></span>
+    <a class="st" href="Main.dc.html"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Plan</a><span class="line"></span>
+    <span class="st" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">5</span>Run</span>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0">
+    <!-- LEFT: what the robot is doing right now -->
+    <section style="flex:1; min-width:0; padding:20px 28px; box-sizing:border-box; display:flex; flex-direction:column; gap:16px">
+      <div style="display:flex; align-items:flex-end; gap:16px">
+        <div style="flex:1; display:flex; flex-direction:column; gap:6px">
+          <span class="cap" style="color:{{headColor}}">{{headCap}}</span>
+          <span style="font-size:24px; font-weight:600">{{headTitle}}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px">
+          <span class="mono" style="font:600 28px 'JetBrains Mono',monospace">{{done}} <span style="color:#6F7781">/ {{total}}</span></span>
+          <span style="font-size:13px; color:#8A919B">wells done in this step</span>
+        </div>
+      </div>
+      <div style="height:8px; border-radius:999px; background:#22262C; overflow:hidden"><div style="height:100%; width:{{pct}}%; background:{{barColor}}; border-radius:999px"></div></div>
+
+      <!-- From → To, both drawn -->
+      <!-- Both plates share the same SBS footprint (127.76 × 85.48 mm); only well count and size differ -->
+      <div style="flex:1; min-height:0; display:grid; grid-template-columns:minmax(0, 1fr) 48px minmax(0, 1fr); align-items:center; gap:8px">
+        <div style="display:flex; flex-direction:column; gap:12px; padding:18px; border-radius:16px; background:#14171B; border:1px solid #22262C">
+          <span class="cap" style="color:#7FDCCF">Taking from</span>
+          <span style="font-size:15px; font-weight:600">Slot 6 · 6-well plate</span>
+          <div style="width:100%; aspect-ratio:127.76 / 85.48; box-sizing:border-box; padding:4.5% 4%; border-radius:12px; background:#1A1D22; border:1px solid #2E333B; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); grid-template-rows:repeat(2, minmax(0, 1fr)); gap:4%">
+            <sc-for list="{{srcCells}}" as="w" hint-placeholder-count="6"><span class="w" style="height:92%; width:auto; background:{{w.bg}}; border:{{w.bd}}"></span></sc-for>
+          </div>
+          <span style="min-height:18px; font-size:13px; color:#B3B9C2">{{srcNote}}</span>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:center">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px; padding:18px; border-radius:16px; background:#14171B; border:1px solid #22262C">
+          <span class="cap" style="color:#C9BFFF">Putting into</span>
+          <span style="font-size:15px; font-weight:600">Slot 2 · Corning 96</span>
+          <div style="width:100%; aspect-ratio:127.76 / 85.48; box-sizing:border-box; padding:4.5% 4%; border-radius:12px; background:#1A1D22; border:1px solid #2E333B; display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); grid-template-rows:repeat(8, minmax(0, 1fr)); gap:1.2%">
+            <sc-for list="{{dstCells}}" as="w" hint-placeholder-count="96"><span class="w" style="height:86%; width:auto; background:{{w.bg}}; border:{{w.bd}}"></span></sc-for>
+          </div>
+          <div style="min-height:18px; display:flex; gap:14px; font-size:12px; color:#B3B9C2; flex-wrap:wrap">
+            <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; background:{{stepColor}}"></span>done</span>
+            <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; border:2px solid #E8EAED; box-sizing:border-box"></span>now</span>
+            <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; background:{{stepDim}}"></span>still to do</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- After a step: what next -->
+      <sc-if value="{{showAfter}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:14px; background:#16261E; border:1px solid #1F3A2B">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3DD68C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>
+          <span style="flex:1; display:flex; flex-direction:column; gap:2px"><span style="font-size:16px; font-weight:600">Step 2 is done. 12 of 12 wells.</span><span style="font-size:13px; color:#B3B9C2">Check the plate if you want. Nothing happens until you choose.</span></span>
+          <button class="btn" type="button" onClick="{{finish}}">Finish here</button>
+          <button class="btn" type="button" onClick="{{repeat}}">Repeat step 2</button>
+          <button class="btn btn-p" type="button" onClick="{{nextStep}}">Go to step 3</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{showPausedNote}}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:14px; background:#2A2213; border:1px solid #5A4A22">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="#F5B841" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+          <span style="flex:1; display:flex; flex-direction:column; gap:2px"><span style="font-size:16px; font-weight:600">{{pausedTitle}}</span><span style="font-size:13px; color:#F5D48A">{{pausedText}}</span></span>
+        </div>
+      </sc-if>
+    </section>
+
+    <!-- RIGHT: the plan, with where we are -->
+    <aside style="width:420px; flex:none; padding:18px 20px; box-sizing:border-box; border-left:1px solid #22262C; display:flex; flex-direction:column; gap:12px; min-height:0">
+      <span class="cap">How to run</span>
+      <div class="seg" role="group" aria-label="How to run">
+        <sc-for list="{{modes}}" as="m" hint-placeholder-count="2"><button type="button" onClick="{{m.pick}}" style="background:{{m.bg}}; color:{{m.fg}}">{{m.label}}</button></sc-for>
+      </div>
+      <span style="font-size:13px; color:#8A919B; line-height:1.45">{{modeHelp}}</span>
+
+      <div style="display:flex; align-items:baseline; justify-content:space-between; padding-top:6px"><span class="cap">Steps</span><span style="font-size:12px; color:#8A919B">Trash: waste dish · slot 3</span></div>
+      <div style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:8px">
+        <sc-for list="{{stepRows}}" as="s" hint-placeholder-count="3">
+          <div style="display:flex; align-items:center; gap:12px; padding:12px; border-radius:14px; background:{{s.bg}}; border:1px solid {{s.bd}}; opacity:{{s.op}}">
+            <span class="num" style="background:{{s.color}}; color:#0F1114">{{s.n}}</span>
+            <span style="flex:1; display:flex; flex-direction:column; gap:6px; min-width:0">
+              <span style="font-size:15px; font-weight:600">{{s.title}}</span>
+              <span style="display:flex; align-items:center; gap:6px; flex-wrap:wrap">
+                <span class="chip" style="background:#15282A; color:#7FDCCF">{{s.from}}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+                <span class="chip" style="background:#221E35; color:#C9BFFF">{{s.to}}</span>
+              </span>
+            </span>
+            <span style="font-size:12px; font-weight:600; color:{{s.statusColor}}">{{s.status}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </aside>
+  </div>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <a class="btn" href="Main.dc.html" style="opacity:{{backOp}}">Back to plan</a>
+    <span style="font-size:13px; color:#8A919B">{{footNote}}</span>
+    <div style="flex:1"></div>
+    <sc-if value="{{showRunCtl}}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; gap:12px">
+        <button class="btn" type="button" onClick="{{togglePause}}" style="min-width:140px; background:{{pauseBg}}; border-color:{{pauseBd}}; color:{{pauseFg}}">{{pauseLabel}}</button>
+        <button class="btn" type="button" style="min-width:140px; background:#E5484D; border-color:#E5484D; color:#fff">Stop run</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{showStart}}" hint-placeholder-val="{{ false }}">
+      <button class="btn btn-p" type="button" onClick="{{start}}" style="min-width:180px">Start step 1</button>
+    </sc-if>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","options":["Before start","Running","Paused","Waiting for you (pause after first well)","Step finished"],"default":"Running"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { init: false, mode: 'one', phase: 'run', done: 7, step: 1 }; }
+  renderVals() {
+    let st = this.state;
+    if (!st.init) {
+      const M = {
+        'Before start': { phase: 'idle', done: 0, step: 0 },
+        'Running': { phase: 'run', done: 7, step: 1 },
+        'Paused': { phase: 'pause', done: 7, step: 1 },
+        'Waiting for you (pause after first well)': { phase: 'check', done: 1, step: 0 },
+        'Step finished': { phase: 'after', done: 12, step: 1 }
+      };
+      st = Object.assign({}, st, M[this.props.scenario ?? 'Running']);
+    }
+    const commit = (p) => this.setState(Object.assign({}, st, p, { init: true }));
+    const COLORS = ['#4FC9B8', '#F0A35E', '#EE93BE'];
+    const DIMS = ['#1D3B38', '#3A2C1C', '#3A2230'];
+    const STEPS = [
+      { title: 'Move 50 µl', from: 'Slot 6 · A1', to: 'Slot 2 · A1–A12 (12)', row: 'A', src: 'A1' },
+      { title: 'Move 50 µl, then mix', from: 'Slot 6 · A2', to: 'Slot 2 · B1–B12 (12)', row: 'B', src: 'A2' },
+      { title: 'Empty 12 wells', from: 'Slot 2 · D1–D12 (12)', to: 'Trash', row: 'D', src: null }
+    ];
+    const i = st.step, S = STEPS[i], c = COLORS[i], dim = DIMS[i];
+    const total = 12;
+    const busy = st.phase === 'run' || st.phase === 'pause' || st.phase === 'check';
+    // destination plate
+    const dst = [];
+    'ABCDEFGH'.split('').forEach((r) => { for (let k = 1; k <= 12; k++) {
+      let bg = '#262A31', bd = '2px solid transparent';
+      if (r === 'A' && i > 0) bg = COLORS[0];
+      if (r === S.row) { if (k <= st.done) bg = c; else bg = dim; if (k === st.done + 1 && busy) bd = '2px solid #E8EAED'; }
+      if (r === 'D' && i < 2) bg = '#2E3540';
+      dst.push({ bg: bg, bd: bd });
+    } });
+    const src = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3'].map((id) => ({ bg: id === S.src ? c : (id === 'A1' || id === 'A2' ? '#2F3A44' : '#262A31'), bd: id === S.src && busy ? '2px solid #E8EAED' : '2px solid transparent' }));
+    let headCap = 'Step ' + (i + 1) + ' of 3 · running', headColor = c;
+    if (st.phase === 'idle') { headCap = 'Ready'; headColor = '#8A919B'; }
+    if (st.phase === 'pause') { headCap = 'Step ' + (i + 1) + ' of 3 · paused'; headColor = '#F5B841'; }
+    if (st.phase === 'check') { headCap = 'Step ' + (i + 1) + ' of 3 · waiting for you'; headColor = '#F5B841'; }
+    if (st.phase === 'after') { headCap = 'Step ' + (i + 1) + ' of 3 · done'; headColor = '#3DD68C'; }
+    const stepRows = STEPS.map((x, k) => {
+      let status = 'Next', sc = '#8A919B', bg = '#171A1F', bd = '#23272E', op = 1;
+      if (k < i || (k === i && st.phase === 'after')) { status = '✓ Done'; sc = '#3DD68C'; op = 0.7; }
+      else if (k === i && st.phase !== 'idle') { status = st.phase === 'run' ? 'Running · ' + st.done + '/12' : (st.phase === 'after' ? '' : 'Paused'); sc = st.phase === 'run' ? c : '#F5B841'; bg = '#171C26'; bd = c; }
+      else if (k === i) { status = 'First'; sc = '#B3B9C2'; }
+      return { n: k + 1, color: COLORS[k], title: x.title, from: x.from, to: x.to, status: status, statusColor: sc, bg: bg, bd: bd, op: op };
+    });
+    const paused = st.phase === 'pause' || st.phase === 'check';
+    return {
+      headCap: headCap, headColor: headColor,
+      headTitle: S.from + '  →  ' + S.to,
+      done: st.done, total: total, pct: Math.round(st.done / total * 100), barColor: paused ? '#F5B841' : c,
+      srcCells: src, srcNote: '50 µl per well · refills when the tip runs low',
+      dstCells: dst, stepColor: c, stepDim: dim,
+      showAfter: st.phase === 'after',
+      showPausedNote: paused,
+      pausedTitle: st.phase === 'check' ? 'First well done. Check it, then continue.' : 'Paused. The robot holds the tip where it is.',
+      pausedText: st.phase === 'check' ? 'You asked for this in the plan ("Pause after the first well"). The robot light is blinking so you notice — it is not broken.' : 'Press Continue to go on from well ' + (st.done + 1) + '.',
+      modes: [['one', 'One step at a time'], ['all', 'All steps in a row']].map((m) => ({ label: m[1], bg: st.mode === m[0] ? '#2A303A' : 'transparent', fg: st.mode === m[0] ? '#E8EAED' : '#B3B9C2', pick: () => commit({ mode: m[0] }) })),
+      modeHelp: st.mode === 'one' ? 'After each step the robot stops and asks what next: go on, repeat the step, or finish.' : 'The robot goes from step to step without asking. Pauses you put in the plan still happen.',
+      stepRows: stepRows,
+      showRunCtl: busy, showStart: st.phase === 'idle' || st.phase === 'after' ? st.phase === 'idle' : false,
+      pauseLabel: paused ? 'Continue' : 'Pause',
+      pauseBg: paused ? '#F5B841' : 'transparent', pauseBd: paused ? '#F5B841' : '#2E333B', pauseFg: paused ? '#1A1405' : '#E8EAED',
+      togglePause: () => commit({ phase: paused ? 'run' : 'pause' }),
+      start: () => commit({ phase: 'run', done: 0, step: 0 }),
+      nextStep: () => commit({ phase: 'run', done: 0, step: Math.min(2, i + 1) }),
+      repeat: () => commit({ phase: 'run', done: 0 }),
+      finish: () => commit({ phase: 'idle', done: 0, step: 0 }),
+      backOp: busy ? 0.4 : 1,
+      footNote: busy ? 'The plan can be changed when the robot is not moving.' : ''
+    };
+  }
+}
+</script>
+</body>
+</html>

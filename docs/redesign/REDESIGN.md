@@ -632,43 +632,13 @@ bottom (needed when aspirating near the bottom).
 
 The step is done when every plate the plan uses is measured or skipped.
 
-### 6.8 Liquid Plan (Liquid step 4) — existing `liquid` page logic; renamed from "Program"
+### 6.8 Liquid Plan (Liquid step 4)
 
-**Left:**
-- MiniDeckDropdown for the plate. Tiles show "Measured" or "Not measured".
-- Choosing a plate that is not measured shows a **warn banner** "The well
-  center of this plate was not measured. The robot will use the plate's
-  drawing." with **Measure now** (goes to Well center) and **Use anyway**.
-  Not blocked: the user decides consciously.
-- Toolbar: Undo, Redo, Select all, Clear.
-- PlateGrid colored by group.
-- "N wells selected" and **Make a group**.
-
-**Right:**
-- **Start from:** A template / New plan, and the templates box. This is
-  **identical in behavior to Auto Plan** (§6.3).
-- **Take liquid from:** In a well / At a point / By hand. By hand means the
-  robot waits for the user to bring the tip, then aspirates.
-- **Groups, in the order they run** (drag to reorder). Each group is a
-  FoldCard; all can be folded.
-  - Each step is **one summary line** ("Aspirate 200 µl · fast · 2 mm above
-    bottom") with **Edit**.
-  - Edit unfolds Volume (µl), Speed (Slow / Normal / Fast), and Height: a
-    reference (Top / Center / Bottom / Measured bottom) plus an offset in mm,
-    with a tiny well drawing.
-  - The unfolded step also has **Try once** and **Delete step**
-    (`danger-text`).
-  - "+ Aspirate", "+ Dispense", "+ Mix", "More…".
-- **What to run:** "All groups, one after another" or "Only one group".
-  Today it silently runs all, which surprised users.
-- Summary: **Use this plan**, then "Save as template" or "Save changes to
-  "<name>"".
+Replaced by `LIQUID.md`.
 
 ### 6.9 Run (Liquid step 5)
 
-Not drawn yet. Build it like the Picking footer and status:
-- left: the plate with progress;
-- footer: status label and sentence, Pause / Resume, Stop run (red).
+Replaced by `LIQUID.md`.
 
 ## 7. Cross-cutting behaviors
 

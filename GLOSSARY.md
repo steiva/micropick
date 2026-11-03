@@ -86,7 +86,7 @@ One of the three kinds of work started from Home: Auto pick, Manual pick, Liquid
 _Avoid_: mode, workflow
 
 **Step**:
-One screen of a task. A step is done when the state it sets up holds now, never because it was visited. Deck, Tip and Dish bottom are the same steps, with the same state, in every task that has them.
+One screen of a task (a plan step is something else). A step is done when the state it sets up holds now, never because it was visited. Deck, Tip and Dish bottom are the same steps, with the same state, in every task that has them.
 
 **Run step**:
 The last step of every task, where the work itself is done. In Manual pick it holds no run: each action there is a short job.
@@ -100,8 +100,20 @@ Which wells of a plate get cuboids, how many each, and in what order.
 _Avoid_: routine (on screen), program
 
 **Liquid plan**:
-Groups of wells and the steps each well gets, run in order.
+An ordered list of plan steps, with one trash for all of them.
 _Avoid_: program (on screen), protocol
+
+**Plan step**:
+One line of a liquid plan: move liquid from a source to destinations, mix, wait, or wait for the operator. On screen "Step 2". Not a step of a task.
+_Avoid_: group, block
+
+**Trash**:
+The one well or point of a liquid plan that leftover liquid goes to. A run needs it.
+_Avoid_: waste (in code names)
+
+**Spot**:
+A place kept in a liquid plan's step by its coordinates: brought to by hand, or a memo point used there.
+_Avoid_: here
 
 **Template**:
 A plate plan or a liquid plan saved under a name the user gave it, as a file that can be shared.
