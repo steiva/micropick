@@ -9,16 +9,43 @@ call it directly.
 What is kept between steps
 --------------------------
 `PlanState`, which the caller keeps: one `LiquidState` per step, so a stopped
-step carries on where it stopped, and what the tip holds, carried from step
-to step. The engine raises the tip at the end of every program, so a plan
-step starts from the top as a run does.
+step carries on where it stopped, what the tip holds, carried from step to
+step, and what a stopped Wait has left. The engine raises the tip at the end
+of every program, so a plan step starts from the top as a run does. Repeat is
+`PlanState.redo` and the step run again: from its first well, with what the
+tip holds now.
 
 The trash first
 ---------------
 A new plan's run begins by blowing the tip out over the trash, before its
 first step whatever that is: a program of its own on the carrier, not the
-first step's `clear_first`. Not a plan step and not a setting. Only with
-nothing done yet (`PlanState.fresh`), so a Continue does not.
+first step's `clear_first`. Not a plan step and not a setting. Only from the
+first step with nothing done yet (`PlanState.fresh`), so a Continue does not,
+even after a stop before the first well.
+
+Waiting
+-------
+Wait and Wait for me do not compile: they are done here, through the engine's
+`gate`, so Pause and Stop hold them as they hold a well. A Wait counts down
+only while it is not paused, and a stopped one carries on with the time it
+had left (`PlanState.wait_left`). Wait for me counts as done before it holds
+the run, as the engine's pause does: a stop there and a Continue do not wait
+again.
+
+`on_step` says "waiting" when the plan itself holds the run (Wait for me,
+pause after the first well) and "paused" when the operator's Pause does. The
+engine does not tell one from the other, or say when a Pause takes hold, so
+it gets the pause through `_WatchedPause`.
+
+Try once
+--------
+`first_pair` does the first well of the step's first group with `do_step`,
+not `run`: `run` raises the tip however it ends, and the tip stays where the
+step put it, to be looked at. No trash blow-out and no emptying at the end, so
+what the tip holds can be said; a refill takes what it would in a run. Nothing
+of it counts as the plan's progress, only what the tip holds. It needs the
+trash only for a step going there (`goes_to_trash`). Refused with a sentence
+as a ValueError.
 
 What is wrong with a plan
 -------------------------
@@ -34,13 +61,15 @@ known.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 
-from ..core.liquid import Group, Location, Program
+from ..core.liquid import VOLUME_TOL, Group, Location, Program, aspirate_volume
 from ..core.liquid_plan import (CARRIER_SLOT, CARRIER_WELL, SPOT_PREFIX,
-                                LiquidPlan, compile_step, compiles, pairing,
-                                spots)
-from .liquid import LiquidState, Plate, play, problems, run, trash_problems
+                                LiquidPlan, compile_step, compiles,
+                                goes_to_trash, pairing, spots)
+from .liquid import (LiquidState, Plate, do_step, gate, play, problems, run,
+                     trash_problems)
 from .motion import Motion
 
 __all__ = ["PlanState", "run_plan", "plan_problems"]
@@ -52,21 +81,57 @@ STAND_IN_TRASH = f"{SPOT_PREFIX}trash"
 ENGINE_WHERE = re.compile(r"^group '.*?'(?:, step \d+(?: at \S+)?)?: ")
 NO_BOTTOM = re.compile(r"^the measured bottom of slot (\S+) is not known")
 
+# How often a Wait looks at Pause and Stop.
+WAIT_SLICE_S = 0.05
+
 
 @dataclass
 class PlanState:
     """How far a plan got. Owned by the caller and changed in place, so it
-    survives a stop. `done`: the ids of the steps finished."""
+    survives a stop. `done`: the ids of the steps finished. `cleared`: the
+    trash blow-out was done. `wait_left`: the seconds a Wait begun has left,
+    by step id."""
 
     in_tip: float = 0.0
     done: list[str] = field(default_factory=list)
     steps: dict[str, LiquidState] = field(default_factory=dict)
+    cleared: bool = False
+    wait_left: dict[str, float] = field(default_factory=dict)
 
     @property
     def fresh(self) -> bool:
         """Whether nothing of the plan was done yet."""
-        return not self.done and not any(
+        return not (self.cleared or self.done or self.wait_left) and not any(
             s.done or s.resume for s in self.steps.values())
+
+    def redo(self, step_id: str) -> None:
+        """The step as if not begun, for Repeat and Start the step over.
+        What the tip holds stays."""
+        self.done = [done for done in self.done if done != step_id]
+        self.steps.pop(step_id, None)
+        self.wait_left.pop(step_id, None)
+
+
+class _WatchedPause:
+    """The run's pause, as the engine uses it, saying when the operator's
+    holds the run. See "Waiting"."""
+
+    def __init__(self, event, on_held) -> None:
+        self.event = event
+        self.on_held = on_held
+        self.said = False
+
+    def set(self) -> None:
+        self.said = True
+        self.event.set()
+
+    def is_set(self) -> bool:
+        held = self.event.is_set()
+        if held and not self.said:
+            self.said = True
+            self.on_held()
+        self.said = self.said and held
+        return held
 
 
 def _with_carrier(plates: dict[str, Plate]) -> dict[str, Plate]:
@@ -91,28 +156,137 @@ def _blow_out_first(motion: Motion, plan: LiquidPlan, plates, positions,
         state.in_tip = clearing.in_tip
 
 
+def _wait(step, state: PlanState, *, pause, stop, log) -> None:
+    left = state.wait_left.get(step.id, step.seconds)
+    if log is not None:
+        log(f"wait {left:g} s")
+    while left > 0:
+        state.wait_left[step.id] = left
+        gate(pause, stop)
+        begun = time.monotonic()
+        if stop is not None:
+            stop.wait(min(WAIT_SLICE_S, left))
+        else:
+            time.sleep(min(WAIT_SLICE_S, left))
+        left -= time.monotonic() - begun
+    state.wait_left.pop(step.id, None)
+
+
+def _wait_for_me(step, *, pause, stop, log, waiting) -> None:
+    if pause is None:
+        return
+    if log is not None:
+        log(f"paused: {step.message}")
+    pause.set()
+    waiting(step.message)
+    gate(pause, stop)
+
+
+def _try_refusal(plan: LiquidPlan, index: int, plates: dict,
+                 positions: dict) -> str | None:
+    """Why the step at `index` cannot be tried, in a sentence."""
+    step = plan.steps[index]
+    if not compiles(step):
+        return "There is nothing to try in this step."
+    if goes_to_trash(step):
+        if plan.trash is None:
+            return "Set the trash to try this step."
+        wrong = trash_problems(plan.trash, plates, positions)
+        if wrong:
+            return _screen(wrong[0])
+    found = plan_problems(plan, plates, positions).get(step.id)
+    return found[0] if found else None
+
+
+def _first_pair(motion: Motion, plan: LiquidPlan, index: int, plates: dict,
+                positions: dict, state: PlanState, *, pause, stop,
+                log) -> str | None:
+    """The first well of the step's first group. See "Try once". Returns the
+    well, None on the carrier."""
+    program = compile_step(plan, index, plates)
+    group = program.groups[0]
+    well = group.wells[0]
+    trying = LiquidState(in_tip=state.in_tip)
+    try:
+        for si, step in enumerate(group.steps):
+            if step.action == "aspirate":
+                amount = aspirate_volume(step, group.steps, si, trying.in_tip)
+                if amount <= VOLUME_TOL:
+                    continue
+                step = step.model_copy(update={"volume_ul": amount})
+            do_step(motion, step, group, well, plates, positions, trying,
+                    pause=pause, stop=stop, log=log, capacity=plan.tip_ul)
+    finally:
+        state.in_tip = trying.in_tip
+    return None if _on_carrier(program) else well
+
+
 def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
              positions: dict, state: PlanState, *, pause=None, stop=None,
              log=None, on_step=None, on_progress=None, on_paused=None,
-             log_path=None) -> None:
-    """Do the plan's steps in order, skipping those in `state.done`.
-    `on_step(index, what)`: "started" and "done". `on_progress(done, total,
+             log_path=None, only: int | None = None,
+             first_pair: bool = False) -> None:
+    """Do the plan's steps in order, skipping those in `state.done`; with
+    `only`, that index alone. With `first_pair` too, Try once on it: see
+    "Try once". `on_step(index, what)`: "started", "done", and "waiting" or
+    "paused" as the run is held (see "Waiting"). `on_progress(done, total,
     gi, well)` as a well is finished, counted within the step; `well` is
-    None for a step with no wells. `on_paused(message)` when the run holds.
-    A stop raises `workflows.liquid.Stopped`, `state` saying where. Wait and
-    Wait for me do not compile and raise ValueError."""
-    if plan.trash is None:
-        raise ValueError("a run needs the plan's trash")
+    None for a step with no wells. `on_paused(message)` when the plan holds
+    the run. A stop raises `workflows.liquid.Stopped`, `state` saying
+    where."""
+    current = 0 if only is None else only
+
+    def report(what: str) -> None:
+        if on_step is not None:
+            on_step(current, what)
+
+    if pause is not None:
+        pause = _WatchedPause(pause, lambda: report("paused"))
     plates = _with_carrier(plates)
     positions = {**positions, **spots(plan)}
-    if state.fresh:
+    if first_pair:
+        if only is None:
+            raise ValueError("first_pair needs the step, as only")
+        refusal = _try_refusal(plan, only, plates, positions)
+        if refusal:
+            raise ValueError(refusal)
+        report("started")
+        well = _first_pair(motion, plan, only, plates, positions, state,
+                           pause=pause, stop=stop, log=log)
+        if on_progress is not None:
+            on_progress(1, 1, 0, well)
+        report("done")
+        return
+    if plan.trash is None:
+        raise ValueError("a run needs the plan's trash")
+    if state.fresh and current == 0:
         _blow_out_first(motion, plan, plates, positions, state, pause=pause,
                         stop=stop, log=log)
-    for index, step in enumerate(plan.steps):
+        state.cleared = True
+    chosen = range(len(plan.steps)) if only is None else [only]
+    for index in chosen:
+        step = plan.steps[index]
         if step.id in state.done:
             continue
-        if on_step is not None:
-            on_step(index, "started")
+        current = index
+        report("started")
+        if step.kind == "wait_for_me":
+            state.done.append(step.id)
+
+            def waiting(message):
+                if on_paused is not None:
+                    on_paused(message)
+                report("waiting")
+
+            _wait_for_me(step, pause=pause, stop=stop, log=log,
+                         waiting=waiting)
+            report("done")
+            continue
+        if step.kind == "wait":
+            _wait(step, state, pause=pause, stop=stop, log=log)
+            state.done.append(step.id)
+            report("done")
+            continue
         program = compile_step(plan, index, plates)
         carried = state.steps.setdefault(step.id, LiquidState())
         carried.in_tip = state.in_tip
@@ -126,6 +300,7 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
             if on_paused is not None:
                 on_paused(f"check step {index + 1}, then press Resume."
                           if _on_carrier(program) else message)
+            report("waiting")
 
         try:
             run(motion, program, plates, positions, carried, pause=pause,
@@ -134,8 +309,7 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
         finally:
             state.in_tip = carried.in_tip
         state.done.append(step.id)
-        if on_step is not None:
-            on_step(index, "done")
+        report("done")
 
 
 def _screen(message: str) -> str:

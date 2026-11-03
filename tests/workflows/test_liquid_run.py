@@ -158,7 +158,7 @@ def test_a_pause_sleeps_rather_than_spins():
     pause = Counting()
     pause.set()
     threading.Timer(0.3, pause.clear).start()
-    liquid._gate(pause, threading.Event())
+    liquid.gate(pause, threading.Event())
     assert len(polls) < 100                 # ~6 at 50 ms a poll
 
 

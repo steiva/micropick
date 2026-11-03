@@ -420,3 +420,23 @@ def test_the_wash_compiles_to_the_bench_wash():
     refilled = compile_step(wash, 1, PLATES)
     assert refilled.groups[0].pause_after_first
     assert refilled.groups[0].steps[0].volume_ul == 200
+
+
+def test_a_wait_after_each_well_ends_each_wells_steps():
+    program = _compiled(MoveLiquid(source=_wells("A1"), dest=_wells("A2", "B2"),
+                                   volume_ul=20, wait_after_s=30))
+    assert [s.action for s in program.groups[0].steps] == [
+        "aspirate", "dispense", "wait"]
+    assert program.groups[0].steps[-1].seconds == 30
+
+
+def test_a_wait_after_each_well_comes_after_the_mixing():
+    program = _compiled(MoveLiquid(source=_wells("A1"), dest=_wells("A2"),
+                                   mix_after=True, wait_after_s=5))
+    assert [s.action for s in program.groups[0].steps] == [
+        "aspirate", "dispense", "mix", "wait"]
+
+
+def test_no_wait_after_each_well_by_default():
+    program = _compiled(MoveLiquid(source=_wells("A1"), dest=_wells("A2")))
+    assert "wait" not in [s.action for s in program.groups[0].steps]

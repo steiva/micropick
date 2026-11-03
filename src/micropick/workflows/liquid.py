@@ -54,7 +54,7 @@ does not move. `here` is wherever the tip is, and its commands are in place.
 Pause, stop and carrying on
 ---------------------------
 `pause` and `stop` are `threading.Event`s checked between any two robot
-commands (`_gate`), as the picking run does: a pause takes effect at once and
+commands (`gate`), as the picking run does: a pause takes effect at once and
 a stop raises `Stopped`. What the tip holds, which wells are finished and how
 far the well in hand got live in a `LiquidState` the caller keeps, so a run
 started again after a stop carries on from the step after the last one done -
@@ -117,8 +117,8 @@ from .motion import Motion
 
 __all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "chosen", "problems",
            "trash_problems", "play", "plan", "go",
-           "do_step", "run", "run_step", "slots_used", "points_used",
-           "step_words"]
+           "do_step", "gate", "run", "run_step", "slots_used",
+           "points_used", "step_words"]
 
 LOG_FIELDS = ["time", "group", "well", "step", "in_tip", "note"]
 
@@ -204,7 +204,7 @@ class LiquidState:
         self.loose = False
 
 
-def _gate(pause, stop) -> None:
+def gate(pause, stop) -> None:
     """Checkpoint between two commands. Blocks while paused, raises on stop."""
     if stop is not None and stop.is_set():
         raise Stopped("stopped")
@@ -630,7 +630,7 @@ def do_step(motion: Motion, step, group: Group, well: str,
         _say(log, f"wait {step.seconds:g} s")
         end = time.monotonic() + step.seconds
         while time.monotonic() < end:
-            _gate(pause, stop)
+            gate(pause, stop)
             time.sleep(min(0.05, max(0.0, end - time.monotonic())))
         return f"waited {step.seconds:g} s"
     if action == "pause":
@@ -639,11 +639,11 @@ def do_step(motion: Motion, step, group: Group, well: str,
             pause.set()
             if on_paused is not None:
                 on_paused(step.message)
-            _gate(pause, stop)
+            gate(pause, stop)
         return "paused"
 
     _overfill(step, state, capacity)
-    _gate(pause, stop)
+    gate(pause, stop)
     location = step.location
     # In a well the command takes the tip there itself; anywhere else the
     # tip is driven there first. See "Getting there".
@@ -660,7 +660,7 @@ def do_step(motion: Motion, step, group: Group, well: str,
                    and state.in_tip <= VOLUME_TOL)
         go(motion, location, group, well, plates, positions, state, log=log,
            prepare=prepare)
-    _gate(pause, stop)
+    gate(pause, stop)
     if action == "move_to":
         return "moved"
     # A blow out away from a well command may still be in one: `here`
@@ -706,7 +706,7 @@ def _slow_lift(robot: Robot, step, state: LiquidState, pause, stop,
     _say(log, f"slow lift: {step.lift_steps} × {step.lift_step_mm:g} mm, "
               f"{step.lift_pause_s:g} s apart")
     for _ in range(step.lift_steps):
-        _gate(pause, stop)
+        gate(pause, stop)
         move_relative(robot, "z", float(step.lift_step_mm))
         time.sleep(float(step.lift_pause_s))
 
@@ -746,7 +746,7 @@ def _liquid(robot: Robot, step, place, blow, state: LiquidState, pause,
         return f"dispensed {volume:g} µl"
     if action == "mix":
         for n in range(step.cycles):
-            _gate(pause, stop)
+            gate(pause, stop)
             _say(log, f"mix {n + 1}/{step.cycles}: {step.volume_ul:g} µl{at}")
             _aspirate(robot, place, step.volume_ul, step.flow_rate)
             _dispense(robot, place, step.volume_ul, step.flow_rate)
@@ -955,7 +955,7 @@ def run(motion: Motion, program: Program, plates: dict[str, Plate],
                 _say(log, f"paused: {message}")
                 pause.set()
                 paused(message)
-                _gate(pause, stop)
+                gate(pause, stop)
         say("1 well done." if total == 1 else f"All {total} wells done.")
     except Stopped:
         say("Stopped.")

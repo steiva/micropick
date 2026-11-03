@@ -132,7 +132,7 @@ LiquidPlan
   trash: Location | None          # the existing core.liquid.Location
   steps: list[PlanStep]           # discriminated on "kind"
 
-PlanStep = MoveLiquid | MixStep | WaitStep | WaitForMe
+PlanStep = MoveLiquid | MixStep | BlowOutStep | MoveTip | WaitStep | WaitForMe
   common fields: id (uuid4 str, stable), color (hex, see §3.1)
 
 MoveLiquid
@@ -147,6 +147,7 @@ MoveLiquid
   pause_after_first: bool
   empty_at_end: bool = True
   slow_lift: bool                 # notebook 03's slow lift after taking from wells
+  wait_after_s: float = 0         # the old per-well Wait: seconds after each well
 
 Place
   kind: "wells" | "point" | "spot" | "trash"
@@ -162,6 +163,8 @@ Height
   aside_y_mm: float = 0
 
 MixStep:   wells Place (kind "wells"), cycles, volume_ul, flow_ul_s, at: Height
+BlowOutStep: place Place (a well, a point, a spot or the trash), flow_ul_s, at: Height
+MoveTip:   place Place (a well, a point or a spot), at: Height
 WaitStep:  seconds
 WaitForMe: message: str = "Check the plate, then continue."
 ```
@@ -178,10 +181,13 @@ do not compile; the plan runner handles them (§2.4). The compile rules:
 | N → 1 well or point | one group: the N source wells | `Aspirate(this_well, V)`, `Dispense(fixed dest, V)` |
 | N → Trash | one group: the N source wells | `Aspirate(this_well, V)`, `Dispense(plan.trash, auto_empty=True)`. This is the washing pattern that already exists |
 | Mix | one group: the wells | `Mix(this_well, cycles, volume)` |
+| Blow out | one carrier group | `BlowOut(place)` |
+| Move the tip | one carrier group | `MoveTo(place)` |
 
 Then, for all of the above:
 
 - `pause_after_first` goes on the first compiled group only.
+- `wait_after_s` adds a `Wait` at the end of each compiled well's steps.
 - *slow_lift* sets `Aspirate.lift_steps`, `lift_step_mm` and `lift_pause_s`
   to the values the existing washing template uses. Find them in the saved
   washing program or in the current Liquid page's defaults; do not invent
@@ -224,9 +230,11 @@ about this reaches the screen.
      continues where it stopped. `in_tip` is carried from step to step.
    - `clear_first` (the trash blow-out) only when the plan starts from step 1
      with nothing done.
-   - Wait: sleep in short slices through the same pause/stop gate (`_gate`),
-     so Pause and Stop work during it.
-   - Wait for me: set `pause`, call `on_paused(message)`, then `_gate`.
+   - Wait: sleep in short slices through the same pause/stop gate (`gate`),
+     so Pause and Stop work during it. A stopped Wait continues with the time
+     it had left.
+   - Wait for me: count it as done, set `pause`, call `on_paused(message)`,
+     then `gate`, so a Continue does not wait again.
    - Callbacks: `on_step(index, state)`, where state is one of `started`,
      `done`, `paused` and `waiting`, plus the existing `on_progress(done,
      total, gi, well)`, mapped to the step's own count of wells.
@@ -425,6 +433,7 @@ These are switches in the open card. Each one has its help line under it:
 | Pause after the first well | "So you can check it before the rest." | always |
 | Empty the tip into the trash at the end | "Leftover liquid goes to the trash." | always; on by default |
 | Lift out slowly | "Small steps up after taking, so tissue is not pulled along." | the source is wells |
+| Wait after each well | a seconds field, 0 for none | always |
 
 While Extras is selected, the left area shows the destination plate with this
 step's wells, read-only.
@@ -657,7 +666,8 @@ StepBar: Deck ✓, Tip ✓, Well center ✓, Plan ✓ (clickable, back to Plan),
 
 - Try once runs the open step on its **first pair only**: the first source to
   the first destination. It goes through `run_plan(only=index)` with a
-  one-well limit, without the trash blow-out.
+  one-well limit (`first_pair=True`, through `do_step`), without the trash
+  blow-out.
 - The tip is left where the step put it, as `run_step` does today, so the
   user can look.
 - Toasts: "Step 1: trying on the first well." when it starts and "Done. The

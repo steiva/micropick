@@ -54,8 +54,9 @@ carries the destination's liquid, so with mixing no reserve is kept and each
 well has its own trip. Mixing is at the put speed, in the place put into.
 
 `pause_after_first` goes on the first compiled group only and `empty_at_end`
-on the last only, so N → N does not visit the trash per well. Wait and Wait
-for me do not compile: the runner does them.
+on the last only, so N → N does not visit the trash per well. `wait_after_s`
+ends the steps of each compiled well, after any mixing. Wait and Wait for me
+do not compile: the runner does them.
 
 The carrier
 -----------
@@ -79,13 +80,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .liquid import (GROUP_COLOURS, TIP_UL, VOLUME_TOL, Aspirate, BlowOut,
                      Dispense, Group, Location, Mix, MoveTo, Program,
-                     ProgramError, ordered_wells, write_atomic)
+                     ProgramError, Wait, ordered_wells, write_atomic)
 
 __all__ = ["CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height", "Spot",
            "Place", "MoveLiquid", "MixStep", "BlowOutStep", "MoveTip",
            "WaitStep", "WaitForMe", "PlanStep", "LiquidPlan", "Pairing",
            "pairing", "chip", "move_step", "compile_step", "compiles",
-           "spot_name", "spots"]
+           "goes_to_trash", "spot_name", "spots"]
 
 PLAN_VERSION = 1
 
@@ -166,6 +167,8 @@ class MoveLiquid(_Step):
     pause_after_first: bool = False
     empty_at_end: bool = True
     slow_lift: bool = False
+    # Seconds the robot waits after each well; 0: none.
+    wait_after_s: float = Field(default=0.0, ge=0)
 
 
 class MixStep(_Step):
@@ -313,6 +316,11 @@ def spots(plan: LiquidPlan) -> dict[str, tuple[float, float, float]]:
             if place.kind == "spot" and place.spot is not None}
 
 
+def goes_to_trash(step) -> bool:
+    """Whether `step` has the trash for a place, so needs the plan's."""
+    return any(place.kind == "trash" for _role, place in _places(step))
+
+
 def compiles(step) -> bool:
     """Whether `step` is a program; the runner does the others itself."""
     return step.kind not in ("wait", "wait_for_me")
@@ -386,14 +394,17 @@ def _move_groups(plan: LiquidPlan, index: int, step: MoveLiquid,
 
     def put(location: Location) -> list:
         if dest.kind == "trash":
-            return [Dispense(location=location, auto_empty=True,
-                             flow_rate=step.put_flow_ul_s)]
-        out = [Dispense(volume_ul=step.volume_ul, location=location,
-                        flow_rate=step.put_flow_ul_s)]
-        if step.mix_after:
+            out = [Dispense(location=location, auto_empty=True,
+                            flow_rate=step.put_flow_ul_s)]
+        else:
+            out = [Dispense(volume_ul=step.volume_ul, location=location,
+                            flow_rate=step.put_flow_ul_s)]
+        if step.mix_after and dest.kind != "trash":
             out.append(Mix(cycles=step.mix_cycles,
                            volume_ul=step.mix_ul or step.volume_ul,
                            flow_rate=step.put_flow_ul_s, location=location))
+        if step.wait_after_s:
+            out.append(Wait(seconds=step.wait_after_s))
         return out
 
     def group(place: Place, wells: list[str], steps: list) -> Group:
