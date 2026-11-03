@@ -367,7 +367,8 @@ class Profile:
         self.deck = DeckConfig(modules=[],
                                module_types=list(self.deck.module_types),
                                recent_labware=list(self.deck.recent_labware),
-                               well_centers=list(self.deck.well_centers))
+                               well_centers=list(self.deck.well_centers),
+                               default_trash=self.deck.default_trash)
         self.save_meta()
         self.save_cameras()
         self.save_calibration()

@@ -75,7 +75,7 @@ from ..widgets.jog_panel import JogPanel
 from ..widgets.plate_grid import PlateGrid, dim_color
 from ..widgets.step_list import PlanStepCard
 from ..workers import describe_error
-from .liquid_plan import trash_place
+from .liquid_plan import robot_problems, trash_place
 
 __all__ = ["LiquidHandlingPage"]
 
@@ -99,16 +99,6 @@ CONFIRM_START = (
 LOCKED = "The plan can be changed when the robot is not moving."
 NO_PLAN = "there is no plan: make it on the Plan step."
 NOT_ON_DECK = "This plate is not on the deck."
-
-
-def robot_problems(session: Session) -> list[str]:
-    if session.robot is None:
-        return ["the robot is not connected."]
-    if session.tip.attached is not True:
-        return ["no tip on: put one on on the Tip step."
-                if session.tip.attached is False else
-                "the robot's tip state is unknown: connect again."]
-    return []
 
 
 def goes_to(programs, trash) -> tuple[set[str], set[str]]:
@@ -312,6 +302,7 @@ class LiquidHandlingPage(QWidget):
         session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.labware_changed.connect(lambda _s: self._take_plan())
         session.tip_changed.connect(self._tip_changed)
+        session.in_tip_changed.connect(self._in_tip_said)
         self._install_shortcuts()
         self._take_plan()
 
@@ -604,6 +595,7 @@ class LiquidHandlingPage(QWidget):
             self._running = False
             self._checking = None
             self._pause.clear()
+            self.session.set_in_tip(self.state.in_tip)
             done, total = self._done(), self._total()
             self._can_carry_on = (how != "done"
                                   and len(self.state.done) < len(self._steps()))
@@ -628,12 +620,19 @@ class LiquidHandlingPage(QWidget):
             self.state.in_tip = 0.0
             self._refresh()
 
+    def _in_tip_said(self, ul: float) -> None:
+        """Try once, Manual pick: the same tip. During a run the run counts."""
+        if not self._running:
+            self.state.in_tip = ul
+            self._refresh()
+
     def _mark_empty(self) -> None:
         if self._running or self.jog.busy:
             return
         log.info("liquid handling: tip marked empty (it was counted at %g µl)",
                  self.state.in_tip)
         self.state.in_tip = 0.0
+        self.session.set_in_tip(0.0)
         self._refresh()
 
     def showEvent(self, event) -> None:

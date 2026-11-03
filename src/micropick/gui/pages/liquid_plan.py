@@ -43,8 +43,24 @@ pad still work, and a banner goes to the camera's sheet.
 A place that is not wells has no height of its own in the step: a point is used
 at its Z, so the offset a new step has for a well is taken off it.
 
-Still to come, with its ticket under #67: the trash chooser, Try once and
-templates (#75).
+The trash is the plan's, chosen behind the Trash row: a well of any labware on
+the deck, or a point on the camera, then its height and offset. Use for future
+plans, on by default, keeps the choice in the profile for new plans
+(`Session.default_trash`). `trash` is a `Location`, so a memo point chosen there
+is named and saved first. The chooser stays open until Done, for the height.
+
+Try once runs the open step on its first well, through the page's panel, and
+leaves the tip where the step put it. A short job and not a run: Esc stops it
+and it does not lock the plan. A step with a problem is refused with its
+sentence, so the button is gray only while the robot is busy. What the tip
+holds then is `Session.in_tip`, which the Run step reads too.
+
+Start from is A template or New plan, as on Auto pick's Plan: the list, Open
+from file…, Save as template and Save changes to "<name>". The name in the plan
+says which template is open, so Undo past an opening closes it. A program from
+before plans is listed gray and never opened (`config.templates`). A template
+opens as it was saved, its plates' slots included: one not on the deck today
+makes its steps Not finished.
 
 The plan is saved as it is edited, into `outputs/liquid/current.json`; the
 next start keeps only its trash and what a tip holds: steps are chosen for
@@ -54,22 +70,28 @@ the plates on the deck that day.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QInputDialog, QLabel, QMenu,
-                               QPushButton, QScrollArea, QStackedWidget,
-                               QToolButton, QVBoxLayout, QWidget, QWidgetAction)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QHBoxLayout,
+                               QInputDialog, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem, QMenu, QPushButton, QScrollArea,
+                               QStackedWidget, QToolButton, QVBoxLayout, QWidget,
+                               QWidgetAction)
 
 from ... import paths
+from ...config import templates
 from ...core.liquid import Location, Program, ProgramError
 from ...core.liquid_plan import (BY_HAND, BlowOutStep, Height, LiquidPlan,
                                  MixStep, MoveLiquid, MoveTip, Place, Spot,
-                                 WaitForMe, WaitStep, by_row, chip, duration,
-                                 height_words, move_step, pairing, places,
-                                 step_chips, step_title)
+                                 WaitForMe, WaitStep, by_row, chip, compiles,
+                                 duration, height_words, move_step, pairing,
+                                 places, step_chips, step_title)
+from ...workflows import liquid
+from ...workflows.liquid_plan import PlanState, run_plan
 from .. import camera_moves as moves
 from ..auto_camera import CameraOpener
 from ..labware_kinds import facts, kind, well_depth
@@ -90,6 +112,7 @@ from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
 from ..widgets.well_heights import WellSection
+from ..workers import describe_error
 
 __all__ = ["LiquidPlanPage", "CURRENT_FILE"]
 
@@ -104,6 +127,11 @@ CURRENT_FILE = "current.json"
 
 MAX_TIP_UL = 5000
 POINT_ROW_PX = 52
+MAX_TRASH_OFFSET_MM = 100
+TEMPLATE_ROW_PX = 46
+TEMPLATE_ROWS = 4
+# Of a template's name on Save changes.
+NAME_PX = 170
 
 NO_PLATE = "There is no plate on the deck. Add it on the Deck step."
 NOT_MEASURED_TEXT = ("The well center of this plate was not measured. The "
@@ -125,6 +153,10 @@ BOTTOM_MEASURED = "Bottom measured in Well center"
 BOTTOM_DRAWN = "Bottom from the plate drawing"
 TOP_NOTE = "Top of the well"
 MIDDLE_NOTE = "Middle of the well"
+TRY_HELP = "Run this step on its first well and leave the tip there."
+NEEDS_STEP = "Add a step first."
+OLD_FILE = "This file was made with an older version. It cannot be opened."
+NOT_A_PLAN = "This file is not a plan."
 
 # The Add a step menu: (kind, on screen, its help line).
 KINDS = (
@@ -177,7 +209,10 @@ CHOICES = {
                  ("trash", "Trash")),
     "move_tip": (("wells", "A well"), ("point", "A point"),
                  ("spot", "By hand")),
+    TRASH: (("wells", "A well"), ("point", "A point")),
 }
+# The trash's level: (the engine's word, on screen).
+TRASH_LEVELS = (("top", "Top"), ("center", "Middle"), ("bottom", "Bottom"))
 # The field of the height that goes with a place of a step.
 HEIGHTS = {"source": "take_at", "dest": "put_at", "place": "at"}
 # Sections that are one well: a click replaces it.
@@ -270,6 +305,17 @@ def section_value(step, section: str) -> str:
     return chip(getattr(step, section))
 
 
+def robot_problems(session: Session) -> list[str]:
+    """What keeps the robot from doing a step."""
+    if session.robot is None:
+        return ["the robot is not connected."]
+    if session.tip.attached is not True:
+        return ["no tip on: put one on on the Tip step."
+                if session.tip.attached is False else
+                "the robot's tip state is unknown: connect again."]
+    return []
+
+
 def trash_place(trash: Location) -> str:
     """The plan's trash in a few words."""
     if trash.kind == "point":
@@ -324,9 +370,11 @@ class _OpenCard(QWidget):
         buttons = QHBoxLayout()
         buttons.setContentsMargins(0, 6, 0, 0)
         self.delete_button = danger_text_button("Delete", self)
+        self.try_button = secondary_button("Try once", self)
         self.next_button = primary_button("Done", self)
         buttons.addWidget(self.delete_button)
         buttons.addStretch(1)
+        buttons.addWidget(self.try_button)
         buttons.addWidget(self.next_button)
         column.addLayout(buttons)
 
@@ -395,6 +443,11 @@ class LiquidPlanPage(QWidget):
         self._looking = False                    # the camera section is up
         self._camera_failed = False
         self._shown_steps: tuple | None = None
+        self._trash_kind = "wells"               # what the chooser shows
+        self._stop_try = threading.Event()
+        # The template open, and the plan as it was opened or last saved.
+        self.template: templates.Template | None = None
+        self._template_plan: LiquidPlan | None = None
 
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -418,11 +471,12 @@ class LiquidPlanPage(QWidget):
 
         session.robot_state_changed.connect(self._deck_changed)
         session.labware_changed.connect(self._deck_changed)
-        session.profile_changed.connect(self._deck_changed)
+        session.profile_changed.connect(self._profile_changed)
         # A plate skipped on the Well center step.
         session.confirmations_changed.connect(self._deck_changed)
         session.robot_busy_changed.connect(self._robot_busy)
         session.memo_points_changed.connect(self._show_points)
+        session.stop_requested.connect(self._stop_try.set)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         self._install_shortcuts()
@@ -482,6 +536,49 @@ class LiquidPlanPage(QWidget):
         for widget in (self.on_plate, self.into_trash, self.on_camera):
             self.question_body.addWidget(widget)
         column.addWidget(self.question_body, 1)
+        self.trash_options = self._trash_options()
+        column.addWidget(self.trash_options)
+        return box
+
+    def _trash_options(self) -> QWidget:
+        box = QWidget(self)
+        box.setObjectName("plain")
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        self.trash_place_row = QWidget(box)
+        self.trash_place_row.setObjectName("plain")
+        line = QHBoxLayout(self.trash_place_row)
+        line.setContentsMargins(0, 0, 0, 0)
+        self.trash_level = Segmented([text for _level, text in TRASH_LEVELS],
+                                     parent=box)
+        self.trash_level.changed.connect(self._trash_level_chosen)
+        line.addWidget(self.trash_level)
+        self.trash_offsets = []
+        for axis in "XYZ":
+            line.addWidget(QLabel(axis, box))
+            field = double_spin_box(box)
+            field.setRange(-MAX_TRASH_OFFSET_MM, MAX_TRASH_OFFSET_MM)
+            field.setSuffix(" mm")
+            field.valueChanged.connect(self._trash_offset_typed)
+            line.addWidget(field)
+            self.trash_offsets.append(field)
+        line.addStretch(1)
+        column.addWidget(self.trash_place_row)
+        row = QHBoxLayout()
+        self.future_trash = QCheckBox("Use for future plans", box)
+        self.future_trash.setChecked(True)
+        self.future_trash.toggled.connect(self._future_toggled)
+        row.addWidget(self.future_trash)
+        row.addStretch(1)
+        self.remove_trash_button = danger_text_button("Remove the trash", box)
+        self.remove_trash_button.clicked.connect(
+            lambda: self._set_trash(None))
+        row.addWidget(self.remove_trash_button)
+        self.trash_done_button = primary_button("Done", box)
+        self.trash_done_button.clicked.connect(self._choose_trash)
+        row.addWidget(self.trash_done_button)
+        column.addLayout(row)
         return box
 
     def _on_plate(self) -> QWidget:
@@ -710,13 +807,21 @@ class LiquidPlanPage(QWidget):
         self.locked_note = muted_label(LOCKED, panel)
         column.addWidget(self.locked_note)
         column.addWidget(caption("Start from", panel))
+        tiles = QHBoxLayout()
+        self.template_tile = QPushButton("A template\nSaved earlier", panel)
+        self.template_tile.setCheckable(True)
+        self.template_tile.clicked.connect(self._show_templates)
         self.new_plan_button = QPushButton("New plan\nStart with no steps",
                                            panel)
-        self.new_plan_button.setObjectName("tile")
-        self.new_plan_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.new_plan_button.setMinimumHeight(64)
         self.new_plan_button.clicked.connect(self.new_plan)
-        column.addWidget(self.new_plan_button)
+        for tile in (self.template_tile, self.new_plan_button):
+            tile.setObjectName("tile")
+            tile.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            tile.setMinimumHeight(64)
+            tiles.addWidget(tile)
+        column.addLayout(tiles)
+        self.template_box = self._template_box(panel)
+        column.addWidget(self.template_box)
 
         self.trash_row = QPushButton(panel)
         self.trash_row.setObjectName("trashRow")
@@ -766,6 +871,7 @@ class LiquidPlanPage(QWidget):
             action.triggered.connect(
                 lambda _c=False, k=step_kind: self.add_step(k))
             self.add_menu.addAction(action)
+        column.addLayout(self._save_row(panel))
 
         self.card = _OpenCard(self)
         self.card.hide()
@@ -774,9 +880,63 @@ class LiquidPlanPage(QWidget):
         self.card.form.edited.connect(self._edited)
         self.card.delete_button.clicked.connect(
             lambda: self.delete_step(self.open_id))
+        self.try_button = self.card.try_button
+        self.try_button.clicked.connect(self.try_once)
         for n, row_ in enumerate(self.card.rows):
             row_.clicked.connect(lambda _c=False, n=n: self._row_clicked(n))
         return panel
+
+    def _template_box(self, panel: QWidget) -> QWidget:
+        box = QWidget(panel)
+        box.setObjectName("plain")
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        column.addWidget(caption("Saved templates", box))
+        self.template_list = QListWidget(box)
+        self.template_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.template_list.itemClicked.connect(
+            lambda item: self.open_template(
+                item.data(Qt.ItemDataRole.UserRole).path))
+        column.addWidget(self.template_list)
+        self.no_templates = muted_label("No templates saved yet.", box)
+        column.addWidget(self.no_templates)
+        self.open_file_button = secondary_button("Open from file…", box)
+        self.open_file_button.clicked.connect(self._open_file)
+        column.addWidget(self.open_file_button,
+                         alignment=Qt.AlignmentFlag.AlignLeft)
+        box.hide()
+        return box
+
+    def _save_row(self, panel: QWidget) -> QVBoxLayout:
+        column = QVBoxLayout()
+        row = QHBoxLayout()
+        self.save_as_button = secondary_button("Save as template", panel)
+        self.save_as_button.clicked.connect(self._ask_name)
+        self.save_changes_button = secondary_button("", panel)
+        self.save_changes_button.clicked.connect(self._save_changes)
+        row.addWidget(self.save_as_button)
+        row.addWidget(self.save_changes_button)
+        row.addStretch(1)
+        column.addLayout(row)
+        # Save as template's name, asked here rather than in a dialog.
+        self.name_row = QWidget(panel)
+        self.name_row.setObjectName("plain")
+        line = QHBoxLayout(self.name_row)
+        line.setContentsMargins(0, 0, 0, 0)
+        self.name_field = QLineEdit(self.name_row)
+        self.name_field.setPlaceholderText("Template name")
+        self.name_field.returnPressed.connect(self._save_as)
+        self.save_name_button = primary_button("Save", self.name_row)
+        self.save_name_button.clicked.connect(self._save_as)
+        self.cancel_name_button = secondary_button("Cancel", self.name_row)
+        self.cancel_name_button.clicked.connect(self.name_row.hide)
+        line.addWidget(self.name_field, 1)
+        line.addWidget(self.save_name_button)
+        line.addWidget(self.cancel_name_button)
+        self.name_row.hide()
+        column.addWidget(self.name_row)
+        return column
 
     def _open_add_menu(self) -> None:
         self.add_menu.setMinimumWidth(self.add_button.width())
@@ -821,8 +981,9 @@ class LiquidPlanPage(QWidget):
                 continue
             except OSError:
                 break
-            return LiquidPlan(trash=last.trash, tip_ul=last.tip_ul)
-        return LiquidPlan()
+            return LiquidPlan(trash=last.trash or self.session.default_trash,
+                              tip_ul=last.tip_ul)
+        return LiquidPlan(trash=self.session.default_trash)
 
     def _save_current(self) -> None:
         try:
@@ -864,9 +1025,12 @@ class LiquidPlanPage(QWidget):
             self._adopt(self._redo.pop())
 
     def new_plan(self) -> None:
-        """No steps; the trash and what a tip holds stay."""
+        """No steps, with the default trash if one was set; what a tip holds
+        stays."""
         self.section = None
-        self._commit(LiquidPlan(trash=self.plan.trash,
+        self.template_tile.setChecked(False)
+        self.template_box.hide()
+        self._commit(LiquidPlan(trash=self.session.default_trash,
                                 tip_ul=self.plan.tip_ul))
 
     def add_step(self, step_kind: str) -> None:
@@ -903,6 +1067,36 @@ class LiquidPlanPage(QWidget):
             plan.tip_ul = value
             self._commit(plan, typing="tip_ul")
 
+    def _set_trash(self, trash: Location | None,
+                   typing: str | None = None) -> None:
+        plan = self._edit()
+        plan.trash = trash
+        self._commit(plan, typing=typing)
+        if trash is not None and self.future_trash.isChecked():
+            self.session.set_default_trash(trash)
+
+    def _trash_at(self, **where) -> Location:
+        """The trash at another place, with the height it had."""
+        was = self.plan.trash
+        return Location(**where, **({} if was is None else {
+            "level": was.level, "offset": list(was.offset)}))
+
+    def _trash_level_chosen(self, index: int) -> None:
+        self._set_trash(self.plan.trash.model_copy(
+            update={"level": TRASH_LEVELS[index][0]}))
+
+    def _trash_offset_typed(self, _value: float) -> None:
+        self._set_trash(self.plan.trash.model_copy(update={
+            "offset": [field.value() for field in self.trash_offsets]}),
+            typing="trash")
+
+    def _future_toggled(self, on: bool) -> None:
+        trash, default = self.plan.trash, self.session.default_trash
+        if on and trash is not None:
+            self.session.set_default_trash(trash)
+        elif not on and trash == default:
+            self.session.set_default_trash(None)
+
     def _moved(self, step_id: str, to: int) -> None:
         self._commit(move_step(self.plan, self._index(step_id), to))
         show_toast(self, f"Step moved to position {to + 1}")
@@ -912,6 +1106,139 @@ class LiquidPlanPage(QWidget):
 
     def _open_step(self):
         return next((s for s in self.plan.steps if s.id == self.open_id), None)
+
+    # -- templates -----------------------------------------------------------
+
+    def _open_template(self) -> templates.Template | None:
+        """The template this plan is, by the name it carries."""
+        template = self.template
+        return (template if template is not None
+                and template.name == self.plan.name else None)
+
+    def _show_templates(self, shown: bool) -> None:
+        self.template_box.setVisible(shown)
+        if shown:
+            self._reload_templates()
+
+    def _reload_templates(self) -> None:
+        self.template_list.clear()
+        listed = self.session.liquid_templates()
+        for template in listed:
+            item = QListWidgetItem(f"{template.name}\n{template.facts()}")
+            item.setData(Qt.ItemDataRole.UserRole, template)
+            item.setSizeHint(QSize(0, TEMPLATE_ROW_PX))
+            if template.old:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            self.template_list.addItem(item)
+        self.template_list.setVisible(bool(listed))
+        self.template_list.setFixedHeight(
+            min(len(listed), TEMPLATE_ROWS) * TEMPLATE_ROW_PX + 4)
+        self.no_templates.setVisible(not listed)
+
+    def _open_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open a template",
+            str(templates.templates_dir(templates.LIQUID_PLANS)),
+            "Templates (*.json)")
+        if path:
+            self.open_template(path)
+
+    def open_template(self, path: str | Path) -> None:
+        """The plan in the file, as it was saved. See the module's
+        docstring."""
+        path = Path(path)
+        try:
+            template = templates.liquid_template(path)
+            plan = None if template.old else LiquidPlan.load(path)
+        except (ProgramError, OSError, ValueError) as exc:
+            log.warning("liquid plan: %s not opened: %s", path, exc)
+            show_toast(self, NOT_A_PLAN)
+            return
+        if plan is None:
+            show_toast(self, OLD_FILE)
+            return
+        plan.name = template.name
+        self.template, self._template_plan = template, plan
+        self.template_tile.setChecked(False)
+        self.template_box.hide()
+        self.section = None
+        self._commit(plan)
+
+    def _ask_name(self) -> None:
+        self.name_field.clear()
+        self.name_row.show()
+        self.name_field.setFocus()
+
+    def _save_as(self) -> None:
+        try:
+            template = self.session.save_liquid_template(
+                self.plan, self.name_field.text())
+        except (SessionError, OSError) as exc:
+            show_toast(self, str(exc))
+            return
+        self.name_row.hide()
+        plan = self.plan.model_copy(update={"name": template.name})
+        self.template, self._template_plan = template, plan
+        self._adopt(plan)
+        if self.template_box.isVisible():
+            self._reload_templates()
+        show_toast(self, f'Saved as "{template.name}".')
+
+    def _save_changes(self) -> None:
+        template = self._open_template()
+        if template is None:
+            return
+        try:
+            self.template = self.session.save_liquid_template_changes(
+                template, self.plan)
+        except OSError as exc:
+            show_toast(self, str(exc))
+            return
+        self._template_plan = self.plan
+        self._show_saves()
+        show_toast(self, f'Saved "{template.name}".')
+
+    # -- Try once ------------------------------------------------------------
+
+    def try_once(self) -> None:
+        """See the module's docstring. Refused with a sentence, moving
+        nothing."""
+        step = self._open_step()
+        if step is None:
+            return
+        session, index = self.session, self._index(step.id)
+        said = robot_problems(session)
+        refusal = (said[0][:1].upper() + said[0][1:] if said
+                   else session.liquid_try_refusal(index))
+        if refusal:
+            show_toast(self, refusal)
+            return
+        motion, stop, plan = session.motion, self._stop_try, self._edit()
+        plates, positions = session.liquid_plates(), session.liquid_positions()
+        state = PlanState(in_tip=session.in_tip)
+        stop.clear()
+
+        def job(log_):
+            try:
+                run_plan(motion, plan, plates, positions, state, stop=stop,
+                         log=log_, only=index, first_pair=True)
+            except liquid.Stopped:
+                return "Stopped."
+            except Exception as exc:             # noqa: BLE001
+                log.exception("liquid plan: Try once failed")
+                return describe_error(exc)
+            return "Done."
+
+        def tried(said: str) -> None:
+            session.set_in_tip(state.in_tip)
+            holds = (f"The tip holds {state.in_tip:g} µl." if state.in_tip > 0
+                     else "The tip is empty.")
+            show_toast(self, f"{said} {holds}")
+
+        if not self.jog.run_job(job, what="try once", then=tried):
+            show_toast(self, session.robot_lease.refusal)
+            return
+        show_toast(self, f"Step {index + 1}: trying on the first well.")
 
     # -- the open card -------------------------------------------------------
 
@@ -970,6 +1297,11 @@ class LiquidPlanPage(QWidget):
                 row.show_row(label, section_value(step, asked[n]), color,
                              asked[n] == self.section)
         self.card.form.show_section(step, self.section)
+        busy = self.session.robot_lease.busy
+        self.try_button.setVisible(compiles(step))
+        self.try_button.setEnabled(not busy)
+        self.try_button.setToolTip(self.session.robot_lease.refusal if busy
+                                   else TRY_HELP)
         at = asked.index(self.section) if self.section in asked else -1
         self.next_button.setText(f"Next: {LABELS[asked[at + 1]][0]}"
                                  if at + 1 < len(asked) else "Done")
@@ -979,6 +1311,15 @@ class LiquidPlanPage(QWidget):
     def _plates(self) -> dict[str, tuple]:
         return {slot: (entry, definition)
                 for slot, entry, definition in self.session.plates()}
+
+    def _profile_changed(self, _arg=None) -> None:
+        """A plan not begun takes the profile's trash: at the start the
+        profile is loaded after the page is made."""
+        default = self.session.default_trash
+        if default is not None and self.plan.trash is None and (
+                not self.plan.steps):
+            self._adopt(self.plan.model_copy(update={"trash": default}))
+        self._deck_changed()
 
     def _deck_changed(self, _arg=None) -> None:
         plates = self.session.plates()
@@ -1053,16 +1394,15 @@ class LiquidPlanPage(QWidget):
                          self.session.liquid_plates())
         if self.section in ONE_WELL:
             ordered = ordered[:1]
-        plan = self._edit()
         if self.section == TRASH:
-            plan.trash = (Location(kind="well", slot=slot, load_name=load_name,
-                                   well=ordered[0]) if ordered else None)
-            if ordered:
-                self.section = self._before_trash
-        else:
-            step = plan.steps[self._index(self.open_id)]
-            setattr(step, self.section, Place(slot=slot, load_name=load_name,
-                                              wells=ordered))
+            self._set_trash(self._trash_at(
+                kind="well", slot=slot, load_name=load_name, well=ordered[0])
+                if ordered else None)
+            return
+        plan = self._edit()
+        step = plan.steps[self._index(self.open_id)]
+        setattr(step, self.section, Place(slot=slot, load_name=load_name,
+                                          wells=ordered))
         self._commit(plan)
 
     def _select_all(self) -> None:
@@ -1074,7 +1414,10 @@ class LiquidPlanPage(QWidget):
         """A click on the kind already chosen is one too: it keeps what was
         chosen."""
         place_kind = CHOICES[key][index][0]
-        if chosen_kind(self._shown_place()) != place_kind:
+        if key == TRASH:
+            self._trash_kind = place_kind
+            self._show_left()
+        elif chosen_kind(self._shown_place()) != place_kind:
             self._set_place(Place(kind=place_kind))
 
     def _set_place(self, place: Place) -> None:
@@ -1107,6 +1450,12 @@ class LiquidPlanPage(QWidget):
             return
         self._before_trash = self.section
         self._trash_slot = None
+        trash = self.plan.trash
+        self._trash_kind = ("point" if trash is not None
+                            and trash.kind == "point" else "wells")
+        self.future_trash.blockSignals(True)
+        self.future_trash.setChecked(True)
+        self.future_trash.blockSignals(False)
         self._select(TRASH)
 
     def _fills(self, slot: str | None, skip: tuple = ()) -> dict[str, str]:
@@ -1138,24 +1487,30 @@ class LiquidPlanPage(QWidget):
         point = self.session.point(name)
         if point is None:
             return
+        if self.section == TRASH:
+            kept = name if point.saved else self._keep_point(name)
+            if kept:
+                self._set_trash(self._trash_at(kind="point", point=kept))
+            return
         self._set_place(
             Place(kind="point", point=name) if point.saved else
             Place(kind="spot", spot=Spot(name=name, x=point.x, y=point.y,
                                          z=self.session.point_z(point))))
 
-    def _keep_point(self, name: str) -> None:
+    def _keep_point(self, name: str) -> str | None:
         """The star: asks its name, the memo point's by default. The steps
-        using it use the kept point from then on."""
+        using it use the kept point from then on. Returns the name it was
+        kept under, if it was."""
         new_name, chosen = QInputDialog.getText(
             self, "Keep this point", "Name", text=name)
         if not chosen:
-            return
+            return None
         point = self.session.memo_point(name)
         try:
             self.session.save_memo_point(name, new_name)
         except SessionError as exc:
             show_toast(self, str(exc))
-            return
+            return None
         plan = self._edit()
         kept = Place(kind="point", point=new_name.strip())
         used = False
@@ -1168,6 +1523,7 @@ class LiquidPlanPage(QWidget):
                     used = True
         if used:
             self._commit(plan)
+        return new_name.strip()
 
     def _use_spot(self) -> None:
         pose = self.jog.pose
@@ -1214,7 +1570,9 @@ class LiquidPlanPage(QWidget):
                 self.point_buttons[name] = button
         place = self._shown_place()
         chosen = None
-        if place is not None and place.kind == "point":
+        if self.section == TRASH:
+            chosen = self.plan.trash.point if self.plan.trash else None
+        elif place is not None and place.kind == "point":
             chosen = place.point
         elif place is not None and place.kind == "spot" and place.spot:
             chosen = place.spot.name
@@ -1252,11 +1610,13 @@ class LiquidPlanPage(QWidget):
         self.step_list.setVisible(has_steps)
         self.spacer.setVisible(not has_steps)
         self.locked_note.setVisible(locked)
-        for widget in (self.new_plan_button, self.trash_row, self.tip_ul,
+        for widget in (self.new_plan_button, self.template_tile,
+                       self.template_box, self.trash_row, self.tip_ul,
                        self.add_button, self.card, self.first_step_button,
-                       self.point_area):
+                       self.point_area, self.trash_options):
             widget.setEnabled(not locked)
         self._show_trash_row()
+        self._show_saves()
         self._show_card()
         self._show_left()
 
@@ -1275,6 +1635,21 @@ class LiquidPlanPage(QWidget):
             self.trash_row.setProperty("missing", missing)
             self.trash_row.style().unpolish(self.trash_row)
             self.trash_row.style().polish(self.trash_row)
+
+    def _show_saves(self) -> None:
+        """Save as for any plan with steps; Save changes for the template
+        open, gray until it differs."""
+        has_steps = bool(self.plan.steps)
+        self.save_as_button.setEnabled(has_steps)
+        self.save_as_button.setToolTip("" if has_steps else NEEDS_STEP)
+        template = self._open_template()
+        self.save_changes_button.setVisible(template is not None)
+        if template is not None:
+            name = self.save_changes_button.fontMetrics().elidedText(
+                template.name, Qt.TextElideMode.ElideMiddle, NAME_PX)
+            self.save_changes_button.setText(f'Save changes to "{name}"')
+            self.save_changes_button.setEnabled(
+                self.plan != self._template_plan)
 
     def _show_left(self) -> None:
         step = self._open_step()
@@ -1307,6 +1682,8 @@ class LiquidPlanPage(QWidget):
 
     def _choice(self, step) -> str | None:
         """What in `CHOICES` asks the section shown."""
+        if self.section == TRASH:
+            return TRASH
         if self.section == "place":
             return step.kind if step.kind in CHOICES else None
         return self.section if self.section in CHOICES else None
@@ -1322,8 +1699,10 @@ class LiquidPlanPage(QWidget):
         self.question_caption.setStyleSheet(f"color: {COLORS[color]};")
         self.question_title.setText(title)
         place = self._shown_place()
-        place_kind = "wells" if place is None else chosen_kind(place)
-        choice = self._choice(step) if step is not None else None
+        place_kind = ("wells" if place is None else chosen_kind(place))
+        if section == TRASH:
+            place_kind = self._trash_kind
+        choice = self._choice(step)
         for key, control in self.kinds.items():
             control.setVisible(key == choice)
             if key == choice:
@@ -1338,6 +1717,25 @@ class LiquidPlanPage(QWidget):
         else:
             self._show_plate(step, asked)
             self.question_body.setCurrentWidget(self.on_plate)
+        self.trash_options.setVisible(section == TRASH)
+        if section == TRASH:
+            self._show_trash_options()
+
+    def _show_trash_options(self) -> None:
+        trash = self.plan.trash
+        self.trash_place_row.setVisible(trash is not None)
+        self.remove_trash_button.setVisible(trash is not None)
+        if trash is None:
+            return
+        self.trash_level.setVisible(trash.kind == "well")
+        levels = [level for level, _text in TRASH_LEVELS]
+        self.trash_level.set_current(levels.index(trash.level)
+                                     if trash.level in levels else 2)
+        for field, value in zip(self.trash_offsets, trash.offset):
+            if field.value() != value:
+                field.blockSignals(True)
+                field.setValue(value)
+                field.blockSignals(False)
 
     def _show_on_camera(self, step, place_kind: str) -> None:
         by_hand = place_kind == "spot"
@@ -1347,7 +1745,8 @@ class LiquidPlanPage(QWidget):
         self._show_points()
         self._show_use_spot()
         self._show_camera()
-        rule = pairing(step) if step.kind == "move_liquid" else None
+        rule = (pairing(step) if self.section != TRASH
+                and step.kind == "move_liquid" else None)
         warn = rule is not None and not rule.allowed
         self.camera_rule.setText(("ⓘ " if warn else "")
                                  + (rule.sentence if rule is not None else ""))

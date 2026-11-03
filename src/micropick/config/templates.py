@@ -16,6 +16,10 @@ The plate plan presets saved before templates (`Outputs/plate_plan_presets`)
 are moved here the first time templates are listed; a file there that is
 not a preset is left where it is. So are the liquid programs saved with
 Save as… (`Outputs/liquid`), all but the page's own `current.json`.
+
+A liquid template is a plan (`core.liquid_plan.LiquidPlan`). A program made
+before plans is listed too, as `old`, and never converted or changed: it does
+not open on the Plan step, and the engine and the notebooks still read it.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from pathlib import Path
 
 from .. import paths
 from ..core.liquid import Program, ProgramError
+from ..core.liquid_plan import LiquidPlan, places
 from ..core.routine import PlanPreset, RoutineError
 
 __all__ = ["PLATE_PLANS", "LIQUID_PLANS", "Template", "templates_dir",
@@ -53,16 +58,18 @@ class Template:
     path: Path
     wells: int
     saved: datetime
-    groups: int | None = None          # a liquid plan's
+    steps: int | None = None           # a liquid plan's
+    old: bool = False                  # a program from before plans
 
     def facts(self) -> str:
         """The line under its name in the list: "24 wells · saved Oct 20",
-        a liquid plan's "2 groups · 24 wells · saved Oct 20"."""
+        a liquid plan's "2 steps · 24 wells · saved Oct 20"."""
+        if self.old:
+            return "Made with an older version"
         wells = f"{self.wells} well" if self.wells == 1 else f"{self.wells} wells"
-        if self.groups is not None:
-            groups = ("1 group" if self.groups == 1
-                      else f"{self.groups} groups")
-            wells = f"{groups} · {wells}"
+        if self.steps is not None:
+            steps = "1 step" if self.steps == 1 else f"{self.steps} steps"
+            wells = f"{steps} · {wells}"
         return f"{wells} · saved {self.saved:%b} {self.saved.day}"
 
 
@@ -163,14 +170,26 @@ def _move_old_programs(directory: Path) -> None:
         log.info("liquid program %s moved to %s", path, target)
 
 
+def _wells_of(plan: LiquidPlan) -> int:
+    return len({(place.slot, well) for step in plan.steps
+                for _role, place in places(step) if place.kind == "wells"
+                for well in place.wells})
+
+
 def liquid_template(path: Path) -> Template:
-    """The template in the file at `path`, as the list names it. Raises
-    ProgramError or OSError for a file that is not one."""
-    program = Program.load(path)
-    return Template(program.name or path.stem, path,
-                    sum(len(g.wells) for g in program.groups),
-                    datetime.fromtimestamp(path.stat().st_mtime),
-                    groups=len(program.groups))
+    """The template in the file at `path`, as the list names it: a plan, or
+    a program as `old`. Raises ProgramError or OSError for a file that is
+    neither."""
+    saved = datetime.fromtimestamp(path.stat().st_mtime)
+    try:
+        plan = LiquidPlan.load(path)
+    except ProgramError:
+        program = Program.load(path)
+        return Template(program.name or path.stem, path,
+                        sum(len(g.wells) for g in program.groups), saved,
+                        old=True)
+    return Template(plan.name or path.stem, path, _wells_of(plan), saved,
+                    steps=len(plan.steps))
 
 
 def _liquid_template(path: Path) -> Template | None:
@@ -190,17 +209,17 @@ def liquid_templates() -> list[Template]:
     return sorted(found, key=lambda t: t.saved, reverse=True)
 
 
-def save_liquid_template(program: Program, *,
+def save_liquid_template(plan: LiquidPlan, *,
                          over: Template | None = None) -> Template:
-    """`program` as a new template under `program.name`, or written over
-    the template `over` (its name kept)."""
-    program = program.model_copy(deep=True)
+    """`plan` as a new template under `plan.name`, or written over the
+    template `over` (its name kept)."""
+    plan = plan.model_copy(deep=True)
     if over is not None:
-        program.name = over.name
+        plan.name = over.name
         path = over.path
     else:
-        path = _free_path(templates_dir(LIQUID_PLANS), program.name)
-    program.save(path)
-    log.info("liquid plan template %r saved: %d groups, %s", program.name,
-             len(program.groups), path)
+        path = _free_path(templates_dir(LIQUID_PLANS), plan.name)
+    plan.save(path)
+    log.info("liquid plan template %r saved: %d steps, %s", plan.name,
+             len(plan.steps), path)
     return liquid_template(path)

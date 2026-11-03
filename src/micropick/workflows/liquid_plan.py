@@ -73,7 +73,8 @@ from .liquid import (LiquidState, Plate, do_step, gate, play, problems, run,
                      trash_problems)
 from .motion import Motion
 
-__all__ = ["PlanState", "run_plan", "plan_problems", "compile_plan"]
+__all__ = ["PlanState", "run_plan", "plan_problems", "compile_plan",
+           "try_refusal"]
 
 # The trash the steps are checked with while the plan's cannot be used.
 STAND_IN_TRASH = f"{SPOT_PREFIX}trash"
@@ -186,19 +187,21 @@ def _wait_for_me(step, *, pause, stop, log, waiting) -> None:
     gate(pause, stop)
 
 
-def _try_refusal(plan: LiquidPlan, index: int, plates: dict,
-                 positions: dict) -> str | None:
-    """Why the step at `index` cannot be tried, in a sentence."""
+def try_refusal(plan: LiquidPlan, index: int, plates: dict, positions: dict,
+                capacities: dict | None = None) -> str | None:
+    """Why the step at `index` cannot be tried once, in a sentence. See "Try
+    once"."""
     step = plan.steps[index]
     if not compiles(step):
         return "There is nothing to try in this step."
     if goes_to_trash(step):
         if plan.trash is None:
             return "Set the trash to try this step."
-        wrong = trash_problems(plan.trash, plates, positions)
+        wrong = trash_problems(plan.trash, _with_carrier(plates),
+                               {**positions, **spots(plan)})
         if wrong:
             return _screen(wrong[0])
-    found = plan_problems(plan, plates, positions).get(step.id)
+    found = plan_problems(plan, plates, positions, capacities).get(step.id)
     return found[0] if found else None
 
 
@@ -251,7 +254,7 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
     if first_pair:
         if only is None:
             raise ValueError("first_pair needs the step, as only")
-        refusal = _try_refusal(plan, only, plates, positions)
+        refusal = try_refusal(plan, only, plates, positions)
         if refusal:
             raise ValueError(refusal)
         report("started")

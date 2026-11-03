@@ -19,6 +19,8 @@ from typing import Annotated, Literal
 from pydantic import (AliasChoices, BaseModel, ConfigDict, Field,
                       computed_field, field_validator, model_validator)
 
+from ..core.liquid import Location
+
 # 3: the variance-map floater fields were removed rather than deprecated, and
 # extra="forbid" makes an old picking.json fatal, so the version has to move with
 # them. A profile from 2 is corrected by deleting those five keys; there is
@@ -676,7 +678,8 @@ def _default_module_types() -> list[ModuleType]:
 class DeckConfig(BaseModel):
     """deck.json: the modules on this installation's deck, the kinds of
     module there are to choose from, the labware loaded most recently, and
-    the measured well centers of the plates on it (`WellCenter`).
+    the measured well centers of the plates on it (`WellCenter`), and the
+    trash a new liquid plan starts with.
 
     All but the modules are optional, so a deck.json from before them reads
     as the default catalogue, an empty history and no centers."""
@@ -691,6 +694,7 @@ class DeckConfig(BaseModel):
     well_centers: list[WellCenter] = Field(
         default_factory=list,
         validation_alias=AliasChoices("well_centers", "well_centres"))
+    default_trash: Location | None = None
 
     def module_type(self, name: str) -> ModuleType | None:
         return next((t for t in self.module_types if t.name == name), None)

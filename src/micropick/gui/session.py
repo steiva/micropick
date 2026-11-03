@@ -65,7 +65,8 @@ from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
 from ..hardware.robot_lease import RobotLease       # noqa: E402
 from ..workflows import liquid                      # noqa: E402
 from ..workflows import manual as moves             # noqa: E402
-from ..workflows.liquid_plan import plan_problems   # noqa: E402
+from ..workflows.liquid_plan import (plan_problems,  # noqa: E402
+                                      try_refusal)
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
 from .labware_kinds import well_volume              # noqa: E402
@@ -874,11 +875,19 @@ class Session(QObject):
         the profile now (`workflows.liquid_plan.plan_problems`). Liquid's
         Plan is done while there is nothing."""
         plan = self.liquid_plan if self.liquid_plan is not None else LiquidPlan()
-        capacities = {slot: well_volume(definition)
-                      for slot, _entry, definition in self.plates()
-                      if well_volume(definition)}
         return plan_problems(plan, self.liquid_plates(),
-                             self.liquid_positions(), capacities)
+                             self.liquid_positions(), self._well_capacities())
+
+    def liquid_try_refusal(self, index: int) -> str | None:
+        """Why the plan's step at `index` cannot be tried once, in a
+        sentence (`workflows.liquid_plan.try_refusal`)."""
+        return try_refusal(self.liquid_plan, index, self.liquid_plates(),
+                           self.liquid_positions(), self._well_capacities())
+
+    def _well_capacities(self) -> dict[str, float]:
+        return {slot: well_volume(definition)
+                for slot, _entry, definition in self.plates()
+                if well_volume(definition)}
 
     # -- templates -----------------------------------------------------------
     #
@@ -908,21 +917,33 @@ class Session(QObject):
     def liquid_templates(self) -> list[templates.Template]:
         return templates.liquid_templates()
 
-    def save_liquid_template(self, program, name: str) -> templates.Template:
-        """`program` as a new liquid plan template called `name`, refused as
-        `save_plate_template` refuses. The program itself is not renamed."""
+    def save_liquid_template(self, plan, name: str) -> templates.Template:
+        """`plan` as a new liquid plan template called `name`, refused as
+        `save_plate_template` refuses. The plan itself is not renamed."""
         name = " ".join(str(name).split())
         if not name:
             raise SessionError("Name the template.")
         if templates.name_in_use(name, templates.LIQUID_PLANS):
             raise SessionError(f'A template is already called "{name}".')
         return templates.save_liquid_template(
-            program.model_copy(update={"name": name}))
+            plan.model_copy(update={"name": name}))
 
     def save_liquid_template_changes(self, template: templates.Template,
-                                     program) -> templates.Template:
-        """`program` written over `template`, which keeps its name."""
-        return templates.save_liquid_template(program, over=template)
+                                     plan) -> templates.Template:
+        """`plan` written over `template`, which keeps its name."""
+        return templates.save_liquid_template(plan, over=template)
+
+    @property
+    def default_trash(self):
+        """The trash a new liquid plan starts with: the Trash chooser's Use
+        for future plans. It names a place, so it may not be on today's
+        deck: the plan then says so."""
+        return self.profile.deck.default_trash if self.profile else None
+
+    def set_default_trash(self, trash) -> None:
+        if self.profile is not None and trash != self.default_trash:
+            self.profile.deck.default_trash = trash
+            self.profile.save_deck()
 
     def remember(self, name: str, position) -> None:
         """A named pose, saved. The source dish put in another slot
@@ -1602,7 +1623,7 @@ class Session(QObject):
                 and tip.pickup == self.tip.pickup)
         self.tip = tip
         if not same:
-            self._set_in_tip(0.0)
+            self.set_in_tip(0.0)
         self.motion.tip_changed(tip)
         self.tip_changed.emit(tip)
         return tip
@@ -1721,7 +1742,7 @@ class Session(QObject):
 
     def _forget_tip(self) -> None:
         self.tip = Tip.unknown()
-        self._set_in_tip(0.0)
+        self.set_in_tip(0.0)
         self.motion.tip_changed(self.tip)
         self.tip_changed.emit(self.tip)
 
@@ -1739,7 +1760,7 @@ class Session(QObject):
         self._require_tip("aspirate")
         moves.aspirate(self.robot, volume, flow_rate)
         log.info("aspirated %g µl at %g µl/s", volume, flow_rate)
-        self._set_in_tip(self.in_tip + float(volume))
+        self.set_in_tip(self.in_tip + float(volume))
         return self.in_tip
 
     def dispense(self, flow_rate: float, volume: float | None = None) -> float:
@@ -1761,7 +1782,7 @@ class Session(QObject):
                                f"{amount:g} µl")
         moves.dispense(self.robot, amount, flow_rate)
         log.info("dispensed %g µl at %g µl/s", amount, flow_rate)
-        self._set_in_tip(held - amount)
+        self.set_in_tip(held - amount)
         return amount
 
     def _require_tip(self, what: str) -> None:
@@ -1772,7 +1793,7 @@ class Session(QObject):
             raise SessionError(f"{what} needs a tip on the pipette, and the "
                                f"robot reports {state}")
 
-    def _set_in_tip(self, ul: float) -> None:
+    def set_in_tip(self, ul: float) -> None:
         ul = round(max(0.0, float(ul)), 3)
         if ul == self.in_tip:
             return

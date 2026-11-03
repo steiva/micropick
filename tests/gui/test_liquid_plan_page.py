@@ -88,6 +88,7 @@ def _set_trash(app, page, slot=5, well="H12"):
     page.trash_row.click()
     _choose_plate(page, slot)
     _click(app, page, well)
+    page.trash_done_button.click()
 
 
 def _run_to_the_end(app, window):
@@ -1010,3 +1011,305 @@ def test_a_point_takes_no_height_of_the_wells(app, page):
     page.kinds["source"].buttons[0].click()
     assert page.plan.steps[0].take_at.ref == "bottom"
     assert page.plan.steps[0].take_at.offset_mm == 2
+
+
+# -- the trash chooser ---------------------------------------------------------
+
+def test_a_new_plan_starts_with_the_default_trash(app, window, page):
+    page.new_plan_button.click()
+    assert page.plan.trash is None                 # none was set
+    _set_trash(app, page)
+    assert window.session.default_trash == page.plan.trash
+    page.plan = LiquidPlan()
+    page.new_plan_button.click()
+    assert page.plan.trash == window.session.default_trash
+    assert page.trash_text.text() == "Trash · Slot 5 · H12 · used by every step"
+
+
+def test_a_trash_not_for_future_plans_is_the_plans_only(app, window, page):
+    page.trash_row.click()
+    assert page.future_trash.isChecked()           # ticked by default
+    page.future_trash.click()
+    _choose_plate(page, 5)
+    _click(app, page, "H12")
+    assert page.plan.trash.well == "H12"
+    assert window.session.default_trash is None
+    page.new_plan_button.click()
+    assert page.plan.trash is None
+
+
+def test_unticking_takes_the_trash_back_out_of_future_plans(app, window, page):
+    page.trash_row.click()
+    _choose_plate(page, 5)
+    _click(app, page, "H12")
+    page.future_trash.click()
+    assert window.session.default_trash is None
+    page.future_trash.click()
+    assert window.session.default_trash == page.plan.trash
+
+
+def test_removing_the_trash_grays_next_and_the_row_sets_it_again(app, window,
+                                                                 page):
+    _set_trash(app, page)
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    next_ = window.footer.next
+    assert next_.isEnabled()
+    page.trash_row.click()
+    page.remove_trash_button.click()
+    assert page.plan.trash is None
+    assert not next_.isEnabled()
+    assert window.footer.sentence.text() == "Set the trash to run this plan."
+    _click(app, page, "H12")                       # the chooser is still open
+    assert next_.isEnabled()
+
+
+def test_the_trash_keeps_its_height_and_offset(app, page):
+    _set_trash(app, page)
+    page.trash_row.click()
+    page.trash_level.buttons[1].click()            # Middle
+    _type(page.trash_offsets[2], -3)
+    assert page.plan.trash.level == "center"
+    assert page.plan.trash.offset == [0, 0, -3]
+    _click(app, page, "H11")                       # another well, same height
+    assert page.plan.trash.well == "H11"
+    assert page.plan.trash.level == "center"
+    assert page.plan.trash.offset == [0, 0, -3]
+    page.undo()
+    page.undo()
+    assert page.plan.trash.offset == [0, 0, 0]
+
+
+def test_a_saved_point_is_a_trash_and_a_memo_point_is_named_first(
+        app, window, page, monkeypatch):
+    session = window.session
+    session.remember("Waste", (100.0, 100.0, 50.0))
+    session.add_memo_point(10.0, 20.0, None)
+    page.trash_row.click()
+    page.kinds["trash"].buttons[1].click()         # A point
+    assert page.question_body.currentWidget() is page.on_camera
+    page.point_buttons["Waste"].use.click()
+    assert page.plan.trash == Location(kind="point", point="Waste")
+    assert not page.trash_level.isVisibleTo(page)
+
+    monkeypatch.setattr(page_module.QInputDialog, "getText",
+                        lambda *a, **k: ("Bucket", True))
+    page.point_buttons["M1"].use.click()
+    assert page.plan.trash == Location(kind="point", point="Bucket")
+    assert "Bucket" in session.saved_points()
+    assert session.memo_point("M1") is None
+    assert session.default_trash == page.plan.trash
+
+
+def test_a_memo_point_not_named_is_not_the_trash(app, window, page,
+                                                 monkeypatch):
+    window.session.add_memo_point(10.0, 20.0, None)
+    page.trash_row.click()
+    page.kinds["trash"].buttons[1].click()
+    monkeypatch.setattr(page_module.QInputDialog, "getText",
+                        lambda *a, **k: ("", False))
+    page.point_buttons["M1"].use.click()
+    assert page.plan.trash is None
+    assert window.session.memo_point("M1") is not None
+
+
+# -- Try once ------------------------------------------------------------------
+
+@pytest.fixture
+def toasts(page, monkeypatch):
+    said = []
+    monkeypatch.setattr(page_module, "show_toast",
+                        lambda _host, text: said.append(text))
+    return said
+
+
+def _free(app, window, page):
+    assert _until(app, lambda: not window.session.robot_lease.busy
+                  and not page.jog.busy)
+
+
+def _one_to_four(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1", "B2", "B3", "B4")
+
+
+def test_try_once_does_the_first_well_and_leaves_the_tip_there(app, window,
+                                                               page, toasts):
+    _one_to_four(app, page)
+    assert page.plan.trash is None                 # not needed to try
+    _free(app, window, page)
+    page.try_button.click()
+    assert toasts == ["Step 1: trying on the first well."]
+    assert _until(app, lambda: len(toasts) == 2)
+    assert toasts[1] == "Done. The tip holds 150 µl."
+    calls = window.session.robot.calls
+    assert [c[2:4] for c in calls if c[0] == "aspirate"] == [("A1", 200)]
+    assert [c[2:4] for c in calls if c[0] == "dispense"] == [("B1", 50)]
+    assert calls[-1][0] == "dispense"              # nothing after: no raise
+    assert window.session.in_tip == 150
+    assert "150 µl" in window.pages["liquid"].tip_line.text()
+    # Tried again, the tip's count goes on from there.
+    _free(app, window, page)
+    page.try_button.click()
+    assert _until(app, lambda: len(toasts) == 4)
+    assert toasts[3] == "Done. The tip holds 100 µl."
+
+
+def test_try_once_is_refused_with_a_sentence_when_the_step_has_a_problem(
+        app, window, page, toasts):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.try_button.click()
+    assert toasts == ["Choose where it goes."]
+    assert not window.session.robot_lease.busy
+    assert not [c for c in window.session.robot.calls if c[0] == "aspirate"]
+
+
+def test_try_once_into_the_trash_needs_the_trash(app, page, toasts):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    page.dest_kind.buttons[2].click()              # Trash
+    page.try_button.click()
+    assert toasts == ["Set the trash to try this step."]
+
+
+def test_try_once_needs_a_tip(app, window, page, toasts):
+    _one_to_four(app, page)
+    window.session.tip = window.session.tip.__class__(attached=False)
+    page.try_button.click()
+    assert toasts == ["No tip on: put one on on the Tip step."]
+
+
+def test_a_wait_has_nothing_to_try_and_a_busy_robot_grays_it(app, window, page):
+    page.add_step("wait")
+    assert page.try_button.isHidden()
+    page.add_step("move_liquid")
+    assert not page.try_button.isHidden()
+    assert page.try_button.isEnabled()
+    _free(app, window, page)
+    held = window.session.robot_lease.claim("a test")
+    assert held is not None
+    window.session.robot_busy_changed.emit("a test")
+    assert not page.try_button.isEnabled()
+    assert page.try_button.toolTip() == "Robot busy."
+    held.release()
+
+
+# -- templates -----------------------------------------------------------------
+
+def _save_as(page, name):
+    page.save_as_button.click()
+    page.name_field.setText(name)
+    page.save_name_button.click()
+
+
+def _listed(page):
+    page.template_tile.click()
+    assert page.template_box.isVisibleTo(page)
+    return [page.template_list.item(n)
+            for n in range(page.template_list.count())]
+
+
+def test_a_template_opens_again_as_it_was_saved(app, window, page):
+    _set_trash(app, page)
+    _one_to_four(app, page)
+    page.add_step("wait")
+    page.step_list.set_open("")
+    _save_as(page, "Wash")
+    saved = page.plan
+    assert saved.name == "Wash"
+    assert page.save_changes_button.text() == 'Save changes to "Wash"'
+    assert not page.save_changes_button.isEnabled()
+
+    page.new_plan_button.click()
+    assert page.plan.steps == []
+    assert page.save_changes_button.isHidden()
+
+    (item,) = _listed(page)
+    assert item.text().startswith("Wash\n2 steps · 5 wells · saved ")
+    page.template_list.itemClicked.emit(item)
+    assert page.plan == saved
+    assert [s.id for s in page.plan.steps] == [s.id for s in saved.steps]
+    assert [s.color for s in page.plan.steps] == [s.color for s in saved.steps]
+    assert not page.template_box.isVisibleTo(page)
+    assert window.session.liquid_plan == saved
+
+
+def test_save_changes_writes_over_the_open_template(app, window, page):
+    _one_to_four(app, page)
+    page.step_list.set_open("")
+    _save_as(page, "Wash")
+    page.add_step("wait")
+    assert page.save_changes_button.isEnabled()
+    page.save_changes_button.click()
+    assert not page.save_changes_button.isEnabled()
+    (template,) = window.session.liquid_templates()
+    assert LiquidPlan.load(template.path) == page.plan
+
+
+def test_undo_past_an_opening_closes_the_template(app, window, page):
+    _one_to_four(app, page)
+    page.step_list.set_open("")
+    _save_as(page, "Wash")
+    page.new_plan_button.click()
+    page.add_step("wait")
+    page.step_list.set_open("")
+    other = page.plan
+    page.open_template(window.session.liquid_templates()[0].path)
+    assert not page.save_changes_button.isHidden()
+    page.undo()
+    assert page.plan == other
+    assert page.save_changes_button.isHidden()     # never written over Wash
+
+
+def test_a_name_in_use_is_refused_and_the_row_stays(app, page, toasts):
+    _one_to_four(app, page)
+    page.step_list.set_open("")
+    _save_as(page, "Wash")
+    _save_as(page, "wash")
+    assert toasts[-1] == 'A template is already called "wash".'
+    assert not page.name_row.isHidden()
+    assert page.plan.name == "Wash"
+
+
+def test_a_plate_not_on_the_deck_today_is_said_on_its_step(app, window, page):
+    _one_to_four(app, page)
+    page.step_list.set_open("")
+    plan = page.plan.model_copy(deep=True, update={"name": "Elsewhere"})
+    plan.steps[0].source.slot = "9"
+    plan.steps[0].dest.slot = "9"
+    path = page_module.paths.outputs_dir() / "elsewhere.json"
+    plan.save(path)
+    page.open_template(path)
+    assert page.plan == plan
+    assert window.session.liquid_plan_problems()[plan.steps[0].id]
+    assert window.footer.sentence.text() == "Set the trash to run this plan."
+
+
+def test_an_old_program_is_gray_and_does_not_open(app, window, page, toasts):
+    folder = page_module.templates.templates_dir(
+        page_module.templates.LIQUID_PLANS)
+    path = folder / "daily.json"
+    Program(name="Daily").save(path)
+    before = path.read_bytes()
+    (item,) = _listed(page)
+    assert item.text() == "Daily\nMade with an older version"
+    assert not item.flags() & Qt.ItemFlag.ItemIsEnabled
+    plan = page.plan
+    page.open_template(path)                       # as Open from file… would
+    assert toasts == [page_module.OLD_FILE]
+    assert page.plan == plan
+    assert path.read_bytes() == before
+    assert Program.load(path).name == "Daily"
+
+
+def test_a_file_that_is_no_plan_is_said(app, page, tmp_path, toasts):
+    path = tmp_path / "broken.json"
+    path.write_text("{", encoding="utf-8")
+    page.open_template(path)
+    assert toasts == [page_module.NOT_A_PLAN]
