@@ -3,7 +3,7 @@
 A **task** is one of the three kinds of work started from Home, and a
 fixed order of **steps** (REDESIGN §4, GLOSSARY):
 
-    Auto pick    Deck → Tip → Dish bottom → Plan → Picking
+    Auto pick    Deck → Tip → Dish bottom → Plan → Well center → Picking
     Manual pick  Deck → Tip → Dish bottom → Well center → Work
     Liquid       Deck → Tip → Well center → Plan → Run
 
@@ -34,13 +34,17 @@ it shows (`well_center_plates`): those on the deck until the Liquid plan
 says which it uses. Run does not need Well center: an unmeasured plate is
 used on purpose, after a warning (REDESIGN §6.8). In Manual pick Well
 center is optional and has no Skip (#63): a plate not measured uses its
-drawing, and the step is done only when every plate is measured.
+drawing, and the step is done only when every plate is measured. So it
+is in Auto pick (#64), after Plan and only for the plan's plate: it
+needs the plan in use ("Make a plan first."), as a run reads that
+plate's center at Start.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..workflows.well_center import plan_plate
 from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
@@ -51,7 +55,8 @@ __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
 
 # task -> (its name on screen, its steps in order)
 TASKS = {
-    "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "plan", "picking")),
+    "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "plan",
+                           "well_center", "picking")),
     "manual": ("Manual pick", ("deck", "tip", "dish_bottom", "well_center",
                                "work")),
     "liquid": ("Liquid", ("deck", "tip", "well_center", "liquid_plan",
@@ -174,13 +179,19 @@ _NEEDS = {
 
 _PLATE_NEEDED = {"plan"}
 
+# Earlier steps a step needs in one task only, and what it says then:
+# Auto's Well center measures the plan's plate (#64).
+_TASK_NEEDS = {("auto", "well_center"): {"plan": "Make a plan first."}}
+
 
 def _needs(task: str, step: str) -> list[Need]:
     robot, earlier, setup = _NEEDS[step]
     if task == "liquid" and step == "tip":
         setup = ()
+    own = _TASK_NEEDS.get((task, step), {})
     out = [_ROBOT] if robot else []
     out += [Need("step", s, _STEP_NEEDS[s]) for s in earlier]
+    out += [Need("step", s, text) for s, text in own.items()]
     if step in _PLATE_NEEDED:
         out.append(_PLATE)
     out += [Need("setup", k, SETUP[k][0]) for k in setup]
@@ -233,14 +244,20 @@ def _done(session, task: str, step: str) -> bool:
 
 def well_center_plates(session, task: str) -> list:
     """The plates the Well center step shows in `task`, as
-    `Session.plates` gives them."""
-    return session.plates()
+    `Session.plates` gives them: in Auto pick the plan's plate, while the
+    plan is in use (the Plan step done), else none."""
+    if task != "auto":
+        return session.plates()
+    if not _done(session, task, "plan"):
+        return []
+    plate = plan_plate(session.routine, session.run_state)
+    return [p for p in session.plates() if (p[0], p[1].load_name) == plate]
 
 
 # Steps a task can go past without, by task: Work is a toolbox, never
 # "done"; Well center is optional but in Liquid, a plate not measured
 # using its drawing.
-OPTIONAL = {"manual": {"well_center", "work"}}
+OPTIONAL = {"auto": {"well_center"}, "manual": {"well_center", "work"}}
 
 
 def optional(task: str, step: str) -> bool:

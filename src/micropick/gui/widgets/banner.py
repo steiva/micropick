@@ -70,4 +70,5 @@ class Banner(QFrame):
         while self._actions.count():
             widget = self._actions.takeAt(0).widget()
             if widget is not None:
+                widget.hide()               # gone now, deleted later
                 widget.deleteLater()

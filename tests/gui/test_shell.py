@@ -89,7 +89,7 @@ def test_a_tile_opens_its_task_and_home_goes_back(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.top.path == ["Auto pick"]
     assert [name for name, _done in _chips(window)] == [
-        "Deck", "Tip", "Dish bottom", "Plan", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Plan", "Well center", "Picking"]
     assert window.step_bar.isVisible() and window.footer.isVisible()
     assert window.current_page() is window.labware_page
     window.top.home_clicked.emit()
@@ -201,6 +201,23 @@ def test_next_is_enabled_when_the_step_is_done_and_marks_it(app, window):
     assert window.step == "deck"
     window.footer.back.click()
     assert window.current_page() is window.home
+
+
+def test_autos_well_center_asks_for_a_plan_and_goes_to_plan(app, window):
+    """#64: optional, so the task opens past it; without a plan it is
+    dimmed under its need."""
+    _connect(app, window)
+    _tip_calibrated(window)
+    window.home.tiles["auto"].clicked.emit()
+    window.step_bar.clicked.emit(4)                # Well center
+    assert window.step == "well_center"
+    assert window.current_page() is window.well_center_page
+    app.processEvents()                            # Dish bottom's banner gone
+    text, (go,) = _banner(window)
+    assert (text, go.text()) == ("Make a plan first.", "Go to Plan")
+    assert window.footer.next.isEnabled()          # optional
+    go.click()
+    assert window.step == "plan"
 
 
 def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):

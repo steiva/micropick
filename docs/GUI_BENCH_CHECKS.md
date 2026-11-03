@@ -1963,3 +1963,22 @@ plate at hand.
 - [ ] **Liquid unchanged.**
   Liquid › Well center still has Skip this plate, and Next stays gray
   until every plate is measured or skipped.
+
+## Well center step in Auto pick (#64)
+
+- [ ] **The step.**
+  Auto pick's steps: Deck, Tip, Dish bottom, Plan, Well center, Picking.
+  With the plan in use the task opens on Picking, not on Well center.
+
+- [ ] **No plan.**
+  Edit plan on Plan, then Well center: dimmed under "Make a plan first."
+  with Go to Plan, which goes there. Next is enabled.
+
+- [ ] **The plan's plate only.**
+  Two plates on the deck, a plan into slot 5: Well center lists only
+  slot 5's, with no Skip this plate. Measure it: the chip is checked.
+  A plan into the other plate: the list follows it.
+
+- [ ] **The deposit.**
+  With slot 5's well center measured, run Picking into a small well: the
+  tip goes down at the measured center.

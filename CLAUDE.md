@@ -92,7 +92,7 @@ as the platforms sheet asks. What the robot does and measures itself
 is connected, something is on the deck and there is no deck problem; a
 move by drag goes through `Session.move_labware`, which loads again so a
 platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan
-→ Picking (no Tip liquid step: it is Picking's card), and a task opens
+→ Well center → Picking (no Tip liquid step: it is Picking's card), and a task opens
 on its first step not done that is not optional. Plan needs a plate on the deck (a "plate" need, "Put a plate
 on the deck first." with Go to Deck), not the Deck step. The Deck step
 is `pages.labware`: the tiles of `widgets.deck_tiles` in the deck's
@@ -358,7 +358,7 @@ does not. The plate map spans both card columns (`CardColumns(wide=...)`),
 names the well under the pointer, and opens in its own window as a
 `PlateMirror` - the same scene, never a copy. A plate's measured well
 center (`WellCenter`) is one per slot and plate type, set on the Well
-center step, one page in Liquid and Manual pick (`pages.well_center`,
+center step, one page in every task (`pages.well_center`,
 REDESIGN §6.7, `set_task`: the plates on the deck,
 `tasks.well_center_plates`, "Measured today" / "Not measured: using the
 drawing" / "Not measured yet"; the jog pad under the tip's X Y Z, with
@@ -370,7 +370,10 @@ measured or skipped (`Session.well_center_status`); in Manual pick
 (Deck → Tip → Dish bottom → Well center → Work, #63) it is optional
 (`tasks.optional`: Next always enabled, the task never opens on it), has
 no Skip - a plate not measured uses its drawing - and is done when every
-plate is measured. Work has no Well center card. Manual Work's Aspirate and Dispense in a well and a
+plate is measured. Work has no Well center card. So it is in Auto pick
+(after Plan, #64), where it shows only the plan's plate
+(`workflows.well_center.plan_plate`, the one a deposit reads) and, without
+the plan in use, is dimmed under "Make a plan first." with Go to Plan. Manual Work's Aspirate and Dispense in a well and a
 picking deposit add its x and y, Liquid handling's steps all of it. It is the plate's, wherever it
 was measured, and every page reads it the same way:
 `workflows.well_center` holds the measurement both pages take

@@ -1,5 +1,5 @@
 """The Well center step (REDESIGN §6.7): Liquid's third, Manual pick's
-fourth (#63), the same page in each.
+fourth (#63), Auto pick's fifth (#64), the same page in each.
 
 For each plate on the deck, the real well center and the bottom
 (`config.schema.WellCenter`, one per slot and plate type, saved by
@@ -29,7 +29,8 @@ for the one selected, four steps:
 **Skip this plate, use the drawing** marks it skipped for this robot
 session (`Session.skip_plate`), in Liquid only: elsewhere the step is
 optional and a plate not measured uses its drawing anyway (`set_task`).
-The plates are the task's (`tasks.well_center_plates`); the step is done
+The plates are the task's (`tasks.well_center_plates`: in Auto pick the
+plan's only); the step is done
 when every one is measured, or in Liquid skipped (`tasks.step_state`).
 
 A plate a run goes into keeps its center: Save is gray while one does
@@ -187,6 +188,8 @@ class WellCenterPage(QWidget):
         layout.addWidget(scroll_column(self._panel(), PANEL_WIDTH))
 
         session.labware_changed.connect(lambda _s: self._list_plates())
+        # Auto pick's plate is the plan's.
+        session.routine_changed.connect(lambda _r: self._list_plates())
         session.robot_state_changed.connect(self._on_robot)
         session.robot_busy_changed.connect(lambda _h: self.refresh())
         session.profile_changed.connect(lambda _p: self.refresh())
@@ -320,8 +323,8 @@ class WellCenterPage(QWidget):
         if self._selected not in self._rows:
             self._selected = None
             self.select_plate(*self._first_to_do())
-        else:
-            self.refresh()
+        # Also when nothing was selected and nothing is: the list emptied.
+        self.refresh()
 
     def _first_to_do(self) -> tuple:
         """The first plate not measured or skipped; else the first; else

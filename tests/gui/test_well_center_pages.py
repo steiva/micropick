@@ -213,6 +213,21 @@ def test_skip_is_only_in_liquid(app, session, task, skip):
     page.deleteLater()
 
 
+def test_auto_shows_only_the_plans_plate(app, session):
+    """#64: no Skip, and the plate the plan delivers to, as it changes."""
+    from micropick.core.routine import Destination, Routine
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    page.set_task("auto")
+    assert page.skip_button.isHidden()
+    assert page._rows == {} and not page.no_plates.isHidden()
+    session.set_routine(Routine(Destination.from_definition(
+        resolve_definition(PLATE), slot=2), {"A1": 1}, name="plan"))
+    assert set(page._rows) == {("2", PLATE)}
+    assert page._selected == ("2", PLATE)
+    page.deleteLater()
+
+
 def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session):
     page = _step(app, session)
     _measure(app, session, page, (0.4, -0.3, -1.5))

@@ -33,13 +33,13 @@ def session(app, tmp_path, monkeypatch):
 
 def test_each_task_is_its_steps_in_order():
     assert tasks.steps("auto") == ["deck", "tip", "dish_bottom", "plan",
-                                   "picking"]
+                                   "well_center", "picking"]
     assert tasks.steps("manual") == ["deck", "tip", "dish_bottom",
                                      "well_center", "work"]
     assert tasks.steps("liquid") == ["deck", "tip", "well_center",
                                      "liquid_plan", "run"]
     assert [tasks.title(s) for s in tasks.steps("auto")] == [
-        "Deck", "Tip", "Dish bottom", "Plan", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Plan", "Well center", "Picking"]
     assert tasks.title("liquid_plan") == "Plan"
 
 
@@ -240,6 +240,41 @@ def test_manuals_well_center_is_optional_and_done_when_all_are_measured(
     assert tasks.step_state(session, "manual", "well_center").done
 
 
+def test_autos_well_center_needs_a_plan_and_counts_only_its_plate(session):
+    """#64: optional, the plan's plate only."""
+    from micropick.config.labware import resolve_definition
+    from micropick.config.schema import WellCenter
+    _connect(session)
+    session.load_profile("mock")
+    plate = "corning_96_wellplate_360ul_flat"
+    session.load_labware(resolve_definition(plate), 5)
+    session.load_labware(resolve_definition(plate), 6)
+    state = tasks.step_state(session, "auto", "well_center")
+    assert state.optional and not state.done
+    assert tasks.well_center_plates(session, "auto") == []
+    routine = Routine(Destination.from_definition(
+        resolve_definition(plate), slot=5), {"A1": 1}, name="plan")
+    routine.needs_confirmation = True           # restored, not in use
+    session.set_routine(routine)
+    assert tasks.well_center_plates(session, "auto") == []
+    routine.needs_confirmation = False
+    session.set_routine(routine)
+    assert [(s, e.load_name) for s, e, _d
+            in tasks.well_center_plates(session, "auto")] == [("5", plate)]
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=5, load_name=plate, offset=(0.1, 0.2, 0.0), well="A1"))
+    assert tasks.step_state(session, "auto", "well_center").done
+
+
+def test_autos_well_center_needs_a_plan_after_the_tip():
+    needs = [(n.kind, n.key, n.text)
+             for n in tasks._needs("auto", "well_center")]
+    assert [k for _kind, k, _t in needs] == ["robot", "deck", "tip", "plan"]
+    assert needs[-1] == ("step", "plan", "Make a plan first.")
+    assert "plan" not in [n.key for n in tasks._needs("manual",
+                                                      "well_center")]
+
+
 def test_liquid_plan_and_run_are_confirmed_by_their_screens(session):
     _connect(session)
     _fill_deck(session)
@@ -261,6 +296,7 @@ def test_liquid_plan_and_run_are_confirmed_by_their_screens(session):
     ("auto", "picking", "step", "tip"),
     ("manual", "work", "step", "tip"),
     ("manual", "well_center", "step", "tip"),
+    ("auto", "well_center", "step", "tip"),
     ("liquid", "well_center", "step", "tip"),
     ("liquid", "liquid_plan", None, None),
     ("liquid", "run", "step", "tip"),
