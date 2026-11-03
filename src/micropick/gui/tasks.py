@@ -3,9 +3,12 @@
 A **task** is one of the three kinds of work started from Home, and a
 fixed order of **steps** (REDESIGN §4, GLOSSARY):
 
-    Auto pick    Deck → Tip → Dish bottom → Plan → Well center → Picking
-    Manual pick  Deck → Tip → Dish bottom → Well center → Work
+    Auto pick    Deck → Tip → Dish bottom → Plan → Well center → Run
+    Manual pick  Deck → Tip → Dish bottom → Well center → Run
     Liquid       Deck → Tip → Well center → Plan → Run
+
+The last step of every task is titled Run (the Run step, #65); in code
+it stays "picking", "work" and "run".
 
 Deck, Tip and Dish bottom are one step each, shared: the same screen and
 the same state in every task that has them.
@@ -66,7 +69,7 @@ TASKS = {
 _TITLES = {
     "deck": "Deck", "tip": "Tip", "plan": "Plan",
     "dish_bottom": "Dish bottom",
-    "picking": "Picking", "work": "Work",
+    "picking": "Run", "work": "Run",
     "well_center": "Well center", "liquid_plan": "Plan", "run": "Run",
 }
 

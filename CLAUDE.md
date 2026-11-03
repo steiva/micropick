@@ -92,8 +92,11 @@ as the platforms sheet asks. What the robot does and measures itself
 is connected, something is on the deck and there is no deck problem; a
 move by drag goes through `Session.move_labware`, which loads again so a
 platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan
-→ Well center → Picking (no Tip liquid step: it is Picking's card), and a task opens
-on its first step not done that is not optional. Plan needs a plate on the deck (a "plate" need, "Put a plate
+→ Well center → Run (no Tip liquid step: it is Picking's card), and a task opens
+on its first step not done that is not optional. The last step of every
+task is titled Run on screen (#65: Auto's `picking`, the Picking page;
+Manual's `work`, Manual Work; Liquid's `run`); the run statuses and Start
+picking keep their words. Plan needs a plate on the deck (a "plate" need, "Put a plate
 on the deck first." with Go to Deck), not the Deck step. The Deck step
 is `pages.labware`: the tiles of `widgets.deck_tiles` in the deck's
 proportions, a × per filled tile and Clear all (no Put something else),
@@ -367,7 +370,7 @@ the drawing, Save; in Liquid only Skip this plate, use the drawing -
 `Session.skip_plate`, for the robot session only); Liquid handling only
 reads it. In Liquid the step is required and done when every plate is
 measured or skipped (`Session.well_center_status`); in Manual pick
-(Deck → Tip → Dish bottom → Well center → Work, #63) it is optional
+(Deck → Tip → Dish bottom → Well center → Run, #63) it is optional
 (`tasks.optional`: Next always enabled, the task never opens on it), has
 no Skip - a plate not measured uses its drawing - and is done when every
 plate is measured. Work has no Well center card. So it is in Auto pick

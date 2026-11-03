@@ -1982,3 +1982,14 @@ plate at hand.
 - [ ] **The deposit.**
   With slot 5's well center measured, run Picking into a small well: the
   tip goes down at the measured center.
+
+## The last step of every task is Run (#65)
+
+- [ ] **The step bar.**
+  Auto pick: Deck, Tip, Dish bottom, Plan, Well center, Run. Manual pick:
+  Deck, Tip, Dish bottom, Well center, Run. Liquid: Deck, Tip, Well
+  center, Plan, Run. No step is called Picking or Work.
+
+- [ ] **The run keeps its words.**
+  Auto's Run is the Picking page: Start picking, and the footer and the
+  pill say PICKING / "Picking" while it runs, as before.

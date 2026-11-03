@@ -66,7 +66,7 @@ class Gallery(QMainWindow):
         self.top.set_light(True)
         self.top.set_status("Picking")
         self.top.set_stop_visible(True)
-        self.steps = StepBar(["Deck", "Tip", "Plan", "Dish bottom", "Picking"],
+        self.steps = StepBar(["Deck", "Tip", "Plan", "Dish bottom", "Run"],
                              central)
         self.steps.set_state(2, [True, True, False, False, False])
         self.steps.clicked.connect(

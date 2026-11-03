@@ -39,8 +39,10 @@ def test_each_task_is_its_steps_in_order():
     assert tasks.steps("liquid") == ["deck", "tip", "well_center",
                                      "liquid_plan", "run"]
     assert [tasks.title(s) for s in tasks.steps("auto")] == [
-        "Deck", "Tip", "Dish bottom", "Plan", "Well center", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Plan", "Well center", "Run"]
     assert tasks.title("liquid_plan") == "Plan"
+    # The last step of every task is Run (#65).
+    assert {tasks.title(tasks.steps(t)[-1]) for t in tasks.TASKS} == {"Run"}
 
 
 def _connect(session):

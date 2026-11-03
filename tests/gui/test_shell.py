@@ -89,7 +89,7 @@ def test_a_tile_opens_its_task_and_home_goes_back(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.top.path == ["Auto pick"]
     assert [name for name, _done in _chips(window)] == [
-        "Deck", "Tip", "Dish bottom", "Plan", "Well center", "Picking"]
+        "Deck", "Tip", "Dish bottom", "Plan", "Well center", "Run"]
     assert window.step_bar.isVisible() and window.footer.isVisible()
     assert window.current_page() is window.labware_page
     window.top.home_clicked.emit()
@@ -233,7 +233,7 @@ def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):
     assert window.current_page() is window.manual_page
     assert _chips(window) == [("Deck", True), ("Tip", True),
                               ("Dish bottom", True), ("Well center", False),
-                              ("Work", False)]
+                              ("Run", False)]
     assert window.footer.isVisible() and not window.footer.next.isVisible()
 
 
