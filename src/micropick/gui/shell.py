@@ -293,6 +293,7 @@ class MainWindow(QMainWindow):
         for signal in (session.profile_changed, session.robot_state_changed,
                        session.labware_changed, session.tip_changed,
                        session.routine_changed, session.settings_changed,
+                       session.liquid_plan_changed,
                        session.confirmations_changed,
                        session.robot_busy_changed):
             signal.connect(self._refresh)
@@ -643,6 +644,9 @@ class MainWindow(QMainWindow):
         if navigation != self._navigation:
             self._navigation = navigation
             self.footer.set_navigation(**navigation)
+        blocked = need is None and not navigation["next_enabled"]
+        self.footer.set_reason(page.next_reason() if blocked
+                               and hasattr(page, "next_reason") else "")
 
     def _need_button(self, need: tasks.Need) -> str:
         if need.kind == "robot":

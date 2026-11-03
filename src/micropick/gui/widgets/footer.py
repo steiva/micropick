@@ -98,6 +98,11 @@ class Footer(QFrame):
         self.sentence.show()
         self.tone = tone
 
+    def set_reason(self, text: str) -> None:
+        """Why Next is gray, on an ordinary step: one sentence, no tag."""
+        self.sentence.setText(text)
+        self.sentence.setVisible(bool(text))
+
     def clear_status(self) -> None:
         self.tag.hide()
         self.sentence.hide()

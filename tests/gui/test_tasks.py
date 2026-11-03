@@ -13,9 +13,15 @@ from PySide6.QtWidgets import QApplication                     # noqa: E402
 
 from micropick.gui import tasks                                 # noqa: E402
 from micropick.gui.app import Options                          # noqa: E402
-from micropick.config.labware import LabwareDefinition         # noqa: E402
+from micropick.config.labware import (LabwareDefinition,       # noqa: E402
+                                       resolve_definition)
+from micropick.core.liquid import Location                      # noqa: E402
+from micropick.core.liquid_plan import (LiquidPlan, MoveLiquid,  # noqa: E402
+                                        Place)
 from micropick.core.routine import Destination, Routine          # noqa: E402
 from micropick.gui.session import Session                      # noqa: E402
+
+PLATE = "corning_96_wellplate_360ul_flat"
 
 
 @pytest.fixture(scope="module")
@@ -277,12 +283,64 @@ def test_autos_well_center_needs_a_plan_after_the_tip():
                                                       "well_center")]
 
 
-def test_liquid_plan_and_run_are_confirmed_by_their_screens(session):
+def _plate_on_deck(session):
+    session.load_labware(resolve_definition(PLATE), 5)
+
+
+def _liquid_plan(session, trash=True):
+    """A plan of one step on the plate in slot 5."""
+    wells = dict(slot="5", load_name=PLATE)
+    return LiquidPlan(
+        trash=Location(kind="well", well="H12", **wells) if trash else None,
+        steps=[MoveLiquid(source=Place(wells=["A1"], **wells),
+                          dest=Place(wells=["A2"], **wells))])
+
+
+def test_liquids_plan_is_done_while_it_has_no_problems(session):
     _connect(session)
-    _fill_deck(session)
-    assert not tasks.step_state(session, "liquid", "liquid_plan").done
-    session.confirm("liquid_plan")
-    assert tasks.step_state(session, "liquid", "liquid_plan").done
+    _plate_on_deck(session)
+    state = lambda: tasks.step_state(session, "liquid", "liquid_plan")  # noqa: E731
+    assert not state().done                       # none in hand
+    session.set_liquid_plan(LiquidPlan())
+    assert not state().done
+    assert session.liquid_plan_problems()["plan"][0] == (
+        "Add a step to the plan.")
+    session.set_liquid_plan(_liquid_plan(session, trash=False))
+    assert not state().done
+    assert session.liquid_plan_problems() == {
+        "plan": ["Set the trash to run this plan."]}
+    session.set_liquid_plan(_liquid_plan(session))
+    assert state().done
+    assert session.liquid_plan_problems() == {}
+    # Read each time: the plate going is the plan's problem at once.
+    session.run_state.labware.clear()
+    assert not state().done
+
+
+def test_a_liquid_plan_is_a_copy_the_page_goes_on_editing(session):
+    _connect(session)
+    _plate_on_deck(session)
+    plan = _liquid_plan(session)
+    session.set_liquid_plan(plan)
+    plan.steps.clear()
+    assert len(session.liquid_plan.steps) == 1
+
+
+def test_a_well_too_small_for_the_volume_is_a_problem_of_its_step(session):
+    _connect(session)
+    _plate_on_deck(session)
+    plan = _liquid_plan(session)
+    plan.tip_ul = 5000.0
+    plan.steps[0].volume_ul = 4000.0
+    session.set_liquid_plan(plan)
+    [said] = session.liquid_plan_problems()[plan.steps[0].id]
+    assert said.startswith("4000 µl is more than this well holds (")
+
+
+def test_liquids_run_is_done_by_a_run_to_its_end(session):
+    _connect(session)
+    _plate_on_deck(session)
+    session.set_liquid_plan(_liquid_plan(session))
     assert tasks.step_state(session, "liquid", "run").need.key == "tip"
     assert not tasks.step_state(session, "liquid", "run").done
     session.confirm("liquid_run")

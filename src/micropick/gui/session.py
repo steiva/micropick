@@ -50,7 +50,7 @@ from ..config.schema import (CALIBRATION_MODULE,  # noqa: E402
                              DeckConfig, DeckModule, ModuleType,
                              PickingConfig, WellCenter,
                              ProfileMeta)
-from ..core.liquid_plan import SPOT_PREFIX            # noqa: E402
+from ..core.liquid_plan import LiquidPlan, SPOT_PREFIX  # noqa: E402
 from ..hardware import devices as camera_devices   # noqa: E402
 from ..hardware import labware                      # noqa: E402
 from ..hardware import robot_clock                  # noqa: E402
@@ -63,9 +63,12 @@ from ..hardware import tips                          # noqa: E402
 from ..hardware.protocols import (lights_on, require_ok,  # noqa: E402
                                   set_lights)
 from ..hardware.robot_lease import RobotLease       # noqa: E402
+from ..workflows import liquid                      # noqa: E402
 from ..workflows import manual as moves             # noqa: E402
+from ..workflows.liquid_plan import plan_problems   # noqa: E402
 from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
+from .labware_kinds import well_volume              # noqa: E402
 from .camera_moves import pose_slot                 # noqa: E402
 from .readiness import DISH_POSITION, SHAKE_POSITION  # noqa: E402
 from .tasks import SETUP_POSITIONS, SETUP_TITLES   # noqa: E402
@@ -419,7 +422,6 @@ class Session(QObject):
         self.run_generation = 0
         self.routine = None                      # see routine_changed
         self.liquid_plan = None                  # see liquid_plan_changed
-        self.liquid_groups = None
         self.tip = Tip.unknown()                 # see tip_changed
         # What is in the tip, in µl, from `aspirate` and `dispense`; see
         # "liquid in the tip".
@@ -837,21 +839,40 @@ class Session(QObject):
                  else "none")
         self.routine_changed.emit(routine)
 
-    def set_liquid_plan(self, program, groups=None) -> None:
-        """Use this plan on Liquid's Plan step: a copy of `program` is what
-        a liquid run does, `groups` the indices of the groups it runs (None:
-        all, one after another). Liquid's Plan is done for the robot
-        session (`tasks.step_state`). None clears it."""
-        self.liquid_plan = (program.model_copy(deep=True)
-                            if program is not None else None)
-        self.liquid_groups = (list(groups) if program is not None
-                              and groups is not None else None)
-        if program is not None:
-            log.info("liquid plan in hand: %d groups, running %s",
-                     len(program.groups), "all" if groups is None
-                     else ", ".join(program.groups[i].name for i in groups))
-            self.confirm("liquid_plan")
+    def set_liquid_plan(self, plan) -> None:
+        """The plan on Liquid's Plan step, handed over as it is edited: a
+        copy of `plan` (`core.liquid_plan.LiquidPlan`) is what a liquid run
+        does. Whether it can run is `liquid_plan_problems`. None clears it."""
+        self.liquid_plan = (plan.model_copy(deep=True)
+                            if plan is not None else None)
         self.liquid_plan_changed.emit(self.liquid_plan)
+
+    def liquid_plates(self) -> dict[str, liquid.Plate]:
+        """The plates on the deck as a run sees them: each with its measured
+        well center, if any."""
+        profile, out = self.profile, {}
+        for slot, entry, definition in self.plates():
+            center = (profile.deck.well_center(slot, entry.load_name)
+                      if profile is not None else None)
+            out[slot] = liquid.Plate(
+                slot, entry.labware_id, entry.load_name, definition.ordering,
+                tuple(center.offset) if center is not None else None,
+                center.depth_mm if center is not None else None)
+        return out
+
+    def liquid_positions(self) -> dict:
+        return dict(self.profile.positions or {}) if self.profile else {}
+
+    def liquid_plan_problems(self) -> dict[str, list[str]]:
+        """What stops the plan in hand from running, read from the deck and
+        the profile now (`workflows.liquid_plan.plan_problems`). Liquid's
+        Plan is done while there is nothing."""
+        plan = self.liquid_plan if self.liquid_plan is not None else LiquidPlan()
+        capacities = {slot: well_volume(definition)
+                      for slot, _entry, definition in self.plates()
+                      if well_volume(definition)}
+        return plan_problems(plan, self.liquid_plates(),
+                             self.liquid_positions(), capacities)
 
     # -- templates -----------------------------------------------------------
     #

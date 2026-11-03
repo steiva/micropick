@@ -17,7 +17,7 @@ import logging
 from ..config.labware import (LabwareDefinition, LabwareError,
                               local_definitions, shared_definitions)
 
-__all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind"]
+__all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind", "well_volume"]
 
 log = logging.getLogger(__name__)
 
@@ -59,15 +59,21 @@ def _volume(ul: float) -> str:
     return f"{ul:g} µl"
 
 
-def facts(definition: LabwareDefinition) -> str:
+def well_volume(definition: LabwareDefinition) -> float | None:
+    """What its first well holds in µl, if the definition says."""
     wells = definition.data.get("wells") or {}
     first = wells.get(definition.wells[0]) if definition.wells else None
     volume = (first or {}).get("totalLiquidVolume")
+    return float(volume) if volume else None
+
+
+def facts(definition: LabwareDefinition) -> str:
+    volume = well_volume(definition)
     count = definition.well_count
     out = [f"{count} tips" if definition.is_tiprack else
            f"{count} well" if count == 1 else f"{count} wells"]
     if volume:
-        out.append(_volume(float(volume)))
+        out.append(_volume(volume))
     bottoms = {(g.get("metadata") or {}).get("wellBottomShape")
                for g in definition.data.get("groups") or []}
     if len(bottoms) == 1 and (bottom := bottoms.pop()) in _BOTTOMS:

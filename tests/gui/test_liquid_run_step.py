@@ -18,8 +18,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
-from micropick.core.liquid import (Aspirate, Dispense, Group,    # noqa: E402
-                                   Location, Pause, Program, Wait)
+from micropick.core.liquid import Location                       # noqa: E402
+from micropick.core.liquid_plan import (LiquidPlan, MoveLiquid,  # noqa: E402
+                                        Place, WaitForMe)
 from micropick.gui import tasks                                  # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
@@ -63,10 +64,12 @@ def _until(app, condition, timeout_s=10.0):
     return condition()
 
 
-def _plan(window, steps, wells=("A1", "A2", "A3")):
-    window.session.set_liquid_plan(Program(trash=TRASH, groups=[
-        Group(name="Wash", slot="5", load_name=PLATE, wells=list(wells),
-              steps=list(steps))]))
+def _wells(*names):
+    return Place(slot="5", load_name=PLATE, wells=list(names))
+
+
+def _plan(window, *steps):
+    window.session.set_liquid_plan(LiquidPlan(trash=TRASH, steps=list(steps)))
     window._refresh()
 
 
@@ -98,7 +101,7 @@ def test_not_ready_without_a_plan(app, window):
 
 def test_the_plate_is_on_the_left(app, window):
     page = window.pages["liquid"]
-    _plan(window, [Aspirate(volume_ul=10), Dispense(location=TRASH)])
+    _plan(window, MoveLiquid(source=_wells("A1"), dest=_wells("B1")))
     assert page.body.itemAt(0).widget() is page.plate_box  # no camera
     assert page.plate.isVisibleTo(page)
     assert page.wells_heading.text().startswith("Slot 5 · ")
@@ -109,10 +112,13 @@ def test_run_pause_resume_stop(app, window, monkeypatch):
     monkeypatch.setattr(QApplication, "alert",
                         staticmethod(lambda w, ms=0: alerts.append(w)))
     page = window.pages["liquid"]
-    _plan(window, [Aspirate(volume_ul=10), Wait(seconds=0.2),
-                   Dispense(location=TRASH), Pause(message="look at it")],
-          wells=["A1", "A2", "A3", "A4"])
-    assert _footer(window) == ("READY", "4 wells to do.")
+    _plan(window,
+          MoveLiquid(source=_wells("H1"), dest=_wells("A1", "A2"),
+                     volume_ul=10, wait_after_s=0.2),
+          WaitForMe(message="look at it"),
+          MoveLiquid(source=_wells("H1"), dest=_wells("B1", "B2", "B3"),
+                     volume_ul=10, wait_after_s=0.5))
+    assert _footer(window) == ("READY", "6 wells to do.")
     assert _buttons(window) == ["Back", "Start"]
 
     # A read of the pose may hold the robot for a moment.
@@ -125,7 +131,7 @@ def test_run_pause_resume_stop(app, window, monkeypatch):
     assert window.session.robot_lease.holding_run
     assert _stop_shown(window)
     assert _pill(window) == "Handling liquid"
-    assert _until(app, lambda: "Wash · A1" in _footer(window)[1]), \
+    assert _until(app, lambda: "Step 1 · A1" in _footer(window)[1]), \
         _footer(window)
 
     page.pause_button.click()
@@ -148,7 +154,7 @@ def test_run_pause_resume_stop(app, window, monkeypatch):
     assert alerts == [window]                  # the taskbar flashes
     page.pause_button.click()                  # Resume
     assert _until(app, lambda: _footer(window)[0] == "RUNNING")
-    assert _until(app, lambda: (0, "A1") in page.state.done)
+    assert _until(app, lambda: (0, "A2") in page.state.done)
 
     page.stop_button.click()
     assert _until(app, lambda: not page._running and not page.jog.busy)
@@ -163,8 +169,8 @@ def test_run_pause_resume_stop(app, window, monkeypatch):
 
 def test_a_run_to_its_end_is_done(app, window):
     page = window.pages["liquid"]
-    _plan(window, [Aspirate(volume_ul=10), Dispense(location=TRASH)],
-          wells=["A1", "A2"])
+    _plan(window, MoveLiquid(source=_wells("H1"), dest=_wells("A1", "A2"),
+                             volume_ul=10))
     # A read of the pose may hold the robot for a moment.
     assert _until(app, page._startable)
     page.start_button.click()

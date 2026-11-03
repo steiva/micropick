@@ -238,10 +238,11 @@ def _done(session, task: str, step: str) -> bool:
         return bool(plates) and all(
             session.well_center_status(slot, entry.load_name) in counted
             for slot, entry, _definition in plates)
-    if step in ("liquid_plan", "run"):
-        # Confirmed by Use this plan, and by a liquid run that ended.
-        return session.is_confirmed("liquid_run" if step == "run"
-                                    else step)
+    if step == "liquid_plan":
+        return not session.liquid_plan_problems()
+    if step == "run":
+        # Confirmed by a liquid run that ended.
+        return session.is_confirmed("liquid_run")
     return False
 
 

@@ -86,7 +86,8 @@ __all__ = ["CARRIER_SLOT", "CARRIER_WELL", "SPOT_PREFIX", "Height", "Spot",
            "Place", "MoveLiquid", "MixStep", "BlowOutStep", "MoveTip",
            "WaitStep", "WaitForMe", "PlanStep", "LiquidPlan", "Pairing",
            "pairing", "chip", "move_step", "compile_step", "compiles",
-           "goes_to_trash", "spot_name", "spots", "step_chips", "step_title"]
+           "by_row", "goes_to_trash", "places", "spot_name", "spots",
+           "step_chips", "step_title"]
 
 PLAN_VERSION = 1
 
@@ -286,7 +287,7 @@ def step_title(step) -> str:
 
 def step_chips(step) -> list[str]:
     """The step's places as `chip`s, from before to."""
-    return [chip(place) for _role, place in _places(step)]
+    return [chip(place) for _role, place in places(step)]
 
 
 class Pairing(NamedTuple):
@@ -326,7 +327,7 @@ def spot_name(step, role: str) -> str:
     return f"{SPOT_PREFIX}{step.id}:{role}"
 
 
-def _places(step) -> list[tuple[str, Place]]:
+def places(step) -> list[tuple[str, Place]]:
     """(role, place) of every place of `step`."""
     if step.kind == "move_liquid":
         return [("source", step.source), ("dest", step.dest)]
@@ -340,13 +341,13 @@ def _places(step) -> list[tuple[str, Place]]:
 def spots(plan: LiquidPlan) -> dict[str, tuple[float, float, float]]:
     """Every spot of the plan as a position, for the engine's `positions`."""
     return {spot_name(step, role): (place.spot.x, place.spot.y, place.spot.z)
-            for step in plan.steps for role, place in _places(step)
+            for step in plan.steps for role, place in places(step)
             if place.kind == "spot" and place.spot is not None}
 
 
 def goes_to_trash(step) -> bool:
     """Whether `step` has the trash for a place, so needs the plan's."""
-    return any(place.kind == "trash" for _role, place in _places(step))
+    return any(place.kind == "trash" for _role, place in places(step))
 
 
 def compiles(step) -> bool:
@@ -354,7 +355,7 @@ def compiles(step) -> bool:
     return step.kind not in ("wait", "wait_for_me")
 
 
-def _by_row(place: Place, plates: dict) -> list[str]:
+def by_row(place: Place, plates: dict) -> list[str]:
     """Its wells in the plate's order by row. Wells the plate does not have
     stay, last, for the engine's `problems` to name."""
     plate = plates.get(place.slot)
@@ -446,20 +447,20 @@ def _move_groups(plan: LiquidPlan, index: int, step: MoveLiquid,
     if dest.kind == "wells" and dest.count > 1 and source.count == 1:
         volume = (step.volume_ul if step.mix_after
                   else _refill_ul(plan, step.volume_ul))
-        return [group(dest, _by_row(dest, plates), [
+        return [group(dest, by_row(dest, plates), [
             take(fixed("source", source, step.take_at), volume,
                  refill=not step.mix_after),
             *put(_each(dest, step.put_at, plates))])]
     if dest.kind == "wells" and dest.count == source.count:
-        froms = (_by_row(source, plates) if source.kind == "wells"
+        froms = (by_row(source, plates) if source.kind == "wells"
                  else [None])
         return [group(dest, [to], [
             take(fixed("source", source, step.take_at, well)),
             *put(_each(dest, step.put_at, plates))])
-            for well, to in zip(froms, _by_row(dest, plates))]
+            for well, to in zip(froms, by_row(dest, plates))]
     target = fixed("dest", dest, step.put_at)
     if source.kind == "wells":
-        return [group(source, _by_row(source, plates), [
+        return [group(source, by_row(source, plates), [
             take(_each(source, step.take_at, plates)), *put(target)])]
     return [_on_carrier(index, step, [
         take(fixed("source", source, step.take_at)), *put(target)])]
@@ -486,7 +487,7 @@ def compile_step(plan: LiquidPlan, index: int, plates: dict) -> Program:
         wells = step.wells
         groups = [Group(
             name=f"Step {index + 1}", color=step.color, slot=wells.slot,
-            load_name=wells.load_name or "", wells=_by_row(wells, plates),
+            load_name=wells.load_name or "", wells=by_row(wells, plates),
             steps=[Mix(cycles=step.cycles, volume_ul=step.volume_ul,
                        flow_rate=step.flow_ul_s,
                        location=_each(wells, step.at, plates))])]

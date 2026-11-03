@@ -1,13 +1,12 @@
 """Liquid's Run step (REDESIGN §6.9): the liquid plan done by the robot.
 
-A liquid plan (`core.liquid.Program`) is groups of wells of a plate on the
-deck, each with the steps every one of its wells gets - Aspirate,
-Dispense, Move to, Mix, Blow out, Wait, Pause - each saying where it
-happens. It is made on Liquid's Plan step (`pages.liquid_plan`) and handed
-over with Use this plan (`Session.set_liquid_plan`), with the groups to
-run: all, one after another, or only one. The run takes them in that
-order and, for each well of a group, does all its steps before the next
-well (`workflows.liquid`).
+A liquid plan (`core.liquid_plan.LiquidPlan`) is made on Liquid's Plan step
+(`pages.liquid_plan`), which hands it to the session as it is edited
+(`Session.set_liquid_plan`). This page still runs a `Program`: the plan as
+one (`workflows.liquid_plan.one_program`), a thin bridge until the Run
+screen of LIQUID.md §6 replaces the page. The run takes its groups in order
+and, for each well of a group, does all its steps before the next well
+(`workflows.liquid`).
 
 On the left the plate, with what was done: the plan's plates in a
 dropdown, the wells in their group's color, done ones marked, the current
@@ -73,8 +72,10 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QMessageBox, QToolButton,
 
 from ... import paths
 from ...core.liquid import ACTIONS, Group, Program, describe_location
+from ...core.liquid_plan import CARRIER_SLOT, step_chips, step_title
 from ...core.routine import Destination, RoutineError
 from ...workflows import liquid
+from ...workflows.liquid_plan import one_program
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import (card, combo_box, danger_button, heading,
@@ -84,8 +85,6 @@ from ..widgets.jog_panel import JogPanel
 from ..widgets.plate_view import PlateView
 from ..widgets.plate_window import PlateWindow
 from ..workers import describe_error
-from .liquid_plan import (plates_for, positions_for, reach_problems,
-                          robot_problems)
 
 __all__ = ["LiquidHandlingPage", "deck_marks"]
 
@@ -150,6 +149,31 @@ def deck_marks(group, trash) -> tuple[dict, list[str]]:
     return marks, elsewhere
 
 
+def robot_problems(session: Session) -> list[str]:
+    if session.robot is None:
+        return ["the robot is not connected."]
+    if session.tip.attached is not True:
+        return ["no tip on: put one on on the Tip step."
+                if session.tip.attached is False else
+                "the robot's tip state is unknown: connect again."]
+    return []
+
+
+def reach_problems(session: Session, program: Program) -> list[str]:
+    """Saved points out of the robot's reach, and deck problems in the
+    slots the program goes to."""
+    out, positions = [], session.liquid_positions()
+    for name in sorted(liquid.points_used(program)):
+        if name in positions:
+            why = session.motion.refused(positions[name])
+            if why:
+                out.append(f"point {name!r} is outside the soft limits: "
+                           f"{why}.")
+    slots = liquid.slots_used(program)
+    out += [p.describe() for p in session.deck_problems() if p.slot in slots]
+    return out
+
+
 def _label(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setWordWrap(True)
@@ -165,9 +189,11 @@ class LiquidHandlingPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
-        # The plan Use this plan handed over, and the groups it runs.
+        # The session's plan, and what the run does of it (`_take_plan`).
+        self.plan = None
         self.program = Program()
-        self.groups: list[int] | None = None
+        self.plates: dict = {}
+        self.positions: dict = {}
         self.state = liquid.LiquidState()
         self._pause = threading.Event()
         self._stop = threading.Event()
@@ -313,9 +339,7 @@ class LiquidHandlingPage(QWidget):
 
     def _indices(self) -> list[int]:
         """The groups that run, in order."""
-        return (list(range(len(self.program.groups))) if self.groups is None
-                else [gi for gi in self.groups
-                      if gi < len(self.program.groups)])
+        return list(range(len(self.program.groups)))
 
     def _group(self) -> Group | None:
         """The group running, else the first to run on the plate shown,
@@ -331,25 +355,28 @@ class LiquidHandlingPage(QWidget):
         return groups[indices[0]] if indices else None
 
     def _take_plan(self) -> None:
-        """The session's plan (Use this plan), once no run is going. Its
+        """The session's plan, if it can run, once no run is going. Its
         progress is kept while the groups run and their wells are the
         same: only a step's numbers changed."""
         if self._running:
             return
-        plan = self.session.liquid_plan
-        program = plan.model_copy(deep=True) if plan is not None else Program()
-        groups = self.session.liquid_groups
+        session = self.session
+        self.plan = session.liquid_plan
+        program, self.plates, self.positions = Program(), {}, {}
+        if self.plan is not None and not session.liquid_plan_problems():
+            program, self.plates, self.positions = one_program(
+                self.plan, session.liquid_plates(),
+                session.liquid_positions())
         wells = [(g.slot, g.load_name, g.wells, g.order)
                  for g in program.groups]
-        if (groups != self.groups or wells != [
-                (g.slot, g.load_name, g.wells, g.order)
-                for g in self.program.groups]):
+        if wells != [(g.slot, g.load_name, g.wells, g.order)
+                     for g in self.program.groups]:
             self.state.reset()
             self._can_carry_on = False
             self._ended, self._outcome = None, ""
         elif program.groups != self.program.groups:
             self.state.resume = {}
-        self.program, self.groups = program, groups
+        self.program = program
         self._reload_plates()
         group = self._group()
         if group is not None:
@@ -396,7 +423,8 @@ class LiquidHandlingPage(QWidget):
         while there is no plan."""
         shown = self._shown_plate()
         self._deck = self.session.plates()
-        used = {(g.slot, g.load_name) for g in self.program.groups}
+        used = {(g.slot, g.load_name) for g in self.program.groups
+                if g.slot != CARRIER_SLOT}
         self._loading = True
         self.plate_choice.clear()
         for slot, _entry, definition in self._deck:
@@ -455,7 +483,7 @@ class LiquidHandlingPage(QWidget):
                      "in progress" if self._current == (gi, name) else
                      "to do")
             return f"{name} — {group.name}, {state}"
-        return f"{name} — no group"
+        return f"{name} — not in the plan"
 
     def _paint_plate(self) -> None:
         shown = self._shown_plate()
@@ -483,6 +511,7 @@ class LiquidHandlingPage(QWidget):
 
     def _deck_changed(self) -> None:
         self._reload_plates()
+        self._take_plan()
 
     # -- checks -------------------------------------------------------------------
 
@@ -492,20 +521,17 @@ class LiquidHandlingPage(QWidget):
             return out + ["there is no plan: make it on the Plan step."]
         # Played through from what the tip holds now, for a run from the
         # first well. Carrying on is checked step by step as it runs.
-        out += liquid.problems(self.program, plates_for(self.session),
-                               positions_for(self.session),
+        out += liquid.problems(self.program, self.plates, self.positions,
                                volumes=not self._can_carry_on,
-                               in_tip=self.state.in_tip, groups=self.groups)
-        out += reach_problems(self.session,
-                              liquid.chosen(self.program, self.groups))
+                               in_tip=self.state.in_tip)
+        out += reach_problems(self.session, self.program)
         return out
 
     # -- running ---------------------------------------------------------------------
 
     def _total(self) -> int:
         try:
-            return len(liquid.plan(self.program, plates_for(self.session),
-                                   self.groups))
+            return len(liquid.plan(self.program, self.plates))
         except ValueError:
             return 0
 
@@ -513,10 +539,13 @@ class LiquidHandlingPage(QWidget):
         box = QMessageBox(self)
         box.setIcon(QMessageBox.Icon.Question)
         box.setWindowTitle("Start")
-        groups = liquid.chosen(self.program, self.groups).groups
-        box.setText(f"Run {len(groups)} group{'s' if len(groups) != 1 else ''}"
+        steps = self.plan.steps
+        box.setText(f"Run {len(steps)} step{'s' if len(steps) != 1 else ''}"
                     f", {self._total()} wells?")
-        lines = [self._group_route(g) for g in groups]
+        lines = [f"Step {n}: " + " · ".join(
+            [step_title(step), *([" → ".join(step_chips(step))]
+                                 if step_chips(step) else [])]) + "."
+                 for n, step in enumerate(steps, 1)]
         trash = self.program.trash
         if trash is not None:
             lines.append("Trash: " + describe_location(trash) + ".")
@@ -528,22 +557,6 @@ class LiquidHandlingPage(QWidget):
         box.setDefaultButton(QMessageBox.StandardButton.Cancel)
         box.exec()
         return box.clickedButton() is start
-
-    def _group_route(self, group: Group) -> str:
-        """A group in one line: its wells' slot and plate, and every other
-        slot its steps go to - what Start asks to be checked on the deck."""
-        names = {slot: definition.display_name
-                 for slot, _entry, definition in self._deck}
-        goes = sorted({str(loc.slot) for loc in
-                       (getattr(step, "location", None) for step in group.steps)
-                       if loc is not None and loc.kind == "well" and loc.slot
-                       and str(loc.slot) != str(group.slot)})
-        text = (f"{group.name}: {len(group.wells)} wells of slot {group.slot} "
-                f"({names.get(group.slot, group.load_name)})")
-        if goes:
-            text += "; to " + ", ".join(
-                f"slot {slot} ({names.get(slot, '?')})" for slot in goes)
-        return text + "."
 
     def _startable(self) -> bool:
         return (not self._running and not self.jog.busy
@@ -581,8 +594,8 @@ class LiquidHandlingPage(QWidget):
         # A copy: the page may not be edited during the run, but a copy
         # makes that a rule of the data rather than of the buttons.
         program = self.program.model_copy(deep=True)
-        plates, state = plates_for(self.session), self.state
-        positions, groups = positions_for(self.session), self.groups
+        plates, state = self.plates, self.state
+        positions = self.positions
         pause, stop, log_path = self._pause, self._stop, self._log_path
         pause.clear()
         stop.clear()
@@ -595,8 +608,7 @@ class LiquidHandlingPage(QWidget):
                            on_progress=lambda *_a: emit(("progress", None)),
                            on_paused=lambda message: emit(("paused", message)),
                            on_status=lambda text: emit(("status", text)),
-                           log_path=log_path, clear_first=clear_first,
-                           groups=groups)
+                           log_path=log_path, clear_first=clear_first)
             except liquid.Stopped:
                 emit(("ended", ("stopped", "")))
                 return "run stopped."
@@ -608,7 +620,7 @@ class LiquidHandlingPage(QWidget):
 
         # The robot for the whole run, pauses included (`Session.robot_lease`).
         used = {(slot, plates[slot].load_name)
-                for slot in liquid.slots_used(liquid.chosen(program, groups))
+                for slot in liquid.slots_used(program)
                 if slot in plates}
         if not self.jog.run_job(job, what="liquid run", run=True,
                                 plates=used):
@@ -695,6 +707,8 @@ class LiquidHandlingPage(QWidget):
         super().showEvent(event)
         for shortcut in self._shortcuts:
             shortcut.setEnabled(True)
+        # A well center measured since: a bottom compiles differently.
+        self._take_plan()
         self._refresh()
 
     def hideEvent(self, event) -> None:

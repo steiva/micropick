@@ -219,6 +219,7 @@ class PlanStepCard(QFrame):
         while self.chip_row.count():
             item = self.chip_row.takeAt(0)
             if item.widget() is not None:
+                item.widget().hide()
                 item.widget().deleteLater()
         self.chips = []
         for n, text in enumerate(texts):

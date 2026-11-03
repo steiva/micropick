@@ -238,6 +238,38 @@ QLabel#chipTo {
     padding: 2px 6px;
 }
 QLabel#chipFrom[missing="true"], QLabel#chipTo[missing="true"] { color: @warn; }
+QPushButton#planRow {
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    min-height: 32px;
+}
+QPushButton#planRow:hover { background: @hover; }
+QPushButton#planRow[selected="true"] { background: @selected-bg; }
+QLabel#planRowValue[missing="true"] { color: @warn; }
+QLabel#planRule[warn="true"] { color: @warn; }
+QPushButton#trashRow {
+    background: @card;
+    border: 1px solid @card-border;
+    border-radius: 10px;
+    min-height: 40px;
+}
+QPushButton#trashRow:hover { background: @hover; }
+QPushButton#trashRow[missing="true"] {
+    background: @warn-bg;
+    border-color: @warn;
+}
+QLabel#trashAction { color: @accent; }
+QPushButton#addStep {
+    background: transparent;
+    border: 1px dashed @control-border;
+    border-radius: 10px;
+    color: @text-2;
+    min-height: 38px;
+}
+QPushButton#addStep:hover { background: @hover; }
+QWidget#kindItem { border-radius: 6px; }
+QWidget#kindItem:hover { background: @hover; }
 QFrame#raisedCard {
     background: @raised;
     border: 1px solid @control-border;

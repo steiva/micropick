@@ -64,7 +64,8 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from ..core.liquid import VOLUME_TOL, Group, Location, Program, aspirate_volume
+from ..core.liquid import (VOLUME_TOL, Group, Location, Pause, Program, Wait,
+                           aspirate_volume)
 from ..core.liquid_plan import (CARRIER_SLOT, CARRIER_WELL, SPOT_PREFIX,
                                 LiquidPlan, compile_step, compiles,
                                 goes_to_trash, pairing, spots)
@@ -72,7 +73,7 @@ from .liquid import (LiquidState, Plate, do_step, gate, play, problems, run,
                      trash_problems)
 from .motion import Motion
 
-__all__ = ["PlanState", "run_plan", "plan_problems"]
+__all__ = ["PlanState", "run_plan", "plan_problems", "one_program"]
 
 # The trash the steps are checked with while the plan's cannot be used.
 STAND_IN_TRASH = f"{SPOT_PREFIX}trash"
@@ -310,6 +311,28 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
             state.in_tip = carried.in_tip
         state.done.append(step.id)
         report("done")
+
+
+def one_program(plan: LiquidPlan, plates: dict[str, Plate],
+                positions: dict) -> tuple[Program, dict, dict]:
+    """The bridge to the Run page that runs a `Program` (#72, until #76):
+    the whole plan as one, a Wait and a Wait for me on the carrier, with the
+    `plates` and `positions` it needs. A plan with problems does not
+    compile."""
+    plates = _with_carrier(plates)
+    groups: list[Group] = []
+    for index, step in enumerate(plan.steps):
+        if compiles(step):
+            groups += compile_step(plan, index, plates).groups
+        else:
+            groups.append(Group(
+                name=f"Step {index + 1}", color=step.color, slot=CARRIER_SLOT,
+                load_name=CARRIER_SLOT, wells=[CARRIER_WELL],
+                steps=[Wait(seconds=step.seconds) if step.kind == "wait"
+                       else Pause(message=step.message)]))
+    program = Program(name=plan.name, tip_ul=plan.tip_ul, trash=plan.trash,
+                      groups=groups)
+    return program, plates, {**positions, **spots(plan)}
 
 
 def _screen(message: str) -> str:

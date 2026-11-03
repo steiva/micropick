@@ -15,7 +15,6 @@ from PySide6.QtWidgets import QApplication, QMessageBox          # noqa: E402
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
-from micropick.gui.pages import liquid_plan                      # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 
@@ -244,7 +243,7 @@ def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session):
 def test_a_center_measured_on_the_step_is_liquid_handlings(app, session):
     page = _step(app, session)
     _measure(app, session, page, (0.4, -0.3, -1.5))
-    plate = liquid_plan.plates_for(session)["5"]
+    plate = session.liquid_plates()["5"]
     assert plate.center == pytest.approx((0.4, -0.3, -1.5), abs=0.05)
     page.deleteLater()
 
@@ -252,12 +251,11 @@ def test_a_center_measured_on_the_step_is_liquid_handlings(app, session):
 def test_a_liquid_run_says_which_plates_it_goes_into(app, session):
     from micropick.core.liquid import Location
     session.tip = session.tip.__class__(attached=True)
-    from micropick.core.liquid import Group, Pause, Program
+    from micropick.core.liquid_plan import LiquidPlan, WaitForMe
     page = _liquid(app, session)
-    session.set_liquid_plan(Program(
+    session.set_liquid_plan(LiquidPlan(
         trash=Location(kind="well", slot="5", load_name=PLATE, well="H12"),
-        groups=[Group(name="g", slot="5", load_name=PLATE, wells=["A1"],
-                      steps=[Pause()])]))
+        steps=[WaitForMe()]))
     page._confirm_start = lambda: True
     page._start()
     end = time.monotonic() + 10
