@@ -279,23 +279,34 @@ pickup clips switch); there is no Camera / Tip back to center (Picking
 keeps Camera to dish center). A double click moves nothing. A **right** click (`CameraView.right_clicked`) marks a
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
-never in the profile); each is deleted by its × (`Session.delete_memo_point`).
-Its Save (gray until it has a Z) asks a name and moves it into the
-profile as a **saved point** (`Session.save_memo_point`, #62), refused
-for a name in use or a setup position's (`Session.point_name_refusal`).
-Saved points (`Session.saved_points`: the profile's positions less
-`tasks.SETUP_POSITIONS`, which are never listed or drawn as points, #61)
-are in the same table after the memo points (`Session.points`, `point`,
-`change_point`), marked Saved, a Z always; the name renamed by double
-click (`rename_saved_point`), × asking "Delete point <name>?" first.
-There is no Click to move and no Mark points. The tip goes to one only by
-the card's Go to. A point below
+never in the profile), as does the Memo points card's Place memo at
+crosshair (the picture's center through the pixel map, as By hand's aim,
+no Z; gray without a pixel map, "Calibrate the camera first."). A point is
+one kind - a place on the deck, no purpose stored (#66). Two cards: **Memo
+points** (× deletes, `Session.delete_memo_point`; Save asks a name and
+moves it into the profile as a **saved point**, `Session.save_memo_point`,
+#62, refused for a name in use or a setup position's,
+`Session.point_name_refusal`; never gray: a point at the travel height
+is stored at that height then, `Motion.travel_z` or else the jog
+envelope's top), and under it **Saved points** (`Session.saved_points`:
+the profile's positions less `tasks.SETUP_POSITIONS`, which are never
+listed or drawn as points, #61; marked Saved, a Z always; the name
+renamed by double click, `rename_saved_point`; × asking "Delete point
+<name>?" first). Under both one row for the one point chosen across them
+(choosing in one clears the other): **Camera to** (`Motion.camera_to`,
+the point less the tip offset, its Z unused), **Tip to** (`Motion.tip_to`
+to its Z, no higher than the travel height; gray while no tip is on, "Put
+a tip on first.") and Z from tip, each checked against the jog envelope,
+through `JogPanel.run_job`. There is no Go to, no Click to move and no
+Mark points; a double click only edits or renames, never moves. A point below
 a deck module's top is flagged (`Session.memo_problem`, the jog
 envelope's floors, `Motion.envelope`: the profile's modules over the deck
-definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Drawn in cyan
-on the "points" layer (`position_marks.memo_items`); on Work only while
-"At a point" is chosen in an open Aspirate or Dispense card
-(`PositionMarks.show_memo`), and listed there
+definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Both kinds drawn in cyan
+on the "points" layer (`position_marks.memo_items`), a saved point with a
+filled disc; on Work only while a points card is open or "At a point" is
+chosen in an open Aspirate or Dispense card (`PositionMarks.show_memo`;
+a right click opens Memo points when nothing shows them), and both kinds
+listed under "At a point"
 (`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
 settings as one line with Change (height above a well's bottom, or By
 hand's; volume; speed), From In a well / At a point / By hand,

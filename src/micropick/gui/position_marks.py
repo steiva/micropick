@@ -1,23 +1,21 @@
-"""The saved points, drawn on the upper camera's picture.
+"""The points, drawn on the upper camera's picture.
 
-The saved points are the profile's positions less Robot setup's
-(`Session.saved_points`, #61): `observe`, `shake` and `tip_calib` are each
-set in their own sheet and never drawn as points. A saved point is a
-gantry pose saved with the tip on the spot, so what matters is the deck
-point the tip was over, which is the pose less the pipette offset -
+The points are the session's (`Session.points`): the memo points, marked
+on Manual control's picture and kept until the program closes, and the
+saved points, the profile's positions less Robot setup's (#61): `observe`,
+`shake` and `tip_calib` are each set in their own sheet and never drawn as
+points. A point is where the tip goes down, in the robot's frame, so the
+deck point under it is the point less the pipette offset -
 `workflows.manual.tip_target` the other way round - and the pixel it
 appears at in a frame taken from the current pose is the pixel map
-inverted (`PixelMap.to_pixel`). A green ring: the tip goes down here,
-which is what an operator aiming the next one wants to see.
+inverted (`PixelMap.to_pixel`).
 
-And the memo points (`Session.memo_points`), marked by a click on Manual
-control's picture and kept until the program closes: a ring with a cross in
-it, in cyan, named with its Z when it has one. Tip points like the saved
-points, drawn the same way; the one chosen in Manual control's list is
-drawn thicker, and one the tip cannot go to (`Session.memo_problem`: below
-a deck module's top, say) in red with a "!". A page may hide them
-(`PositionMarks.show_memo`): Manual Work draws them only while the points
-are shown there.
+Each is a ring with a cross in it, in cyan, named with its Z when it has
+one; a saved point has a filled disc in the middle too (#66). The one
+chosen in Manual control's lists is drawn thicker, and one the tip cannot
+go to (`Session.memo_problem`: below a deck module's top, say) in red with
+a "!". A page may hide them (`PositionMarks.show_memo`): Manual Work draws
+them only while the points are shown there.
 
 And the past picks a page hands over (`PositionMarks.set_picks`): where the
 tip took something, a violet ring each, the last bright and the older ones
@@ -44,8 +42,7 @@ from PySide6.QtCore import QObject
 from ..core.calibration.pixel_map import PixelMap
 from ..viz import overlays
 
-__all__ = ["MARK", "MEMO", "PICK", "CAMERA_POSITIONS", "mark_items",
-           "memo_items", "pick_items", "axis_directions", "PositionMarks"]
+__all__ = ["MEMO", "PICK", "CAMERA_POSITIONS", "memo_items", "pick_items", "axis_directions", "PositionMarks"]
 
 # The camera poses, by name, with the Robot setup item that sets each: a
 # camera position's slot is the camera's (`camera_moves`). The names are
@@ -56,12 +53,10 @@ __all__ = ["MARK", "MEMO", "PICK", "CAMERA_POSITIONS", "mark_items",
 CAMERA_POSITIONS = {"observe": "Position over the dish",
                     "tip_calib": "Calibration position"}
 
-# BGR, as every overlay colour. A light green, paler than the pure green
-# of the isolated cuboids, so the two are not confused.
-MARK = (120, 255, 120)
-# The memo points': a cyan nothing else on the picture uses.
+# BGR, as every overlay colour. The points': a cyan nothing else on the
+# picture uses.
 MEMO = (255, 220, 0)
-# A memo point the tip cannot go to.
+# A point the tip cannot go to.
 MEMO_BAD = (0, 0, 255)
 # The last past pick, and the older ones: the same violet, dimmed.
 PICK = (250, 155, 169)
@@ -74,44 +69,17 @@ def _inside(u, v, width, height) -> bool:
     return 0 <= u < width and 0 <= v < height
 
 
-def _label(name, at, color=MARK) -> overlays.Text:
+def _label(name, at, color) -> overlays.Text:
     return overlays.Text(text=str(name),
                          org=(at[0] + RADIUS_PX + 4, at[1] - RADIUS_PX // 2),
                          scale=LABEL_SCALE, color=color, thickness=2)
 
 
-def _tip_items(name, pose, pmap, pipette_offset, gantry_xy, image_size):
-    """A ring and a dot where the tip goes down."""
-    width, height = image_size
-    x = float(pose[0]) - float(pipette_offset.dx)
-    y = float(pose[1]) - float(pipette_offset.dy)
-    pixel = pmap.to_pixel(x, y, gantry_xy)
-    if pixel is None or not _inside(*pixel, width, height):
-        return []
-    center = (int(round(pixel[0])), int(round(pixel[1])))
-    return [overlays.Circle(center=center, radius=RADIUS_PX, color=MARK,
-                            thickness=2),
-            overlays.Circle(center=center, radius=3, color=MARK,
-                            thickness=-1, fill=True),
-            _label(name, center)]
-
-
-def mark_items(positions: dict, pmap: PixelMap, pipette_offset, gantry_xy,
-               image_size) -> list:
-    """The marks of every position inside the frame: a ring where the tip
-    goes down."""
-    out = []
-    for name, pose in sorted(positions.items()):
-        out += _tip_items(name, pose, pmap, pipette_offset, gantry_xy,
-                          image_size)
-    return out
-
-
 def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
                image_size, chosen: str | None = None, bad=()) -> list:
-    """Each memo point inside the frame: a ring with a cross in it where
-    the tip goes down, and its name with its Z. Those named in `bad` in
-    red, with a "!"."""
+    """Each point inside the frame: a ring with a cross in it where the
+    tip goes down, a saved point's with a filled disc in it, and its name
+    with its Z. Those named in `bad` in red, with a "!"."""
     width, height = image_size
     out = []
     for point in points:
@@ -130,6 +98,10 @@ def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
                 points=np.array([(cx - dx, cy - dy), (cx + dx, cy + dy)],
                                 np.int32),
                 closed=False, color=colour, thickness=thick))
+        if point.saved:
+            out.append(overlays.Circle(center=(cx, cy), radius=arm // 2,
+                                       color=colour, thickness=-1,
+                                       fill=True))
         name = point.name if point.z is None else f"{point.name} z {point.z:g}"
         if point.name in bad:
             name += " !"
@@ -251,13 +223,12 @@ class PositionMarks(QObject):
             self.view.set_marks([])
             return
         pmap, offset = found
-        positions = self.session.saved_points()
         size = pmap.config.image_size
-        items = (mark_items(positions, pmap, offset, pose[:2], size)
-                 + pick_items(self.picks, pmap, offset, pose[:2], size))
+        items = pick_items(self.picks, pmap, offset, pose[:2], size)
         if self.memo_shown:
-            items += memo_items(self.session.memo_points, pmap, offset,
-                                pose[:2], size, self.memo_chosen,
-                                {p.name for p in self.session.memo_points
+            points = self.session.points
+            items += memo_items(points, pmap, offset, pose[:2], size,
+                                self.memo_chosen,
+                                {p.name for p in points
                                  if self.session.memo_problem(p)})
         self.view.set_marks(items)

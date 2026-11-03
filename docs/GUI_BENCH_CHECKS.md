@@ -1642,13 +1642,22 @@ tip box and a 384 plate at hand.
 
 - [ ] **Saved points (#61, #62).**
   With the three Robot setup positions set: none of them is in the points
-  list, and none is drawn on the picture (no "observe"). Give M1 a Z (Save
-  is gray until then), Save, name it "trough": the row reads trough with
-  "Saved", a green ring on the picture. Save another as "trough" or
+  lists, and none is drawn on the picture (no "observe"). Save M1, name it
+  "trough": the row leaves Memo points for Saved points, reading trough
+  with "Saved", a cyan ring with a filled disc on the picture. Save another as "trough" or
   "shake": refused, said under the position, the memo point stays.
   Double-click trough's name, type "bench", Enter: renamed. × on bench
   asks "Delete point bench?"; Keep keeps it. Restart: bench is listed
   again, the memo points are gone.
+
+- [ ] **Camera to, Tip to, Place memo at crosshair (#66).**
+  Place memo at crosshair: a memo point under the crosshair, z "travel
+  height"; Save it: its Z in Saved points is the travel height then.
+  Choose a point in Memo points, then one in Saved points: the first is
+  no longer chosen. Camera to: the point comes under the crosshair, the
+  tip stays at the travel height. Without a tip Tip to is gray ("Put a
+  tip on first."); with one, Tip to takes the tip down to the point's Z.
+  A double click on a row edits it and moves nothing.
 
 - [ ] **Tip gauge and past picks.**
   Tip on, Aspirate 15 µl: the gauge reads 15 µl and fills; Dispense: 0 µl.

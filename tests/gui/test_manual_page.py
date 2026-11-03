@@ -208,10 +208,12 @@ def test_a_right_click_marks_a_point_drawn_only_while_points_are_shown(
     _wait(app, page)
     assert [p.name for p in session.memo_points] == ["M1"]
     assert _xy(session) == pytest.approx(before)        # marking moves nothing
-    # Marked to be seen: the points open.
+    # Marked to be seen: the Memo points card opens, the point chosen.
     assert page.points_shown
-    assert page.source.current() == 1                  # At a point
+    assert page.memo_card.is_open()
+    assert page.memo_table.chosen_name == "M1"
     assert len(_points_drawn(page)) == 1
+    page.memo_card.set_open(False)
     page.source.buttons[0].click()                     # In a well
     assert _points_drawn(page) == []
     page.target.buttons[1].click()                     # Dispense: At a point
@@ -562,7 +564,7 @@ def _names(table):
     return [table.item(r, 0).text() for r in range(table.rowCount())]
 
 
-def test_the_table_lists_memo_and_saved_points_not_robot_setups(
+def test_memo_and_saved_points_are_two_lists_both_under_at_a_point(
         app, page, session):
     from micropick.viz import overlays
     for name in ("observe", "shake", "tip_calib"):
@@ -574,15 +576,100 @@ def test_the_table_lists_memo_and_saved_points_not_robot_setups(
     _over_the_deck(app, page, session)
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
     _wait(app, page)
-    for table in (page.memo_table, page.target_points):
+    assert _names(page.memo_table) == ["M1"]
+    assert _names(page.saved_table) == ["trough"]
+    assert page.memo_table.save_button("M1") is not None
+    assert page.saved_table.is_saved("trough")
+    for table in (page.source_points, page.target_points):
         assert _names(table) == ["M1", "trough"]
-        assert table.save_button("M1") is not None
-        assert table.save_button("trough") is None
-        assert table.is_saved("trough") and not table.is_saved("M1")
     labels = [i.text for i in page.view._marks
               if isinstance(i, overlays.Text)]
-    assert "trough" in labels
+    assert "trough z 30" in labels
     assert not {"observe", "shake", "tip_calib"} & set(labels)
+
+
+def test_a_saved_point_is_drawn_cyan_with_a_filled_mark(app, page, session):
+    from micropick.viz import overlays
+    from micropick.gui.position_marks import MEMO
+    session.remember("trough", (150.0, 150.0, 30.0))
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page.saved_card.set_open(True)
+    filled = [i for i in page.view._marks if isinstance(i, overlays.Circle)
+              and i.color == MEMO and i.fill]
+    assert len(filled) == 1
+    session.add_memo_point(150.0, 150.0, None)
+    filled = [i for i in page.view._marks if isinstance(i, overlays.Circle)
+              and i.color == MEMO and i.fill]
+    assert len(filled) == 1                         # the memo point is not
+    assert len(_points_drawn(page)) == 3            # two rings, one disc
+
+
+def test_the_chosen_point_is_one_across_both_lists(page, session):
+    session.remember("trough", (150.0, 150.0, 30.0))
+    session.add_memo_point(100.0, 100.0, None)
+    page.memo_table.choose("M1")
+    assert page.chosen_point() == "M1"
+    page.saved_table.choose("trough")
+    assert page.memo_table.chosen_name is None
+    assert page.chosen_point() == "trough"
+    page.memo_table.choose("M1")
+    assert page.saved_table.chosen_name is None
+    assert page.chosen_point() == "M1"
+
+
+def test_camera_to_brings_the_camera_over_the_point_at_the_travel_height(
+        app, page, session):
+    _calibrate(session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    session.remember("trough", (120.0, 130.0, 30.0))
+    page.saved_table.choose("trough")
+    assert page.camera_to_button.isEnabled()
+    page.camera_to_button.click()
+    _wait(app, page)
+    # The gantry a pipette offset short of the point; the Z is not used.
+    assert _xy(session) == pytest.approx((110.0, 135.0), abs=0.05)
+    z = session.robot.get_position(verbose=False)[0]["z"]
+    assert z > 30.0
+
+
+def test_tip_to_is_gray_without_a_tip_and_goes_down_to_the_points_z(
+        app, page, session):
+    _calibrate(session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    session.remember("trough", (120.0, 130.0, 30.0))
+    page.saved_table.choose("trough")
+    assert not page.tip_to_button.isEnabled()
+    assert page.tip_to_button.toolTip() == "Put a tip on first."
+    _tip_on(app, page, session)
+    page.saved_table.choose("trough")
+    assert page.tip_to_button.isEnabled()
+    page.tip_to_button.click()
+    _wait(app, page)
+    pos = session.robot.get_position(verbose=False)[0]
+    assert (pos["x"], pos["y"], pos["z"]) == pytest.approx(
+        (120.0, 130.0, 30.0), abs=0.05)
+
+
+def test_place_memo_at_crosshair_marks_the_spot_under_it_with_no_z(
+        app, page, session):
+    assert not page.place_memo_button.isEnabled()
+    assert page.place_memo_button.toolTip() == "Calibrate the camera first."
+    _calibrate(session)
+    session.profile_changed.emit(session.profile)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    assert page.place_memo_button.isEnabled()
+    page.place_memo_button.click()
+    # The crosshair is the reference pixel: the gantry plus the tip offset.
+    [point] = session.memo_points
+    assert (point.x, point.y, point.z) == pytest.approx((160.0, 145.0, None))
+    assert page.memo_table.chosen_name == point.name
 
 
 def test_save_names_a_memo_point_and_refuses_a_used_name(
@@ -601,14 +688,13 @@ def test_save_names_a_memo_point_and_refuses_a_used_name(
     page.memo_table.save_button("M1").click()
     assert said[-1] == "shake is set in Robot setup, Shake position."
     page.memo_table.save_button("M1").click()
-    assert _names(page.memo_table) == ["trough", "bench"]
+    assert _names(page.memo_table) == []
+    assert _names(page.saved_table) == ["trough", "bench"]
     assert session.profile.positions["bench"] == (100.0, 100.0, 12.0)
 
 
-def test_save_is_gray_until_the_point_has_a_z(app, page, session):
+def test_save_is_enabled_for_a_point_at_the_travel_height(app, page, session):
     session.add_memo_point(100.0, 100.0, None)
-    assert not page.memo_table.save_button("M1").isEnabled()
-    session.change_memo_point("M1", z=5.0)
     assert page.memo_table.save_button("M1").isEnabled()
 
 
@@ -621,24 +707,24 @@ def test_a_saved_points_cross_asks_then_deletes(app, page, session,
         ConfirmDialog, "confirm",
         classmethod(lambda cls, host, q, **k: (asked.append(q),
                                                next(answers))[1]))
-    page.memo_table.delete_button("trough").click()
+    page.saved_table.delete_button("trough").click()
     assert asked == ["Delete point trough?"]
     assert "trough" in session.profile.positions
-    page.memo_table.delete_button("trough").click()
+    page.saved_table.delete_button("trough").click()
     assert "trough" not in session.profile.positions
-    assert _names(page.memo_table) == []
+    assert _names(page.saved_table) == []
 
 
 def test_a_saved_point_is_renamed_by_editing_its_name(app, page, session):
     session.remember("trough", (150.0, 150.0, 30.0))
     session.add_memo_point(100.0, 100.0, None)
     said = []
-    page.memo_table.said.connect(said.append)
-    page.memo_table.item(1, 0).setText("M1")              # in use
+    page.saved_table.said.connect(said.append)
+    page.saved_table.item(0, 0).setText("M1")              # in use
     assert said == ['A point is already called "M1".']
-    assert _names(page.memo_table) == ["M1", "trough"]
-    page.memo_table.item(1, 0).setText("bench")
-    assert _names(page.memo_table) == ["M1", "bench"]
+    assert _names(page.saved_table) == ["trough"]
+    page.saved_table.item(0, 0).setText("bench")
+    assert _names(page.saved_table) == ["bench"]
     session.load_profile("mock")
     assert "bench" in session.profile.positions
     assert "trough" not in session.profile.positions
@@ -650,7 +736,7 @@ def test_a_memo_points_name_is_not_edited(page, session):
     session.remember("trough", (150.0, 150.0, 30.0))
     editable = Qt.ItemFlag.ItemIsEditable
     assert not page.memo_table.item(0, 0).flags() & editable
-    assert page.memo_table.item(1, 0).flags() & editable
+    assert page.saved_table.item(0, 0).flags() & editable
 
 
 def test_space_no_longer_saves_a_point(page, session):
@@ -663,7 +749,7 @@ def test_space_no_longer_saves_a_point(page, session):
 def test_a_saved_points_z_box_has_no_travel_height(page, session):
     from micropick.gui.widgets.memo_points import Z_COLUMN
     session.remember("trough", (150.0, 150.0, 30.0))
-    table = page.memo_table
+    table = page.saved_table
     index = table.model().index(0, Z_COLUMN)
     delegate = table.itemDelegate()
     box = delegate.createEditor(table.viewport(), None, index)

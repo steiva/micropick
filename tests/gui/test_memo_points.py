@@ -98,11 +98,21 @@ def test_save_refuses_a_used_name_and_a_setup_positions_name(session, name,
     assert [p.name for p in session.memo_points] == ["M1", "M2"]
 
 
-def test_save_needs_a_z(session):
-    from micropick.gui.session import SessionError
+def test_save_with_no_z_stores_the_top_of_the_jog_envelope(session):
+    # No robot top measured yet: the jog envelope's Z top, a plain number.
     session.add_memo_point(10, 20, None)
-    with pytest.raises(SessionError, match="Give M1 a Z first"):
-        session.save_memo_point("M1", "trough")
+    top = session.motion.envelope.z[1]
+    session.save_memo_point("M1", "trough")
+    assert session.saved_points() == {"trough": (10.0, 20.0, top)}
+
+
+def test_save_with_no_z_stores_the_travel_height_once_measured(
+        session, monkeypatch):
+    from micropick.workflows.motion import Motion
+    monkeypatch.setattr(Motion, "travel_z", property(lambda self: 123.5))
+    session.add_memo_point(10, 20, None)
+    session.save_memo_point("M1", "trough")
+    assert session.saved_points() == {"trough": (10.0, 20.0, 123.5)}
 
 
 def test_a_saved_point_is_renamed_changed_and_deleted_in_the_profile(

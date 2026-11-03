@@ -595,19 +595,23 @@ class Session(QObject):
 
     def save_memo_point(self, name: str, new_name: str) -> None:
         """The memo point `name` into the profile as `new_name`; refused
-        (SessionError, a sentence) for a name in use or Robot setup's, and
-        for a point with no Z, which a saved point always has."""
+        (SessionError, a sentence) for a name in use or Robot setup's. A
+        saved point always has a Z: a point at the travel height takes that
+        height as it is now, the measured one (`Motion.travel_z`) or else the
+        jog envelope's top, as a plain number (#66)."""
         point = self.memo_point(name)
         if point is None or self.profile is None:
             raise SessionError(f"There is no point {name}.")
-        if point.z is None:
-            raise SessionError(f"Give {name} a Z first.")
+        z = point.z
+        if z is None:
+            travel = self.motion.travel_z
+            z = travel if travel is not None else self.motion.envelope.z[1]
         new_name = new_name.strip()
         why = self.point_name_refusal(new_name, own=name)
         if why:
             raise SessionError(why)
         self.memo_points = [p for p in self.memo_points if p.name != name]
-        self.remember(new_name, (point.x, point.y, point.z))
+        self.remember(new_name, (point.x, point.y, float(z)))
         self.memo_points_changed.emit()
 
     def rename_saved_point(self, old: str, new: str) -> None:

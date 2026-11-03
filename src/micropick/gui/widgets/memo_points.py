@@ -1,8 +1,9 @@
 """The points' list on Manual control: one row a point, X, Y and Z.
 
 The points are the session's (`Session.points`): the memo points, then the
-saved points (#62), the profile's positions less Robot setup's. This shows
-them and writes an edit back, and the "points" layer of the picture
+saved points (#62), the profile's positions less Robot setup's - or only
+one kind (`kind`: the Memo points and the Saved points cards, #66). This
+shows them and writes an edit back, and the "points" layer of the picture
 follows the same list. A cell is edited by a double click, in a number box
 that takes Enter; a memo point's Z box goes down to "travel height", which
 is a point with no Z of its own (the tip stays at the travel height over
@@ -10,8 +11,9 @@ it), and a saved point's does not. A Z the tip cannot go to - below the
 top of a deck module there, say (`Session.memo_problem`) - is red, with the
 reason under the pointer.
 
-A memo point's row has Save, gray until it has a Z: it asks for a name and
-moves the point into the profile (`Session.save_memo_point`); a saved
+A memo point's row has Save: it asks for a name and moves the point into
+the profile (`Session.save_memo_point`, a point at the travel height with
+that height as its Z); a saved
 point's has "Saved" there, and its name is renamed by a double click
 (`Session.rename_saved_point`). A name in use or Robot setup's is refused,
 said through `said`. The × at the end of a row deletes that point: a memo
@@ -110,9 +112,12 @@ class MemoTable(QTableWidget):
     # A refusal, as a sentence: a name in use, say.
     said = Signal(str)
 
-    def __init__(self, session: Session, parent=None):
+    def __init__(self, session: Session, parent=None, *,
+                 kind: str | None = None):
+        """`kind`: "memo" or "saved" for one kind of point; None for both."""
         super().__init__(0, len(COLUMNS), parent)
         self.session = session
+        self.kind = kind
         self._filling = False
         self.setHorizontalHeaderLabels(COLUMNS)
         self.verticalHeader().hide()
@@ -200,7 +205,8 @@ class MemoTable(QTableWidget):
         """The rows again from the session, the chosen one kept. Rewritten
         in place when the points are the same ones: an edit's own echo then
         does not pull the table out from under the box that made it."""
-        points = self.session.points
+        points = [p for p in self.session.points
+                  if self.kind is None or p.saved == (self.kind == "saved")]
         names = [p.name for p in points]
         same = [(p.name, p.saved) for p in points] == [
             (self.item(r, 0).text(), bool(self.item(r, 0).data(_SAVED)))
@@ -214,9 +220,6 @@ class MemoTable(QTableWidget):
             for row, point in enumerate(points):
                 if not same:
                     self._fill_name(row, point)
-                save = self.cellWidget(row, SAVE_COLUMN)
-                if isinstance(save, QToolButton):
-                    save.setEnabled(point.z is not None)
                 for column, key in _KEYS.items():
                     value = getattr(point, key)
                     item = self.item(row, column) if same else None
