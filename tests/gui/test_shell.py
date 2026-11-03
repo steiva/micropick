@@ -33,9 +33,19 @@ def window(app, tmp_path, monkeypatch):
     w.deleteLater()
 
 
+def _robot_free(window):
+    """No job holds the robot, and every jog panel knows it: the lease is
+    let go on the worker's thread, a panel's busy only once its finish is
+    delivered here, and a job given to a busy panel is refused."""
+    panels = [getattr(p, "jog", None) for p in (*window.pages.values(),
+                                                 *window.sheets.values())]
+    return not window.session.robot_lease.busy and not any(
+        j is not None and j.busy for j in panels)
+
+
 def _settle(app, window, timeout_s=5.0):
     end = time.monotonic() + timeout_s
-    while window.session.robot_lease.busy and time.monotonic() < end:
+    while not _robot_free(window) and time.monotonic() < end:
         app.processEvents()
         time.sleep(0.01)
     app.processEvents()

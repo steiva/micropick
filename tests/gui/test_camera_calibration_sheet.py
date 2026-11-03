@@ -59,8 +59,18 @@ def _open(app, window):
     window.robot_setup_page.rows["camera_calibration"].clicked.emit()
     # Shown, its jog panel reads the pose under the robot's lease; a slot
     # clicked before that ends is refused, never queued.
-    _wait(app, lambda: not window.session.robot_lease.busy)
+    _wait(app, lambda: _robot_free(window))
     return window.calibration_sheet
+
+
+def _robot_free(window):
+    """No job holds the robot, and every jog panel knows it: the lease is
+    let go on the worker's thread, a panel's busy only once its finish is
+    delivered here, and a job given to a busy panel is refused."""
+    panels = [getattr(p, "jog", None) for p in (*window.pages.values(),
+                                                 *window.sheets.values())]
+    return not window.session.robot_lease.busy and not any(
+        j is not None and j.busy for j in panels)
 
 
 def _at_the_marker(app, window, sheet):

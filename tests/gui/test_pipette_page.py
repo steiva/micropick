@@ -67,8 +67,10 @@ def _rack(page, slot=10):
 def _tip_on(app, page, well="A1"):
     _rack(page)
     page.rack_grid.well_clicked.emit(well)
-    # a take while the panel reads the pose is refused, never queued
-    assert _until(app, lambda: not page.session.robot_lease.busy)
+    # a take while the panel reads the pose is refused, never queued; the
+    # panel is busy until its finish is delivered here, after the lease
+    assert _until(app, lambda: not page.session.robot_lease.busy
+                  and not page.jog.busy)
     page.take_button.click()
     assert _until(app, lambda: page.session.tip.attached is True
                   and not page.jog.busy)
@@ -421,7 +423,8 @@ def test_leaving_the_step_high_moves_nothing(app, page, ready):
     session = page.session
     page.show()
     # shown, the panel reads the pose under the lease; a job before is refused
-    assert _until(app, lambda: not session.robot_lease.busy)
+    assert _until(app, lambda: not session.robot_lease.busy
+                  and not page.jog.busy)
     motion = session.motion
     assert page.jog.run_job(lambda log: motion.raise_tip(log=log))
     assert _until(app, lambda: not page.jog.busy)

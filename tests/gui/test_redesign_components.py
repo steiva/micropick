@@ -31,9 +31,12 @@ from micropick.gui.widgets.top_bar import TopBar                        # noqa: 
 
 @pytest.fixture(scope="module")
 def app():
-    app = QApplication.instance() or QApplication([])
-    theme.apply_theme(app)
-    return app
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _in_the_theme(themed):
+    """Every test here sees the program's theme (conftest's `themed`)."""
 
 
 def _plate(rows=8, columns=12):

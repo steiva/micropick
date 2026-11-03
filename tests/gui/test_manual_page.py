@@ -245,7 +245,7 @@ def test_look_at_moves_the_camera_over_the_slot(app, page, session):
     assert _xy(session) == pytest.approx((x - 10.0, y + 5.0), abs=0.05)
 
 
-def _tip_on(session):
+def _tip_on(app, page, session):
     from micropick.config.labware import LabwareDefinition
     rack = LabwareDefinition(load_name="opentrons_96_tiprack_300ul",
                              namespace="opentrons", version=1,
@@ -254,10 +254,11 @@ def _tip_on(session):
     session.load_labware(rack, 10)
     session.pick_up_tip(10, "A1")
     assert session.tip.attached is True
+    _wait(app, page)          # the panel reads the pose again for the tip
 
 
 def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
-    _tip_on(session)
+    _tip_on(app, page, session)
     page.volume.setValue(15.0)
     page._aspirate_here()
     _wait(app, page)
@@ -293,7 +294,7 @@ def _ready_by_hand(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
     _wait(app, page)
-    _tip_on(session)
+    _tip_on(app, page, session)
     _over_the_deck(app, page, session)
     page.source.buttons[2].click()                     # By hand
     page.volume.setValue(15.0)
@@ -325,7 +326,7 @@ def test_by_hand_aspirate_is_enabled_with_a_tip_on_and_no_click(
     _wait(app, page)
     page.source.buttons[2].click()                     # By hand
     assert not page.aspirate_button.isEnabled()         # no tip yet
-    _tip_on(session)
+    _tip_on(app, page, session)
     app.processEvents()
     assert page.aspirate_button.isEnabled()
     lease = session.robot_lease.claim("someone else")
@@ -406,7 +407,7 @@ def test_by_hand_aspirate_as_soon_as_i_click(app, page, session):
 
 def test_dispense_opens_by_itself_and_gives_back_part_then_all(
         app, page, session):
-    _tip_on(session)
+    _tip_on(app, page, session)
     assert not page.dispense_card.is_open()
     assert not page.dispense_button.isEnabled()         # the tip is empty
     page.volume.setValue(15.0)
@@ -432,12 +433,13 @@ def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
     from micropick.config.labware import resolve_definition
     plate = session.load_labware(
         resolve_definition("corning_96_wellplate_360ul_flat"), 5)
-    _tip_on(session)
+    _tip_on(app, page, session)
     page._aspirate_here()
     _wait(app, page)
     page.target.buttons[0].click()                       # In a well
     page.target_wells.well.setCurrentText("A7")
     assert page.dispense_button.text() == "Go to A7 and dispense"
+    _wait(app, page)                                     # a busy panel refuses
     page.dispense_button.click()
     _wait(app, page)
     calls = session.robot.calls

@@ -63,9 +63,10 @@ def _wait(app, condition, timeout_s=10.0):
 
 
 def _free(app, window):
+    panels = [getattr(p, "jog", None) for p in (*window.pages.values(),
+                                                 *window.sheets.values())]
     return _wait(app, lambda: not window.session.robot_lease.busy
-                 and not any(getattr(p, "jog", None) is not None
-                             and p.jog.busy for p in window.pages.values()))
+                 and not any(j is not None and j.busy for j in panels))
 
 
 def _press(app, window, key):
@@ -135,8 +136,10 @@ def test_the_keys_move_the_robot_on_dish_bottom(app, window):
     page = window.dish_bottom_page
     assert window.current_page() is page
     page.refresh()
+    assert _free(app, window)                  # its pose read, else refused
     page.move_button.click()
     assert _wait(app, lambda: page.up_button.isEnabled())
+    assert _free(app, window)
     z = float(xyz(window.session.robot)[2])
     _press(app, window, Qt.Key.Key_PageDown)
     assert _wait(app, lambda: float(xyz(window.session.robot)[2]) < z)

@@ -277,6 +277,7 @@ def test_a_look_is_not_work_that_stop_waits_for(app, window, monkeypatch):
     looked = session.look_at_robot
     monkeypatch.setattr(session, "look_at_robot",
                         lambda api=None: (gate.wait(5), looked(api))[1])
+    _until(app, lambda: not any_running())    # the pages' own reads first
     window.monitor.look()
     assert window.monitor.busy
     assert not any_running()

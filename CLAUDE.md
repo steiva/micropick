@@ -11,10 +11,14 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 - Tests: `conda run -n lab python -m pytest -q -n auto tests` (whole suite,
   in parallel through pytest-xdist; drop `-n auto` for one file). The mock
   robot moves at once in the tests (`tests/conftest.py`): a test that needs
-  a move to take time passes `speed_mm_s`. A shown page or sheet reads the
-  pose under the robot's lease, so a test waits for the lease to be free
-  before a click that moves the robot (a claim then is refused, never
-  queued), and waits for what a job shows, not only for the lease.
+  a move to take time passes `speed_mm_s`. A shown page or sheet (and a
+  tip change) has its jog panel read the pose, and a busy panel refuses a
+  job, never queues it: a test waits for the lease and the panels to be
+  free before a click that moves the robot, and for what a job shows, not
+  only for the lease (let go on the worker's thread, before the panel
+  knows). A test that needs the program's theme takes `themed`
+  (`tests/gui/conftest.py`), never `apply_theme` on the app: it stays for
+  every later test, and a MainWindow then builds in 1.1 s, not 0.25 s.
   An agent never runs the whole suite, not even at the end of a ticket
   (this overrides the `implement` skill's "full test suite once at the
   end"): only the test files of what was changed or added. The user runs

@@ -114,8 +114,18 @@ def window(app, tmp_path, monkeypatch):
     w.deleteLater()
 
 
+def _robot_free(window):
+    """No job holds the robot, and every jog panel knows it: the lease is
+    let go on the worker's thread, a panel's busy only once its finish is
+    delivered here, and a job given to a busy panel is refused."""
+    panels = [getattr(p, "jog", None) for p in (*window.pages.values(),
+                                                 *window.sheets.values())]
+    return not window.session.robot_lease.busy and not any(
+        j is not None and j.busy for j in panels)
+
+
 def _settle(app, window, timeout_s=5.0):
-    _until(app, lambda: not window.session.robot_lease.busy, timeout_s)
+    _until(app, lambda: _robot_free(window), timeout_s)
 
 
 def _until(app, condition, timeout_s=5.0):
@@ -160,9 +170,12 @@ def _ready(window, monkeypatch):
     monkeypatch.setattr(page, "_run_problems", lambda: [])
     monkeypatch.setattr(page, "_confirm_start", lambda: True)
     window._refresh()
+    # Shown, the page's panel reads the pose; Start waits for it.
+    assert _until(QApplication.instance(), lambda: _robot_free(window))
 
 
 def _start(app, window):
+    assert _until(app, lambda: _robot_free(window))   # else Start is refused
     window.picking_page.start_button.click()
     assert _until(app, lambda: window.picking_page._running())
 
@@ -380,8 +393,7 @@ def test_liquid_in_tip_waits_for_a_pause_during_a_run(app, window,
     page.liquid.refresh()
     assert page.liquid.aspirate_button.toolTip() == "Pause to use the tip."
     page.pause_button.click()
-    app.processEvents()
-    assert hold.why() == ""
+    assert _until(app, lambda: hold.why() == "")
 
 
 def _typed_volume(page, ul):

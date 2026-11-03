@@ -183,13 +183,11 @@ def test_the_title_is_the_fold_toggle_apart_from_the_actions(app):
     pad.deleteLater()
 
 
-def test_the_pads_own_containers_let_the_plate_show_through(app):
+def test_the_pads_own_containers_let_the_plate_show_through(app, themed):
     """qdarktheme fills a bare QWidget with the window's color: the area
     behind the arrows was an opaque block on the translucent plate."""
     from PySide6.QtCore import Qt
-    from micropick.gui import theme
     from micropick.gui.widgets.jog_pad import JogPad
-    theme.apply_theme(app)
     pad = JogPad()
     pad.resize(pad.sizeHint())
     pad.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)

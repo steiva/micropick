@@ -209,6 +209,7 @@ def test_measured_with_the_tip(app, session, page):
     assert page.save_button.isEnabled()
 
     session.profile.picking.dish_bottom = low + 0.5   # no question asked
+    assert _until(app, lambda: not page.jog.busy)  # a busy panel refuses
     page.save_button.click()
     assert _until(app, lambda: session.is_confirmed("dish_bottom")
                   and not page.jog.busy)
