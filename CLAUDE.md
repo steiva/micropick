@@ -8,8 +8,17 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 
 - Interpreter: conda env `lab` (`conda run -n lab python ...`); the bare
   `python` on PATH is the Windows Store stub.
-- Tests: `conda run -n lab python -m pytest -q tests` (whole suite, ~3-4 min:
-  most of it is a `MainWindow` built per GUI test, ~1.3 s each).
+- Tests: `conda run -n lab python -m pytest -q -n auto tests` (whole suite,
+  in parallel through pytest-xdist; drop `-n auto` for one file). The mock
+  robot moves at once in the tests (`tests/conftest.py`): a test that needs
+  a move to take time passes `speed_mm_s`. A shown page or sheet reads the
+  pose under the robot's lease, so a test waits for the lease to be free
+  before a click that moves the robot (a claim then is refused, never
+  queued), and waits for what a job shows, not only for the lease.
+  An agent never runs the whole suite, not even at the end of a ticket
+  (this overrides the `implement` skill's "full test suite once at the
+  end"): only the test files of what was changed or added. The user runs
+  the whole suite by hand from time to time.
 - GUI: `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
 - `lab` has an unrelated package named `tests` installed, so
   `python -m tests.…` resolves to it, not to this repository's `tests/`.

@@ -321,6 +321,7 @@ def test_dish_bottom_shows_the_z_a_raise_from_the_tip_step_ends_at(
     window.home.tiles["auto"].clicked.emit()
     window.step_bar.clicked.emit(1)                # Tip
     assert window.current_page() is window.tip_calibration_page
+    _settle(app, window)        # its pose read, else leaving it raises nothing
     window.step_bar.clicked.emit(2)                # Dish bottom, mid-raise
     page = window.dish_bottom_page
     assert window.current_page() is page

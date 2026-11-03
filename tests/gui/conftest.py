@@ -6,7 +6,13 @@ The tests end with `deleteLater()`, which runs only from an event loop:
 suite, each with its timers and its robot monitor - and every later
 `processEvents()` served all of them, the suite growing slower test by
 test. Delivered here, after each test.
+
+A camera still grabbing after a test is closed too: each grabs at 30 fps
+for the rest of the run, and later files grew slow by them. Most are a
+page's own open still on its way as the test ended, so no warning.
 """
+
+import threading
 
 import pytest
 
@@ -20,3 +26,9 @@ def _delete_what_the_test_left():
         return
     if QCoreApplication.instance() is not None:
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    for thread in threading.enumerate():
+        if thread.name.startswith("grab-"):
+            camera = getattr(getattr(thread, "_target", None), "__self__",
+                             None)
+            if camera is not None:
+                camera.close()

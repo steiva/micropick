@@ -57,6 +57,9 @@ def _wait(app, condition, timeout_s=10.0):
 def _open(app, window):
     window.open_robot_setup()
     window.robot_setup_page.rows["camera_calibration"].clicked.emit()
+    # Shown, its jog panel reads the pose under the robot's lease; a slot
+    # clicked before that ends is refused, never queued.
+    _wait(app, lambda: not window.session.robot_lease.busy)
     return window.calibration_sheet
 
 

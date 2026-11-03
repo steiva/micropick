@@ -440,6 +440,10 @@ class Session(QObject):
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
+        # Set by shutdown: a camera a worker was still opening is closed as
+        # it arrives, not left grabbing (`_keep_open`).
+        self._shut = False
+        self._open_lock = threading.Lock()
         # See preview_camera: set in a worker, closed from the window.
         self._preview = None
         self._preview_lock = threading.Lock()
@@ -1961,7 +1965,16 @@ class Session(QObject):
                 label, resolution=tuple(resolution) if resolution else None,
                 verbose=False)
 
-        self._open[label] = camera
+        self._keep_open(camera)
+        with self._open_lock:
+            other = self._open.get(label)
+            if other is None:
+                self._open[label] = camera
+        if other is not None:
+            # Opened meanwhile by another worker (a page shown while another
+            # opens it): one camera per label, so this one goes.
+            camera.close()
+            return other
         log.info("camera %r open at %dx%d%s", label, *camera.resolution,
                  f", view crop {camera.crop:g}" if camera.crop != 1.0 else "")
         self.camera_opened.emit(label)
@@ -1992,6 +2005,13 @@ class Session(QObject):
         if spec.controls:
             camera.set_controls(dict(spec.controls))
         return camera
+
+    def _keep_open(self, camera) -> None:
+        """A camera opened by a worker that outlasted `shutdown`: closed at
+        once, its grab thread with it, since nothing would close it later."""
+        if self._shut:
+            camera.close()
+            raise SessionError("the session is closed")
 
     def close_camera(self, label: str) -> None:
         camera = self._open.pop(label, None)
@@ -2179,6 +2199,7 @@ class Session(QObject):
             manager = CameraManager({PREVIEW_LABEL: spec.model_dump()})
             camera = manager.open(PREVIEW_LABEL, verbose=False)
         camera.crop = float(spec.crop)
+        self._keep_open(camera)
         with self._preview_lock:
             self._preview = camera
         log.info("camera %r open to be looked at, %dx%d", device_name,
@@ -2253,6 +2274,7 @@ class Session(QObject):
         read() while the interpreter tears down is the one way this exits
         badly. Then the axis is parked and the robot is let go.
         """
+        self._shut = True
         for label in list(self._open):
             try:
                 self.close_camera(label)

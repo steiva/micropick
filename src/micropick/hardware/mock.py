@@ -114,13 +114,18 @@ class MockRobot:
 
     # A target this close to the top counts as at it.
     TOP_TOL_MM = 0.05
+    # A move takes its length at this speed, in real time, so the GUI's
+    # mock looks busy as the robot does. The tests set it to 0
+    # (tests/conftest.py); one that needs a move to take time passes
+    # `speed_mm_s`.
+    SPEED_MM_S = 200.0
 
     def __init__(self, position=(150.0, 150.0, 100.0), noise_mm=0.01,
-                 speed_mm_s=200.0, backlash_mm=0.0, seed=0, top_mm=None):
+                 speed_mm_s=None, backlash_mm=0.0, seed=0, top_mm=None):
         self.top_mm = top_mm
         self._pos = np.array(position, dtype=float)
         self.noise_mm = noise_mm
-        self.speed = speed_mm_s
+        self.speed = self.SPEED_MM_S if speed_mm_s is None else speed_mm_s
         self.backlash_mm = backlash_mm
         self._rng = np.random.default_rng(seed)
         self._last_dir = np.zeros(3)

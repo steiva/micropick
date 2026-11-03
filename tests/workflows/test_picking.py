@@ -180,9 +180,9 @@ def make_profile(cfg: PickingConfig) -> Profile:
 
 
 def make_session(dish: Dish, routine: Routine, cfg: PickingConfig | None = None,
-                 *, profile=None, **session_kw):
+                 *, profile=None, speed_mm_s=0.0, **session_kw):
     cfg = cfg or relaxed_config()
-    robot = SceneRobot(dish, noise_mm=0.0, speed_mm_s=400.0)
+    robot = SceneRobot(dish, noise_mm=0.0, speed_mm_s=speed_mm_s)
     camera = open_mock_camera(width=W, height=H, fps=120.0, render=dish.render)
     session = PickingSession(robot, camera, linear_pixel_map(),
                              profile or make_profile(cfg), routine,
@@ -278,7 +278,8 @@ def test_stop_interrupts_mid_batch():
         dish.add(cid, (x, 350))
     routine = Routine(Destination.coordinates([(200.0, 200.0)]),
                       {(200.0, 200.0): 3})
-    session, robot, camera = make_session(dish, routine)
+    # moves take time, so the stop lands between the first and last aspirate
+    session, robot, camera = make_session(dish, routine, speed_mm_s=400.0)
     try:
         _run_to_state(session, RobotState.PICKUP_SAMPLE)
         stop = threading.Event()
@@ -516,7 +517,7 @@ def test_recording_on_saves_a_clip(tmp_path):
     dish, routine = _one_target_run()
     under = open_mock_camera(width=320, height=240, fps=120.0)
     session, robot, camera = make_session(dish, routine, under_cam=under,
-                                          clip_dir=tmp_path)
+                                          clip_dir=tmp_path, speed_mm_s=400.0)
     try:
         writer = session._recorder
         assert writer is not None

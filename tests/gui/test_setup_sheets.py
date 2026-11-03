@@ -52,6 +52,10 @@ def _wait(app, condition, timeout_s=10.0):
 def _open(window, item):
     window.open_robot_setup()
     window.robot_setup_page.rows[item].clicked.emit()
+    # Shown, a sheet's jog panel reads the pose under the robot's lease; a
+    # slot clicked before that ends is refused, never queued.
+    _wait(QApplication.instance(),
+          lambda: not window.session.robot_lease.busy)
 
 
 def _saved(app, window, name):

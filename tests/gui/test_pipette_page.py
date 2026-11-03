@@ -67,6 +67,8 @@ def _rack(page, slot=10):
 def _tip_on(app, page, well="A1"):
     _rack(page)
     page.rack_grid.well_clicked.emit(well)
+    # a take while the panel reads the pose is refused, never queued
+    assert _until(app, lambda: not page.session.robot_lease.busy)
     page.take_button.click()
     assert _until(app, lambda: page.session.tip.attached is True
                   and not page.jog.busy)
@@ -386,12 +388,16 @@ def test_leaving_the_step_raises_the_tip_to_the_travel_height(
     page.show()
     _calibrate(app, page)
     assert tip_page.xyz(session.robot)[2] < session.motion.travel_z
+    before = len(session.robot.calls)
     page.hide()
-    assert session.robot_lease.busy                # the page's job
+    # the page's job: waited for by what it does, since an instant mock
+    # move can end it before a look at the lease
+    assert _until(app, lambda: tip_page.xyz(session.robot)[2]
+                  >= session.motion.travel_z - 0.05)
     assert _until(app, lambda: not page.jog.busy
                   and not session.robot_lease.busy)
-    assert (tip_page.xyz(session.robot)[2]
-            >= session.motion.travel_z - 0.05)
+    assert any(c[0].startswith(("move", "retract"))
+               for c in session.robot.calls[before:])
 
 
 def test_leaving_the_step_moves_nothing_while_the_robot_is_held(
@@ -414,10 +420,15 @@ def test_leaving_the_step_moves_nothing_while_the_robot_is_held(
 def test_leaving_the_step_high_moves_nothing(app, page, ready):
     session = page.session
     page.show()
+    # shown, the panel reads the pose under the lease; a job before is refused
+    assert _until(app, lambda: not session.robot_lease.busy)
     motion = session.motion
     assert page.jog.run_job(lambda log: motion.raise_tip(log=log))
     assert _until(app, lambda: not page.jog.busy)
     page.jog.refresh_position()
+    # the pose reaches the page by a signal after the job lets go
+    assert _until(app, lambda: page.calibration._pose is not None
+                  and page.calibration._pose[2] >= motion.travel_z - 0.05)
     assert _until(app, lambda: not page.jog.busy)
     before = len(session.robot.calls)
     page.hide()
@@ -470,8 +481,8 @@ def test_stop_at_the_disc_ends_the_run_with_nothing_saved(app, page, ready):
     assert _until(app, lambda: page.disc_button.isEnabled())
     session.stop_requested.emit()
     assert _until(app, lambda: not session.robot_lease.busy)
+    assert _until(app, lambda: "Nothing was saved." in page.checks.text())
     assert session.profile.calibration.pipette_offset is None
-    assert "Nothing was saved." in page.checks.text()
     assert page.start_button.isEnabled()
 
 
