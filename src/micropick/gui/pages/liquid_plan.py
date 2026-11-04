@@ -107,7 +107,8 @@ from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
-from ..widgets.plan_forms import StepForm, uses_height
+from ..widgets.plan_forms import (AmountForm, ExtrasForm, StepForm,
+                                  uses_height)
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
@@ -121,6 +122,10 @@ TITLE = "Plan"
 log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 460
+AMOUNT_WIDTH = 900
+EXTRAS_WIDTH = 480
+# Of the room beside a form: all it can take, the sides what is left.
+WIDE = 1000
 # The plan is saved this long after the last edit.
 SAVE_MS = 400
 CURRENT_FILE = "current.json"
@@ -140,7 +145,6 @@ LOCKED = "The plan cannot change during a run."
 NO_HEIGHT = "A point and the trash are used at their own height."
 WAIT_HELP = "The robot does nothing for this long. Pause and Stop still work."
 WAITING_WHY = "You asked for this in the plan."
-NO_WELLS = "This step uses no wells."
 NO_CAMERA = ("There is no camera picture. The points and Controls still work.")
 POINTS_HELP = ("Right-click the picture to add a point. The star keeps a "
                "point for later experiments.")
@@ -716,42 +720,43 @@ class LiquidPlanPage(QWidget):
         column.addWidget(self.answer_caption)
         column.addWidget(self.answer_title)
         self.answer_body = QStackedWidget(box)
+        self.amount_form = AmountForm(box)
+        self.extras_form = ExtrasForm(box)
+        self.amount_box = self._centered(self.amount_form, AMOUNT_WIDTH)
+        self.extras_box = self._centered(self.extras_form, EXTRAS_WIDTH)
         self.heights_box = self._heights()
-        self.step_plate_box = self._step_plate()
         self.wait_box = self._wait_shown()
         self.message_box = self._message_shown()
-        for widget in (self.heights_box, self.step_plate_box, self.wait_box,
-                       self.message_box):
+        for widget in (self.amount_box, self.extras_box, self.heights_box,
+                       self.wait_box, self.message_box):
             self.answer_body.addWidget(widget)
         column.addWidget(self.answer_body, 1)
+        return box
+
+    def _centered(self, form: QWidget, width: int) -> QWidget:
+        """`form` in the middle of the room under the title, no wider than
+        `width`."""
+        box = QWidget(self)
+        form.setMaximumWidth(width)
+        column = QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(form, WIDE)
+        row.addStretch(1)
+        column.addStretch(1)
+        column.addLayout(row)
+        column.addStretch(1)
         return box
 
     def _heights(self) -> QWidget:
         box = QWidget(self)
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
-        row.setSpacing(SPACING * 3)
-        self.take_section = WellSection(box)
-        self.put_section = WellSection(box)
-        row.addWidget(self.take_section, 1)
-        row.addWidget(self.put_section, 1)
-        column.addLayout(row, 1)
+        self.how_section = WellSection(box)
+        column.addWidget(self.how_section, 1)
         self.no_height = muted_label(NO_HEIGHT, box)
         column.addWidget(self.no_height)
-        return box
-
-    def _step_plate(self) -> QWidget:
-        box = QWidget(self)
-        column = QVBoxLayout(box)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-        self.step_plate_name = muted_label("", box)
-        column.addWidget(self.step_plate_name)
-        self.step_plate = PlateGrid(parent=box)
-        self.step_plate.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        column.addWidget(self.step_plate, 1)
         return box
 
     def _wait_shown(self) -> QWidget:
@@ -877,7 +882,8 @@ class LiquidPlanPage(QWidget):
         self.card.hide()
         self.next_button = self.card.next_button
         self.next_button.clicked.connect(self._next_section)
-        self.card.form.edited.connect(self._edited)
+        for form in (self.card.form, self.amount_form, self.extras_form):
+            form.edited.connect(self._edited)
         self.card.delete_button.clicked.connect(
             lambda: self.delete_step(self.open_id))
         self.try_button = self.card.try_button
@@ -1613,7 +1619,8 @@ class LiquidPlanPage(QWidget):
         for widget in (self.new_plan_button, self.template_tile,
                        self.template_box, self.trash_row, self.tip_ul,
                        self.add_button, self.card, self.first_step_button,
-                       self.point_area, self.trash_options):
+                       self.point_area, self.trash_options, self.amount_form,
+                       self.extras_form):
             widget.setEnabled(not locked)
         self._show_trash_row()
         self._show_saves()
@@ -1828,12 +1835,17 @@ class LiquidPlanPage(QWidget):
         self.answer_caption.setText(
             f"STEP {self._index(step.id) + 1} · {title_caption}")
         self.answer_title.setText(title)
-        if section in ("amount", "how"):
+        if section == "amount":
+            self.amount_form.show_step(
+                step, self._height_said(step.take_at, step.source.slot),
+                self._height_said(step.put_at, step.dest.slot))
+            self.answer_body.setCurrentWidget(self.amount_box)
+        elif section == "extras":
+            self.extras_form.show_step(step)
+            self.answer_body.setCurrentWidget(self.extras_box)
+        elif section == "how":
             self._show_heights(step)
             self.answer_body.setCurrentWidget(self.heights_box)
-        elif section == "extras":
-            self._show_step_plate(step)
-            self.answer_body.setCurrentWidget(self.step_plate_box)
         elif section == "wait":
             self.wait_time.setText(duration(step.seconds))
             self.answer_body.setCurrentWidget(self.wait_box)
@@ -1853,41 +1865,19 @@ class LiquidPlanPage(QWidget):
         entry = self._plates().get(slot)
         return well_depth(entry[1]) if entry is not None else None
 
-    def _show_heights(self, step) -> None:
-        if step.kind == "move_liquid":
-            shown = [(step.source, "Take it at", "tips", step.take_at),
-                     (step.dest, "Put it at", "plate", step.put_at)]
-        else:
-            place = step.wells if step.kind == "mix" else step.place
-            shown = [(place, "Height", "plate", step.at), None]
-        sections_ = (self.take_section, self.put_section)
-        used = False
-        for section, end in zip(sections_, shown):
-            wells = end is not None and end[0].kind == "wells"
-            section.setVisible(wells)
-            if wells:
-                used = True
-                place, title, color, height = end
-                section.show_height(title, color, height,
-                                    self._note(height, place.slot),
-                                    self._depth(place.slot))
-        self.no_height.setVisible(not used)
+    def _height_said(self, height: Height, slot: str | None) -> tuple:
+        """What a drawn height says of its plate: the note and the depth."""
+        return self._note(height, slot), self._depth(slot)
 
-    def _show_step_plate(self, step) -> None:
-        """The wells it puts into, else those it takes from."""
-        place = next((p for p in (step.dest, step.source)
-                      if p.kind == "wells" and not p.empty), None)
-        self.step_plate.setVisible(place is not None)
-        self.step_plate_name.setText(chip(place) if place is not None
-                                     else NO_WELLS)
-        if place is None:
-            return
-        entry = self._plates().get(place.slot)
-        if self.step_plate.property("slot") != place.slot:
-            self.step_plate.setProperty("slot", place.slot)
-            self.step_plate.set_ordering(entry[1].ordering if entry else [])
-        self.step_plate.set_fills({well: step.color for well in place.wells})
-        self.step_plate.set_dim_fills(self._fills(place.slot))
+    def _show_heights(self, step) -> None:
+        place = step.wells if step.kind == "mix" else step.place
+        wells = place.kind == "wells"
+        self.how_section.setVisible(wells)
+        self.no_height.setVisible(not wells)
+        if wells:
+            self.how_section.show_height(
+                "Height", "plate", step.at,
+                *self._height_said(step.at, place.slot))
 
     def _show_overview(self) -> None:
         steps = self.plan.steps

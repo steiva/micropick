@@ -1,29 +1,31 @@
-"""What an open plan step asks in its card (LIQUID.md §3.4 - §3.6).
+"""What an open plan step asks that is not a place (LIQUID.md §3.4 - §3.6).
 
-The fields of a section that is not a place: Amount and Extras of a Move
-liquid, How of a Mix, a Blow out or a Move the tip, the time of a Wait and the
-message of a Wait for me. There is nothing to confirm: a change goes out as it
-is typed, as `edited(key, values)`, the step's fields and their new values,
-and the page makes it part of the plan. `key` names the field, so a number
-typed digit by digit is one undo (`LiquidPlanPage._commit`). `show_section`
-fills the fields from the step, saying nothing.
-
-Take fields are shown only for wells as the source and Put fields only for
-wells as the destination: a point has its own height, and so has the trash.
+Amount and Extras of a Move liquid have the left area to themselves
+(`AmountForm`, `ExtrasForm`); How of a Mix, a Blow out or a Move the tip, the
+time of a Wait and the message of a Wait for me are in the card (`StepForm`).
+There is nothing to confirm: a change goes out as it is typed, as
+`edited(key, values)`, the step's fields and their new values, and the page
+makes it part of the plan. `key` names the field, so a number typed digit by
+digit is one undo (`LiquidPlanPage._commit`). Filling the fields from the step
+says nothing.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
                                QLineEdit, QStackedWidget, QVBoxLayout, QWidget)
 
-from ...core.liquid_plan import Height
+from ...core.liquid_plan import Height, height_words
 from ..theme import COLORS, SPACING
-from ..theme.factory import double_spin_box, muted_label, select, spin_box
-from .controls import Switch
+from ..theme.factory import (caption, card, double_spin_box, muted_label,
+                             select, spin_box)
+from .controls import Segmented, Switch
+from .well_heights import DEPTH_MM, WellDrawing
 
-__all__ = ["HeightFields", "StepForm", "uses_height"]
+__all__ = ["AmountForm", "ExtrasForm", "HeightCard", "HeightFields",
+           "StepForm", "uses_height"]
 
 REFS = (("bottom", "Bottom"), ("middle", "Middle"), ("top", "Top"))
 MAX_UL = 100000.0
@@ -33,6 +35,11 @@ MAX_ASIDE_MM = 50.0
 MAX_MINUTES = 9999
 MAX_WAIT_S = 3600.0
 MAX_CYCLES = 99
+DRAWING_PX = (140, 150)
+DRAWING_WELL = 0.34
+SHORT_FIELD_PX = 110
+WAIT_HELP = "The robot stays still this long."
+NO_HEIGHT = "A point and the trash are used at their own height."
 
 
 def uses_height(step) -> bool:
@@ -58,6 +65,18 @@ def _put(box, value) -> None:
         box.blockSignals(True)
         box.setValue(value)
         box.blockSignals(False)
+
+
+def _labeled(parent: QWidget, label: str, field: QWidget) -> QWidget:
+    """`field` under its `label`."""
+    box = QWidget(parent)
+    box.setObjectName("plain")
+    column = QVBoxLayout(box)
+    column.setContentsMargins(0, 0, 0, 0)
+    column.setSpacing(4)
+    column.addWidget(muted_label(label, box))
+    column.addWidget(field)
+    return box
 
 
 class HeightFields(QWidget):
@@ -105,19 +124,234 @@ class HeightFields(QWidget):
         _put(self.aside_y, height.aside_y_mm)
 
 
+class HeightCard(QWidget):
+    """A height with the well drawn beside its fields, the sentence and where
+    the bottom comes from under them."""
+
+    changed = Signal(object)                # the Height
+
+    def __init__(self, title: str, color: str, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("plain")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        box = card(self)
+        outer.addWidget(box)
+        column = box.layout()
+        self.title = caption(title, box)
+        self.title.setStyleSheet(f"color: {COLORS[color]};")
+        column.addWidget(self.title)
+        self.ref = Segmented([text for _ref, text in REFS], parent=box)
+        column.addWidget(_labeled(box, "Measured from", self.ref))
+        row = QHBoxLayout()
+        row.setSpacing(SPACING * 2)
+        self.drawing = WellDrawing(box, DRAWING_WELL)
+        self.drawing.setFixedSize(*DRAWING_PX)
+        self.drawing.color = QColor(COLORS[color])
+        row.addWidget(self.drawing)
+        fields = QVBoxLayout()
+        fields.setSpacing(SPACING)
+        self.offset = _number(box, -MAX_OFFSET_MM, MAX_OFFSET_MM, " mm", 2)
+        fields.addWidget(_labeled(box, "Offset", self.offset))
+        self.aside_x = _number(box, -MAX_ASIDE_MM, MAX_ASIDE_MM, " mm", 2)
+        self.aside_y = _number(box, -MAX_ASIDE_MM, MAX_ASIDE_MM, " mm", 2)
+        aside = QHBoxLayout()
+        aside.addWidget(_labeled(box, "Aside X", self.aside_x))
+        aside.addWidget(_labeled(box, "Aside Y", self.aside_y))
+        fields.addLayout(aside)
+        fields.addStretch(1)
+        row.addLayout(fields, 1)
+        column.addLayout(row)
+        self.sentence = QLabel(box)
+        self.sentence.setObjectName("heading3")
+        self.sentence.setWordWrap(True)
+        column.addWidget(self.sentence)
+        self.note = muted_label("", box)
+        column.addWidget(self.note)
+        self.ref.changed.connect(lambda _i: self._changed())
+        for field in (self.offset, self.aside_x, self.aside_y):
+            field.valueChanged.connect(lambda _v: self._changed())
+
+    def _changed(self) -> None:
+        self.changed.emit(Height(ref=REFS[self.ref.current()][0],
+                                 offset_mm=self.offset.value(),
+                                 aside_x_mm=self.aside_x.value(),
+                                 aside_y_mm=self.aside_y.value()))
+
+    def show_height(self, height: Height, note: str,
+                    depth_mm: float | None) -> None:
+        self.ref.set_current([ref for ref, _text in REFS].index(height.ref))
+        _put(self.offset, height.offset_mm)
+        _put(self.aside_x, height.aside_x_mm)
+        _put(self.aside_y, height.aside_y_mm)
+        self.sentence.setText(height_words(height))
+        self.note.setText(note)
+        self.drawing.height_ = height
+        self.drawing.depth_mm = depth_mm or DEPTH_MM
+        self.drawing.update()
+
+
+class _Fields(QWidget):
+    """Fields saying `edited` as they change."""
+
+    edited = Signal(str, dict)              # key, {field: value}
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("plain")
+        self._filling = False
+
+    def _say(self, field: str):
+        """A slot sending the one field's new value."""
+        def say(value) -> None:
+            if not self._filling:
+                self.edited.emit(field, {field: value})
+        return say
+
+
+class AmountForm(_Fields):
+    """How much and how fast over Take it at and Put it at, the heights only
+    for wells: a point has its own height, and so has the trash."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        box = card(self)
+        row = QHBoxLayout()
+        row.setSpacing(SPACING * 3)
+        box.layout().addLayout(row)
+        self.volume = _number(box, 0.1, MAX_UL, " µl")
+        self.take_flow = _number(box, 0.1, MAX_FLOW, " µl/s")
+        self.put_flow = _number(box, 0.1, MAX_FLOW, " µl/s")
+        for label, field, name in (
+                ("Volume per well", self.volume, "volume_ul"),
+                ("Take speed", self.take_flow, "take_flow_ul_s"),
+                ("Put speed", self.put_flow, "put_flow_ul_s")):
+            row.addWidget(_labeled(box, label, field), 1)
+            field.valueChanged.connect(self._say(name))
+        column.addWidget(box)
+        heights = QHBoxLayout()
+        heights.setSpacing(SPACING * 2)
+        self.take_at = HeightCard("TAKE IT AT", "tips", self)
+        self.put_at = HeightCard("PUT IT AT", "plate", self)
+        self.take_at.changed.connect(self._say("take_at"))
+        self.put_at.changed.connect(self._say("put_at"))
+        heights.addWidget(self.take_at, 1)
+        heights.addWidget(self.put_at, 1)
+        column.addLayout(heights)
+        self.no_height = muted_label(NO_HEIGHT, self)
+        column.addWidget(self.no_height)
+
+    def show_step(self, step, take: tuple, put: tuple) -> None:
+        """`take`, `put`: for each end the note and the well's depth."""
+        _put(self.volume, step.volume_ul)
+        _put(self.take_flow, step.take_flow_ul_s)
+        _put(self.put_flow, step.put_flow_ul_s)
+        taken = step.source.kind == "wells"
+        put_in = step.dest.kind == "wells"
+        self.take_at.setVisible(taken)
+        self.put_at.setVisible(put_in)
+        self.no_height.setVisible(not (taken and put_in))
+        self.take_at.show_height(step.take_at, *take)
+        self.put_at.show_height(step.put_at, *put)
+
+
+class ExtrasForm(_Fields):
+    """A card for each switch, its help line under it."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        self.mix_after, self.mix_help, self.mix_box = self._switch(
+            column, "Mix after putting it in", "", "mix_after")
+        self.mix_fields = QWidget(self.mix_box)
+        self.mix_fields.setObjectName("plain")
+        row = QHBoxLayout(self.mix_fields)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.mix_cycles = spin_box(self.mix_fields)
+        self.mix_cycles.setRange(1, MAX_CYCLES)
+        self.mix_cycles.setSuffix(" times")
+        self.mix_cycles.valueChanged.connect(self._say("mix_cycles"))
+        self.mix_ul = _number(self.mix_fields, 0.1, MAX_UL, " µl")
+        self.mix_ul.valueChanged.connect(self._say("mix_ul"))
+        for field in (self.mix_cycles, self.mix_ul):
+            field.setFixedWidth(SHORT_FIELD_PX)
+            row.addWidget(field)
+        self.mix_box.layout().itemAt(0).layout().addWidget(self.mix_fields)
+        self.pause_after_first, _said, _box = self._switch(
+            column, "Pause after the first well",
+            "So you can check it before the rest.", "pause_after_first")
+        self.empty_at_end, _said, _box = self._switch(
+            column, "Empty the tip into the trash at the end",
+            "Leftover liquid goes to the trash.", "empty_at_end")
+        self.slow_lift, _said, self.lift_box = self._switch(
+            column, "Lift out slowly",
+            "Small steps up after taking, so tissue is not pulled along.",
+            "slow_lift")
+        box = card(self)
+        row = QHBoxLayout()
+        lines = QVBoxLayout()
+        lines.setSpacing(2)
+        lines.addWidget(QLabel("Wait after each well", box))
+        lines.addWidget(muted_label(WAIT_HELP, box))
+        row.addLayout(lines, 1)
+        self.wait_after = _number(box, 0, MAX_WAIT_S, " s")
+        self.wait_after.setFixedWidth(SHORT_FIELD_PX)
+        self.wait_after.valueChanged.connect(self._say("wait_after_s"))
+        row.addWidget(self.wait_after)
+        box.layout().addLayout(row)
+        column.addWidget(box)
+
+    def _switch(self, column: QVBoxLayout, text: str, help_line: str,
+                field: str) -> tuple[Switch, QLabel, QWidget]:
+        """A card of a switch over its help line; the switch, the line, the
+        card."""
+        box = card(self)
+        box.layout().setSpacing(2)
+        line = QHBoxLayout()
+        switch = Switch(text, parent=box)
+        switch.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        switch.toggled.connect(self._say(field))
+        line.addWidget(switch, 1)
+        box.layout().addLayout(line)
+        said = muted_label(help_line, box)
+        box.layout().addWidget(said)
+        column.addWidget(box)
+        return switch, said, box
+
+    def show_step(self, step) -> None:
+        self.mix_box.setVisible(step.dest.kind == "wells")
+        self.lift_box.setVisible(step.source.kind == "wells")
+        # Not by blocking its signals: a switch's knob follows `toggled`.
+        self._filling = True
+        self.mix_after.setChecked(step.mix_after)
+        self.pause_after_first.setChecked(step.pause_after_first)
+        self.empty_at_end.setChecked(step.empty_at_end)
+        self.slow_lift.setChecked(step.slow_lift)
+        self._filling = False
+        self.mix_help.setText(f"Pipettes up and down {step.mix_cycles} times "
+                              "in each well.")
+        self.mix_fields.setVisible(step.mix_after)
+        _put(self.mix_cycles, step.mix_cycles)
+        _put(self.mix_ul, step.mix_ul or step.volume_ul)
+        _put(self.wait_after, step.wait_after_s)
+
+
 class StepForm(QFrame):
     edited = Signal(str, dict)              # key, {field: value}
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("planForm")
-        self._filling = False
         outer = QVBoxLayout(self)
         outer.setContentsMargins(10, 8, 10, 8)
         self.stack = QStackedWidget(self)
         outer.addWidget(self.stack)
-        self.pages = {"amount": self._amount(), "extras": self._extras(),
-                      "how": self._how(), "wait": self._wait(),
+        self.pages = {"how": self._how(), "wait": self._wait(),
                       "message": self._message()}
         for page in self.pages.values():
             self.stack.addWidget(page)
@@ -125,8 +359,7 @@ class StepForm(QFrame):
     def _say(self, field: str):
         """A slot sending the one field's new value."""
         def say(value) -> None:
-            if not self._filling:
-                self.edited.emit(field, {field: value})
+            self.edited.emit(field, {field: value})
         return say
 
     def _page(self) -> tuple[QWidget, QVBoxLayout]:
@@ -150,75 +383,6 @@ class StepForm(QFrame):
         return line
 
     # -- the sections --------------------------------------------------------
-
-    def _amount(self) -> QWidget:
-        page, column = self._page()
-        self.volume = _number(page, 0.1, MAX_UL, " µl")
-        self.take_flow = _number(page, 0.1, MAX_FLOW, " µl/s")
-        self.put_flow = _number(page, 0.1, MAX_FLOW, " µl/s")
-        self._line(page, column, "Volume per well", self.volume)
-        self._line(page, column, "Take speed", self.take_flow)
-        self._line(page, column, "Put speed", self.put_flow)
-        self.volume.valueChanged.connect(self._say("volume_ul"))
-        self.take_flow.valueChanged.connect(self._say("take_flow_ul_s"))
-        self.put_flow.valueChanged.connect(self._say("put_flow_ul_s"))
-        self.take_at = HeightFields("Take it at", "tips", page)
-        self.put_at = HeightFields("Put it at", "plate", page)
-        self.take_at.changed.connect(self._say("take_at"))
-        self.put_at.changed.connect(self._say("put_at"))
-        column.addWidget(self.take_at)
-        column.addWidget(self.put_at)
-        return page
-
-    def _switch(self, parent: QWidget, column: QVBoxLayout, text: str,
-                help_line: str, field: str) -> tuple[Switch, QLabel, QWidget]:
-        """A switch over its help line; the switch, the line, what holds
-        them."""
-        box = QWidget(parent)
-        box.setObjectName("plain")
-        lines = QVBoxLayout(box)
-        lines.setContentsMargins(0, 0, 0, 0)
-        lines.setSpacing(0)
-        switch = Switch(text, parent=box)
-        switch.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        switch.toggled.connect(self._say(field))
-        lines.addWidget(switch)
-        said = muted_label(help_line, box)
-        lines.addWidget(said)
-        column.addWidget(box)
-        return switch, said, box
-
-    def _extras(self) -> QWidget:
-        page, column = self._page()
-        self.mix_after, self.mix_help, self.mix_box = self._switch(
-            page, column, "Mix after putting it in", "", "mix_after")
-        self.mix_fields = QWidget(self.mix_box)
-        self.mix_fields.setObjectName("plain")
-        row = QHBoxLayout(self.mix_fields)
-        row.setContentsMargins(0, 4, 0, 0)
-        self.mix_cycles = spin_box(self.mix_fields)
-        self.mix_cycles.setRange(1, MAX_CYCLES)
-        self.mix_cycles.setSuffix(" times")
-        self.mix_cycles.valueChanged.connect(self._say("mix_cycles"))
-        self.mix_ul = _number(self.mix_fields, 0.1, MAX_UL, " µl")
-        self.mix_ul.valueChanged.connect(self._say("mix_ul"))
-        row.addWidget(self.mix_cycles)
-        row.addWidget(self.mix_ul)
-        self.mix_box.layout().addWidget(self.mix_fields)
-        self.pause_after_first, _said, _box = self._switch(
-            page, column, "Pause after the first well",
-            "So you can check it before the rest.", "pause_after_first")
-        self.empty_at_end, _said, _box = self._switch(
-            page, column, "Empty the tip into the trash at the end",
-            "Leftover liquid goes to the trash.", "empty_at_end")
-        self.slow_lift, _said, self.lift_box = self._switch(
-            page, column, "Lift out slowly",
-            "Small steps up after taking, so tissue is not pulled along.",
-            "slow_lift")
-        self.wait_after = _number(page, 0, MAX_WAIT_S, " s")
-        self.wait_after.valueChanged.connect(self._say("wait_after_s"))
-        self._line(page, column, "Wait after each well", self.wait_after)
-        return page
 
     def _how(self) -> QWidget:
         page, column = self._page()
@@ -274,32 +438,6 @@ class StepForm(QFrame):
         getattr(self, f"_show_{section}")(step)
         # Only the page shown counts for the card's height.
         self.stack.setFixedHeight(page.sizeHint().height())
-
-    def _show_amount(self, step) -> None:
-        _put(self.volume, step.volume_ul)
-        _put(self.take_flow, step.take_flow_ul_s)
-        _put(self.put_flow, step.put_flow_ul_s)
-        self.take_at.setVisible(step.source.kind == "wells")
-        self.put_at.setVisible(step.dest.kind == "wells")
-        self.take_at.show_height(step.take_at)
-        self.put_at.show_height(step.put_at)
-
-    def _show_extras(self, step) -> None:
-        self.mix_box.setVisible(step.dest.kind == "wells")
-        self.lift_box.setVisible(step.source.kind == "wells")
-        # Not by blocking its signals: a switch's knob follows `toggled`.
-        self._filling = True
-        self.mix_after.setChecked(step.mix_after)
-        self.pause_after_first.setChecked(step.pause_after_first)
-        self.empty_at_end.setChecked(step.empty_at_end)
-        self.slow_lift.setChecked(step.slow_lift)
-        self._filling = False
-        self.mix_help.setText(f"Pipettes up and down {step.mix_cycles} times "
-                              "in each well.")
-        self.mix_fields.setVisible(step.mix_after)
-        _put(self.mix_cycles, step.mix_cycles)
-        _put(self.mix_ul, step.mix_ul or step.volume_ul)
-        _put(self.wait_after, step.wait_after_s)
 
     def _show_how(self, step) -> None:
         mixing = step.kind == "mix"

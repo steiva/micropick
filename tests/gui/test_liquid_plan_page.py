@@ -567,8 +567,8 @@ def test_the_drawing_and_its_sentence_follow_the_fields_live(app, page):
     page.next_button.click()
     assert page.question_caption.isHidden() or page.section == "amount"
     assert page.answer_caption.text() == "STEP 1 · AMOUNT AND HEIGHT"
-    form = page.card.form
-    take, put = page.take_section, page.put_section
+    form = page.amount_form
+    take, put = form.take_at, form.put_at
     assert take.sentence.text() == "2 mm above the bottom"
     assert put.sentence.text() == "1 mm below the top"
     before = take.drawing.tip_y()
@@ -577,7 +577,7 @@ def test_the_drawing_and_its_sentence_follow_the_fields_live(app, page):
     assert take.drawing.tip_y() < before           # higher up the picture
     _type(form.take_at.offset, "-1")
     assert take.sentence.text() == "1 mm below the bottom"
-    form.put_at.ref.setCurrentIndex(form.put_at.ref.findData("middle"))
+    form.put_at.ref.buttons[1].click()            # Middle
     _type(form.put_at.offset, "0")
     assert put.sentence.text() == "in the middle"
     assert "+" not in take.sentence.text() + put.sentence.text()
@@ -590,12 +590,12 @@ def test_the_note_says_where_the_bottom_comes_from(app, window, page):
     page.next_button.click()
     _click(app, page, "B1")
     page.next_button.click()
-    assert page.take_section.note.text() == "Bottom from the plate drawing"
-    assert page.put_section.note.text() == "Top of the well"
+    assert page.amount_form.take_at.note.text() == "Bottom from the plate drawing"
+    assert page.amount_form.put_at.note.text() == "Top of the well"
     session = window.session
     session.set_well_center("5", PLATE, (0.1, 0.2, 40.0), "A1", 10.0)
     page._show()
-    assert page.take_section.note.text() == "Bottom measured in Well center"
+    assert page.amount_form.take_at.note.text() == "Bottom measured in Well center"
 
 
 def test_take_fields_only_for_wells_and_put_fields_only_for_wells(app, page):
@@ -604,11 +604,10 @@ def test_take_fields_only_for_wells_and_put_fields_only_for_wells(app, page):
     page.next_button.click()
     page.dest_kind.buttons[2].click()              # Trash
     page.next_button.click()
-    form = page.card.form
+    form = page.amount_form
     assert form.take_at.isVisibleTo(page)
     assert not form.put_at.isVisibleTo(page)
-    assert page.take_section.isVisibleTo(page)
-    assert not page.put_section.isVisibleTo(page)
+    assert form.no_height.isVisibleTo(page)
 
 
 def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
@@ -623,14 +622,15 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     page.next_button.click()
     page.dest_kind.buttons[2].click()              # Trash
     page.next_button.click()
-    form = page.card.form
+    form = page.amount_form
     _type(form.volume, "100")
     _type(form.put_flow, "200")
     _type(form.take_at.offset, "2.5")
     _type(form.take_at.aside_x, "-2")
     page.next_button.click()
     assert page.section == "extras"
-    form.slow_lift.click()
+    extras = page.extras_form
+    extras.slow_lift.click()
     page.next_button.click()                       # Done
 
     page.add_step("move_liquid")
@@ -638,7 +638,7 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     page.next_button.click()
     _click(app, page, "A1", "A2", "A3")
     _to_section(page, "extras")
-    form.pause_after_first.click()
+    extras.pause_after_first.click()
     assert page.card.rows[3].value.text() == "pause after the first well"
     page.next_button.click()
 
@@ -655,18 +655,34 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     assert second.pause_after_first
 
 
-def test_extras_show_the_steps_plate_to_look_at(app, page):
+def test_amount_and_extras_are_asked_on_the_left_not_in_the_card(app, page):
     page.first_step_button.click()
     _click(app, page, "A1")
     page.next_button.click()
     _click(app, page, "B1", "B2")
+    page.next_button.click()
+    assert page.amount_form.volume.isVisibleTo(page)
+    assert not page.card.form.isVisibleTo(page)
     _to_section(page, "extras")
     assert page.answer_title.text() == "Anything else in this step?"
-    assert page.step_plate.isVisibleTo(page)
-    assert set(page.step_plate._fills) == {"B1", "B2"}
-    assert page.step_plate.testAttribute(
-        Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-    assert page.step_plate_name.text() == "Slot 5 · B1–B2 (2)"
+    assert page.extras_form.slow_lift.isVisibleTo(page)
+    assert not page.card.form.isVisibleTo(page)
+
+
+def test_amount_and_extras_sit_in_the_middle_of_the_room(app, page):
+    page.first_step_button.click()
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    page.next_button.click()
+    for form in (page.amount_form, page.extras_form):
+        app.processEvents()
+        room = form.parentWidget()
+        assert abs(form.geometry().center().y() - room.rect().center().y()) <= 2
+        assert abs(form.geometry().center().x() - room.rect().center().x()) <= 2
+        page.next_button.click()
+    # Extras is about half as wide as the room.
+    assert page.extras_form.width() == page_module.EXTRAS_WIDTH
 
 
 def test_extras_follow_the_ends_of_the_step(app, page):
@@ -675,7 +691,7 @@ def test_extras_follow_the_ends_of_the_step(app, page):
     page.next_button.click()
     page.dest_kind.buttons[2].click()              # Trash
     _to_section(page, "extras")
-    form = page.card.form
+    form = page.extras_form
     assert not form.mix_box.isVisibleTo(page)      # the destination is no well
     assert form.lift_box.isVisibleTo(page)
     assert form.empty_at_end.isChecked()
@@ -687,7 +703,7 @@ def test_mixing_after_opens_its_times_and_volume(app, page):
     page.next_button.click()
     _click(app, page, "B1")
     _to_section(page, "extras")
-    form = page.card.form
+    form = page.extras_form
     assert not form.mix_fields.isVisibleTo(page)
     form.mix_after.click()
     assert form.mix_fields.isVisibleTo(page)
@@ -703,7 +719,7 @@ def test_digits_typed_into_a_field_are_one_undo(app, page):
     page.next_button.click()
     _click(app, page, "B1")
     page.next_button.click()
-    box = page.card.form.volume
+    box = page.amount_form.volume
     _type(box, "120")
     assert _step(page).volume_ul == 120
     assert box.value() == 120
@@ -755,7 +771,7 @@ def test_a_blow_out_goes_to_the_trash_or_a_well(app, page):
     _type(form.how_flow, "75")
     assert _step(page).flow_ul_s == 75
     assert form.at.isVisibleTo(page)
-    assert page.take_section.isVisibleTo(page)
+    assert page.how_section.isVisibleTo(page)
 
 
 def test_a_mix_asks_its_times_volume_speed_and_height(app, page):
@@ -769,7 +785,7 @@ def test_a_mix_asks_its_times_volume_speed_and_height(app, page):
     _type(form.at.offset, "1")
     step = _step(page)
     assert (step.cycles, step.volume_ul, step.flow_ul_s) == (4, 25, 30)
-    assert page.take_section.sentence.text() == "1 mm above the bottom"
+    assert page.how_section.sentence.text() == "1 mm above the bottom"
     assert page.step_list.cards()[0].title.text() == "Mix 1 well · 4×"
 
 
@@ -1333,7 +1349,7 @@ def test_a_digit_typed_checks_the_plan_once(app, page, monkeypatch):
     real = session_module.plan_problems
     monkeypatch.setattr(session_module, "plan_problems",
                         lambda *a: checked.append(a) or real(*a))
-    page.card.form.volume.setValue(33)
+    page.amount_form.volume.setValue(33)
     app.processEvents()
     assert page.plan.steps[0].volume_ul == 33
     assert len(checked) == 1

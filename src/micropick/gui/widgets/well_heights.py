@@ -20,7 +20,7 @@ from ...core.liquid_plan import Height, height_words
 from ..theme import COLORS, SPACING
 from ..theme.factory import caption, muted_label
 
-__all__ = ["WellSection"]
+__all__ = ["WellDrawing", "WellSection"]
 
 # Of the drawing's height: where the rim and the floor of the well are.
 RIM = 0.2
@@ -33,9 +33,14 @@ EDGE_PX = 6
 DEPTH_MM = 10.0
 
 
-class _Drawing(QWidget):
-    def __init__(self, parent: QWidget | None = None):
+class WellDrawing(QWidget):
+    """`well_width`: of the drawing's width; a small drawing takes a narrower
+    well, so the words at the sides stay clear of its walls."""
+
+    def __init__(self, parent: QWidget | None = None,
+                 well_width: float = WIDTH):
         super().__init__(parent)
+        self.well_width = well_width
         self.height_ = Height()
         self.depth_mm = DEPTH_MM
         self.color = QColor(COLORS["tips"])
@@ -58,7 +63,7 @@ class _Drawing(QWidget):
 
     def tip_x(self) -> float:
         """Sideways only in X: the section is cut along it."""
-        half = self.width() * WIDTH / 2 - TIP_PX
+        half = self.width() * self.well_width / 2 - TIP_PX
         x = self.height_.aside_x_mm * self._scale()
         return self.width() / 2 + min(max(x, -half), half)
 
@@ -67,7 +72,7 @@ class _Drawing(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         width, height = self.width(), self.height()
         rim, floor = height * RIM, height * FLOOR
-        left = width * (1 - WIDTH) / 2
+        left = width * (1 - self.well_width) / 2
         right = width - left
 
         painter.setPen(Qt.PenStyle.NoPen)
@@ -105,7 +110,7 @@ class WellSection(QWidget):
         column.setSpacing(SPACING)
         self.title = caption("", self)
         column.addWidget(self.title)
-        self.drawing = _Drawing(self)
+        self.drawing = WellDrawing(self)
         column.addWidget(self.drawing, 1)
         self.sentence = QLabel(self)
         self.sentence.setObjectName("heading3")

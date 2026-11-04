@@ -379,10 +379,11 @@ Liquid's Plan step (`pages.liquid_plan`, LIQUID.md §3) builds a
 Add a step - Move liquid from → to, Mix, Blow out, Move the tip, Wait, Wait
 for me - each a card read as a sentence, its id and color its own, its number
 its place in the list. One card is open at a time, its rows the sections
-(`sections`: Take from before Put into, then Amount and Extras, the fields in
-the card, `widgets.plan_forms`); the left area is what the section asks (the
-plate, the camera, the heights drawn, `widgets.well_heights`), with no card
-open the whole plan in each step's color. A card moves by its handle
+(`sections`: Take from before Put into, then Amount and Extras); the left area
+is what the section asks (the plate, the camera, Amount's and Extras' fields,
+`widgets.plan_forms`, in the middle of the room under the title; How's and
+the waits' fields are in the card), with no card open the whole plan in each
+step's color. A card moves by its handle
 (`widgets.step_list`: never `QListWidget` with item widgets), Alt+↑ / ↓ or
 its ⋯ menu; the widget only says `moveRequested`, the page applies
 `move_step` as one undo entry and calls `set_steps`. A plate is drawn in its

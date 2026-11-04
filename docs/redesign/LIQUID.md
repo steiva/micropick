@@ -439,17 +439,19 @@ where the trash is**, which opens the same chooser as the Trash row (§3.7).
 
 ### 3.4 Section "Amount"
 
-The fields are in the open card, in a framed sub-box:
+The fields are in the left area, in the middle of the room under the title
+(the open card keeps only its rows and buttons):
 
-- **Volume per well** (µl);
-- **Take speed** and **Put speed** (µl/s, 10 by default);
-- **Take it at** (Select: Bottom / Middle / Top, then the offset in mm, then
-  Aside X and Y in mm). Only when the source is wells.
+- **Volume per well** (µl), **Take speed** and **Put speed** (µl/s, 10 by
+  default), in one row;
+- **Take it at** (Measured from: Bottom / Middle / Top, then the offset in mm,
+  then Aside X and Y in mm). Only when the source is wells.
 - **Put it at** (the same). Only when the destination is wells.
 
-The left area draws the heights instead of explaining them in words: two
-cross-sections of a well, **Take it at** (`tips` color) and **Put it at**
-(`plate` color). Each one has:
+Under that row, side by side, a card for each height: **Take it at** (`tips`
+color) and **Put it at** (`plate` color), its fields beside a small
+cross-section of a well, which draws the height instead of explaining it in
+words. Each one has:
 
 - dashed *top* and *bottom* lines;
 - the tip drawn down to the chosen height, with a colored line at that height;
@@ -464,7 +466,8 @@ negative one is down. The sentence uses "above" and "below", never "+" and
 
 ### 3.5 Section "Extras"
 
-These are switches in the open card. Each one has its help line under it:
+These are switches in the left area, a card each, about half its width, in the
+middle of the room under the title. Each one has its help line under it:
 
 | Switch | Help line | Shown when |
 |---|---|---|
@@ -472,10 +475,7 @@ These are switches in the open card. Each one has its help line under it:
 | Pause after the first well | "So you can check it before the rest." | always |
 | Empty the tip into the trash at the end | "Leftover liquid goes to the trash." | always; on by default |
 | Lift out slowly | "Small steps up after taking, so tissue is not pulled along." | the source is wells |
-| Wait after each well | a seconds field, 0 for none | always |
-
-While Extras is selected, the left area shows the destination plate with this
-step's wells, read-only.
+| Wait after each well | "The robot stays still this long." A seconds field, 0 for none | always |
 
 ### 3.6 Mix, Blow out, Move the tip, Wait, Wait for me (other step kinds)
 
