@@ -1468,7 +1468,8 @@ class Session(QObject):
         self.profile.deck = DeckConfig(modules=list(modules),
                                        module_types=list(deck.module_types),
                                        recent_labware=list(deck.recent_labware),
-                                       well_centers=list(deck.well_centers))
+                                       well_centers=list(deck.well_centers),
+                                       default_trash=deck.default_trash)
         self.profile.save_deck()
         log.info("deck modules saved to profile %r: %s", self.profile.name,
                  "; ".join(m.describe() for m in modules) or "none")
@@ -1487,7 +1488,8 @@ class Session(QObject):
         self.profile.deck = DeckConfig(modules=list(deck.modules),
                                        module_types=list(types),
                                        recent_labware=list(deck.recent_labware),
-                                       well_centers=list(deck.well_centers))
+                                       well_centers=list(deck.well_centers),
+                                       default_trash=deck.default_trash)
         self.profile.save_deck()
         log.info("module types in profile %r: %s", self.profile.name,
                  ", ".join(f"{t.name} {t.height_mm:g} mm" for t in types)
