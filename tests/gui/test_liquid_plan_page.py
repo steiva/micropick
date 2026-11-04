@@ -1447,3 +1447,81 @@ def test_the_check_sees_the_deck_as_it_is_now(app, window, page):
     session.unload_labware(5)
     _until(app, lambda: not session.robot_lease.busy)
     assert step_id in session.liquid_plan_problems()
+
+
+# -- the place choice (last: `themed` stays for the module) ---------------------
+
+
+def _take_from(page):
+    page.add_step("move_liquid")
+
+
+def _put_into(page):
+    page.add_step("move_liquid")
+    page.next_button.click()
+
+
+def _where_blown_out(page):
+    page.add_step("blow_out")
+
+
+def _where_the_tip_goes(page):
+    page.add_step("move_tip")
+
+
+def _the_trash(page):
+    page.trash_row.click()
+
+
+CHOICES = [_take_from, _put_into, _where_blown_out, _where_the_tip_goes,
+           _the_trash]
+
+
+def _choice(page):
+    shown = [c for c in page.kinds.values() if c.isVisibleTo(page)]
+    assert len(shown) == 1
+    return shown[0]
+
+
+def _left_right(widget, page):
+    """Where the widget's left and right edges are in the left area."""
+    left = widget.mapTo(page.left, widget.rect().topLeft()).x()
+    return left, left + widget.width()
+
+
+@pytest.mark.parametrize("opens", CHOICES)
+def test_the_place_choice_is_centered_in_the_left_area(app, window, page,
+                                                       opens):
+    window.resize(1800, 900)
+    opens(page)
+    app.processEvents()
+    left, right = _left_right(_choice(page), page)
+    assert abs((left + right) / 2 - page.left.width() / 2) <= 1
+
+
+@pytest.mark.parametrize("opens", CHOICES)
+def test_the_place_choice_clears_the_title_on_a_small_window(app, themed,
+                                                             window, page,
+                                                             opens):
+    window.resize(1280, 800)
+    opens(page)
+    app.processEvents()
+    choice = _choice(page)
+    left, right = _left_right(choice, page)
+    title = page.question_title
+    assert left >= _left_right(title, page)[0] + title.sizeHint().width()
+    assert right <= page.left.width()
+    bottom = choice.mapTo(page.question, choice.rect().bottomLeft()).y()
+    assert 0 < bottom < page.question_body.y()     # on the title's row
+
+
+def test_what_is_under_the_title_starts_at_the_same_height(app, themed,
+                                                           window, page):
+    page.add_step("mix")                           # asks wells: no choice
+    app.processEvents()
+    assert not any(c.isVisibleTo(page) for c in page.kinds.values())
+    height = page.question_body.y()
+    for opens in CHOICES:
+        opens(page)
+        app.processEvents()
+        assert page.question_body.y() == height

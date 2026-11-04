@@ -2037,6 +2037,13 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   offset: the drawing, the sentence and the note follow, and one Ctrl+Z takes
   the digits back. During a run the fields are gray.
 
+- [ ] **The place choice in the middle.**
+  In Take from, Put into, Where and the trash chooser, A well | A point and its
+  variations are on the title's row, in the middle of the left area, and the
+  plate starts as high as under a Mix's Wells, which has no choice. At 1280×800
+  the choice clears "Where is the liquid taken from?", still on that row. Each
+  choice changes the place.
+
 - [ ] **A point and By hand.**
   Take from A point: the live upper camera, the points under it. A right click
   adds a memo point; used in a step it reads as its name and is still there

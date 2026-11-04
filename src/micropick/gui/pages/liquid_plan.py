@@ -12,7 +12,8 @@ its rows choose the section. Take from comes before Put into. The time of a
 Wait and the message of a Wait for me are fields in the card
 (`widgets.plan_forms`). A step's sections are `sections`.
 
-**Left:** what the open section asks: the plate from the `MiniDeckDropdown`,
+**Left:** what the open section asks: on the title's row, in the middle of the
+left area, the place choice; the plate from the `MiniDeckDropdown`,
 its wells clicked, the wells of other steps dim, and under it the rule of how
 sources pair with destinations (`core.liquid_plan.pairing`), warn-colored with
 what would work. A plate not measured (nor skipped on the Well center step)
@@ -77,11 +78,11 @@ from uuid import uuid4
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QHBoxLayout,
-                               QInputDialog, QLabel, QLineEdit, QListWidget,
-                               QListWidgetItem, QMenu, QPushButton, QScrollArea,
-                               QStackedWidget, QToolButton, QVBoxLayout, QWidget,
-                               QWidgetAction)
+from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QGridLayout,
+                               QHBoxLayout, QInputDialog, QLabel, QLineEdit,
+                               QListWidget, QListWidgetItem, QMenu, QPushButton,
+                               QScrollArea, QStackedWidget, QToolButton,
+                               QVBoxLayout, QWidget, QWidgetAction)
 
 from ... import paths
 from ...config import templates
@@ -516,20 +517,26 @@ class LiquidPlanPage(QWidget):
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        top = QHBoxLayout()
+        # The choice in the middle: the same stretch on its two sides, and a
+        # title too long for its side pushes it right just enough.
+        top = QGridLayout()
+        top.setHorizontalSpacing(0)
+        top.setColumnStretch(0, 1)
+        top.setColumnStretch(2, 1)
         titles = QVBoxLayout()
+        titles.setContentsMargins(0, 0, SPACING, 0)
         self.question_caption = caption("", box)
         self.question_title = heading("", 2, box)
         titles.addWidget(self.question_caption)
         titles.addWidget(self.question_title)
-        top.addLayout(titles, 1)
+        top.addLayout(titles, 0, 0)
         self.kinds: dict[str, Segmented] = {}
         for key, choices in CHOICES.items():
             self.kinds[key] = Segmented([text for _kind, text in choices],
                                         parent=box)
             self.kinds[key].changed.connect(
                 lambda index, key=key: self._kind_chosen(key, index))
-            top.addWidget(self.kinds[key])
+            top.addWidget(self.kinds[key], 0, 1)
         self.dest_kind = self.kinds["dest"]
         column.addLayout(top)
         self.question_body = QStackedWidget(box)

@@ -376,8 +376,11 @@ its rows. A Move liquid card has four; the other kinds' are in §3.6:
 
 - Header: the caption "STEP 1 · TAKE FROM" (`tips` color) and the title
   "Where is the liquid taken from?".
-- On the right of the header, the Segmented control **A well | A point | By
-  hand**.
+- On the title's row, its center at the center of the left area, the Segmented
+  control **A well | A point | By hand**. Nothing under the row moves for it.
+  When the title would touch it, it moves right just enough to clear the title,
+  on the same row. Every place choice is there: Take from, Put into, Where and
+  the trash chooser.
 
 **A well:**
 
