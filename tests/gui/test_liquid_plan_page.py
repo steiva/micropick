@@ -13,8 +13,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt         # noqa: E402
 from PySide6.QtGui import QDragMoveEvent, QDropEvent              # noqa: E402
 from PySide6.QtTest import QTest                                 # noqa: E402
-from PySide6.QtWidgets import (QAbstractButton, QApplication,    # noqa: E402
-                               QLabel)
+from PySide6.QtWidgets import (QAbstractButton,                  # noqa: E402
+                               QAbstractSpinBox, QApplication,
+                               QComboBox, QLabel, QLineEdit)
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.core.liquid import Location, Program              # noqa: E402
@@ -1449,32 +1450,149 @@ def test_the_check_sees_the_deck_as_it_is_now(app, window, page):
     assert step_id in session.liquid_plan_problems()
 
 
+# -- the focus -----------------------------------------------------------------
+
+
+def _field_focused(window):
+    """The field with the keyboard, if any."""
+    focused = window.focusWidget()
+    return focused if isinstance(
+        focused, (QAbstractSpinBox, QComboBox, QLineEdit)) else None
+
+
+def _a_move(app, page):
+    """A Move liquid with its wells, on Amount."""
+    page.add_step("move_liquid")
+    _click(app, page, "A1")
+    page.next_button.click()
+    _click(app, page, "B1")
+    page.next_button.click()
+
+
+def _go(page, by, row):
+    if by == "next":
+        page.next_button.click()
+    else:
+        page.card.rows[row].click()
+
+
+@pytest.mark.parametrize("by", ["next", "row"])
+def test_a_change_of_section_leaves_no_field_with_the_focus(app, window, page,
+                                                            by):
+    _a_move(app, page)
+    page.card.rows[0].click()                      # back on Take from
+    for row, field in ((1, page.tip_ul), (2, page.tip_ul),
+                       (3, page.amount_form.volume)):
+        field.setFocus()
+        assert _field_focused(window) is field
+        _go(page, by, row)
+        app.processEvents()
+        assert _field_focused(window) is None, page.section
+
+
+def test_going_back_a_section_leaves_no_field_with_the_focus(app, window,
+                                                             page):
+    page.add_step("mix")
+    _click(app, page, "A1")
+    page.next_button.click()
+    page.how_form.volume.setFocus()
+    page.card.rows[0].click()                      # back on Wells
+    app.processEvents()
+    assert _field_focused(window) is None
+    _a_move(app, page)
+    page.next_button.click()                       # Extras
+    page.extras_form.wait_after.setFocus()
+    page.card.rows[2].click()                      # back on Amount
+    app.processEvents()
+    assert _field_focused(window) is None
+
+
+@pytest.mark.parametrize("kind, field", [
+    ("mix", lambda page: page.how_form.volume),
+    ("wait", lambda page: page.card.form.minutes),
+    ("wait_for_me", lambda page: page.card.form.message)])
+def test_opening_a_step_leaves_no_field_with_the_focus(app, window, page, kind,
+                                                       field):
+    page.add_step(kind)
+    if kind == "mix":
+        _click(app, page, "A1")
+        page.next_button.click()
+    field(page).setFocus()
+    page.add_step("wait")
+    app.processEvents()
+    assert _field_focused(window) is None
+    page.step_list.set_open(page.plan.steps[0].id)
+    app.processEvents()
+    assert _field_focused(window) is None
+
+
+def test_done_leaves_no_field_with_the_focus(app, window, page):
+    page.add_step("wait")
+    page.card.form.minutes.setFocus()
+    page.next_button.click()                       # Done
+    app.processEvents()
+    assert _field_focused(window) is None
+
+
+def test_a_key_after_a_change_of_section_changes_nothing(app, window, page):
+    _a_move(app, page)
+    page.amount_form.volume.setFocus()
+    page.next_button.click()
+    app.processEvents()
+    plan = page.plan
+    QTest.keyClick(window.focusWidget() or window, Qt.Key.Key_5)
+    QTest.keyClick(window.focusWidget() or window, Qt.Key.Key_Up)
+    app.processEvents()
+    assert page.plan == plan
+
+
+@pytest.mark.parametrize("kind, field", [
+    ("mix", lambda page: page.how_form.volume),
+    ("wait", lambda page: page.card.form.minutes),
+    ("wait_for_me", lambda page: page.card.form.message)])
+def test_a_clicked_field_keeps_the_focus_through_its_digits(app, window, page,
+                                                            kind, field):
+    page.add_step(kind)
+    if kind == "mix":
+        _click(app, page, "A1")
+        page.next_button.click()
+    box = field(page)
+    inner = box if isinstance(box, QLineEdit) else box.lineEdit()
+    QTest.mouseClick(inner, Qt.MouseButton.LeftButton)
+    assert _field_focused(window) is box
+    box.selectAll()
+    for digit in "123":
+        QTest.keyClick(window.focusWidget(), digit)
+        app.processEvents()
+        assert _field_focused(window) is box
+
+
 # -- the place choice (last: `themed` stays for the module) ---------------------
 
 
-def _take_from(page):
+def _open_take_from(page):
     page.add_step("move_liquid")
 
 
-def _put_into(page):
+def _open_put_into(page):
     page.add_step("move_liquid")
     page.next_button.click()
 
 
-def _where_blown_out(page):
+def _open_where_blown_out(page):
     page.add_step("blow_out")
 
 
-def _where_the_tip_goes(page):
+def _open_where_the_tip_goes(page):
     page.add_step("move_tip")
 
 
-def _the_trash(page):
+def _open_the_trash(page):
     page.trash_row.click()
 
 
-CHOICES = [_take_from, _put_into, _where_blown_out, _where_the_tip_goes,
-           _the_trash]
+CHOICES = [_open_take_from, _open_put_into, _open_where_blown_out,
+           _open_where_the_tip_goes, _open_the_trash]
 
 
 def _choice(page):

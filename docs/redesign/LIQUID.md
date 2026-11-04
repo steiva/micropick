@@ -372,6 +372,11 @@ its rows. A Move liquid card has four; the other kinds' are in §3.6:
 - The list scrolls inside the panel. When it is scrolled, a 16 px fade at the
   top and bottom edges shows that there is more.
 
+After a change of section, by a row or by Next, no field has the focus, so a
+stray key changes nothing. A field the operator clicked keeps the focus while
+they type, also while what they type updates the page. This holds for every
+section, whichever side its fields are on.
+
 ### 3.2 Section "Take from" (left area)
 
 - Header: the caption "STEP 1 · TAKE FROM" (`tips` color) and the title

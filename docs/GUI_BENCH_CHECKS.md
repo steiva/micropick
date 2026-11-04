@@ -2044,6 +2044,12 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   the choice clears "Where is the liquid taken from?", still on that row. Each
   choice changes the place.
 
+- [ ] **No field takes the focus by itself.**
+  Click a field of Amount, then go through the sections by Next and by their
+  rows: no field is ringed, and a digit or an arrow pressed changes nothing in
+  the plan, in any section. Click Volume and type several digits: the field
+  keeps the focus while the card's row and the sentence follow.
+
 - [ ] **A point and By hand.**
   Take from A point: the live upper camera, the points under it. A right click
   adds a memo point; used in a step it reads as its name and is still there

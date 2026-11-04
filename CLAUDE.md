@@ -383,7 +383,9 @@ its place in the list. One card is open at a time, its rows the sections
 is what the section asks (the plate, the camera, Amount's, Extras' and How's
 fields, `widgets.plan_forms`, in the middle of the room under the title; the
 waits' fields are in the card), with no card open the whole plan in each
-step's color. A card moves by its handle
+step's color. The place choice is on the title's row, centered in the left area,
+moved right only to clear the title. After a change of section no field has the
+focus (`LiquidPlanPage._leave_the_fields`): one clicked keeps it while typed in. A card moves by its handle
 (`widgets.step_list`: never `QListWidget` with item widgets), Alt+↑ / ↓ or
 its ⋯ menu; the widget only says `moveRequested`, the page applies
 `move_step` as one undo entry and calls `set_steps`. A plate is drawn in its

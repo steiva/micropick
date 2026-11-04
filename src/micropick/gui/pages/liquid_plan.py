@@ -25,6 +25,9 @@ time, for a Wait for me how its message will read. With
 no card open: the whole plan's wells in each step's color and a legend; with
 no steps, the first step's button.
 
+After a change of section no field has the focus (`_leave_the_fields`), so a
+stray key changes nothing; a field clicked keeps it while it is typed in.
+
 The page holds the plan, every edit a new copy on its undo list: wells, a
 move, the trash, a step added or deleted are one undo each (Ctrl+Z, and Undo
 over the plate), and so is a field typed in digit by digit. The widgets never
@@ -435,6 +438,7 @@ class LiquidPlanPage(QWidget):
         self._redo: list[LiquidPlan] = []
         self.open_id = ""                        # the card open
         self.section: str | None = None          # what the left area asks
+        self._asked: tuple = ("", None)          # the card and section shown
         self._before_trash: str | None = None
         self.slot: str | None = None             # the plate a new step opens on
         self._trash_slot: str | None = None      # the plate looked at for it
@@ -716,7 +720,7 @@ class LiquidPlanPage(QWidget):
         return box
 
     def _answer(self) -> QWidget:
-        """The left side of a section answered in the card."""
+        """The left side of a section answered with fields."""
         box = QWidget(self)
         column = QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
@@ -1670,6 +1674,18 @@ class LiquidPlanPage(QWidget):
         else:
             self.left.setCurrentWidget(self.empty_box)
         self._camera_up()
+        self._leave_the_fields()
+
+    def _leave_the_fields(self) -> None:
+        """A change of section leaves no field with the focus: Qt hands the
+        focus of what is hidden to the next field, where a stray key would
+        change a value. The page takes it and not nothing: a window with no
+        focus gives the first of its chain the focus when it is activated."""
+        asked = (self.open_id, self.section)
+        if asked != self._asked:
+            self._asked = asked
+            if self.isVisible():
+                self.setFocus()
 
     def _camera_up(self) -> None:
         """The picture and the pose as the camera section comes up."""
