@@ -61,16 +61,22 @@ import threading
 import numpy as np
 
 from ..core.deck import SLOT_HEIGHT, SLOT_WIDTH, slot_center
-from ..hardware.protocols import Robot, move_to, require_ok, xyz
+from ..hardware.protocols import (Robot, move_to, prepare_to_aspirate,
+                                  require_ok, xyz)
 from .jog import AXES, Limits
 
-__all__ = ["Motion", "NoRobot", "WELL_LEVELS", "PARK_XY",
+__all__ = ["Motion", "NoRobot", "WELL_LEVELS", "PARK_XY", "APPROACH_MM",
+           "descend",
            "TRAVEL_BELOW_TOP_MM", "Z_NOZZLE_TOP_MM", "JOG_BELOW_TOP_MM",
            "UNKNOWN_TIP_LENGTH_MM", "MODULE_MARGIN_MM", "envelope_for",
            "refusal"]
 
 # The robot's names for where in a well an offset is measured from.
 WELL_LEVELS = ("top", "center", "bottom")
+
+# How far over a plate's measured rim the tip stops before going straight
+# down to its measured bottom (`descend`).
+APPROACH_MM = 2.0
 
 # Where Park leaves the head: the back right corner of the jog envelope,
 # out of the way of the deck. Not a home: a home loses the tip calibration.
@@ -163,6 +169,33 @@ def _tip_key(tip):
     if tip is None:
         return None
     return (tip.attached, getattr(tip, "pickup", None), tip.length)
+
+
+def descend(robot: Robot, labware_id: str, well: str, xy, rim: float,
+            depth: float, height: float, *, prepare: bool = False,
+            log=None) -> None:
+    """The tip to `height` above a well's measured bottom: the measured rim
+    (`rim`, from the robot's well top) less `depth`. `xy` is the offset from
+    the robot's well center. Over the rim with the robot's own well move,
+    then straight down to the absolute Z: the robot refuses a well command
+    below the bottom of its labware definition, and a measured bottom is
+    often just that. `prepare`: the plunger made ready for an aspirate in
+    place while the tip is over the rim, above the liquid, since in the
+    well it would blow into it. With liquid in the tip it does nothing."""
+    over = rim + APPROACH_MM
+    if log is not None:
+        log(f"tip over {well}, {APPROACH_MM:g} mm above the measured rim")
+    require_ok(robot.move_to_well(
+        labware_id, well, well_location="top",
+        offset=(round(xy[0], 3), round(xy[1], 3), round(over, 3)),
+        verbose=False), "move to well")
+    px, py, pz = xyz(robot)
+    if prepare:
+        prepare_to_aspirate(robot)
+    bottom = pz - over + rim - depth + height
+    if log is not None:
+        log(f"down to the measured bottom {height:+g} mm (z {bottom:.2f})")
+    move_to(robot, (px, py, bottom), min_z_height=bottom, force_direct=True)
 
 
 class Motion:
@@ -300,6 +333,16 @@ class Motion:
         require_ok(robot.move_to_well(labware_id, well, well_location=level,
                                       offset=tuple(float(v) for v in offset),
                                       verbose=False), "move to well")
+
+    def to_measured_bottom(self, labware_id: str, well: str, xy, rim: float,
+                           depth: float, height: float, *,
+                           prepare: bool = False, log=None) -> None:
+        """The tip up, then `height` above a well's measured bottom
+        (`descend`)."""
+        robot = self._need_robot()
+        self.raise_tip(log=log)
+        descend(robot, labware_id, well, xy, rim, depth, height,
+                prepare=prepare, log=log)
 
     # -- inside ---------------------------------------------------------------
 

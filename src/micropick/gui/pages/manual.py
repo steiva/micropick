@@ -94,10 +94,13 @@ lower camera's picture is not a place on the deck.
 Aspirate
 --------
 The operator composes the work from Aspirate and Dispense; nothing is a
-script. Aspirate's settings are one line, "0.5 mm above the bottom · 15 µl
-· 50 µl/s", and Change unfolds them. The height is above the bottom of
-where the tip goes down: the measured dish bottom (`PickingConfig.
-dish_bottom`) by hand, the well's bottom in a well. From:
+script. Aspirate's settings are one line, "0.5 mm above the measured
+bottom · 15 µl · 50 µl/s", and Change unfolds them. The height is above the
+bottom of where the tip goes down: the measured dish bottom (`PickingConfig.
+dish_bottom`) by hand; in a well the plate's measured bottom (rim less
+depth, `Motion.to_measured_bottom`) once confirmed in this robot session
+(`Session.plate_bottom_confirmed`), else the drawing's, and the line says
+which (#89). From:
 
 * **In a well** - a plate the robot session holds and its well.
 * **At a point** - a memo or saved point, at its own Z.
@@ -129,8 +132,8 @@ All or Part (µl, no more than is in the tip: `Session.dispense`), where:
 * **In a well** - the plate and well, and a mini map of the plate plan's
   plate (filled and still planned wells; a click chooses that well), so
   the wells a run left empty can be filled by hand. The tip goes to the
-  well's bottom plus the picking settings' deposit offset, from the
-  plate's well center, as a run deposits.
+  well's bottom (as Aspirate's, measured or the drawing's) plus the
+  picking settings' deposit offset, from the plate's well center.
 * **At a point** - a memo or saved point.
 * **Here** - where the tip is.
 
@@ -143,8 +146,10 @@ The well center
 Dispense into a well goes from the plate's measured well center where
 there is one (`config.schema.WellCenter`, per slot and plate type): its x
 and y are added to the profile's well offsets, as a picking run adds them
-to its deposit, and the level keeps the robot's own heights. It is
-measured on the step before, Well center (`pages.well_center`, #63).
+to its deposit. Its height counts once the plate is confirmed in this
+robot session (see Aspirate); until then the level keeps the robot's own
+heights. It is measured on the step before, Well center
+(`pages.well_center`, #63).
 
 Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
@@ -232,8 +237,9 @@ FROM = ("In a well", "At a point", "By hand")
 AMOUNT = ("All", "Part")
 WHERE = ("In a well", "At a point", "Here")
 
-# By hand's height: a Z, or above the dish bottom of this robot session.
-HEIGHT = ("Z", "Above the dish bottom")
+# By hand's height: a Z, or above the bottom, the dish's of this robot
+# session.
+HEIGHT = ("Z", "Above the bottom")
 
 # What the mouse does on the picture, its row along the bottom (§3).
 MOUSE_HELP = ("Right click   mark a point", "Wheel   zoom",
@@ -362,7 +368,7 @@ class ManualPage(QWidget):
         self.session = session
         self._worker: Worker | None = None
         # Whether the dish bottom was known in this robot session when last
-        # looked: Above the dish bottom becomes the default as it becomes so.
+        # looked: Above the bottom becomes the default as it becomes so.
         self._bottom_known = False
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
@@ -484,7 +490,7 @@ class ManualPage(QWidget):
         body.addLayout(row)
         self.settings_box = QWidget(self)
         QVBoxLayout(self.settings_box).setContentsMargins(0, 0, 0, 0)
-        # By hand's height: Z, or above the dish bottom.
+        # By hand's height: Z, or above the bottom.
         self.height_mode = Segmented(list(HEIGHT), parent=self)
         self.height_mode.changed.connect(lambda _i: self._source_changed())
         self.height_row = _row(self.settings_box, "Height", self.height_mode)
@@ -492,7 +498,7 @@ class ManualPage(QWidget):
         self.hand_z.setToolTip("Z of the tip's end.")
         self.above_bottom = _number_box(self, 0.5, ABOVE_BOTTOM_RANGE, " mm")
         self.above_bottom.setToolTip(
-            "Above the dish bottom, or the well's bottom.")
+            "Above the dish bottom, or the plate's: the line says which.")
         self.volume = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
         self.flow_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1, 1.0)
         rows = {}
@@ -513,6 +519,7 @@ class ManualPage(QWidget):
         body.addWidget(self.source)
 
         self.source_wells = _WellPicker(self)
+        self.source_wells.changed.connect(self._show_settings_line)
         self.source_wells.changed.connect(self._refresh)
         body.addWidget(self.source_wells)
 
@@ -692,28 +699,42 @@ class ManualPage(QWidget):
 
     def _show_settings_line(self) -> None:
         height = (f"Z {self.hand_z.value():g} mm" if self._hand_z_chosen()
-                  else f"{self.above_bottom.value():g} mm above the bottom")
+                  else f"{self.above_bottom.value():g} mm above "
+                       f"{self._bottom_words()}")
         self.settings_line.setText(
             f"{height} · {self.volume.value():g} µl · "
             f"{self.flow_rate.value():g} µl/s")
 
+    def _bottom_words(self) -> str:
+        """Which bottom Aspirate's height is above: in a well, the one it
+        will go to."""
+        source = self._source()
+        if source is None or source[0] != "well":
+            return "the bottom"
+        slot, _labware_id, definition, well = source[1]
+        return ("the drawing's bottom"
+                if self._measured_bottom(slot, definition, well) is None
+                else "the measured bottom")
+
     def _hand_z_chosen(self) -> bool:
-        """By hand, at a Z rather than above the dish bottom."""
+        """By hand, at a Z rather than above the bottom."""
         return (FROM[self.source.current()] == "By hand"
                 and HEIGHT[self.height_mode.current()] == "Z")
 
     def _bottom_changed(self) -> None:
-        """Above the dish bottom only while it was measured or reused in
-        this robot session, and the default as it becomes so."""
+        """Above the bottom only while the dish bottom was measured or
+        reused in this robot session, and the default as it becomes so; the
+        line, as a plate's bottom may have been confirmed."""
         known = self.session.is_confirmed("dish_bottom")
-        above = self.height_mode.buttons[HEIGHT.index("Above the dish bottom")]
+        above = self.height_mode.buttons[HEIGHT.index("Above the bottom")]
         above.setEnabled(known)
         above.setToolTip("" if known else "Dish bottom: Not set.")
         if known != self._bottom_known:
             self.height_mode.set_current(HEIGHT.index(
-                "Above the dish bottom" if known else "Z"))
+                "Above the bottom" if known else "Z"))
             self._bottom_known = known
             self._source_changed()
+        self._show_settings_line()
 
     def _source_changed(self) -> None:
         """From's own controls under it; the points drawn or not."""
@@ -791,19 +812,39 @@ class ManualPage(QWidget):
                                             well_center.xy(center))
         return (dx, dy, float(z))
 
-    def _go_to(self, target, z: float | None):
-        """The move to `target` - a well (`z` above its bottom), a point
-        (its own Z) - as a job's first part,
-        and what to call it; (None, "here") for no move. Raises ValueError
-        with the reason when it is out of reach."""
+    def _measured_bottom(self, slot, definition, well: str):
+        """(rim, depth) of the plate's measured bottom, from the robot's
+        well top; None for the drawing's: a plate not measured, or measured
+        but not confirmed in this robot session."""
+        load_name = definition.load_name
+        if not self.session.plate_bottom_confirmed(slot, load_name):
+            return None
+        center = self._well_center(slot, load_name)
+        depth = (center.depth_mm if center.depth_mm is not None
+                 else well_center.definition_depth(definition, well))
+        return None if depth is None else (float(center.offset[2]),
+                                           float(depth))
+
+    def _go_to(self, target, z: float | None, *, prepare: bool = False):
+        """The move to `target` - a well (`z` above its measured bottom,
+        else the drawing's), a point (its own Z) - as a job's first part,
+        and what to call it; (None, "here") for no move. `prepare`: for an
+        aspirate, as the measured bottom asks (`motion.descend`). Raises
+        ValueError with the reason when it is out of reach."""
         kind, what = target
         motion = self.session.motion
         if kind == "well":
             slot, labware_id, definition, well = what
             offset = self._well_offset(slot, definition, z)
+            measured = self._measured_bottom(slot, definition, well)
 
             def go(log):
-                motion.to_well(labware_id, well, "bottom", offset, log=log)
+                if measured is None:
+                    motion.to_well(labware_id, well, "bottom", offset, log=log)
+                else:
+                    motion.to_measured_bottom(
+                        labware_id, well, offset[:2], *measured, offset[2],
+                        prepare=prepare, log=log)
             return go, f"{well} of slot {slot}"
         if kind == "point":
             point = what
@@ -843,7 +884,7 @@ class ManualPage(QWidget):
             self.jog.tell(problem)
             return
         try:
-            go, where = self._go_to(source, z)
+            go, where = self._go_to(source, z, prepare=True)
         except ValueError as exc:
             self.jog.tell(str(exc))
             return
@@ -1581,6 +1622,8 @@ class ManualPage(QWidget):
             self._forget_targets()
         else:
             self._refresh()
+        # A module's height decides whether a measurement is the plate's.
+        self._show_settings_line()
 
     def _on_robot_busy(self, _holder) -> None:
         self._refresh()

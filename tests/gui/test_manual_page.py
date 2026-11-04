@@ -804,3 +804,136 @@ def test_a_wells_offset_does_not_read_a_measurement_of_another_height(page):
     session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
     assert page._well_offset("5", definition, 1.0) == \
         pytest.approx((0.0, 0.0, 1.0))
+
+
+# -- In a well: the plate's measured bottom (#89) ---------------------------
+
+PLATE = "corning_96_wellplate_360ul_flat"
+
+
+def _measured_plate(app, page, session):
+    """A plate in slot 5, measured and so confirmed: 0.4, -0.3 off the
+    drawing's center, the rim 1 mm under it, 9 mm deep."""
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.profile.picking.well_offset_x = 0.0
+    session.profile.picking.well_offset_y = 0.0
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
+    _tip_on(app, page, session)
+    page.source.buttons[0].click()                       # In a well
+    page.source_wells.well.setCurrentText("A7")
+    page.above_bottom.setValue(0.5)
+    _wait(app, page)
+
+
+def test_aspirate_in_a_confirmed_plate_reaches_the_rim_less_depth_plus_height(
+        app, page, session):
+    _measured_plate(app, page, session)
+    at = _aspirated_at(session)
+    z = _pose(session)[2]              # the mock stays here: over the rim
+    page.aspirate_button.click()
+    _wait(app, page)
+    # Over the rim by the approach, at the measured x and y ...
+    assert session.robot.well_offset == pytest.approx((0.4, -0.3, 1.0))
+    # ... then straight down: 2 mm to the rim, 9 to the bottom, 0.5 up.
+    assert at[-1][2] == pytest.approx(z - 2.0 - 9.0 + 0.5, abs=0.01)
+
+
+def test_aspirate_prepares_the_plunger_over_the_rim_not_in_the_well(
+        app, page, session):
+    _measured_plate(app, page, session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    names = [c[0] for c in session.robot.calls]
+    well = len(names) - 1 - names[::-1].index("move_to_well")
+    assert names[well + 1] == "prepare_to_aspirate"
+
+
+def test_dispense_in_a_confirmed_plate_reaches_the_deposit_height(
+        app, page, session):
+    _measured_plate(app, page, session)
+    session.profile.picking.deposit_offset_z = 1.5
+    page._aspirate_here()
+    _wait(app, page)
+    page.target.buttons[0].click()                       # In a well
+    page.target_wells.well.setCurrentText("A7")
+    _wait(app, page)
+    z = _pose(session)[2]
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.robot.well_offset == pytest.approx((0.4, -0.3, 1.0))
+    assert _pose(session)[2] == pytest.approx(z - 2.0 - 9.0 + 1.5, abs=0.01)
+    assert session.robot.calls[-1][0] == "dispense_in_place"
+
+
+def _well_moves(session):
+    return [c for c in session.robot.calls if c[0] == "move_to_well"]
+
+
+def test_a_plate_measured_but_not_confirmed_takes_the_drawings_bottom(
+        app, page, session):
+    _measured_plate(app, page, session)
+    session.new_run()                        # measured, not said so here
+    session.load_labware(resolve_definition(PLATE), 5)
+    page.source_wells.well.setCurrentText("A7")
+    _wait(app, page)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert _well_moves(session)[-1][3] == "bottom"
+    # The x and y are the measured center, confirmed or not.
+    assert session.robot.well_offset == pytest.approx((0.4, -0.3, 0.5))
+
+
+def test_a_plate_not_measured_takes_the_drawings_bottom(app, page, session):
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.profile.picking.well_offset_x = 0.0
+    session.profile.picking.well_offset_y = 0.0
+    _tip_on(app, page, session)
+    page.source.buttons[0].click()
+    page.source_wells.well.setCurrentText("A7")
+    page.above_bottom.setValue(0.5)
+    _wait(app, page)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert _well_moves(session)[-1][3] == "bottom"
+    assert session.robot.well_offset == pytest.approx((0.0, 0.0, 0.5))
+
+
+def test_the_settings_line_names_the_bottom_and_follows_the_confirmation(
+        app, page, session):
+    session.load_labware(resolve_definition(PLATE), 5)
+    page.source.buttons[0].click()
+    page.source_wells.well.setCurrentText("A7")
+    page.above_bottom.setValue(0.5)
+    assert page.settings_line.text().startswith(
+        "0.5 mm above the drawing's bottom · ")
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
+    assert page.settings_line.text().startswith(
+        "0.5 mm above the measured bottom · ")
+
+
+def test_the_settings_line_follows_the_plate_chosen(app, page, session):
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.load_labware(resolve_definition(PLATE), 6)
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
+    page.source.buttons[0].click()
+    page.source_wells.plate.setCurrentIndex(0)
+    assert "measured bottom" in page.settings_line.text()
+    page.source_wells.plate.setCurrentIndex(1)
+    assert "drawing's bottom" in page.settings_line.text()
+
+
+def test_the_settings_line_goes_back_when_the_module_height_changes(
+        app, page, session):
+    """#92: a measurement on another height is not the plate's."""
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
+    page.source.buttons[0].click()
+    assert "measured bottom" in page.settings_line.text()
+    session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
+    assert "drawing's bottom" in page.settings_line.text()
+
+
+def test_by_hand_height_is_above_the_bottom(page):
+    page.source.buttons[2].click()                       # By hand
+    labels = [b.text() for b in page.height_mode.buttons]
+    assert labels == ["Z", "Above the bottom"]

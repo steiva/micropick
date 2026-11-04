@@ -13,6 +13,9 @@ the third for fixes.
 - Manual pick has a Source step: pick from the source dish or from a plate
   on the deck. From a plate there is no Dish bottom step; the plate's Well
   center is measured or taken with Use it, and Run waits for that.
+- Manual pick: Aspirate and Dispense In a well go to a height above the
+  plate's measured bottom once it is confirmed in this robot session, else
+  above the drawing's, and the settings line says which.
 - A new window (the redesign, `docs/redesign/REDESIGN.md`). The tabs, the
   status bar, the floating next step and the Profile page are gone. The
   app opens on Home: the robot (it connects by itself; no Connect), the

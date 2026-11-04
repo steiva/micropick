@@ -333,15 +333,20 @@ takes from under the camera's crosshair (the picture's center through
 the pixel map, plus the measured tip offset); no spot is clicked: a
 click moves the camera, with Snap to found cuboids onto a cuboid's
 center (beside every cuboid, to the point). Its height is Z | Above the
-dish bottom, the latter only while the dish bottom was measured or reused
+bottom, the latter only while the dish bottom was measured or reused
 in this robot session (`Session.is_confirmed("dish_bottom")`) and the
 default then. Aspirate is enabled whenever a tip is on and the robot is
 free: one job remembers the camera's pose, the tip to the spot at the
 travel height (`Motion.tip_to`), down, aspirate, the camera back to that
-pose; with Aspirate as soon as I click, a click aims and does it. Dispense opens
+pose; with Aspirate as soon as I click, a click aims and does it. In a well
+the height is above the plate's measured bottom (rim less depth, reached as
+the liquid engine reaches it, `Motion.to_measured_bottom`) once it is
+confirmed in this robot session (`Session.plate_bottom_confirmed`), else
+above the drawing's; x and y are the measured center either way. The
+settings line says which ("0.5 mm above the measured bottom"). Dispense opens
 by itself when the tip holds something: All | Part, In a well (a mini map
-of the plan's plate; a well's bottom plus the deposit offset, from its
-well center) / At a point / Here, its button saying what it does ("Go
+of the plan's plate; a well's bottom, as Aspirate's, plus the deposit
+offset, from its well center) / At a point / Here, its button saying what it does ("Go
 to A7 and dispense", "Dispense here"), gray while the tip is empty. What
 is in the tip is the session's count (`Session.in_tip`,
 `Session.aspirate`, `Session.dispense`: all or a part no larger than it;

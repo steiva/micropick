@@ -27,10 +27,10 @@ the depth set for the plate (`Plate.depth`), and it is not a well command:
 the robot refuses any well command whose point lies below the bottom of the
 well as its labware definition has it ("OperationLocationNotInWellError"),
 and a measured bottom is often just that. So it is reached as notebook 03
-did (`_descend`): a `move_to_well` to over the measured rim, the pose read
-there, the engine's `prepareToAspirate` while the tip is still above the
-liquid, and one straight `move_to_coordinates` down to the absolute Z; the
-liquid commands there are the in-place ones.
+did (`motion.descend`): a `move_to_well` to over the measured rim, the pose
+read there, the engine's `prepareToAspirate` while the tip is still above
+the liquid, and one straight `move_to_coordinates` down to the absolute Z;
+the liquid commands there are the in-place ones.
 
 Leaving a well the robot does not know the tip is in
 ----------------------------------------------------
@@ -110,10 +110,10 @@ from pathlib import Path
 from ..core.liquid import (MEASURED_BOTTOM, BlowOut, Dispense, Group,
                            Location, Program, aspirate_volume, empties_now,
                            needed_after, ordered_wells, refills)
-from ..hardware.protocols import (Robot, move_relative, move_to,
-                                  prepare_to_aspirate, require_ok, xyz)
+from ..hardware.protocols import (Robot, move_relative, prepare_to_aspirate,
+                                  require_ok)
 from . import manual as moves
-from .motion import Motion
+from .motion import Motion, descend
 
 __all__ = ["Stopped", "Overfill", "Plate", "LiquidState", "chosen", "problems",
            "trash_problems", "play", "plan", "go",
@@ -127,10 +127,6 @@ LOG_FIELDS = ["time", "group", "well", "step", "in_tip", "note"]
 # aspirate - leaves the plunger ready for the next aspirate in place.
 SHAKE_UL = 10.0
 SHAKE_FLOW = 50.0
-
-# How far over the measured rim the tip stops before going straight down
-# to the measured bottom.
-APPROACH_MM = 2.0
 
 # Volumes are compared with this much slack: 0.1 + 0.2 is not 0.3.
 VOLUME_TOL = 1e-6
@@ -574,20 +570,8 @@ def _descend(robot: Robot, location: Location, group: Group, well: str,
                          f"well center and the well depth")
     x, y, z = (float(v) for v in location.offset)
     cx, cy, cz = (float(v) for v in plate.center)
-    over = cz + APPROACH_MM
-    _say(log, f"tip over {target}, {APPROACH_MM:g} mm above the measured rim")
-    require_ok(robot.move_to_well(
-        plate.labware_id, target, well_location="top",
-        offset=(round(x + cx, 3), round(y + cy, 3), round(over, 3)),
-        verbose=False), "move to well")
-    px, py, pz = xyz(robot)
-    if prepare:
-        # Above the liquid: preparing moves the plunger, and in the well it
-        # would blow into it. With liquid in the tip it does nothing.
-        prepare_to_aspirate(robot)
-    bottom = pz - over + cz - float(plate.depth) + z
-    _say(log, f"down to the measured bottom {z:+g} mm (z {bottom:.2f})")
-    move_to(robot, (px, py, bottom), min_z_height=bottom, force_direct=True)
+    descend(robot, plate.labware_id, target, (x + cx, y + cy), cz,
+            float(plate.depth), z, prepare=prepare, log=log)
 
 
 def _in_well(robot: Robot, command: str, place, **params):

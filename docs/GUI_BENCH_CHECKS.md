@@ -1675,16 +1675,18 @@ tip box and a 384 plate at hand.
 ## Redesign — Manual Work: Aspirate and Dispense (#19)
 
 - [ ] **Aspirate's settings line.**
-  Manual pick › Run, From In a well: the Aspirate card reads "0.5 mm
-  above the bottom · 10 µl · 50 µl/s" (the profile's pickup offset,
-  volume and flow rate); By hand at a Z: "Z 66.6 mm · …". Change unfolds
+  Manual pick › Run, From In a well, a plate not measured: the Aspirate
+  card reads "0.5 mm above the drawing's bottom · 10 µl · 50 µl/s" (the
+  profile's pickup offset, volume and flow rate). Confirm that plate on
+  Well center (Save, or Use it): "0.5 mm above the measured bottom · …",
+  and choosing another plate follows it; By hand at a Z: "Z 66.6 mm · …". Change unfolds
   the height, Volume and Speed, and the line follows them. No
   step numbers on the cards, no moved-cuboids counter, no Finish.
 
 - [ ] **By hand: under the crosshair (#60).**
   From: By hand, a tip on: Aspirate is enabled at once, no click needed,
   and no hint to click a spot. Without a dish bottom in this robot
-  session Change shows Height Z | Above the dish bottom with Above gray
+  session Change shows Height Z | Above the bottom with Above gray
   and Z chosen; after Dish bottom (or Use it) Above is enabled and chosen.
   Put the crosshair on liquid, Aspirate: the tip goes over the crosshair's
   spot at the travel height, down to the height, aspirates, and the
@@ -1697,7 +1699,10 @@ tip box and a 384 plate at hand.
 
 - [ ] **In a well, At a point.**
   In a well: Plate and Well; Aspirate goes to the well's bottom + the
-  height (watch it, it must not hit the bottom). At a point: the points
+  height (watch it, it must not hit the bottom): the measured bottom
+  (rim less depth) on a plate confirmed in this robot session, else the
+  drawing's. Check the 0.5 mm on a confirmed plate: the rim is set by eye
+  and the depth is the drawing's. At a point: the points
   list (drawn on the picture only now), × deletes; Aspirate goes to the
   chosen point at its Z. Aspirate is gray until a well or a point is
   chosen.
@@ -1708,11 +1713,12 @@ tip box and a 384 plate at hand.
   All: 0 µl and the button grays. In a well: with a plate plan made, the
   mini map shows Filled / Planned; a click on a well chooses it and the
   button reads "Go to A7 and dispense"; the tip goes into that well at
-  the deposit height. At a point: "Go to M1 and dispense".
+  the deposit height, above the same bottom as Aspirate's. At a point: "Go to M1 and dispense".
 
 - [ ] **Well center.**
   Work has no Well center card (#63: it is Manual pick's step before).
-  A plate measured there: Dispense in a well goes to the measured center.
+  A plate measured there: Aspirate and Dispense in a well go to the
+  measured center, confirmed or not; the height follows the confirmation.
 
 ## Redesign — Well center step and skipped plates (#21)
 
