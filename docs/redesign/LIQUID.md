@@ -480,11 +480,17 @@ middle of the room under the title. Each one has its help line under it:
 ### 3.6 Mix, Blow out, Move the tip, Wait, Wait for me (other step kinds)
 
 - **Mix:** sections *Wells* (the plate, the same as Put into, colored with the
-  step) and *How* (cycles, µl, speed, height with the well drawing).
+  step) and *How*: Times, Volume and Speed in one row in a card, over the
+  height card.
 - **Blow out:** sections *Where* (**A well | A point | Trash**, the trash by
-  default) and *How* (speed, and the height in a well).
+  default) and *How*: Speed over the height card in a well, anywhere else Speed
+  and the line "A point and the trash are used at their own height."
 - **Move the tip:** sections *Where* (**A well | A point | By hand**) and, in a
-  well, *How* (the height).
+  well, *How*: only the height card.
+
+*How* is asked in the left area with Amount's parts, in a column of Extras'
+width, 480 px, in the middle of the room under the title. The open card holds
+none of it.
 - **Wait:** one field, minutes and seconds. The left area shows a large
   "5 min" and "The robot does nothing for this long. Pause and Stop still
   work."
@@ -737,7 +743,7 @@ StepBar: Deck ✓, Tip ✓, Well center ✓, Plan ✓ (clickable, back to Plan),
 | `workflows/liquid_plan.py` | new: `run_plan`, `plan_problems` |
 | `gui/widgets/step_list.py` | new: `StepList`, `PlanStepCard` with drag (§5) |
 | `gui/widgets/plan_forms.py` | new: the fields of Amount, Extras and How |
-| `gui/widgets/well_heights.py` | new: the two well cross-sections (§3.4) |
+| `gui/widgets/well_heights.py` | new: the well cross-section (§3.4) |
 | `gui/widgets/plate_grid.py` (or wherever PlateGrid lives) | real-proportion drawing (R5); "used by other steps" dim colors |
 | the Liquid Plan and Run pages of the redesign | rebuilt to this spec, reusing MiniDeckDropdown, PlateGrid, CameraView, JogPad, Segmented, Switch, Select, Toast and banners |
 | `tests/` | see §9 |

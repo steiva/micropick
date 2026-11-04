@@ -1,8 +1,9 @@
 """What an open plan step asks that is not a place (LIQUID.md §3.4 - §3.6).
 
-Amount and Extras of a Move liquid have the left area to themselves
-(`AmountForm`, `ExtrasForm`); How of a Mix, a Blow out or a Move the tip, the
-time of a Wait and the message of a Wait for me are in the card (`StepForm`).
+Amount and Extras of a Move liquid and How of a Mix, a Blow out or a Move the
+tip have the left area to themselves (`AmountForm`, `ExtrasForm`, `HowForm`);
+the time of a Wait and the message of a Wait for me are in the card
+(`StepForm`).
 There is nothing to confirm: a change goes out as it is typed, as
 `edited(key, values)`, the step's fields and their new values, and the page
 makes it part of the plan. `key` names the field, so a number typed digit by
@@ -14,18 +15,18 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
-                               QLineEdit, QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QLineEdit,
+                               QStackedWidget, QVBoxLayout, QWidget)
 
 from ...core.liquid_plan import Height, height_words
 from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, card, double_spin_box, muted_label,
-                             select, spin_box)
+                             spin_box)
 from .controls import Segmented, Switch
 from .well_heights import DEPTH_MM, WellDrawing
 
-__all__ = ["AmountForm", "ExtrasForm", "HeightCard", "HeightFields",
-           "StepForm", "uses_height"]
+__all__ = ["AmountForm", "ExtrasForm", "HeightCard", "HowForm", "StepForm",
+           "uses_height"]
 
 REFS = (("bottom", "Bottom"), ("middle", "Middle"), ("top", "Top"))
 MAX_UL = 100000.0
@@ -77,51 +78,6 @@ def _labeled(parent: QWidget, label: str, field: QWidget) -> QWidget:
     column.addWidget(muted_label(label, box))
     column.addWidget(field)
     return box
-
-
-class HeightFields(QWidget):
-    """A height: Bottom, Middle or Top, an offset, and Aside X and Y."""
-
-    changed = Signal(object)                # the Height
-
-    def __init__(self, title: str, color: str, parent: QWidget | None = None):
-        super().__init__(parent)
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(6)
-        self.title = QLabel(title, self)
-        self.title.setStyleSheet(f"color: {COLORS[color]};")
-        grid.addWidget(self.title, 0, 0)
-        self.ref = select(self)
-        for ref, text in REFS:
-            self.ref.addItem(text, ref)
-        grid.addWidget(self.ref, 0, 1)
-        self.offset = _number(self, -MAX_OFFSET_MM, MAX_OFFSET_MM, " mm", 2)
-        grid.addWidget(self.offset, 0, 2)
-        grid.addWidget(muted_label("Aside X, Y", self), 1, 0)
-        self.aside_x = _number(self, -MAX_ASIDE_MM, MAX_ASIDE_MM, " mm", 2)
-        self.aside_y = _number(self, -MAX_ASIDE_MM, MAX_ASIDE_MM, " mm", 2)
-        grid.addWidget(self.aside_x, 1, 1)
-        grid.addWidget(self.aside_y, 1, 2)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
-        self.ref.currentIndexChanged.connect(lambda _i: self._changed())
-        for box in (self.offset, self.aside_x, self.aside_y):
-            box.valueChanged.connect(lambda _v: self._changed())
-
-    def _changed(self) -> None:
-        self.changed.emit(Height(ref=self.ref.currentData(),
-                                 offset_mm=self.offset.value(),
-                                 aside_x_mm=self.aside_x.value(),
-                                 aside_y_mm=self.aside_y.value()))
-
-    def show_height(self, height: Height) -> None:
-        self.ref.blockSignals(True)
-        self.ref.setCurrentIndex(self.ref.findData(height.ref))
-        self.ref.blockSignals(False)
-        _put(self.offset, height.offset_mm)
-        _put(self.aside_x, height.aside_x_mm)
-        _put(self.aside_y, height.aside_y_mm)
 
 
 class HeightCard(QWidget):
@@ -341,6 +297,57 @@ class ExtrasForm(_Fields):
         _put(self.wait_after, step.wait_after_s)
 
 
+class HowForm(_Fields):
+    """The numbers of a step over its height, what the step does not use
+    hidden: a point has its own height, and so has the trash."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        self.numbers = card(self)
+        row = QHBoxLayout()
+        row.setSpacing(SPACING * 3)
+        self.numbers.layout().addLayout(row)
+        self.cycles = spin_box(self.numbers)
+        self.cycles.setRange(1, MAX_CYCLES)
+        self.cycles.setSuffix(" times")
+        self.volume = _number(self.numbers, 0.1, MAX_UL, " µl")
+        self.flow = _number(self.numbers, 0.1, MAX_FLOW, " µl/s")
+        self.mix_fields = []
+        for label, field, name in (("Times", self.cycles, "cycles"),
+                                   ("Volume", self.volume, "volume_ul"),
+                                   ("Speed", self.flow, "flow_ul_s")):
+            labeled = _labeled(self.numbers, label, field)
+            row.addWidget(labeled, 1)
+            field.valueChanged.connect(self._say(name))
+            if field is not self.flow:
+                self.mix_fields.append(labeled)
+        column.addWidget(self.numbers)
+        self.at = HeightCard("HEIGHT", "plate", self)
+        self.at.changed.connect(self._say("at"))
+        column.addWidget(self.at)
+        self.no_height = muted_label(NO_HEIGHT, self)
+        column.addWidget(self.no_height)
+
+    def show_step(self, step, note: str, depth_mm: float | None) -> None:
+        """`note`, `depth_mm`: of the height, for a well."""
+        mixing = step.kind == "mix"
+        for field in self.mix_fields:
+            field.setVisible(mixing)
+        self.numbers.setVisible(step.kind != "move_tip")
+        height = uses_height(step)
+        self.at.setVisible(height)
+        self.no_height.setVisible(not height)
+        if mixing:
+            _put(self.cycles, step.cycles)
+            _put(self.volume, step.volume_ul)
+        if step.kind != "move_tip":
+            _put(self.flow, step.flow_ul_s)
+        self.at.show_height(step.at, note, depth_mm)
+
+
 class StepForm(QFrame):
     edited = Signal(str, dict)              # key, {field: value}
 
@@ -351,8 +358,7 @@ class StepForm(QFrame):
         outer.setContentsMargins(10, 8, 10, 8)
         self.stack = QStackedWidget(self)
         outer.addWidget(self.stack)
-        self.pages = {"how": self._how(), "wait": self._wait(),
-                      "message": self._message()}
+        self.pages = {"wait": self._wait(), "message": self._message()}
         for page in self.pages.values():
             self.stack.addWidget(page)
 
@@ -383,24 +389,6 @@ class StepForm(QFrame):
         return line
 
     # -- the sections --------------------------------------------------------
-
-    def _how(self) -> QWidget:
-        page, column = self._page()
-        self.cycles = spin_box(page)
-        self.cycles.setRange(1, MAX_CYCLES)
-        self.cycles.setSuffix(" times")
-        self.cycles.valueChanged.connect(self._say("cycles"))
-        self.cycles_line = self._line(page, column, "Mix", self.cycles)
-        self.how_ul = _number(page, 0.1, MAX_UL, " µl")
-        self.how_ul.valueChanged.connect(self._say("volume_ul"))
-        self.how_ul_line = self._line(page, column, "Volume", self.how_ul)
-        self.how_flow = _number(page, 0.1, MAX_FLOW, " µl/s")
-        self.how_flow.valueChanged.connect(self._say("flow_ul_s"))
-        self.how_flow_line = self._line(page, column, "Speed", self.how_flow)
-        self.at = HeightFields("Height", "plate", page)
-        self.at.changed.connect(self._say("at"))
-        column.addWidget(self.at)
-        return page
 
     def _wait(self) -> QWidget:
         page, column = self._page()
@@ -438,19 +426,6 @@ class StepForm(QFrame):
         getattr(self, f"_show_{section}")(step)
         # Only the page shown counts for the card's height.
         self.stack.setFixedHeight(page.sizeHint().height())
-
-    def _show_how(self, step) -> None:
-        mixing = step.kind == "mix"
-        self.cycles_line.setVisible(mixing)
-        self.how_ul_line.setVisible(mixing)
-        self.how_flow_line.setVisible(step.kind != "move_tip")
-        self.at.setVisible(uses_height(step))
-        if mixing:
-            _put(self.cycles, step.cycles)
-            _put(self.how_ul, step.volume_ul)
-        if step.kind != "move_tip":
-            _put(self.how_flow, step.flow_ul_s)
-        self.at.show_height(step.at)
 
     def _show_wait(self, step) -> None:
         minutes, seconds = divmod(step.seconds, 60)

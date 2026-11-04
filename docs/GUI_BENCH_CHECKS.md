@@ -2028,6 +2028,15 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   step; Use anyway hides it for that plate, and Amount says "Bottom from the
   plate drawing".
 
+- [ ] **How on the left.**
+  A Mix's How: Times, Volume and Speed in one row over the height card, in a
+  column in the middle under the title, and only rows and buttons in the open
+  card. A Blow out in a well: Speed over the height card; at the trash or a
+  point: Speed and "A point and the trash are used at their own height." A Move
+  the tip in a well: only the height card; at a point it has no How. Type an
+  offset: the drawing, the sentence and the note follow, and one Ctrl+Z takes
+  the digits back. During a run the fields are gray.
+
 - [ ] **A point and By hand.**
   Take from A point: the live upper camera, the points under it. A right click
   adds a memo point; used in a step it reads as its name and is still there

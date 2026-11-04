@@ -8,18 +8,19 @@ then Next is gray with one sentence (`next_reason`, read by the shell).
 
 **Right:** Start from, the Trash row, the steps (`widgets.step_list`) and Add
 a step, and beside the Trash row what a tip holds. One card is open at a time;
-its rows choose the section. Take from comes before Put into; Amount and Extras
-are fields in the card (`widgets.plan_forms`), as are the other kinds' How. A
-step's sections are `sections`.
+its rows choose the section. Take from comes before Put into. The time of a
+Wait and the message of a Wait for me are fields in the card
+(`widgets.plan_forms`). A step's sections are `sections`.
 
 **Left:** what the open section asks: the plate from the `MiniDeckDropdown`,
 its wells clicked, the wells of other steps dim, and under it the rule of how
 sources pair with destinations (`core.liquid_plan.pairing`), warn-colored with
 what would work. A plate not measured (nor skipped on the Well center step)
 shows a warning with **Measure now** and **Use anyway**: it is not blocked,
-the robot then uses the plate's drawing. For Amount and How, the heights drawn
-(`widgets.well_heights`) following the fields; for Extras the step's plate, to
-look at; for a Wait the time, for a Wait for me how its message will read. With
+the robot then uses the plate's drawing. For Amount, Extras and How, their
+fields (`widgets.plan_forms`) in the middle of the room under the title, a
+height drawn (`widgets.well_heights`) following its fields; for a Wait the
+time, for a Wait for me how its message will read. With
 no card open: the whole plan's wells in each step's color and a legend; with
 no steps, the first step's button.
 
@@ -107,12 +108,11 @@ from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
-from ..widgets.plan_forms import (AmountForm, ExtrasForm, StepForm,
+from ..widgets.plan_forms import (AmountForm, ExtrasForm, HowForm, StepForm,
                                   uses_height)
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
-from ..widgets.well_heights import WellSection
 from ..workers import describe_error
 
 __all__ = ["LiquidPlanPage", "CURRENT_FILE"]
@@ -142,7 +142,6 @@ NO_PLATE = "There is no plate on the deck. Add it on the Deck step."
 NOT_MEASURED_TEXT = ("The well center of this plate was not measured. The "
                      "robot will use the plate's drawing.")
 LOCKED = "The plan cannot change during a run."
-NO_HEIGHT = "A point and the trash are used at their own height."
 WAIT_HELP = "The robot does nothing for this long. Pause and Stop still work."
 WAITING_WHY = "You asked for this in the plan."
 NO_CAMERA = ("There is no camera picture. The points and Controls still work.")
@@ -724,10 +723,11 @@ class LiquidPlanPage(QWidget):
         self.extras_form = ExtrasForm(box)
         self.amount_box = self._centered(self.amount_form, AMOUNT_WIDTH)
         self.extras_box = self._centered(self.extras_form, EXTRAS_WIDTH)
-        self.heights_box = self._heights()
+        self.how_form = HowForm(box)
+        self.how_box = self._centered(self.how_form, EXTRAS_WIDTH)
         self.wait_box = self._wait_shown()
         self.message_box = self._message_shown()
-        for widget in (self.amount_box, self.extras_box, self.heights_box,
+        for widget in (self.amount_box, self.extras_box, self.how_box,
                        self.wait_box, self.message_box):
             self.answer_body.addWidget(widget)
         column.addWidget(self.answer_body, 1)
@@ -747,16 +747,6 @@ class LiquidPlanPage(QWidget):
         column.addStretch(1)
         column.addLayout(row)
         column.addStretch(1)
-        return box
-
-    def _heights(self) -> QWidget:
-        box = QWidget(self)
-        column = QVBoxLayout(box)
-        column.setContentsMargins(0, 0, 0, 0)
-        self.how_section = WellSection(box)
-        column.addWidget(self.how_section, 1)
-        self.no_height = muted_label(NO_HEIGHT, box)
-        column.addWidget(self.no_height)
         return box
 
     def _wait_shown(self) -> QWidget:
@@ -882,7 +872,8 @@ class LiquidPlanPage(QWidget):
         self.card.hide()
         self.next_button = self.card.next_button
         self.next_button.clicked.connect(self._next_section)
-        for form in (self.card.form, self.amount_form, self.extras_form):
+        for form in (self.card.form, self.amount_form, self.extras_form,
+                     self.how_form):
             form.edited.connect(self._edited)
         self.card.delete_button.clicked.connect(
             lambda: self.delete_step(self.open_id))
@@ -1620,7 +1611,7 @@ class LiquidPlanPage(QWidget):
                        self.template_box, self.trash_row, self.tip_ul,
                        self.add_button, self.card, self.first_step_button,
                        self.point_area, self.trash_options, self.amount_form,
-                       self.extras_form):
+                       self.extras_form, self.how_form):
             widget.setEnabled(not locked)
         self._show_trash_row()
         self._show_saves()
@@ -1844,8 +1835,10 @@ class LiquidPlanPage(QWidget):
             self.extras_form.show_step(step)
             self.answer_body.setCurrentWidget(self.extras_box)
         elif section == "how":
-            self._show_heights(step)
-            self.answer_body.setCurrentWidget(self.heights_box)
+            place = step.wells if step.kind == "mix" else step.place
+            self.how_form.show_step(step,
+                                    *self._height_said(step.at, place.slot))
+            self.answer_body.setCurrentWidget(self.how_box)
         elif section == "wait":
             self.wait_time.setText(duration(step.seconds))
             self.answer_body.setCurrentWidget(self.wait_box)
@@ -1868,16 +1861,6 @@ class LiquidPlanPage(QWidget):
     def _height_said(self, height: Height, slot: str | None) -> tuple:
         """What a drawn height says of its plate: the note and the depth."""
         return self._note(height, slot), self._depth(slot)
-
-    def _show_heights(self, step) -> None:
-        place = step.wells if step.kind == "mix" else step.place
-        wells = place.kind == "wells"
-        self.how_section.setVisible(wells)
-        self.no_height.setVisible(not wells)
-        if wells:
-            self.how_section.show_height(
-                "Height", "plate", step.at,
-                *self._height_said(step.at, place.slot))
 
     def _show_overview(self) -> None:
         steps = self.plan.steps

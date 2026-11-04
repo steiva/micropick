@@ -759,7 +759,16 @@ def test_a_wait_for_me_previews_its_message(app, page):
     assert page.message_strip.label.text() == "Add the drug"
 
 
-def test_a_blow_out_goes_to_the_trash_or_a_well(app, page):
+def _how_shown(page):
+    """What How shows, of what it can show."""
+    how = page.how_form
+    return {name for name, widget in (
+        ("times", how.cycles), ("volume", how.volume), ("speed", how.flow),
+        ("height", how.at), ("own height", how.no_height))
+        if widget.isVisibleTo(page)}
+
+
+def test_a_blow_out_in_a_well_asks_its_speed_and_height(app, page):
     page.add_step("blow_out")
     assert page.question_title.text() == "Where is the tip blown out?"
     assert page.into_trash.isVisibleTo(page)
@@ -767,26 +776,102 @@ def test_a_blow_out_goes_to_the_trash_or_a_well(app, page):
     _click(app, page, "C3")
     assert _step(page).place.wells == ["C3"]
     page.next_button.click()
-    form = page.card.form
-    _type(form.how_flow, "75")
+    assert _how_shown(page) == {"speed", "height"}
+    _type(page.how_form.flow, "75")
     assert _step(page).flow_ul_s == 75
-    assert form.at.isVisibleTo(page)
-    assert page.how_section.isVisibleTo(page)
+
+
+@pytest.mark.parametrize("choice", [1, 2], ids=["a point", "the trash"])
+def test_a_blow_out_elsewhere_says_it_uses_its_own_height(app, page, choice):
+    page.add_step("blow_out")
+    page.kinds["blow_out"].buttons[choice].click()
+    page.next_button.click()
+    assert _how_shown(page) == {"speed", "own height"}
+    assert page.how_form.no_height.text() == (
+        "A point and the trash are used at their own height.")
+
+
+def test_a_move_of_the_tip_in_a_well_asks_only_its_height(app, page):
+    page.add_step("move_tip")
+    _click(app, page, "C3")
+    page.next_button.click()
+    assert _how_shown(page) == {"height"}
+    _type(page.how_form.at.offset, "3")
+    assert _step(page).at.offset_mm == 3
+
+
+def test_a_move_of_the_tip_elsewhere_has_no_how(app, page):
+    page.add_step("move_tip")
+    page.kinds["move_tip"].buttons[1].click()      # A point
+    assert [row.label.text() for row in page.card.rows
+            if row.isVisibleTo(page)] == ["Where"]
 
 
 def test_a_mix_asks_its_times_volume_speed_and_height(app, page):
     page.add_step("mix")
     _click(app, page, "A1")
     page.next_button.click()
-    form = page.card.form
-    _type(form.cycles, "4")
-    _type(form.how_ul, "25")
-    _type(form.how_flow, "30")
-    _type(form.at.offset, "1")
+    assert _how_shown(page) == {"times", "volume", "speed", "height"}
+    how = page.how_form
+    _type(how.cycles, "4")
+    _type(how.volume, "25")
+    _type(how.flow, "30")
+    _type(how.at.offset, "1")
     step = _step(page)
     assert (step.cycles, step.volume_ul, step.flow_ul_s) == (4, 25, 30)
-    assert page.how_section.sentence.text() == "1 mm above the bottom"
+    assert how.at.sentence.text() == "1 mm above the bottom"
+    assert how.at.note.text() == "Bottom from the plate drawing"
+    assert how.at.drawing.height_.offset_mm == 1
     assert page.step_list.cards()[0].title.text() == "Mix 1 well · 4×"
+
+
+def test_how_is_asked_on_the_left_not_in_the_card(app, page):
+    page.add_step("mix")
+    _click(app, page, "A1")
+    page.next_button.click()
+    assert page.how_form.isVisibleTo(page)
+    assert not page.card.form.isVisibleTo(page)
+
+
+@pytest.mark.parametrize("size", [(1400, 900), (1280, 800)],
+                         ids=["1400x900", "1280x800"])
+def test_how_is_a_column_in_the_middle_under_the_title(app, window, page,
+                                                       size):
+    window.resize(*size)
+    page.add_step("mix")
+    _click(app, page, "A1")
+    page.next_button.click()
+    app.processEvents()
+    form = page.how_form
+    room = form.parentWidget()
+    assert form.width() == 480
+    assert abs(form.geometry().center().x() - room.rect().center().x()) <= 2
+    assert abs(form.geometry().center().y() - room.rect().center().y()) <= 2
+
+
+def test_digits_typed_into_how_are_one_undo(app, page):
+    page.add_step("mix")
+    _click(app, page, "A1")
+    page.next_button.click()
+    before = _step(page).volume_ul
+    box = page.how_form.volume
+    _type(box, "120")
+    assert _step(page).volume_ul == 120
+    page.undo()
+    assert _step(page).volume_ul == before
+    assert box.value() == before
+
+
+def test_how_is_locked_during_a_run(app, window, page):
+    page.add_step("mix")
+    _click(app, page, "A1")
+    page.next_button.click()
+    held = window.session.robot_lease.claim("liquid run", run=True)
+    app.processEvents()
+    assert not page.how_form.isEnabled()
+    held.release()
+    app.processEvents()
+    assert page.how_form.isEnabled()
 
 
 def test_every_kind_of_step_is_added_filled_in_and_run(app, window, page):
