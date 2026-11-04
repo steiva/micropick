@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 
+from micropick.config.labware import resolve_definition
 from micropick.hardware.mock import MockRobot
 from micropick.workflows import well_center
 from micropick.workflows.motion import Motion
@@ -136,3 +137,63 @@ def test_the_measured_bottom_of_a_record_with_no_well_is_at_the_first():
                         offset=[0.0, 0.0, 0.0], depth_mm=9.0)
     assert well_center.measured_bottom(center, _drawing(), 0.0) == \
         pytest.approx(5.0)
+
+
+# -- whether a spot is in a well (#90) ---------------------------------------
+# On slot 5, whose corner is (132.5, 90.5). Corning's 96: A1 at (14.37, 74.24)
+# on the plate, 6.858 across, 9 mm apart. Its 384: A1 at (12.12, 76.48),
+# 3.632 square, 4.5 mm apart.
+
+ROUND = "corning_96_wellplate_360ul_flat"
+SQUARE = "corning_384_wellplate_112ul_flat"
+A1_ROUND = (146.87, 164.74)
+A1_SQUARE = (144.62, 166.98)
+
+
+def _in_a_well(name, at, *, center=(0.0, 0.0), **kwargs):
+    return well_center.in_a_well(resolve_definition(name), "5", center, at,
+                                 tip_radius=0.5, **kwargs)
+
+
+def test_a_round_wells_outline_less_the_tips_radius():
+    x, y = A1_ROUND
+    assert _in_a_well(ROUND, (x, y))
+    assert _in_a_well(ROUND, (x + 2.9, y))       # 3.429 less 0.5
+    assert not _in_a_well(ROUND, (x + 3.0, y))   # inside it, the tip is not
+
+
+def test_a_round_well_has_no_corners():
+    x, y = A1_ROUND
+    assert not _in_a_well(ROUND, (x + 2.5, y + 2.5))
+
+
+def test_a_square_well_has_its_corners():
+    x, y = A1_SQUARE
+    assert _in_a_well(SQUARE, (x + 1.3, y - 1.3))      # 1.816 less 0.5
+    assert not _in_a_well(SQUARE, (x + 1.4, y))
+    assert not _in_a_well(SQUARE, (x, y - 1.4))
+
+
+def test_any_well_of_the_plate_counts_and_the_wall_between_does_not():
+    x, y = A1_ROUND
+    assert _in_a_well(ROUND, (x + 9.0 * 11, y - 9.0 * 7))      # H12
+    assert not _in_a_well(ROUND, (x + 4.5, y))
+
+
+def test_the_outline_is_at_the_measured_center():
+    x, y = A1_ROUND
+    assert _in_a_well(ROUND, (x + 3.2, y), center=(0.4, -0.3))
+    assert not _in_a_well(ROUND, (x - 3.2, y), center=(0.4, -0.3))
+
+
+def test_a_labware_offset_moves_the_plate():
+    x, y = A1_ROUND
+    assert _in_a_well(ROUND, (x + 1.0, y + 2.0),
+                      labware_offset=(1.0, 2.0, 64.2))
+    assert not _in_a_well(ROUND, (x, y - 2.0),
+                          labware_offset=(1.0, 2.0, 64.2))
+
+
+def test_a_tip_wider_than_the_well_is_in_none():
+    assert not well_center.in_a_well(resolve_definition(ROUND), "5",
+                                     (0.0, 0.0), A1_ROUND, tip_radius=4.0)

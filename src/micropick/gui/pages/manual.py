@@ -96,11 +96,10 @@ Aspirate
 The operator composes the work from Aspirate and Dispense; nothing is a
 script. Aspirate's settings are one line, "0.5 mm above the measured
 bottom · 15 µl · 50 µl/s", and Change unfolds them. The height is above the
-bottom of where the tip goes down: the measured dish bottom (`PickingConfig.
-dish_bottom`) by hand; in a well the plate's measured bottom (rim less
-depth, `Motion.to_measured_bottom`) once confirmed in this robot session
-(`Session.plate_bottom_confirmed`), else the drawing's, and the line says
-which (#89). From:
+bottom of where the tip goes down: by hand the slot's (below); in a well
+the plate's measured bottom (rim less depth, `Motion.to_measured_bottom`)
+once confirmed in this robot session (`Session.plate_bottom_confirmed`),
+else the drawing's, and the line says which (#89). From:
 
 * **In a well** - a plate the robot session holds and its well.
 * **At a point** - a memo or saved point, at its own Z.
@@ -109,14 +108,19 @@ which (#89). From:
   The operator aims with the picture: a click moves the camera, and with
   Snap to found cuboids on, a click on a detected cuboid moves it so the
   crosshair is on the cuboid's center (a click beside every cuboid moves
-  to the point). The height is a Z, or a height above the dish bottom -
-  offered only while the dish bottom was measured or reused in this robot
-  session (`Session.is_confirmed`), the default then: an older bottom is
-  not one to lower a tip to. Aspirate remembers the camera's pose, takes
-  the tip to the spot at the travel height (`Motion.tip_to`), lowers it,
-  aspirates, and brings the camera back - one job, so nothing comes
-  between. With Aspirate as soon as I click, a click aims and does all
-  that.
+  to the point). The height is a Z, or a height above the bottom of the
+  slot the spot is in (#90), whatever the source chosen: a plate confirmed
+  in this robot session gives its measured bottom, the source dish's slot
+  the dish bottom when that is confirmed (`Session.is_confirmed`), and
+  anywhere else only Z is offered: an older bottom is not one to lower a
+  tip to. It is the default where there is one, and the line names the
+  slot. Over a plate a spot not in a well is refused
+  (`well_center.in_a_well`), and so is a click aiming where there is no
+  bottom; a Z is the operator's and is not checked. Aspirate remembers the
+  camera's pose, takes the tip to the spot at the travel height
+  (`Motion.tip_to`), lowers it, aspirates, and brings the camera back -
+  one job, so nothing comes between. With Aspirate as soon as I click, a
+  click aims and does all that.
 
 Aspirate is enabled once there is a source - By hand always has one, so
 there it is enabled whenever a tip is on and the robot is free. It goes
@@ -168,6 +172,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
+from typing import NamedTuple
 
 import cv2
 import numpy as np
@@ -178,7 +184,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout,
 
 from ...config.labware import LabwareError, resolve_definition
 from ...core.calibration.pixel_map import PixelMap
-from ...core.deck import slot_center
+from ...core.deck import nearest_slot, slot_center
 from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
@@ -186,8 +192,10 @@ from ...workflows import well_center
 from ...workflows.jog import Reached
 from .. import keys
 from ..auto_camera import CameraOpener
+from ..camera_moves import pose_slot
 from ..detector import wanted_model
 from ..labware_kinds import facts, kind
+from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (Section, card, combo_box, compact,
@@ -237,8 +245,7 @@ FROM = ("In a well", "At a point", "By hand")
 AMOUNT = ("All", "Part")
 WHERE = ("In a well", "At a point", "Here")
 
-# By hand's height: a Z, or above the bottom, the dish's of this robot
-# session.
+# By hand's height: a Z, or above the bottom of the spot's slot.
 HEIGHT = ("Z", "Above the bottom")
 
 # What the mouse does on the picture, its row along the bottom (§3).
@@ -362,14 +369,24 @@ class _WellPicker(QWidget):
                 return
 
 
+class SlotBottom(NamedTuple):
+    """The bottom By hand goes above in `slot`, at Z `z`. `in_a_well` says
+    whether a spot is one to go down at: over a plate, in one of its wells;
+    in the dish, anywhere."""
+
+    slot: int
+    z: float
+    in_a_well: Callable
+
+
 class ManualPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
         self.session = session
         self._worker: Worker | None = None
-        # Whether the dish bottom was known in this robot session when last
-        # looked: Above the bottom becomes the default as it becomes so.
-        self._bottom_known = False
+        # The bottom under the crosshair when last looked, or None: Above
+        # the bottom becomes the default as there comes to be one.
+        self._bottom: SlotBottom | None = None
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
         self._forget_targets(redraw=False)
@@ -397,6 +414,7 @@ class ManualPage(QWidget):
         # Emitted whenever a job ends: the buttons greyed for the job come
         # back.
         self.jog.position_changed.connect(lambda _lines: self._refresh())
+        self.jog.pose_changed.connect(lambda _pose: self._bottom_changed())
         self.jog.set_page_help(self._page_help())
 
         self.marks = PositionMarks.on(session, self.view)
@@ -424,6 +442,7 @@ class ManualPage(QWidget):
         session.robot_busy_changed.connect(self._on_robot_busy)
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._show_deck())
+        session.labware_changed.connect(lambda _s: self._bottom_changed())
         session.profile_changed.connect(lambda _p: self._on_profile_changed())
         session.confirmations_changed.connect(self._bottom_changed)
         self._shortcuts = []
@@ -707,8 +726,11 @@ class ManualPage(QWidget):
 
     def _bottom_words(self) -> str:
         """Which bottom Aspirate's height is above: in a well, the one it
-        will go to."""
+        will go to; by hand, the slot's."""
         source = self._source()
+        if (source is not None and source[0] == "hand"
+                and self._bottom is not None):
+            return f"the bottom of slot {self._bottom.slot}"
         if source is None or source[0] != "well":
             return "the bottom"
         slot, _labware_id, definition, well = source[1]
@@ -722,19 +744,55 @@ class ManualPage(QWidget):
                 and HEIGHT[self.height_mode.current()] == "Z")
 
     def _bottom_changed(self) -> None:
-        """Above the bottom only while the dish bottom was measured or
-        reused in this robot session, and the default as it becomes so; the
-        line, as a plate's bottom may have been confirmed."""
-        known = self.session.is_confirmed("dish_bottom")
+        """Above the bottom only while the spot under the crosshair has
+        one, and the default as it comes to; the line, as the slot or a
+        plate's bottom may have changed. During a move there is no pose,
+        and what was shown stands: passing through it changes no choice."""
+        if self.jog.pose is None and self._bottom is not None:
+            self._show_settings_line()
+            return
+        before, self._bottom = self._bottom, self._bottom_here()
+        known = self._bottom is not None
         above = self.height_mode.buttons[HEIGHT.index("Above the bottom")]
         above.setEnabled(known)
-        above.setToolTip("" if known else "Dish bottom: Not set.")
-        if known != self._bottom_known:
+        above.setToolTip("" if known else "Bottom of this slot: Not set.")
+        if known != (before is not None):
             self.height_mode.set_current(HEIGHT.index(
                 "Above the bottom" if known else "Z"))
-            self._bottom_known = known
             self._source_changed()
         self._show_settings_line()
+
+    def _bottom_here(self) -> SlotBottom | None:
+        """The bottom under the crosshair now, if the spot can be known."""
+        if self._crosshair_problem():
+            return None
+        return self._slot_bottom(self._crosshair_spot(self.jog.pose[:2]))
+
+    def _slot_bottom(self, spot) -> SlotBottom | None:
+        """The bottom of the slot `spot` is in: a plate's confirmed in this
+        robot session, else the source dish's when it is confirmed, else
+        None. Whatever the source chosen."""
+        session = self.session
+        slot = nearest_slot(spot[0], spot[1])
+        deck = session.profile.deck
+        for held, entry, definition in session.plates():
+            if (held == str(slot) and session.plate_bottom_confirmed(
+                    held, definition.load_name)):
+                center = self._well_center(held, definition.load_name)
+                shift = entry.offset or (0.0, 0.0, 0.0)
+                return SlotBottom(
+                    slot, well_center.measured_bottom(
+                        center, definition, deck.module_height(held)),
+                    lambda at: well_center.in_a_well(
+                        definition, held, well_center.xy(center), at,
+                        labware_offset=shift))
+        observe = session.profile.positions.get(DISH_POSITION)
+        if (session.is_confirmed("dish_bottom") and observe is not None
+                and pose_slot(session, DISH_POSITION, observe[:2]) == slot):
+            return SlotBottom(slot,
+                              float(session.profile.picking.dish_bottom),
+                              lambda _at: True)
+        return None
 
     def _source_changed(self) -> None:
         """From's own controls under it; the points drawn or not."""
@@ -906,12 +964,19 @@ class ManualPage(QWidget):
         if not self.jog.run_job(job, moves=go is not None, then=then):
             self.jog.tell(self.session.robot_lease.refusal)
 
-    def _hand_z(self) -> float:
-        """By hand's height: the Z, or above the dish bottom."""
+    def _hand_z(self, spot) -> float:
+        """By hand's height at `spot`: the Z, or above the bottom of its
+        slot. Raises ValueError with the reason where it may not go down:
+        a click can aim past what the line says."""
         if self._hand_z_chosen():
             return float(self.hand_z.value())
-        return (float(self.session.profile.picking.dish_bottom)
-                + float(self.above_bottom.value()))
+        bottom = self._slot_bottom(spot)
+        if bottom is None:
+            slot = nearest_slot(spot[0], spot[1])
+            raise ValueError(f"Refused: no bottom confirmed in slot {slot}.")
+        if not bottom.in_a_well(spot):
+            raise ValueError("The spot is not in a well.")
+        return bottom.z + float(self.above_bottom.value())
 
     def _aspirate_by_hand(self, aim=None) -> None:
         """By hand: the camera to `aim` first if given (gantry xy); then,
@@ -925,7 +990,11 @@ class ManualPage(QWidget):
         gantry = np.asarray(self.jog.pose[:2] if aim is None else aim,
                             dtype=float)
         spot = self._crosshair_spot(gantry)
-        z = self._hand_z()
+        try:
+            z = self._hand_z(spot)
+        except ValueError as exc:
+            self.jog.tell(str(exc))
+            return
         what = f"tip to ({spot[0]:.2f}, {spot[1]:.2f}) at z {z:g}"
         why = motion.refused((spot[0], spot[1], z))
         if why:
@@ -1623,7 +1692,7 @@ class ManualPage(QWidget):
         else:
             self._refresh()
         # A module's height decides whether a measurement is the plate's.
-        self._show_settings_line()
+        self._bottom_changed()
 
     def _on_robot_busy(self, _holder) -> None:
         self._refresh()
@@ -1644,6 +1713,7 @@ class ManualPage(QWidget):
             # What was detected was another picture.
             self._forget_targets()
         self.view.set_camera(camera)
+        self._bottom_changed()
         self._refresh()
 
     def showEvent(self, event) -> None:

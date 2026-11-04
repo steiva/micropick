@@ -1685,9 +1685,10 @@ tip box and a 384 plate at hand.
 
 - [ ] **By hand: under the crosshair (#60).**
   From: By hand, a tip on: Aspirate is enabled at once, no click needed,
-  and no hint to click a spot. Without a dish bottom in this robot
-  session Change shows Height Z | Above the bottom with Above gray
-  and Z chosen; after Dish bottom (or Use it) Above is enabled and chosen.
+  and no hint to click a spot. With the crosshair over a slot with no
+  bottom confirmed in this robot session Change shows Height Z | Above
+  the bottom with Above gray and Z chosen; over the source dish's slot
+  after Dish bottom (or Use it) Above is enabled and chosen.
   Put the crosshair on liquid, Aspirate: the tip goes over the crosshair's
   spot at the travel height, down to the height, aspirates, and the
   camera comes back to where it was - the same spot under the crosshair;
@@ -1696,6 +1697,24 @@ tip box and a 384 plate at hand.
   its center, nothing is aspirated. A click beside every cuboid moves to
   the point. Aspirate as soon as I click: one click aims, aspirates and
   comes back over the spot.
+
+- [ ] **By hand from a 24 well plate (#90).**
+  A 24 well plate on the deck, confirmed on Well center (Save, or Use it),
+  a tip on, a little liquid in a well. Manual pick › Run, By hand, the
+  crosshair in a well, off its center: the line reads "0.5 mm above the
+  bottom of slot 5" (the plate's slot), and it follows when the camera
+  goes to the dish's slot, and turns to a Z, Above gray, over an empty
+  slot. Back in the well, jog the tip down to the real bottom and compare
+  its Z with the measured one (rim less depth): the depth is the drawing's
+  and the rim was set by eye. Raise it again and Aspirate: 0.5 mm must
+  clear the bottom. Too low or too high, note by how
+  much: 0.5 mm is the default for every source (#86). Crosshair on the
+  plastic between two wells: Aspirate says "The spot is not in a well."
+  and nothing moves; with Aspirate as soon as I click, a click there too.
+  Close to a wall, inside: check the tip clears it, as the refusal leaves
+  0.5 mm for the tip's radius (`TIP_RADIUS_MM`, a figure not measured).
+  Height Z on the same spot is not refused: the height is yours, so use a
+  Z over the rim.
 
 - [ ] **In a well, At a point.**
   In a well: Plate and Well; Aspirate goes to the well's bottom + the

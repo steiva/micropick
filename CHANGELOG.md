@@ -16,6 +16,10 @@ the third for fixes.
 - Manual pick: Aspirate and Dispense In a well go to a height above the
   plate's measured bottom once it is confirmed in this robot session, else
   above the drawing's, and the settings line says which.
+- Manual pick: By hand's Above the bottom follows the slot under the
+  crosshair, a confirmed plate's bottom or the source dish's, and the
+  settings line names the slot. Anywhere else only Z is offered. Over a
+  plate, a spot not in a well is refused and nothing moves.
 - A new window (the redesign, `docs/redesign/REDESIGN.md`). The tabs, the
   status bar, the floating next step and the Profile page are gone. The
   app opens on Home: the robot (it connects by itself; no Connect), the

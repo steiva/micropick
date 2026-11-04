@@ -333,9 +333,16 @@ takes from under the camera's crosshair (the picture's center through
 the pixel map, plus the measured tip offset); no spot is clicked: a
 click moves the camera, with Snap to found cuboids onto a cuboid's
 center (beside every cuboid, to the point). Its height is Z | Above the
-bottom, the latter only while the dish bottom was measured or reused
-in this robot session (`Session.is_confirmed("dish_bottom")`) and the
-default then. Aspirate is enabled whenever a tip is on and the robot is
+bottom, the bottom that of the slot the spot is in, whatever the source
+chosen (#90, `ManualPage._slot_bottom`): a plate confirmed in this robot
+session gives its measured bottom, the source dish's slot the dish bottom
+when confirmed (`Session.is_confirmed("dish_bottom")`), anywhere else Above
+is gray and Z is used; the default where there is one, the line naming it
+("0.5 mm above the bottom of slot 5"). Over a plate in Above the bottom a
+spot not in a well is refused, "The spot is not in a well.", nothing moved,
+with Aspirate as soon as I click too (`well_center.in_a_well`: the
+definition's outline at the measured center, less `TIP_RADIUS_MM`), and so
+is a click aiming into a slot with no bottom; Z is not checked. Aspirate is enabled whenever a tip is on and the robot is
 free: one job remembers the camera's pose, the tip to the spot at the
 travel height (`Motion.tip_to`), down, aspirate, the camera back to that
 pose; with Aspirate as soon as I click, a click aims and does it. In a well

@@ -8,7 +8,7 @@ slots with them, so they live here, with no Qt.
 from __future__ import annotations
 
 __all__ = ["SLOT_PITCH_X", "SLOT_PITCH_Y", "SLOT_WIDTH", "SLOT_HEIGHT",
-           "nearest_slot", "slot_center"]
+           "nearest_slot", "slot_center", "slot_corner"]
 
 SLOT_PITCH_X = 132.5
 SLOT_PITCH_Y = 90.5
@@ -18,14 +18,20 @@ SLOT_HEIGHT = 85.48
 _ALL_SLOTS = range(1, 13)
 
 
-def slot_center(slot) -> tuple[float, float]:
-    """The center of a slot in the robot's deck frame, in millimetres: slot
-    1's corner at the origin, x to the right, y to the back."""
+def slot_corner(slot) -> tuple[float, float]:
+    """The front left corner of a slot in the robot's deck frame, in
+    millimetres: slot 1's at the origin, x to the right, y to the back. A
+    labware definition's wells are measured from it."""
     n = int(slot)
     column = (n - 1) % 3
     row = (n - 1) // 3
-    return (column * SLOT_PITCH_X + SLOT_WIDTH / 2,
-            row * SLOT_PITCH_Y + SLOT_HEIGHT / 2)
+    return column * SLOT_PITCH_X, row * SLOT_PITCH_Y
+
+
+def slot_center(slot) -> tuple[float, float]:
+    """The center of a slot, in the frame of `slot_corner`."""
+    x, y = slot_corner(slot)
+    return x + SLOT_WIDTH / 2, y + SLOT_HEIGHT / 2
 
 
 def nearest_slot(x: float, y: float) -> int:

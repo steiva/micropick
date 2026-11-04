@@ -16,20 +16,26 @@ arithmetic and runs anywhere.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import hypot
 
+from ..core.deck import slot_corner
 from ..hardware.protocols import xyz
 from .motion import Motion
 
 __all__ = ["go_to_top", "Nominal", "Measurement", "xy", "deposit_offset",
            "plan_plate", "for_plan", "definition_depth", "measured_bottom",
-           "run_using",
-           "AT_TOP", "FORGET_TIP", "in_use_tip"]
+           "in_a_well", "run_using",
+           "TIP_RADIUS_MM", "AT_TOP", "FORGET_TIP", "in_use_tip"]
 
 # What the pages say, the same on both: the tip is at the robot's well top,
 # and a measurement is in hand.
 AT_TOP = ("At the top of {well} as the robot has it: jog the tip onto the "
           "real center, level with the rim, then Set well center.")
 FORGET_TIP = "Use the labware definition's well positions."
+
+# The tip's end, outside: no definition has it (a rack's wells are as wide
+# as the tip's top). A spot this close to a well's wall is not in the well.
+TIP_RADIUS_MM = 0.5
 
 
 def in_use_tip(run: str) -> str:
@@ -117,6 +123,30 @@ def measured_bottom(center, definition, module_height: float) -> float:
     top = float(module_height) + corner + well["z"] + well["depth"]
     depth = well["depth"] if center.depth_mm is None else center.depth_mm
     return top + float(center.offset[2]) - depth
+
+
+def in_a_well(definition, slot, center_xy, spot, *,
+              labware_offset=(0.0, 0.0, 0.0),
+              tip_radius: float = TIP_RADIUS_MM) -> bool:
+    """Whether a tip going down at `spot` (x, y in the robot's frame) is
+    inside a well of the plate in `slot`: within a well's outline from the
+    definition, moved by `center_xy` (the measured center) and the labware
+    offset the robot applies, less the tip's radius."""
+    corner = definition.data["cornerOffsetFromSlot"]
+    slot_x, slot_y = slot_corner(slot)
+    origin_x = slot_x + corner["x"] + labware_offset[0] + center_xy[0]
+    origin_y = slot_y + corner["y"] + labware_offset[1] + center_xy[1]
+    return any(_inside(well, spot[0] - origin_x - well["x"],
+                       spot[1] - origin_y - well["y"], tip_radius)
+               for well in definition.data["wells"].values())
+
+
+def _inside(well, dx: float, dy: float, tip_radius: float) -> bool:
+    """Whether (dx, dy) from `well`'s center leaves the tip inside it."""
+    if well["shape"] == "circular":
+        return hypot(dx, dy) <= well["diameter"] / 2 - tip_radius
+    return (abs(dx) <= well["xDimension"] / 2 - tip_radius
+            and abs(dy) <= well["yDimension"] / 2 - tip_radius)
 
 
 def run_using(lease, slot, load_name: str) -> str | None:

@@ -20,7 +20,7 @@ from micropick.config.schema import DeckModule                   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.detector import Detection                     # noqa: E402
 from micropick.gui.pages.manual import ManualPage                # noqa: E402
-from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.session import SOURCE_DISH, Session           # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -392,6 +392,7 @@ def test_by_hand_above_the_bottom_only_with_a_bottom_this_session(
     above = page.height_mode.buttons[1]
     assert not above.isEnabled()
     assert page.height_mode.current() == 0               # Z
+    session.profile.positions["observe"] = [150.0, 150.0, 90.0]
     session.confirm("dish_bottom")
     app.processEvents()
     assert above.isEnabled()
@@ -937,3 +938,168 @@ def test_by_hand_height_is_above_the_bottom(page):
     page.source.buttons[2].click()                       # By hand
     labels = [b.text() for b in page.height_mode.buttons]
     assert labels == ["Z", "Above the bottom"]
+
+
+# -- By hand: the bottom of the spot's slot, never beside a well (#90) --------
+# The tip offset is (10, -5). The plate of `_measured_plate` is in slot 5,
+# whose corner is (132.5, 90.5): A1 at (146.87, 164.74) on the drawing, and at
+# (147.27, 164.44) measured, 6.858 across. Its rim is 1 mm under the drawing's
+# 14.22, so the bottom is 14.22 - 1 - 9 = 4.22.
+
+A1 = (147.27, 164.44)
+PLATE_BOTTOM = 4.22
+
+
+def _aim_at(app, page, session, x, y):
+    """The crosshair over (x, y): the tip would go down there."""
+    z = _pose(session)[2]
+    session.robot.move_to_coordinates((x - 10.0, y + 5.0, z), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+
+
+def _by_hand_on_a_plate(app, page, session):
+    """By hand, the crosshair on A1 of the measured plate, at a safe Z."""
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _measured_plate(app, page, session)
+    _over_the_deck(app, page, session)
+    page.source.buttons[2].click()                       # By hand
+    page.volume.setValue(15.0)
+    _aim_at(app, page, session, *A1)
+
+
+def _dish_in_slot_8(session):
+    """The camera over the dish in slot 8 and its bottom confirmed."""
+    session.profile.positions["observe"] = [186.0, 229.0, 90.0]
+    session.profile.picking.dish_bottom = 66.0
+    session.confirm("dish_bottom")
+
+
+def test_by_hand_over_a_confirmed_plate_goes_above_its_bottom(
+        app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    assert page.height_mode.current() == 1               # the default then
+    assert page.settings_line.text().startswith(
+        "0.5 mm above the bottom of slot 5 · ")
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at[0] == pytest.approx((*A1, PLATE_BOTTOM + 0.5), abs=0.05)
+
+
+def test_by_hand_the_bottom_follows_the_spot_from_slot_to_slot(
+        app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    _dish_in_slot_8(session)
+    _aim_at(app, page, session, 196.0, 224.0)            # slot 8
+    assert page.settings_line.text().startswith(
+        "0.5 mm above the bottom of slot 8 · ")
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at[0][2] == pytest.approx(66.5, abs=0.05)
+    _aim_at(app, page, session, *A1)
+    assert page.settings_line.text().startswith(
+        "0.5 mm above the bottom of slot 5 · ")
+
+
+def test_by_hand_the_bottom_does_not_depend_on_the_source_chosen(
+        app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    session.choose_source(SOURCE_DISH)
+    app.processEvents()
+    assert page.settings_line.text().startswith(
+        "0.5 mm above the bottom of slot 5 · ")
+
+
+def test_by_hand_over_a_slot_with_nothing_confirmed_is_a_z(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    above = page.height_mode.buttons[1]
+    assert above.isEnabled()
+    _aim_at(app, page, session, 64.0, 133.0)             # slot 4: nothing
+    assert not above.isEnabled()
+    assert page.height_mode.current() == 0               # Z
+    assert page.settings_line.text().startswith("Z ")
+    _aim_at(app, page, session, *A1)
+    assert above.isEnabled()
+    assert page.height_mode.current() == 1
+
+
+def test_by_hand_the_dish_bottom_is_only_the_dishs_slots(app, page, session):
+    _ready_by_hand(app, page, session)                   # over slot 5
+    _dish_in_slot_8(session)
+    app.processEvents()
+    assert not page.height_mode.buttons[1].isEnabled()
+
+
+def test_by_hand_a_plate_not_confirmed_offers_only_z(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    session.new_run()                        # measured, not said so here
+    session.load_labware(resolve_definition(PLATE), 5)
+    app.processEvents()
+    assert not page.height_mode.buttons[1].isEnabled()
+    assert page.height_mode.current() == 0
+
+
+def test_by_hand_a_move_in_flight_keeps_the_choice_of_z(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    page.height_mode.buttons[0].click()                  # Z, chosen
+    page.snap.setChecked(False)
+    _left_click(app, page, W / 2 + 9.0 / K, H / 2)       # to A2: a job
+    assert page.jog.pose[0] == pytest.approx(A1[0] + 9.0 - 10.0, abs=0.05)
+    assert page.height_mode.current() == 0
+
+
+def test_by_hand_a_spot_on_the_wall_is_refused_and_nothing_moves(
+        app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    _aim_at(app, page, session, A1[0] + 4.5, A1[1])      # between A1 and A2
+    before, calls = _pose(session), len(session.robot.calls)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert "The spot is not in a well." in page.jog._message
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(before)
+    assert not [c for c in session.robot.calls[calls:]
+                if c[0] in ("move_to_coordinates", "move_relative")]
+
+
+def test_by_hand_a_click_on_the_wall_is_refused_as_soon_as_i_click(
+        app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    page.snap.setChecked(False)
+    page.aspirate_on_click.setChecked(True)
+    before = _pose(session)
+    # 4.5 mm to the right of the crosshair: the wall between A1 and A2.
+    _left_click(app, page, W / 2 + 4.5 / K, H / 2)
+    assert "The spot is not in a well." in page.jog._message
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(before)
+
+
+def test_by_hand_a_click_into_a_slot_without_a_bottom_is_refused(
+        app, page, session):
+    """The line said above a bottom: a click to where there is none does
+    not go down at whatever Z is in the field."""
+    _by_hand_on_a_plate(app, page, session)
+    page.snap.setChecked(False)
+    page.aspirate_on_click.setChecked(True)
+    before = _pose(session)
+    _left_click(app, page, W / 2 - 20.0 / K, H / 2)      # over slot 4
+    assert "no bottom" in page.jog._message
+    assert "slot 4" in page.jog._message
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(before)
+
+
+def test_by_hand_z_is_not_refused_on_the_wall(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    _aim_at(app, page, session, A1[0] + 4.5, A1[1])
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(20.0)
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at[0] == pytest.approx((A1[0] + 4.5, A1[1], 20.0), abs=0.05)
