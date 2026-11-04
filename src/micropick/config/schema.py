@@ -636,6 +636,11 @@ class WellCenter(BaseModel):
     Per slot and load name: the same kind of plate in another slot, or
     another kind in this one, is not the plate that was measured. `well` is
     the one it was measured on, for the operator to look at again.
+
+    `module_height_mm` is the height of the deck module in the slot when it
+    was measured, 0 for none: on another height it is not this plate's rim,
+    and `DeckConfig.well_center` does not give it. None is a record from
+    before it was kept, accepted as it is.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -646,6 +651,7 @@ class WellCenter(BaseModel):
     well: str = ""
     measured_at: datetime | None = None
     depth_mm: float | None = Field(default=None, gt=0)
+    module_height_mm: float | None = None
 
     def describe(self) -> str:
         x, y, z = self.offset
@@ -705,9 +711,20 @@ class DeckConfig(BaseModel):
         self.recent_labware = [load_name] + rest[:RECENT_LABWARE - 1]
 
     def well_center(self, slot, load_name: str) -> WellCenter | None:
+        """The plate's measurement, or None: also while the slot's module
+        is not the height it was measured on. Every reader asks here."""
         wanted = int(slot)
-        return next((c for c in self.well_centers
-                     if c.slot == wanted and c.load_name == load_name), None)
+        center = next((c for c in self.well_centers
+                       if c.slot == wanted and c.load_name == load_name), None)
+        if center is None or center.module_height_mm in (
+                None, self.module_height(slot)):
+            return center
+        return None
+
+    def module_height(self, slot) -> float:
+        """The height of the module in `slot`, 0 with none."""
+        module = self.module_for(slot)
+        return 0.0 if module is None else module.height_mm
 
     def module_for(self, slot) -> DeckModule | None:
         wanted = int(slot)

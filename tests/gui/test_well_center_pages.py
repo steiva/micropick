@@ -3,6 +3,7 @@ Liquid and Manual pick: saved for the plate, and read by Liquid handling."""
 
 import os
 import time
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -13,10 +14,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QMessageBox          # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
+from micropick.config.schema import DeckModule, WellCenter       # noqa: E402
+from micropick.core.routine import Destination, Routine          # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
+from micropick.workflows import well_center                      # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
 
@@ -388,3 +392,122 @@ def test_manuals_well_center_step_is_this_page_without_skip(
     finally:
         session.shutdown()
         w.deleteLater()
+
+
+def _platform(height):
+    return DeckModule(slots=[5], offset=[0, 0, height], name="Platform")
+
+
+def _plan_on_5(session):
+    session.set_routine(Routine(Destination.from_definition(
+        resolve_definition(PLATE), slot=5), {"A1": 1}, name="plan"))
+
+
+def _saved(session, days_ago=3, depth=10.67):
+    """A plate measured on B2 some days before, 1.5 mm under the robot's
+    top."""
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=5, load_name=PLATE, offset=[0.4, -0.3, -1.5], well="B2",
+        depth_mm=depth, module_height_mm=0.0,
+        measured_at=datetime.now() - timedelta(days=days_ago)))
+
+
+@pytest.mark.parametrize("task", ["manual", "auto", "liquid"])
+def test_a_plate_is_not_measured_yet_once_the_slots_module_changes(
+        app, session, task):
+    _plan_on_5(session)
+    page = _step(app, session)
+    page.set_task(task)
+    _measure(app, session, page, (0.4, -0.3, -1.5))
+    row = page._rows[("5", PLATE)]
+    assert row.value.text() == "Measured today"
+    session.set_deck_modules([_platform(64.2)])
+    assert page._rows[("5", PLATE)].value.text() == "Not measured yet"
+    assert "from the plate's drawing" in page.depth_source.text()
+    page.deleteLater()
+
+
+def test_a_deposit_does_not_read_a_measurement_of_another_height(session):
+    _plan_on_5(session)
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.5), "B2", depth_mm=10.0)
+    read = (session.profile, session.routine, session.run_state)
+    assert well_center.for_plan(*read) is not None
+    session.set_deck_modules([_platform(64.2)])
+    assert well_center.for_plan(*read) is None
+
+
+def test_manual_shows_the_last_measured_bottom_with_use_it(app, session):
+    _saved(session)
+    page = _step(app, session)
+    page.set_task("manual")
+    assert not page.last_card.isHidden()
+    # Corning 96: its well top 3.55 + 10.67 on the deck, the rim 1.5 under
+    # it, the bottom 10.67 under that.
+    assert page.last_value.text() == "Last time: Z 2.05 mm"
+    assert page.last_when.text() == "3 days ago"
+    assert page.use_button.isEnabled()
+    page.deleteLater()
+
+
+def test_the_last_bottom_counts_the_height_of_the_slots_module(app, session):
+    session.set_deck_modules([_platform(64.2)])
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.5), "B2", depth_mm=10.67)
+    page = _step(app, session)
+    page.set_task("manual")
+    assert page.last_value.text() == "Last time: Z 66.25 mm"
+    assert page.last_when.text() == "today"
+    page.deleteLater()
+
+
+def test_use_it_confirms_the_selected_plate_and_a_new_session_forgets(
+        app, session):
+    _saved(session)
+    page = _step(app, session)
+    page.set_task("manual")
+    page.use_button.click()
+    assert session.plate_bottom_confirmed(5, PLATE)
+    assert not page.use_button.isEnabled()
+    session.new_run()
+    session.load_labware(resolve_definition(PLATE), 5)
+    assert not session.plate_bottom_confirmed(5, PLATE)
+    assert page.use_button.isEnabled()
+    page.deleteLater()
+
+
+def test_save_confirms_the_plate_on_the_page(app, session):
+    page = _step(app, session)
+    page.set_task("manual")
+    assert page.last_card.isHidden()
+    _measure(app, session, page, (0.4, -0.3, -1.5))
+    assert session.plate_bottom_confirmed(5, PLATE)
+    assert not page.last_card.isHidden()
+    assert not page.use_button.isEnabled()
+    page.deleteLater()
+
+
+def test_a_plate_with_no_stored_measurement_has_no_use_it(app, session):
+    page = _step(app, session)
+    page.set_task("manual")
+    assert page.last_card.isHidden()
+    page.deleteLater()
+
+
+@pytest.mark.parametrize("task", ["liquid", "auto"])
+def test_no_use_it_in_liquid_or_auto(app, session, task):
+    _plan_on_5(session)
+    _saved(session)
+    page = _step(app, session)
+    page.set_task(task)
+    assert page.last_card.isHidden()
+    page.deleteLater()
+
+
+def test_each_plate_shows_its_own_last_bottom(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    _saved(session)
+    page = _step(app, session)
+    page.set_task("manual")
+    assert not page.last_card.isHidden()
+    page.select_plate(2, PLATE)
+    assert page.last_card.isHidden()
+    page.deleteLater()

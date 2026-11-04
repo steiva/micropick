@@ -1499,8 +1499,10 @@ class Session(QObject):
     def set_well_center(self, slot, load_name: str, offset, well: str,
                         depth_mm: float | None = None) -> None:
         """Save where the wells of the plate in `slot` really are (see
-        `WellCenter`), replacing any earlier measurement of it. The depth
-        set for it before is kept; `depth_mm` is used when there was none."""
+        `WellCenter`), replacing any earlier measurement of it, on the
+        height of the module there now. The depth set for it before is
+        kept; `depth_mm` is used when there was none. Measured, its bottom
+        is confirmed for this robot session."""
         if self.profile is None:
             raise SessionError("no profile to save the well center into")
         deck = self.profile.deck
@@ -1510,7 +1512,8 @@ class Session(QObject):
         center = WellCenter(slot=int(slot), load_name=load_name,
                             offset=[round(float(v), 3) for v in offset],
                             well=well, measured_at=datetime.now(),
-                            depth_mm=depth_mm)
+                            depth_mm=depth_mm,
+                            module_height_mm=deck.module_height(slot))
         deck.well_centers = [c for c in deck.well_centers
                              if (c.slot, c.load_name) != (center.slot,
                                                           load_name)]
@@ -1519,6 +1522,7 @@ class Session(QObject):
         log.info("well center of %s in slot %s: %s", load_name, slot,
                  center.describe())
         self.profile_changed.emit(self.profile)
+        self.confirm(_plate_bottom(slot, load_name))
 
     def set_well_depth(self, slot, load_name: str, depth_mm: float) -> None:
         """The depth of the measured plate's wells, for its measured
@@ -1547,6 +1551,21 @@ class Session(QObject):
 
     def plate_skipped(self, slot, load_name: str) -> bool:
         return self.is_confirmed(_skipped_plate(slot, load_name))
+
+    def use_plate_bottom(self, slot, load_name: str) -> None:
+        """Use it: the plate's measured bottom, taken as it is for this
+        robot session. Refused with no measurement of it."""
+        if (self.profile is None
+                or self.profile.deck.well_center(slot, load_name) is None):
+            raise SessionError("This plate is not measured.")
+        log.info("bottom of %s in slot %s taken as it is", load_name, slot)
+        self.confirm(_plate_bottom(slot, load_name))
+
+    def plate_bottom_confirmed(self, slot, load_name: str) -> bool:
+        """Whether the plate's measurement was saved or taken as it is in
+        this robot session, and is still the plate's."""
+        return (self.is_confirmed(_plate_bottom(slot, load_name))
+                and self.well_center_status(slot, load_name) == MEASURED)
 
     def well_center_status(self, slot, load_name: str) -> str:
         """MEASURED, SKIPPED or NOT_MEASURED. A measurement is the plate's
@@ -2364,3 +2383,8 @@ def _skipped_plate(slot, load_name: str) -> str:
     """The confirmation that the plate in `slot` is skipped (GLOSSARY,
     Skipped plate)."""
     return f"plate-skipped:{int(slot)}:{load_name}"
+
+
+def _plate_bottom(slot, load_name: str) -> str:
+    """The confirmation of the measured bottom of the plate in `slot`."""
+    return f"plate-bottom:{int(slot)}:{load_name}"

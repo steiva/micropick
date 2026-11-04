@@ -93,7 +93,7 @@ The last step of every task, where the work itself is done. In Manual pick it ho
 _Avoid_: Work, Picking (as a step name)
 
 **Well center**:
-The measured center of a plate's wells, one per slot and plate type. Measuring it is a step in every task; only Liquid needs it done.
+The measured center of a plate's wells, one per slot and plate type. Measuring it is a step in every task; only Liquid needs it done. It belongs to the module height it was measured on: on another height the plate is not measured.
 
 **Plate plan**:
 Which wells of a plate get cuboids, how many each, and in what order.

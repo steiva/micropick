@@ -29,6 +29,11 @@ for the one selected, four steps:
 **Skip this plate, use the drawing** marks it skipped for this robot
 session (`Session.skip_plate`), in Liquid only: elsewhere the step is
 optional and a plate not measured uses its drawing anyway (`set_task`).
+In Manual pick a measured plate also shows "Last time: Z 66.40 mm · 3
+days ago" (`well_center.measured_bottom`) with **Use it**, as Dish bottom
+does: Use it, or Save, confirms that plate's bottom for this robot session
+(`Session.plate_bottom_confirmed`). A measurement made on another module
+height is not the plate's (`DeckConfig.well_center`): "Not measured yet".
 The plates are the task's (`tasks.well_center_plates`: in Auto pick the
 plan's only); the step is done
 when every one is measured, or in Liquid skipped (`tasks.step_state`).
@@ -51,9 +56,9 @@ from ...workflows import well_center
 from .. import tasks
 from ..session import MEASURED, SKIPPED, Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
-from ..theme.factory import (caption, double_spin_box, heading, muted_label,
-                             primary_button, quiet_button, scroll_column,
-                             select)
+from ..theme.factory import (caption, card, double_spin_box, heading,
+                             muted_label, primary_button, quiet_button,
+                             scroll_column, secondary_button, select)
 from ..theme.icons import pixmap
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.jog_panel import JogPanel
@@ -82,22 +87,26 @@ USING_THE_DRAWING = "Not measured: using the drawing"
 TO_WELL, CENTER, LOWER, SAVE = 0, 1, 2, 3
 
 
+def measured_ago(center) -> str:
+    """"today", "yesterday", "3 days ago"; "" with no date."""
+    when = center.measured_at if center is not None else None
+    if when is None:
+        return ""
+    # Saved in local time, naive (`Session.set_well_center`): by the
+    # calendar here, not by 24 hours.
+    if when.tzinfo is not None:
+        when = when.astimezone()
+    days = (date.today() - when.date()).days
+    if days <= 0:
+        return "today"
+    return "yesterday" if days == 1 else f"{days} days ago"
+
+
 def status_text(status: str, center=None) -> str:
     """A plate's line in the list: "Measured today", "Measured 3 days
     ago", "Not measured: using the drawing", "Not measured yet"."""
     if status == MEASURED:
-        when = center.measured_at if center is not None else None
-        if when is None:
-            return "Measured"
-        # Saved in local time, naive (`Session.set_well_center`): by the
-        # calendar here, not by 24 hours.
-        if when.tzinfo is not None:
-            when = when.astimezone()
-        days = (date.today() - when.date()).days
-        if days <= 0:
-            return "Measured today"
-        return ("Measured yesterday" if days == 1
-                else f"Measured {days} days ago")
+        return f"Measured {measured_ago(center)}".rstrip()
     return USING_THE_DRAWING if status == SKIPPED else NOT_MEASURED_YET
 
 
@@ -239,6 +248,21 @@ class WellCenterPage(QWidget):
         column.addLayout(self.plate_list)
         self.no_plates = muted_label("No plate on the deck.", panel)
         column.addWidget(self.no_plates)
+
+        self.last_card = card(panel)
+        row = QHBoxLayout()
+        words = QVBoxLayout()
+        words.setSpacing(2)
+        self.last_value = heading("", 3, panel)
+        self.last_when = muted_label("", panel)
+        words.addWidget(self.last_value)
+        words.addWidget(self.last_when)
+        row.addLayout(words, 1)
+        self.use_button = secondary_button("Use it", panel)
+        self.use_button.clicked.connect(self._use_last)
+        row.addWidget(self.use_button)
+        self.last_card.layout().addLayout(row)
+        column.addWidget(self.last_card)
 
         self.well_step = StepCard(panel, 1, "Tip to a well")
         row = QHBoxLayout()
@@ -459,6 +483,16 @@ class WellCenterPage(QWidget):
         show_toast(self, "Using the drawing.")
         self.select_plate(*self._first_to_do())
 
+    def _use_last(self) -> None:
+        if self._selected is None:
+            return
+        try:
+            self.session.use_plate_bottom(*self._selected)
+        except SessionError as exc:
+            self.jog.tell(describe_error(exc))
+            return
+        show_toast(self, "Using the last measurement.")
+
     def _run_using(self) -> str | None:
         if self._selected is None:
             return None
@@ -529,7 +563,25 @@ class WellCenterPage(QWidget):
             step.set_state(OK if number < self._at else
                            TODO if number == self._at and chosen else
                            BLOCKED)
+        self._show_last()
         self._show_depth()
+
+    def _show_last(self) -> None:
+        """The selected plate's measured bottom with Use it, in Manual pick
+        only."""
+        center, definition = self._center(), self._definition()
+        shown = (self._task == "manual" and center is not None
+                 and definition is not None)
+        self.last_card.setVisible(shown)
+        if not shown:
+            return
+        bottom = well_center.measured_bottom(
+            center, definition,
+            self.session.profile.deck.module_height(center.slot))
+        self.last_value.setText(f"Last time: Z {bottom:.2f} mm")
+        self.last_when.setText(measured_ago(center))
+        self.use_button.setEnabled(
+            not self.session.plate_bottom_confirmed(*self._selected))
 
     def _show_depth(self) -> None:
         """The plate's depth, else the drawing's for the chosen well. At

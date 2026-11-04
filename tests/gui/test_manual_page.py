@@ -15,6 +15,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
+from micropick.config.labware import resolve_definition          # noqa: E402
+from micropick.config.schema import DeckModule                   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.detector import Detection                     # noqa: E402
 from micropick.gui.pages.manual import ManualPage                # noqa: E402
@@ -785,3 +787,20 @@ def test_a_saved_points_z_box_has_no_travel_height(page, session):
     box.setValue(0.0)
     delegate.setModelData(box, table.model(), index)
     assert session.saved_points()["trough"] == (150.0, 150.0, 0.0)
+
+
+def test_a_wells_offset_does_not_read_a_measurement_of_another_height(page):
+    """#92: a well's offset is the plate's center only on the module height
+    it was measured on."""
+    session = page.session
+    plate = "corning_96_wellplate_360ul_flat"
+    definition = resolve_definition(plate)
+    session.load_labware(definition, 5)
+    session.profile.picking.well_offset_x = 0.0
+    session.profile.picking.well_offset_y = 0.0
+    session.set_well_center(5, plate, (0.4, -0.3, -1.5), "B2", depth_mm=10.0)
+    assert page._well_offset("5", definition, 1.0) == \
+        pytest.approx((0.4, -0.3, 1.0))
+    session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
+    assert page._well_offset("5", definition, 1.0) == \
+        pytest.approx((0.0, 0.0, 1.0))

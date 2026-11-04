@@ -86,6 +86,11 @@ the third for fixes.
 - Internal: every move across the deck goes through one module
   (`workflows.motion`), which keeps the travel height and the top of Z
   for every page and run.
+- A plate's measurement belongs to the height of the module in its slot:
+  on another height the plate reads "Not measured yet" in every task and
+  its measurement is not used. A deck.json written before still loads, its
+  measurements accepted. In Manual pick the Well center step shows a
+  measured plate's last bottom with Use it.
 
 ## 0.4.0 - 2026-10-19
 

@@ -465,6 +465,16 @@ was measured, and every page reads it the same way:
 the plate plan's plate's center (`for_plan`). While a run goes into a plate
 (its lease's `plates`), that plate's center is neither forgotten nor its
 depth changed (`well_center.run_using`).
+A measurement belongs to the height of the module in its slot when taken
+(`WellCenter.module_height_mm`, 0 for none; a record from before has none
+and is accepted): on another height `DeckConfig.well_center`, the one place
+every reader asks, does not give it, so the plate reads "Not measured yet"
+in every task and nothing uses it. In Manual pick the page shows a measured
+plate's "Last time: Z 66.40 mm · 3 days ago" (`well_center.measured_bottom`:
+the drawing's well top on the module, the measured rim, less the depth) with
+Use it, as Dish bottom does; Use it or Save confirms that plate's bottom for
+the robot session (`Session.plate_bottom_confirmed`). Liquid and Auto pick
+show no Use it and count a measured plate as before.
 
 ### Words on screen
 

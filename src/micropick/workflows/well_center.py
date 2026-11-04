@@ -21,7 +21,8 @@ from ..hardware.protocols import xyz
 from .motion import Motion
 
 __all__ = ["go_to_top", "Nominal", "Measurement", "xy", "deposit_offset",
-           "plan_plate", "for_plan", "definition_depth", "run_using",
+           "plan_plate", "for_plan", "definition_depth", "measured_bottom",
+           "run_using",
            "AT_TOP", "FORGET_TIP", "in_use_tip"]
 
 # What the pages say, the same on both: the tip is at the robot's well top,
@@ -103,6 +104,19 @@ def definition_depth(definition, well: str) -> float | None:
         return float(definition.data["wells"][well]["depth"])
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def measured_bottom(center, definition, module_height: float) -> float:
+    """The Z of the plate's measured bottom in the robot's frame, with no
+    robot to ask: the drawing's top of the well measured on (the first, for
+    a record with none), on the module, plus the measured rim's offset, less
+    the plate's depth, else the drawing's."""
+    wells = definition.data["wells"]
+    well = wells.get(center.well) or wells[definition.ordering[0][0]]
+    corner = definition.data["cornerOffsetFromSlot"]["z"]
+    top = float(module_height) + corner + well["z"] + well["depth"]
+    depth = well["depth"] if center.depth_mm is None else center.depth_mm
+    return top + float(center.offset[2]) - depth
 
 
 def run_using(lease, slot, load_name: str) -> str | None:

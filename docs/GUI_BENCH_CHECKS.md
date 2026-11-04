@@ -1921,6 +1921,25 @@ plate at hand.
   Liquid › Well center still has Skip this plate, and Next stays gray
   until every plate is measured or skipped.
 
+## A measurement and its module; Use it (#87, #92)
+
+- [ ] **The module changes.**
+  Measure a plate in a slot, then in Robot setup's platforms put another
+  module height in that slot (or take the module away). In Manual pick,
+  Auto pick (the plan's plate) and Liquid its row reads "Not measured
+  yet", its depth is the drawing's, and a deposit, a Manual well and a
+  Liquid step go to the drawing's center. Put the old height back: the
+  row reads "Measured" again.
+
+- [ ] **Last time and Use it.**
+  Manual pick › Well center, a plate measured on an earlier day, in a new
+  robot session: "Last time: Z 66.40 mm" and when, with Use it. Take the
+  tip to the plate's real bottom by hand: Z there agrees with the line
+  (the Z is built from the drawing, the module and the measurement).
+  Use it: it grays. Save on a new measurement grays it too. A new robot
+  session: Use it is back. A plate never measured has no such card, and
+  neither Liquid nor Auto pick shows one.
+
 ## Well center step in Auto pick (#64)
 
 - [ ] **The step.**

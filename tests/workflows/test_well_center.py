@@ -104,3 +104,35 @@ def test_the_depth_a_first_measurement_starts_from_is_the_definitions():
     assert well_center.definition_depth(definition, "B2") == 10.67
     assert well_center.definition_depth(definition, "Z9") is None
     assert well_center.definition_depth(SimpleNamespace(data={}), "B2") is None
+
+
+def _drawing():
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        ordering=[["A1", "B1"]],
+        data={"cornerOffsetFromSlot": {"x": 0, "y": 0, "z": 1.0},
+              "wells": {"A1": {"z": 3.0, "depth": 10.0},
+                        "B2": {"z": 3.55, "depth": 10.67}}})
+
+
+def test_the_measured_bottom_is_the_measured_rim_less_the_depth():
+    # The robot's top of B2: 64.2 + 1.0 + 3.55 + 10.67 = 79.42; the rim
+    # 1.5 under it, the bottom 10.9 under that.
+    assert well_center.measured_bottom(_center(), _drawing(), 64.2) == \
+        pytest.approx(67.02)
+
+
+def test_the_measured_bottom_without_a_depth_takes_the_drawings():
+    from micropick.config.schema import WellCenter
+    center = WellCenter(slot=5, load_name="corning_96", well="B2",
+                        offset=[0.0, 0.0, -1.5])
+    assert well_center.measured_bottom(center, _drawing(), 0.0) == \
+        pytest.approx(3.05)
+
+
+def test_the_measured_bottom_of_a_record_with_no_well_is_at_the_first():
+    from micropick.config.schema import WellCenter
+    center = WellCenter(slot=5, load_name="corning_96",
+                        offset=[0.0, 0.0, 0.0], depth_mm=9.0)
+    assert well_center.measured_bottom(center, _drawing(), 0.0) == \
+        pytest.approx(5.0)
