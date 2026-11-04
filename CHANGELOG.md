@@ -34,9 +34,22 @@ the third for fixes.
   by hand on Manual pick's Work.
 - Manual pick's Work: a click moves the camera or the tip, a right click
   marks a point; Aspirate and Dispense say what they will do.
-- Liquid: a plan is groups of wells with their steps, saved as templates;
-  a plate's well center is measured (or skipped) on its own step; Run
-  shows the plate with progress.
+- Liquid: a plan is now a numbered list of steps, each read as from → to:
+  Move liquid, Mix, Blow out, Move the tip, Wait and Wait for me. It asks
+  where the liquid comes from, then where it goes, then the amount, picked on
+  a plate drawn in its real proportions or on the live camera. Steps are
+  reordered by dragging their cards, with Undo and Redo. The trash is set
+  once per plan, and a missing one says so. There is nothing to confirm: Next
+  is gray with one sentence until the plan can run. Try once does a step's
+  first well and leaves the tip there.
+- Liquid's Run shows the step in hand from → to, both plates with each well's
+  progress and how many wells are done. One step at a time asks after each
+  step whether to go on, repeat it or finish; All steps in a row does not.
+  After a stop, Continue goes on from the next well.
+- Liquid: a plate's well center is measured (or skipped) on its own step.
+- Liquid programs saved before plans are listed gray as "Made with an older
+  version" and do not open on the Plan step; make them again as a plan.
+  Notebooks can still read them. A wash is a two-step plan.
 - The same plate choice, jog pad, fold cards and templates on every page,
   and side panels that do not scroll.
 - A picking run that finds no cuboids now shakes the dish as many times as

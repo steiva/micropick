@@ -360,8 +360,8 @@ class Session(QObject):
     # and read by the Picking page: the two never see each other, and the
     # session is what a session is attached to.
     routine_changed = Signal(object)
-    # The liquid plan a liquid run does, and which of its groups (None: all),
-    # or None. Set by Liquid's Plan step (Use this plan).
+    # The liquid plan a liquid run does, or None. Set by Liquid's Plan step
+    # as it is edited.
     liquid_plan_changed = Signal(object)
     camera_opened = Signal(str)
     camera_closed = Signal(str)

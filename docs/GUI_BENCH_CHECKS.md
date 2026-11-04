@@ -16,7 +16,9 @@ plan the Plan step, Manual control Manual pick's Work), the profile's
 settings are Robot setup's rows and the Settings sheet's second column,
 the status bar's light is Light in the top bar, its tip button the Tip
 step, and a camera's focus is set under the picture in Robot setup's
-camera sheet.
+camera sheet. Liquid handling's groups and blocks are now a plan of steps:
+what its entries check of the robot stands, and the screen's own checks are
+under "Liquid Plan and Run".
 
 ---
 
@@ -1725,8 +1727,7 @@ tip box and a 384 plate at hand.
   is level take turns with the arrows; Well depth reads "10.67 mm, from
   the plate's drawing" (for a Corning 96). Save: "Well center saved.",
   the row reads "Measured today" with a green ✓, the next plate is
-  selected. Liquid handling's groups on that plate now go to the measured
-  center.
+  selected. Liquid's steps on that plate now go to the measured center.
 
 - [ ] **Skip.**
   Skip this plate, use the drawing: "Not measured: using the drawing", a
@@ -1750,70 +1751,6 @@ tip box and a 384 plate at hand.
   and Robot setup's position and camera calibration sheets: each moves
   the robot by one step, never two. On Home and Liquid's Plan and Run
   they move nothing.
-
-## Redesign — Liquid Plan step (#22)
-
-- [ ] **The plate.**
-  Liquid › Plan with a measured and an unmeasured plate on the deck: the
-  dropdown's tiles say "Measured" (green) and "Not measured" (yellow).
-  Choosing the unmeasured one shows the yellow banner; Measure now opens
-  the Well center step, Use anyway hides the banner for that plate.
-
-- [ ] **Groups.**
-  Choose wells (click, row, column, drag; Undo / Redo), "N wells
-  selected", Make a group: the wells take the group's color, a fold card
-  appears under "Groups, in the order they run". Drag a card's header
-  above another: the order changes and the run follows it.
-
-- [ ] **Steps.**
-  "+ Aspirate" with Take liquid from In a well (a reservoir well chosen)
-  adds an aspirate from that well; By hand adds "Pause: Bring the tip to
-  the liquid…" and an aspirate there. Edit unfolds the fields; Try once
-  with a tip on does it for the selected well (watch the robot); Delete
-  step removes it.
-
-- [ ] **What to run and Use this plan.**
-  Only one group, the second chosen: the summary says "1 group · N
-  wells"; Use this plan: "Plan ready", the step is ✓; Run starts only that
-  group (after the trash). A change after it brings Use this plan back.
-
-- [ ] **Templates.**
-  Save as template "Wash", then New plan and A template: "Wash" listed as
-  "1 group · N wells · saved <date>"; a click brings its groups back;
-  a change shows Save changes to "Wash". The file is in
-  `Outputs/templates/liquid-plans/`.
-
-## Redesign — Liquid Run step (#23)
-
-- [ ] **The screen.**
-  Liquid › Run with a plan of two groups: the plate fills the left, the
-  wells in their group's color; Progress ("0 of N wells done", what the
-  tip holds) and the Deck on the right. The footer says READY and "N wells
-  to do.", with Back and Start. At 1920×1080 nothing scrolls.
-
-- [ ] **A run.**
-  Start, confirm: the footer says RUNNING and one sentence per step
-  ("Blowing out the tip over the trash.", "Wash · A1 · aspirating 50 µl"),
-  readable from two meters; STOP and the pill "Handling liquid" are in the
-  top bar; done wells are marked and the current one ringed as the robot
-  goes.
-
-- [ ] **Pause, Resume, a pause of the plan.**
-  Pause: the robot stops after the current command, the footer says
-  PAUSED, the button reads Resume in yellow; Resume carries on. A Pause
-  step (or "pause after the first well") says WAITING FOR YOU with its
-  message, and the window flashes in the taskbar.
-
-- [ ] **Stop run.**
-  Stop run (or Esc): the tip is raised, the footer says READY and
-  "Stopped. n of N wells done.", with Back, Continue and Start. Continue
-  goes on from the next step; Start begins again from the first well,
-  blowing out over the trash first.
-
-- [ ] **To the end.**
-  A run to its last well: DONE, "All N wells done.", Run gets its ✓ in the
-  step bar.
-
 
 ## Redesign — Finish by hand (#20)
 
@@ -2016,8 +1953,8 @@ plate at hand.
 
 ## Reordering plan steps (#71)
 
-`StepList` has no page until #72: these run on the Plan step once it does.
-The tests use Qt's own drag loop; Windows' native one is only seen here.
+On Liquid's Plan step. The tests use Qt's own drag loop; Windows' native one
+is only seen here.
 
 - [ ] **A drag.**
   Press ⠿ on the third card and move: the card follows the pointer, a dashed
@@ -2033,3 +1970,90 @@ The tests use Qt's own drag loop; Windows' native one is only seen here.
 - [ ] **A long plan.**
   With more steps than fit, hold a card near the bottom edge: the list scrolls.
   Release outside the list: nothing moved.
+
+## Liquid Plan and Run (#67)
+
+These replace the checks of the page of groups (#22, #23). Set up: a 6-well
+plate and a 96-well plate on the deck, both measured or skipped on Well center,
+a waste to use as the trash, a tip on. A failure in the wells themselves points
+at the compile step (`core.liquid_plan`); one on screen only, at the pages.
+
+- [ ] **A plan by mouse.**
+  With the mouse only, on the Plan step: 6-well A1 → 96 A1–A12, 50 µl, Pause
+  after the first well; 6-well A2 → 96 B1–B12, Mix after putting it in on; 96
+  D1–D12 → Trash. Each card reads as a sentence ("Move 50 µl", Slot · A1 →
+  Slot · A1–A12 (12)). Drag step 3 to the top: the numbers read 1, 2, 3, each
+  step keeps its color, here and on the plate. Drag it back.
+
+- [ ] **The trash is never a dead end.**
+  Behind the Trash row, Remove the trash: the row says "Not set yet. Needed
+  before running.", Next is gray and the footer says "Set the trash to run this
+  plan." Set it from the Trash row, a well of the waste, Done: Next is enabled.
+  With a new plan afterwards the trash is already there (Use for future plans).
+
+- [ ] **One step at a time.**
+  Run the plan, One step at a time, Start step 1 and confirm. The tip is blown
+  out over the trash before the first well. After the first well the strip says
+  "First well done. Check it, then continue." and the window flashes in the
+  taskbar; Continue. After the step: "Step 1 is done. 12 of 12 wells." with
+  Finish here, Repeat step 1 and Go to step 2. Repeat does the step again from
+  its first well; Go to step 2 goes on. The counter ("7 / 12"), the bar and the
+  wells drawn keep up with the robot, the well ringed being the one it is at,
+  and the pill says "Liquid · step 2 of 3". After the last step: "All 3 steps
+  done." with Run again, Back to plan and Home, and Run gets its ✓ in the step
+  bar.
+
+- [ ] **Plates in their real proportions.**
+  The 6-well and the 96-well plate are boxes of the same size, on Plan and side
+  by side on Run; only the wells differ.
+
+- [ ] **A wash, drawn beside the cuboid.**
+  On a plate measured on Well center, not skipped. A tip of 200 µl and the trash
+  a well of the waste, Top, +5 mm. Step 1: Move liquid from the wells with
+  cuboids to the Trash, 100 µl, Take speed 10, Put speed 200, Take it at Bottom
+  +2.5 mm, Aside X −2 mm, Lift out slowly on; the drawing says "Bottom measured
+  in Well center". Step 2: Move
+  liquid from the reservoir to the same wells, 100 µl, Pause after the first
+  well on. Start: each well is drawn beside the cuboid, 2 mm to the side of the
+  measured center and 2.5 mm over the bottom, and the tip rises in four small
+  steps. The waste is visited after every second well and after the last, with
+  a blow out each time, no retract between wells and no second trip at the end.
+  Step 2 pauses after its first well: the cuboid is still in it. A draw over the
+  cuboid means the aside did not reach the engine; a trip to the waste after
+  every well, that auto empty did not.
+
+- [ ] **A plate not measured.**
+  With a plate neither measured nor skipped, its tile says "Not measured"
+  (yellow) and choosing it shows the warning. Measure now opens the Well center
+  step; Use anyway hides it for that plate, and Amount says "Bottom from the
+  plate drawing".
+
+- [ ] **A point and By hand.**
+  Take from A point: the live upper camera, the points under it. A right click
+  adds a memo point; used in a step it reads as its name and is still there
+  after the program restarts, opened from a template. The star asks a name and
+  keeps it as a saved point; Robot setup's positions are never listed. By hand:
+  bring the tip to a spot with Controls, Use this spot ("Spot saved for this
+  step."); the run goes back there without waiting for anyone.
+
+- [ ] **Try once.**
+  An open step, Try once: "Step 1: trying on the first well.", the robot does
+  its first well only, no blow-out first, and the tip stays where the step put
+  it; the toast says what the tip holds. With no trash set, a step going into
+  the trash is refused with "Set the trash to try this step." and nothing moves.
+
+- [ ] **Pause, Stop run, Continue.**
+  During a step, Pause: the robot stops after the current command, PAUSED, the
+  button reads Continue in yellow, and the strip says which well it goes on
+  from. Stop run (or Esc) in step 2: the tip is raised, READY and "Stopped. n of
+  N wells done.", with Continue step 2 from well 8 (the next well), Start the
+  step over and Start from step 1. Continue carries on from that well with no
+  blow-out; Start from step 1 blows out first. During a run the Plan step says
+  the plan cannot change, and its handles are hidden.
+
+- [ ] **Templates.**
+  Save as template "Wash", New plan, then A template: "Wash" is listed with its
+  steps and wells, and a click brings them back; a change shows Save changes to
+  "Wash". The file is in `Outputs/templates/liquid-plans/`. A program saved
+  there before plans is listed gray, "Made with an older version", and does not
+  open.

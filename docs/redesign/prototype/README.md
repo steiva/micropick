@@ -19,6 +19,7 @@ need the canvas runtime (`support.js`). Read them as source:
 | AutoPicking.dc.html | Picking (tweak `situation`: ready, running, paused, waiting, done, no tip) | 6.5 |
 | Manual.dc.html | Manual pick: Work | 6.6 |
 | LiquidCenter.dc.html | Well center | 6.7 |
-| Liquid.dc.html | Liquid plan | 6.8 |
+| LiquidPlan.dc.html | Liquid plan | `LIQUID.md` §3, §5 |
+| LiquidRun.dc.html | Liquid run | `LIQUID.md` §6 |
 
 Where a file and REDESIGN.md disagree, REDESIGN.md wins.

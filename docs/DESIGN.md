@@ -610,6 +610,7 @@ Written and exercised on mocks; both calibrations have run on the bench.
 | `workflows/jog` | manual control, two input backends |
 | `workflows/picking` | the pick-and-place state machine, one step at a time |
 | `workflows/liquid` | running a liquid handling program, step by step |
+| `workflows/liquid_plan` | running a liquid plan through that engine |
 | `viz/overlays` | drawing for the picking window, frame in, frame out |
 | `viz/window` | one window, sized to the aspect of the frame it shows |
 | `notebooks/01_robot_session.ipynb` | the whole session in one place |
@@ -1198,6 +1199,9 @@ released; the page disables its controls to show that, and neither repeats the
 guard nor works around it.
 
 ### Liquid handling: a program built from blocks
+
+This is the engine, and it still runs. The screens over it are now a plan of
+steps that compile to these programs: see `docs/redesign/LIQUID.md`.
 
 `gui/pages/liquid.py` started as notebook 03, cuboid washing, on one page. A
 second procedure would have been a second page of its own buttons, so the

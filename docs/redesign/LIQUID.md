@@ -1,13 +1,13 @@
 # Liquid: Plan and Run — redesign specification
 
-Status: agreed design, ready to build. Date: 2026-11-03.
+Status: built (#67). Date: 2026-11-03. This document says what was built;
+where it was written as instructions to the builder, they are kept as the
+reasons for the design.
 Audience: Claude Code (implementation) and Ivan (review).
 
 **This replaces §6.8 (Liquid Plan) and §6.9 (Run) of `REDESIGN.md`.**
 Everything else in `REDESIGN.md` still applies: tokens (§2), shared components
-(§3), flows (§4), cross-cutting behaviors (§7). When you start, edit §6.8 and
-§6.9 of `REDESIGN.md` down to one line each, "Replaced by `LIQUID.md`", so the
-two documents never disagree.
+(§3), flows (§4), cross-cutting behaviors (§7).
 
 ---
 
@@ -22,7 +22,7 @@ two documents never disagree.
    `scenario` tweak at the bottom that lists the states the designers
    reviewed, and `renderVals()` shows how one state turns into the next.
    Where the prototype and this document disagree, this document wins.
-3. `REDESIGN.md`, then `CLAUDE.md` (with the changes in §10 below).
+3. `REDESIGN.md`, then `CLAUDE.md` (§10 below).
 
 **Why this rework exists.** The first implementation of §6.8 was tested with
 users, and they could not use it. The full list of problems is in §1. In
@@ -74,6 +74,8 @@ A **plan** is an ordered list of **steps**. Kinds of step:
 |---|---|---|
 | **Move liquid** | Take from a source, put into destinations. | "From a well or a point into wells, or into the trash." |
 | **Mix** | Pipette up and down in wells. | "Pipette up and down in wells, so what was added mixes in." |
+| **Blow out** | Blow the tip out in a well, at a point or over the trash. | "Blows what is left out of the tip." |
+| **Move the tip** | Take the tip to a well, a point or a spot, with no liquid. | "Moves the tip to a place, with no liquid." |
 | **Wait** | Do nothing for a set time. | "The robot does nothing for a set time, e.g. 5 min." |
 | **Wait for me** | Hold until the user presses Continue. | "The robot stops until you press Continue." |
 
@@ -90,7 +92,7 @@ Every **Move liquid** step has:
 - **Amount:** volume per well (µl); take speed and put speed, each a number in
   µl/s (10 by default); *Take it at* and *Put it at*, each a height reference,
   an offset in mm and a shift aside in X and Y.
-- **Extras:** switches, listed in §3.5.
+- **Extras:** switches and the wait after each well, listed in §3.5.
 
 ### 2.2 Pairing rules
 
@@ -100,7 +102,7 @@ only explanation the user needs.
 
 | From | To | Rule shown on screen | Allowed |
 |---|---|---|---|
-| 1 (well, point or spot) | N wells | "One source, *V* µl into each of *N* wells. The robot refills when the tip runs low." | yes |
+| 1 (well, point or spot) | N wells | "One source, *V* µl into each of *N* wells. The robot refills when the tip runs low." (the second sentence only without mixing, §2.3) | yes |
 | N wells | N wells | "Well by well: first to first, second to second, *V* µl each." | yes |
 | N wells | 1 well or a point | "From each of *N* wells into *X*, *V* µl each." | yes |
 | N wells | Trash | "Empty each of the *N* wells into the trash." | yes |
@@ -169,29 +171,36 @@ WaitStep:  seconds
 WaitForMe: message: str = "Check the plate, then continue."
 ```
 
-**`compile_step(plan, index, plates) -> Program`** turns one Move liquid or
-Mix step into a `Program` that `workflows.liquid.run` can execute. Wait steps
-do not compile; the plan runner handles them (§2.4). The compile rules:
+**`compile_step(plan, index, plates) -> Program`** turns one Move liquid, Mix,
+Blow out or Move the tip step into a `Program` that `workflows.liquid.run` can
+execute. Wait and Wait for me do not compile; the plan runner handles them
+(item 2 below). The compile rules:
 
 | Step | Groups | Steps inside each group |
 |---|---|---|
 | 1 → N wells | one group: the N destination wells | `Aspirate(source, refill=True, volume = largest multiple of V that fits in tip_ul)`, `Dispense(this_well, V)`, then `Mix(this_well)` if *mix_after* |
 | 1 → N wells with *mix_after* | same | `Aspirate(source, refill=False, V)`, `Dispense(this_well, V)`, `Mix(this_well)`. With mixing the tip carries the destination liquid, so it must not go back to the source holding a reserve (see §11, Q3) |
-| N → N | N groups of one destination well each | `Aspirate(fixed source well k, refill=False, V)`, `Dispense(this_well, V)`, mix if on |
-| N → 1 well or point | one group: the N source wells | `Aspirate(this_well, V)`, `Dispense(fixed dest, V)` |
+| N → N, 1 → 1 well | a group of one destination well each | `Aspirate(fixed source well k, refill=False, V)`, `Dispense(this_well, V)`, mix if on. 1 → 1 takes exactly V, with no refill |
+| N → 1 well, point or spot | one group: the N source wells | `Aspirate(this_well, V)`, `Dispense(fixed dest, V)`, mix in the fixed destination if on |
 | N → Trash | one group: the N source wells | `Aspirate(this_well, V)`, `Dispense(plan.trash, auto_empty=True)`. This is the washing pattern that already exists |
+| Point or spot → point, spot or Trash | one carrier group | `Aspirate(source, V)`, `Dispense(dest, V)` or auto empty, mix if on |
 | Mix | one group: the wells | `Mix(this_well, cycles, volume)` |
-| Blow out | one carrier group | `BlowOut(place)` |
+| Blow out | one carrier group | `BlowOut(place)`. At the trash it needs the trash, as a step going into the trash does |
 | Move the tip | one carrier group | `MoveTo(place)` |
+
+A **carrier group** is one well of a stand-in plate that only the plan layer
+adds, since the engine runs wells of groups and these steps have none. It never
+reaches the screen.
 
 Then, for all of the above:
 
-- `pause_after_first` goes on the first compiled group only.
-- `wait_after_s` adds a `Wait` at the end of each compiled well's steps.
+- `pause_after_first` goes on the first compiled group only, and
+  `empty_at_end` (`Group.empty_after`) on the last only, so N → N does not
+  visit the trash per well.
+- `wait_after_s` adds a `Wait` at the end of each compiled well's steps, after
+  any mixing.
 - *slow_lift* sets `Aspirate.lift_steps`, `lift_step_mm` and `lift_pause_s`
-  to the values the existing washing template uses. Find them in the saved
-  washing program or in the current Liquid page's defaults; do not invent
-  them.
+  to notebook 03's values: 4 rises of 0.1 mm, 0.2 s apart.
 
 **Heights** map to `Location.level` and `offset[2]`:
 
@@ -214,52 +223,79 @@ old steps' sideways offset, kept because a wash draws beside the cuboid.
 **Points and spots.** `workflows.liquid` looks points up by name in
 `positions`. At compile time, the runner passes `positions` =
 `profile.positions` plus one entry per spot under a reserved name
-(`"plan-spot:<step id>"`), in the same form as `profile.positions`. Nothing
-about this reaches the screen.
+(`"plan-spot:<step id>:<role>"`, since both ends of a step can be spots), in
+the same form as `profile.positions`. Nothing about this reaches the screen.
 
 **Small engine additions** (separate commits, with tests, before any UI):
 
 1. `Group.empty_after: bool`. After the group's last well, dispense
    everything that is left over the program's trash and blow out. This backs
    the *empty_at_end* switch. An auto-empty dispense cannot do it, because in
-   a refill chain it would empty after every well.
+   a refill chain it would empty after every well. It runs before the well
+   counts as done, so a stop during it resumes it; with an empty tip it makes
+   no trip; the group carries no speed, so it empties at a fixed 200 µl/s.
 2. `workflows/liquid_plan.py: run_plan(...)`. It runs the steps in order, or
    only one when `only=index` is given. It compiles each step and calls the
    existing `run()`.
    - One `LiquidState` per step for `done` and `resume`, so a stopped step
      continues where it stopped. `in_tip` is carried from step to step.
-   - `clear_first` (the trash blow-out) only when the plan starts from step 1
-     with nothing done.
+   - A new plan's run begins with the blow-out over the trash, a program of
+     its own on the carrier, not a plan step and not a setting. Only from
+     step 1 with nothing done (`PlanState.fresh`), so Continue does not.
    - Wait: sleep in short slices through the same pause/stop gate (`gate`),
      so Pause and Stop work during it. A stopped Wait continues with the time
      it had left.
    - Wait for me: count it as done, set `pause`, call `on_paused(message)`,
      then `gate`, so a Continue does not wait again.
+   - `after_step(index)` is asked after each step but the last, for One step
+     at a time: `NEXT`, `REPEAT` or `FINISH`. It blocks, the run still holding
+     the robot (`StepChoice` is that wait for a caller on another thread).
    - Callbacks: `on_step(index, state)`, where state is one of `started`,
      `done`, `paused` and `waiting`, plus the existing `on_progress(done,
      total, gi, well)`, mapped to the step's own count of wells.
    - Run through `JogPanel.run_job`, like every robot command (`CLAUDE.md`).
-3. `plan_problems(plan, plates, positions) -> dict[step_id | "plan", list[str]]`.
-   Compile each step and reuse `workflows.liquid.problems` (with
-   `trash=False` per step), plus the plan's own checks: trash set, pairing
-   rule valid (§2.2), and the volume played through all steps with `in_tip`
-   carried over. The messages must read as sentences for a biologist
+3. `plan_problems(plan, plates, positions, capacities) -> dict[step_id |
+   "plan", list[str]]`. Compile each step and reuse
+   `workflows.liquid.problems`, with a stand-in trash so that a missing trash
+   is a plan problem and never a step's, plus the plan's own checks: trash
+   set, pairing rule valid (§2.2), and the volume played through all steps
+   with `in_tip` carried over. `capacities` is what a well holds by slot, the
+   page's to give, so the engine's `Plate` stays as it was. The messages must read as sentences for a biologist
    ("Choose where it goes.", "Set the trash to run this plan.",
    "50 µl is more than this well holds (36 µl)."). Rewrite the existing
    `problems()` messages for the screen, not in the engine.
 
 **Old program files.** `Program` JSON stays readable by notebooks and the
-engine. The template list shows only plans. Converting old programs is §11,
-Q4: until Ivan answers, do not convert them; list them greyed out as "Made
-with an older version".
+engine. The template list shows only plans; old programs are not converted
+and are listed gray as "Made with an older version" (§11, Q4).
 
-**Washing must still be possible.** Build this with the new plan as a test
-fixture (no bundled template: it would not know the bench's slots and wells):
+**Washing must still be possible.** It is the new plan as a test fixture (no
+bundled template: it would not know the bench's slots and wells), and a bench
+check:
 
-1. *Move liquid* from the N wells (bottom, measured, +offset) to the Trash,
-   with *slow lift* on.
+1. *Move liquid* from the N wells (bottom, measured, +2.5 mm, aside X −2 mm,
+   10 µl/s) to the Trash (200 µl/s), with *slow lift* on.
 2. *Move liquid* from the reservoir to the same N wells (top), with *pause
    after the first well* on.
+
+### 2.4 What the old pages could do, and where it went
+
+This redesign changes the workflow, never the robot's functions. Every function
+of the old Plan and Run pages stays reachable:
+
+| Old function | Where it goes |
+|---|---|
+| Offset X, Y, Z in a location | Aside X, Y and the offset on Take it at, Put it at |
+| Separate aspirate and dispense flow rate | Take speed, Put speed |
+| What a tip holds | A field beside the Trash row |
+| Trash anywhere: well or point, with its level and offset | The Trash chooser keeps level and offset |
+| Run one group only | One step at a time, Repeat; `run_plan(only=)` |
+| Blow out as a step | A kind of plan step, **Blow out**, from the menu (no switch); and automatically first when a new plan's run starts |
+| Wait or Pause inside a chain, per well | **Wait after each well**, seconds, in Extras; Pause after the first well stays |
+| Move to (no liquid) | A kind of plan step, **Move the tip**, to a well, a point or a spot |
+| Refill switch | Automatic by the pairing; 1 → N refills unless mixing |
+| `here` (same place as before), By hand as a pause | Replaced by a stored spot (§3.2) |
+| Dispense a part of what was drawn | Volume per well; a remainder stays in the tip when Empty the tip is off |
 
 ---
 
@@ -270,12 +306,13 @@ Shell as in `REDESIGN.md`:
 - TopBar `⌂ Home › Liquid`;
 - StepBar: Deck ✓, Tip ✓, Well center ✓, **Plan**, Run;
 - Footer: on the left, the reason Next is disabled when it is disabled; on the
-  right, **Save as template**, a divider, **Back**, **Next**.
+  right, **Back**, **Next**.
 
 The body is two areas:
 
 - **Right panel (460 px): the plan.** Start from (A template / New plan),
-  the Trash row, then the step cards, then **Add a step**.
+  the Trash row with what a tip holds beside it, then the step cards, **Add a
+  step**, and under it **Save as template**.
 - **Left area: whatever the current question is about.** It changes with the
   section of the open step (§3.2–3.6). With no step open it shows the
   overview (§3.8).
@@ -296,6 +333,8 @@ which the users asked to be visible). Collapsed, a card shows one header row:
   - "Move 50 µl";
   - "Empty 12 wells" when the destination is Trash;
   - "Mix 12 wells · 3×";
+  - "Blow out";
+  - "Move the tip";
   - "Wait 5 min";
   - "Wait for me".
 - Chips: From in `tips`-colored text on `tips-bg`, then →, then To in `plate`
@@ -310,7 +349,7 @@ the position; the color does not. The plate highlight follows the step.
 
 **Open card.** Click the header to open it; only one card is open at a time.
 Open, the card has the `accent` border on a slightly lighter background and
-four rows:
+its rows. A Move liquid card has four; the other kinds' are in §3.6:
 
 | Label | Value |
 |---|---|
@@ -438,10 +477,14 @@ These are switches in the open card. Each one has its help line under it:
 While Extras is selected, the left area shows the destination plate with this
 step's wells, read-only.
 
-### 3.6 Mix, Wait, Wait for me (other step kinds)
+### 3.6 Mix, Blow out, Move the tip, Wait, Wait for me (other step kinds)
 
 - **Mix:** sections *Wells* (the plate, the same as Put into, colored with the
   step) and *How* (cycles, µl, speed, height with the well drawing).
+- **Blow out:** sections *Where* (**A well | A point | Trash**, the trash by
+  default) and *How* (speed, and the height in a well).
+- **Move the tip:** sections *Where* (**A well | A point | By hand**) and, in a
+  well, *How* (the height).
 - **Wait:** one field, minutes and seconds. The left area shows a large
   "5 min" and "The robot does nothing for this long. Pause and Stop still
   work."
@@ -459,12 +502,14 @@ with the trash icon:
   running.", **Set**.
 
 Click opens a chooser with **A well** (MiniDeckDropdown of any labware, then
-one well) or **A point** (the camera, as in §3.2). It has a "Use for future
-plans" checkbox, ticked by default, which stores the choice as the default
-trash for new plans. Users asked for "set it once, for all future steps".
+one well) or **A point** (the camera, as in §3.2), then its height and offset.
+It has a "Use for future plans" checkbox, ticked by default, which stores the
+choice in the profile as the default trash for new plans, **Remove the trash**
+and **Done**. Users asked for "set it once, for all future steps".
 
-The trash is `LiquidPlan.trash`. It is needed to *run*, never to edit or to
-Try once.
+The trash is `LiquidPlan.trash`, a `Location`, so a memo point chosen there is
+named and saved first. It is needed to *run*, never to edit, and to Try once
+only for a step that goes into it (§7).
 
 ### 3.8 Overview (no step open)
 
@@ -478,7 +523,7 @@ this order", then:
 ### 3.9 Add a step
 
 A dashed full-width button **+ Add a step** under the list. It opens a menu
-upward with the four kinds from §2.1, each with its help line.
+upward with the six kinds from §2.1, each with its help line.
 
 - *Move liquid* adds a card at the end, opens it, and selects Take from.
 - The other kinds add their card open as well.
@@ -489,6 +534,8 @@ upward with the four kinds from §2.1, each with its help line.
   §8.6): named files, the saved list, Open from file…, and "Save changes to
   "<name>"" versus "Save as template".
 - **New plan** starts empty, with the default trash if one was set.
+- There is nothing to confirm: the plan is handed to the session as it is
+  edited, and the step is done while it has no problems.
 - **Next** goes to Run. It is disabled (opacity 0.4) while `plan_problems`
   returns anything. The footer then says why, in one sentence: "Set the trash
   to run this plan." or "Finish step 2 to run this plan." The step cards with
@@ -572,8 +619,8 @@ make it pass §9 before anything else.**
   `LiquidPlan.steps` (one undo entry), then calls `StepList.set_steps(...)`,
   which reuses the existing `PlanStepCard` widgets by `id` and only re-lays them
   out. The model is the single source of order.
-- Pure function in `core/liquid_plan.py`: `move_step(plan, step_id,
-  new_index) -> LiquidPlan`. It is easy to test and the widget uses it too.
+- Pure function in `core/liquid_plan.py`: `move_step(plan, index,
+  new_index) -> LiquidPlan`. It is easy to test; the page uses it.
 
 ---
 
@@ -623,6 +670,8 @@ StepBar: Deck ✓, Tip ✓, Well center ✓, Plan ✓ (clickable, back to Plan),
   - "Next" (`muted`);
   - "First" before the start.
 - Next to the Steps caption: "Trash: waste dish · slot 3".
+- Under the steps, what the tip holds, with **Tip is empty** for a tip emptied
+  some other way.
 
 ### 6.3 Banners in the left area
 
@@ -655,8 +704,9 @@ StepBar: Deck ✓, Tip ✓, Well center ✓, Plan ✓ (clickable, back to Plan),
     the robot is not moving.";
   - **Pause** / **Continue**: one button, warn-filled while paused;
   - **Stop run**, `danger`.
-  - Stop keeps the per-step states, so Start becomes **Continue step 2 from
-    well 8**, with **Start the step over** as a secondary option.
+  - Stop keeps the per-step states, so the primary becomes **Continue step 2
+    from well 8**, with **Start the step over** while the step was begun and
+    **Start from step 1** as secondary options.
 - The StatusPill in the TopBar shows "Liquid · step 2 of 3", "Paused" or
   "Waiting for you" (`REDESIGN.md` §3).
 
@@ -685,7 +735,8 @@ StepBar: Deck ✓, Tip ✓, Well center ✓, Plan ✓ (clickable, back to Plan),
 | `core/liquid_plan.py` | new: model, `compile_step`, `move_step`, (de)serialization |
 | `workflows/liquid.py` | add `Group.empty_after` handling (§2.3, item 1) |
 | `workflows/liquid_plan.py` | new: `run_plan`, `plan_problems` |
-| `gui/widgets/step_list.py` | new: `StepList`, `StepCard` with drag (§5) |
+| `gui/widgets/step_list.py` | new: `StepList`, `PlanStepCard` with drag (§5) |
+| `gui/widgets/plan_forms.py` | new: the fields of Amount, Extras and How |
 | `gui/widgets/well_heights.py` | new: the two well cross-sections (§3.4) |
 | `gui/widgets/plate_grid.py` (or wherever PlateGrid lives) | real-proportion drawing (R5); "used by other steps" dim colors |
 | the Liquid Plan and Run pages of the redesign | rebuilt to this spec, reusing MiniDeckDropdown, PlateGrid, CameraView, JogPad, Segmented, Switch, Select, Toast and banners |
@@ -738,7 +789,7 @@ Tests stay green after each commit.
 8. `plan_problems`: a missing trash is a plan problem, not a step problem; an
    empty source or destination is a step problem with a sentence.
 
-### Bench (add to `docs/GUI_BENCH_CHECKS.md`)
+### Bench (in `docs/GUI_BENCH_CHECKS.md`, with a wash with the aside shift)
 
 1. Build the three-step example from the prototype by mouse only:
    - 6-well A1 → 96 A1–A12, 50 µl, pause after the first well;
@@ -760,37 +811,23 @@ Tests stay green after each commit.
 
 ## 10. `CLAUDE.md` update
 
-Replace the section **"Liquid handling is a program of blocks"** with:
-
-> **Liquid is a plan of steps.** The Liquid flow's Plan screen builds a
-> `core.liquid_plan.LiquidPlan`: an ordered list of steps (Move liquid from →
-> to, Mix, Wait, Wait for me), reordered by dragging the card's handle
-> (`widgets.step_list`; the page applies the move to the model, never the
-> widget by itself). Each step compiles to a `core.liquid.Program`
-> (`compile_step`), and `workflows.liquid_plan.run_plan` runs them through the
-> existing engine and `JogPanel.run_job`. The engine's rules (refill, auto
-> empty, measured bottom, slow lift, the trash blow-out, pause/stop/resume)
-> are unchanged. The trash is set once per plan. Plates are drawn in real SBS
-> proportions. Washing is a two-step plan, not a page.
-
-Keep the parts of the old section that are still true: saved points are
-`profile.positions`, the measured well center per slot and plate type, and
-the PlateMirror window if it still exists.
+Done. `CLAUDE.md`'s section **"Liquid is a plan of steps"** replaces "Liquid
+handling is a program of blocks", with what was kept from it: the saved points,
+the measured well center per slot and plate type. The PlateMirror window went
+with the old page.
 
 ---
 
-## 11. Open questions (ask Ivan before deciding; until then use the default)
+## 11. Questions, and how they were decided
 
-1. **Speed numbers.** Answered: a typed field in µl/s, 10 by default (§2.3).
+1. **Speed numbers.** A typed field in µl/s, 10 by default (§2.3).
 2. **Several destination plates in one step** (A → B, C, D). Not in this
-   version. Today it is one step per plate; *Duplicate* in the ⋯ menu makes
-   that quick.
-3. **Mix after a 1 → N step.** Default: no reserve in the tip; each well gets
-   its own trip to the source (§2.3), because a tip that has mixed in a
-   destination well carries that liquid. Confirm, or say that carry-over does
-   not matter.
-4. **Old program files.** Convert the common shapes (washing, distribute) to
-   plans, or just list them as old? Default: list them greyed out.
+   version. It is one step per plate; *Duplicate* in the ⋯ menu makes that
+   quick.
+3. **Mix after a 1 → N step.** No reserve in the tip; each well gets its own
+   trip to the source (§2.3), because a tip that has mixed in a destination
+   well carries that liquid.
+4. **Old program files.** Not converted; listed gray.
 5. **The Stop button in the TopBar while the robot moves** (`REDESIGN.md`
-   §11, Q1). It is still open; the Run screen has its own Stop run either
-   way.
+   §11, Q1). Still open, and it stays as it is; the Run screen has its own
+   Stop run either way.

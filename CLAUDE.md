@@ -372,36 +372,70 @@ has an arrow as tall as a capital letter (`fold_arrow`), and
 folding lays its scroll column out at once (`_ScrollColumn.fit_now`), so
 the cards around it do not flicker.
 
-### Liquid handling is a program of blocks
+### Liquid is a plan of steps
 
-Liquid's Plan step (`pages.liquid_plan`, REDESIGN §6.8) builds a
-`core.liquid.Program`: groups of wells chosen on the `PlateGrid`, each with
-steps that each carry their own `Location` (this well, a fixed well, a saved
-point, here), the groups as fold cards dragged into run order, each step
-one line with Edit (Try once, Delete step), Take liquid from (In a well /
-At a point / By hand: where "+ Aspirate" takes from), What to run (all
-groups or only one), templates as Auto Plan's (`Outputs/templates/
-liquid-plans/`). Use this plan hands a copy and the groups to the session
-(`Session.set_liquid_plan`); Run (`pages.liquid`, REDESIGN §6.9) runs
-that, through a jog panel never shown (`JogPanel.run_job`, lease
-`run=True`: STOP, the pill), `workflows.liquid.run(groups=...)`: the plate
-with progress on the left, no camera; the footer as Picking's
-(`run_status`, `footer_buttons`, `set_need`: READY / RUNNING / PAUSED /
-WAITING FOR YOU / DONE / NOT READY, the sentence the run's own,
-`LiquidState.status`), Back + Start (+ Continue after a stop), Pause /
-Resume + Stop run. A run to its end makes the step done
-(`confirm("liquid_run")`). Its points
-are the saved points (`Session.saved_points`), not a list of the page's
-own, made on Manual pick only: a jog panel saves nothing (no Space, #62;
-`jog_panel.UNBOUND`). The "points"
-box on the picture comes from `JogPanel.show_position_on`, so every page
-with a jog panel has it. Washing is a program written with these blocks
-(measured well center, auto empty, slow lift, pause after the first well),
-not a page of its own. Start blows the tip out over the program's trash
-(`Program.trash`, a well or a saved point) before the first well; Continue
-does not. The plate map spans both card columns (`CardColumns(wide=...)`),
-names the well under the pointer, and opens in its own window as a
-`PlateMirror` - the same scene, never a copy. A plate's measured well
+Liquid's Plan step (`pages.liquid_plan`, LIQUID.md §3) builds a
+`core.liquid_plan.LiquidPlan`: an ordered list of plan steps of six kinds, from
+Add a step - Move liquid from → to, Mix, Blow out, Move the tip, Wait, Wait
+for me - each a card read as a sentence, its id and color its own, its number
+its place in the list. One card is open at a time, its rows the sections
+(`sections`: Take from before Put into, then Amount and Extras, the fields in
+the card, `widgets.plan_forms`); the left area is what the section asks (the
+plate, the camera, the heights drawn, `widgets.well_heights`), with no card
+open the whole plan in each step's color. A card moves by its handle
+(`widgets.step_list`: never `QListWidget` with item widgets), Alt+↑ / ↓ or
+its ⋯ menu; the widget only says `moveRequested`, the page applies
+`move_step` as one undo entry and calls `set_steps`. A plate is drawn in its
+real proportions (the SBS footprint, `PlateGrid`), the wells of other steps
+dim. A step's place is wells, a saved point, a **spot** (coordinates kept in
+the plan: By hand's Use this spot, or a memo point used there, one with no Z
+at the travel height, so a plan never depends on what is in memory) or the
+trash. The points are `Session.saved_points` and the memo points; a right
+click adds a memo point and the star keeps it as a saved point, as Manual
+pick's Save does. A jog panel still saves nothing (no Space, #62;
+`jog_panel.UNBOUND`).
+
+The plan is handed to the session as it is edited
+(`Session.set_liquid_plan`): nothing confirms it. The step is done while
+`Session.liquid_plan_problems` is empty, and until then Next is gray beside one
+sentence (`next_reason`). The trash is set once per plan (`LiquidPlan.trash`, a
+`Location`: a well of any labware or a saved point, so a memo point chosen
+there is named and saved first; Use for future plans keeps it in the profile,
+`Session.default_trash`). A run needs it; editing never does, nor does Try once
+unless the step goes there. Try once (`run_plan(only=, first_pair=True)`, through
+`JogPanel.run_job`) does the open step's first well and leaves the tip there: a
+short job, not a run. Templates are as Auto Plan's
+(`Outputs/templates/liquid-plans/`); a program from before plans is listed gray
+("Made with an older version"), never opened or converted, and stays readable
+by the engine and notebooks. The plan is saved as it is edited into
+`outputs/liquid/current.json`; the next start keeps only its trash and what a
+tip holds.
+
+Each step but Wait and Wait for me compiles to a `core.liquid.Program`
+(`compile_step`), and `workflows.liquid_plan.run_plan` runs them through the
+engine (`workflows.liquid.run`), whose rules stay as they were: refill, auto
+empty, the measured bottom, slow lift, pause / stop / resume. Its one addition
+is `Group.empty_after`. A step with no wells rides on a stand-in plate that
+never reaches the screen. Start blows the tip out over the trash before the
+first step, automatically and only with nothing done (`PlanState.fresh`);
+Continue does not. Washing is a two-step plan (measured bottom, an aside shift,
+slow lift, auto empty, pause after the first well), not a page of its own.
+
+Run (`pages.liquid`, LIQUID.md §6) runs that plan through a jog panel never
+shown (`JogPanel.run_job`, lease `run=True`: STOP, the pill "Liquid · step 2 of
+3"), held from Start to its end, the banner after a step included. No camera:
+the step in hand from → to with its counter and bar, Taking from and Putting
+into each a plate of the same size or a place's name. How to run is One step
+at a time (after each step Finish here, Repeat step N, Go to step N+1;
+`StepChoice`) or All steps in a row. The footer is as Picking's (`run_status`,
+`footer_buttons`, `set_need`: READY / RUNNING / PAUSED / WAITING FOR YOU / DONE
+/ NOT READY, the sentence in the plan's words, never the engine's
+`LiquidState.status`): Back to plan and Start step 1 (Start for all in a row),
+during a run Pause / Continue and Stop run, the plan locked; after a stop
+Continue step 2 from well 8, Start the step over and Start from step 1. A run
+to its end makes the step done (`confirm("liquid_run")`).
+
+A plate's measured well
 center (`WellCenter`) is one per slot and plate type, set on the Well
 center step, one page in every task (`pages.well_center`,
 REDESIGN §6.7, `set_task`: the plates on the deck,

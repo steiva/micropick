@@ -104,7 +104,7 @@ An ordered list of plan steps, with one trash for all of them.
 _Avoid_: program (on screen), protocol
 
 **Plan step**:
-One line of a liquid plan: move liquid from a source to destinations, mix, wait, or wait for the operator. On screen "Step 2". Not a step of a task.
+One line of a liquid plan: move liquid from a source to destinations, mix, blow out, move the tip, wait, or wait for the operator. On screen "Step 2". Not a step of a task.
 _Avoid_: group, block
 
 **Trash**:
