@@ -15,6 +15,7 @@ Both are on disk; nothing here talks to the robot. The robot-facing side
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from dataclasses import dataclass, field
@@ -149,11 +150,15 @@ def _shared_root():
             "labware/") from exc
 
 
+@functools.cache
 def shared_definition(load_name: str,
                       version: int | None = None) -> LabwareDefinition | None:
     """A stock definition from opentrons-shared-data, or None if unknown.
 
-    With no version the newest on disk is taken.
+    With no version the newest on disk is taken. Read once: the package does
+    not change while the program runs, and the plates are asked for on each
+    digit typed on Liquid's Plan step. The one object is shared, so not
+    changed by a caller.
     """
     directory = _shared_root() / load_name
     if not directory.is_dir():

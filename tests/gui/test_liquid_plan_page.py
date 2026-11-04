@@ -18,7 +18,8 @@ from PySide6.QtWidgets import (QAbstractButton, QApplication,    # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.core.liquid import Location, Program              # noqa: E402
-from micropick.core.liquid_plan import LiquidPlan                # noqa: E402
+from micropick.core.liquid_plan import LiquidPlan, Place         # noqa: E402
+from micropick.gui import session as session_module              # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid_plan as page_module       # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
@@ -1315,3 +1316,33 @@ def test_a_file_that_is_no_plan_is_said(app, page, tmp_path, toasts):
     path.write_text("{", encoding="utf-8")
     page.open_template(path)
     assert toasts == [page_module.NOT_A_PLAN]
+
+
+def _a_step_on_slot_5(page):
+    page.add_step("move_liquid")
+    plan = page._edit()
+    plan.steps[0].source = Place(kind="wells", slot="5", wells=["A1"])
+    plan.steps[0].dest = Place(kind="wells", slot="5", wells=["A2"])
+    page._commit(plan)
+    return plan.steps[0].id
+
+
+def test_a_digit_typed_checks_the_plan_once(app, page, monkeypatch):
+    _a_step_on_slot_5(page)
+    checked = []
+    real = session_module.plan_problems
+    monkeypatch.setattr(session_module, "plan_problems",
+                        lambda *a: checked.append(a) or real(*a))
+    page.card.form.volume.setValue(33)
+    app.processEvents()
+    assert page.plan.steps[0].volume_ul == 33
+    assert len(checked) == 1
+
+
+def test_the_check_sees_the_deck_as_it_is_now(app, window, page):
+    step_id = _a_step_on_slot_5(page)
+    session = window.session
+    assert step_id not in session.liquid_plan_problems()
+    session.unload_labware(5)
+    _until(app, lambda: not session.robot_lease.busy)
+    assert step_id in session.liquid_plan_problems()

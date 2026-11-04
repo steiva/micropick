@@ -423,6 +423,8 @@ class Session(QObject):
         self.run_generation = 0
         self.routine = None                      # see routine_changed
         self.liquid_plan = None                  # see liquid_plan_changed
+        # What `liquid_plan_problems` last read, and what it found.
+        self._plan_checked: tuple | None = None
         self.tip = Tip.unknown()                 # see tip_changed
         # What is in the tip, in µl, from `aspirate` and `dispense`; see
         # "liquid in the tip".
@@ -873,10 +875,18 @@ class Session(QObject):
     def liquid_plan_problems(self) -> dict[str, list[str]]:
         """What stops the plan in hand from running, read from the deck and
         the profile now (`workflows.liquid_plan.plan_problems`). Liquid's
-        Plan is done while there is nothing."""
+        Plan is done while there is nothing.
+
+        Everything showing the plan asks this on each digit typed, so the
+        answer is kept while what it was read from is equal; compared, not
+        invalidated, so a change of the deck or the profile can not be
+        missed."""
         plan = self.liquid_plan if self.liquid_plan is not None else LiquidPlan()
-        return plan_problems(plan, self.liquid_plates(),
-                             self.liquid_positions(), self._well_capacities())
+        read = (plan, self.liquid_plates(), self.liquid_positions(),
+                self._well_capacities())
+        if self._plan_checked is None or self._plan_checked[0] != read:
+            self._plan_checked = (read, plan_problems(*read))
+        return self._plan_checked[1]
 
     def liquid_try_refusal(self, index: int) -> str | None:
         """Why the plan's step at `index` cannot be tried once, in a
