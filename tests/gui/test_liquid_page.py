@@ -74,6 +74,7 @@ def test_a_run_goes_through_every_well(app, session):
     session.set_liquid_plan(_plan(step))
     assert page._run_problems() == []
     page._confirm_start = lambda: True
+    page.how.buttons[1].click()                    # all in a row
     page._start()
     _wait(app, page)
     assert page.state.done == [step.id]
@@ -102,6 +103,7 @@ def test_every_kind_of_step_runs_in_the_plans_order(app, session):
     _wait(app, page)
     assert page._run_problems() == []
     page._confirm_start = lambda: True
+    page.how.buttons[1].click()                    # all in a row
     page._start()
     _wait(app, page)
     assert page._ended == "done", page._outcome

@@ -96,6 +96,7 @@ def _run_to_the_end(app, window):
     window.footer.next.click()
     run = window.pages["liquid"]
     assert window.current_page() is run
+    run.how.buttons[1].click()                     # all in a row
     assert _until(app, run._startable), run.run_status()
     run.start_button.click()
     assert _until(app, lambda: run._ended is not None and not run.jog.busy)
@@ -795,6 +796,7 @@ def test_every_kind_of_step_is_added_filled_in_and_run(app, window, page):
     assert not page.session.liquid_plan_problems()
     run = window.pages["liquid"]
     window.footer.next.click()
+    run.how.buttons[1].click()                     # all in a row
     assert _until(app, run._startable), run.run_status()
     run.start_button.click()
     assert _until(app, lambda: run.run_activity() == "waiting")

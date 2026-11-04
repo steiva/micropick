@@ -37,6 +37,16 @@ pause after the first well) and "paused" when the operator's Pause does. The
 engine does not tell one from the other, or say when a Pause takes hold, so
 it gets the pause through `_WatchedPause`.
 
+One step at a time
+------------------
+`after_step(index)` is asked after each step but the last and says what comes
+next: `NEXT`, `REPEAT` (the step again from its first well) or `FINISH` (the
+run ends there, the rest still to do, so a Continue carries on). It blocks: the
+run is still the run, holding the robot while the operator looks, and nothing
+moves until it returns (the engine raised the tip at the step's end).
+`StepChoice` is the wait for a caller on another thread; a stop raises Stopped
+out of it, with the step done.
+
 Try once
 --------
 `first_pair` does the first well of the step's first group with `do_step`,
@@ -60,6 +70,7 @@ known.
 
 from __future__ import annotations
 
+import queue
 import re
 import time
 from dataclasses import dataclass, field
@@ -69,12 +80,12 @@ from ..core.liquid import (VOLUME_TOL, Group, Location, Program,
 from ..core.liquid_plan import (CARRIER_SLOT, CARRIER_WELL, SPOT_PREFIX,
                                 LiquidPlan, compile_step, compiles,
                                 goes_to_trash, pairing, spots)
-from .liquid import (LiquidState, Plate, do_step, gate, play, problems, run,
-                     trash_problems)
+from .liquid import (LiquidState, Plate, Stopped, do_step, gate, play, problems,
+                     run, trash_problems)
 from .motion import Motion
 
-__all__ = ["PlanState", "run_plan", "plan_problems", "compile_plan",
-           "try_refusal"]
+__all__ = ["FINISH", "NEXT", "REPEAT", "PlanState", "StepChoice", "run_plan",
+           "plan_problems", "compile_plan", "try_refusal"]
 
 # The trash the steps are checked with while the plan's cannot be used.
 STAND_IN_TRASH = f"{SPOT_PREFIX}trash"
@@ -88,6 +99,11 @@ FIRST_WELL_DONE = "First well done. Check it, then continue."
 
 # How often a Wait looks at Pause and Stop.
 WAIT_SLICE_S = 0.05
+
+# What comes after a step. See "One step at a time".
+NEXT = "next"
+REPEAT = "repeat"
+FINISH = "finish"
 
 
 @dataclass
@@ -115,6 +131,26 @@ class PlanState:
         self.done = [done for done in self.done if done != step_id]
         self.steps.pop(step_id, None)
         self.wait_left.pop(step_id, None)
+
+
+class StepChoice:
+    """The operator's answer between two steps: given on one thread, waited
+    for on the run's."""
+
+    def __init__(self) -> None:
+        self._answers: queue.SimpleQueue[str] = queue.SimpleQueue()
+
+    def answer(self, what: str) -> None:
+        self._answers.put(what)
+
+    def wait(self, stop) -> str:
+        """The answer. A stop raises Stopped."""
+        while not stop.is_set():
+            try:
+                return self._answers.get(timeout=WAIT_SLICE_S)
+            except queue.Empty:
+                pass
+        raise Stopped
 
 
 class _WatchedPause:
@@ -232,15 +268,15 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
              positions: dict, state: PlanState, *, pause=None, stop=None,
              log=None, on_step=None, on_progress=None, on_paused=None,
              log_path=None, only: int | None = None,
-             first_pair: bool = False) -> None:
+             first_pair: bool = False, after_step=None) -> None:
     """Do the plan's steps in order, skipping those in `state.done`; with
     `only`, that index alone. With `first_pair` too, Try once on it: see
     "Try once". `on_step(index, what)`: "started", "done", and "waiting" or
     "paused" as the run is held (see "Waiting"). `on_progress(done, total,
     gi, well)` as a well is finished, counted within the step; `well` is
     None for a step with no wells. `on_paused(message)` when the plan holds
-    the run. A stop raises `workflows.liquid.Stopped`, `state` saying
-    where."""
+    the run. `after_step`: see "One step at a time". A stop raises
+    `workflows.liquid.Stopped`, `state` saying where."""
     current = 0 if only is None else only
 
     def report(what: str) -> None:
@@ -270,53 +306,71 @@ def run_plan(motion: Motion, plan: LiquidPlan, plates: dict[str, Plate],
         _blow_out_first(motion, plan, plates, positions, state, pause=pause,
                         stop=stop, log=log)
         state.cleared = True
-    chosen = range(len(plan.steps)) if only is None else [only]
-    for index in chosen:
+    chosen = list(range(len(plan.steps))) if only is None else [only]
+    at = 0
+    while at < len(chosen):
+        index = chosen[at]
         step = plan.steps[index]
         if step.id in state.done:
+            at += 1
             continue
         current = index
         report("started")
-        if step.kind == "wait_for_me":
-            state.done.append(step.id)
+        _do_step(motion, plan, index, plates, positions, state, pause=pause,
+                 stop=stop, log=log, report=report, on_progress=on_progress,
+                 on_paused=on_paused, log_path=log_path)
+        report("done")
+        last = at + 1 == len(chosen)
+        then = NEXT if last or after_step is None else after_step(index)
+        if then == FINISH:
+            return
+        if then == REPEAT:
+            state.redo(step.id)
+        else:
+            at += 1
 
-            def waiting(message):
-                if on_paused is not None:
-                    on_paused(message)
-                report("waiting")
 
-            _wait_for_me(step, pause=pause, stop=stop, log=log,
-                         waiting=waiting)
-            report("done")
-            continue
-        if step.kind == "wait":
-            _wait(step, state, pause=pause, stop=stop, log=log)
-            state.done.append(step.id)
-            report("done")
-            continue
-        program = compile_step(plan, index, plates)
-        carried = state.steps.setdefault(step.id, LiquidState())
-        carried.in_tip = state.in_tip
+def _do_step(motion: Motion, plan: LiquidPlan, index: int, plates: dict,
+             positions: dict, state: PlanState, *, pause, stop, log, report,
+             on_progress, on_paused, log_path) -> None:
+    """The step at `index`, counted done in `state` as it ends."""
+    step = plan.steps[index]
+    if step.kind == "wait_for_me":
+        state.done.append(step.id)
 
-        def progress(done, total, gi, well, program=program):
-            if on_progress is not None:
-                on_progress(done, total, gi,
-                            None if _on_carrier(program) else well)
-
-        def paused(_message, program=program, index=index):
+        def waiting(message):
             if on_paused is not None:
-                on_paused(f"Check step {index + 1}, then continue."
-                          if _on_carrier(program) else FIRST_WELL_DONE)
+                on_paused(message)
             report("waiting")
 
-        try:
-            run(motion, program, plates, positions, carried, pause=pause,
-                stop=stop, log=log, on_progress=progress, on_paused=paused,
-                log_path=log_path)
-        finally:
-            state.in_tip = carried.in_tip
+        _wait_for_me(step, pause=pause, stop=stop, log=log, waiting=waiting)
+        return
+    if step.kind == "wait":
+        _wait(step, state, pause=pause, stop=stop, log=log)
         state.done.append(step.id)
-        report("done")
+        return
+    program = compile_step(plan, index, plates)
+    carried = state.steps.setdefault(step.id, LiquidState())
+    carried.in_tip = state.in_tip
+
+    def progress(done, total, gi, well):
+        if on_progress is not None:
+            on_progress(done, total, gi,
+                        None if _on_carrier(program) else well)
+
+    def paused(_message):
+        if on_paused is not None:
+            on_paused(f"Check step {index + 1}, then continue."
+                      if _on_carrier(program) else FIRST_WELL_DONE)
+        report("waiting")
+
+    try:
+        run(motion, program, plates, positions, carried, pause=pause,
+            stop=stop, log=log, on_progress=progress, on_paused=paused,
+            log_path=log_path)
+    finally:
+        state.in_tip = carried.in_tip
+    state.done.append(step.id)
 
 
 def compile_plan(plan: LiquidPlan, plates: dict[str, Plate]) -> tuple[

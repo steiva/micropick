@@ -10,7 +10,8 @@ from micropick.core.liquid_plan import (Height, LiquidPlan, MoveLiquid, Place,
                                         Spot, WaitStep)
 from micropick.hardware.mock import MockRobot
 from micropick.workflows.liquid import Plate, Stopped
-from micropick.workflows.liquid_plan import (PlanState, plan_problems,
+from micropick.workflows.liquid_plan import (FINISH, NEXT, REPEAT, PlanState,
+                                             StepChoice, plan_problems,
                                              run_plan)
 from micropick.workflows.motion import Motion
 
@@ -263,3 +264,103 @@ def test_n_into_one_well_adds_up_against_its_capacity():
     assert plan_problems(_plan(step), PLATES, POSITIONS,
                          capacities={"5": 36}) == {
         step.id: ["40 µl is more than this well holds (36 µl)."]}
+
+
+# -- one step at a time --------------------------------------------------------
+
+def _two_steps():
+    return _plan(
+        MoveLiquid(source=_wells("A1"), dest=_wells("A2"), volume_ul=20),
+        MoveLiquid(source=_wells("B1"), dest=_wells("B2"), volume_ul=30))
+
+
+def _puts(robot) -> list:
+    return [c[2] for c in _in_plate(robot) if c[0] == "dispense"]
+
+
+def test_after_step_is_asked_between_steps_and_not_after_the_last():
+    asked = []
+
+    def after_step(index):
+        asked.append(index)
+        return NEXT
+
+    robot, state = _run(_two_steps(), after_step=after_step)
+    assert asked == [0]
+    assert _puts(robot) == ["A2", "B2"]
+    assert len(state.done) == 2
+
+
+def test_nothing_moves_while_the_answer_is_awaited():
+    robot = MockRobot()
+    seen = []
+
+    def after_step(_index):
+        seen.append(len(robot.calls))
+        return NEXT
+
+    calls_then = []
+
+    def on_step(index, what):
+        if what == "started" and index == 1:
+            calls_then.append(len(robot.calls))
+
+    run_plan(Motion(robot), _two_steps(), PLATES, POSITIONS, PlanState(),
+             after_step=after_step, on_step=on_step)
+    assert seen == calls_then
+
+
+def test_repeat_redoes_the_step_and_asks_again():
+    answers = iter([REPEAT, NEXT])
+    asked = []
+
+    def after_step(index):
+        asked.append(index)
+        return next(answers)
+
+    robot, _ = _run(_two_steps(), after_step=after_step)
+    assert asked == [0, 0]
+    assert _puts(robot) == ["A2", "A2", "B2"]
+    # The trash once, at the start: a repeat is not a new run.
+    assert len([c for c in robot.calls if c[0] == "blow_out"]) == 1
+
+
+def test_finish_ends_the_run_with_the_rest_still_to_do():
+    robot, state = _run(_two_steps(), after_step=lambda _index: FINISH)
+    assert _puts(robot) == ["A2"]
+    assert len(state.done) == 1
+
+
+def test_a_run_finished_carries_on_at_the_next_step():
+    plan = _two_steps()
+    state = PlanState()
+    _run(plan, state, after_step=lambda _index: FINISH)
+    robot, _ = _run(plan, state)
+    assert _puts(robot) == ["B2"]
+    assert not [c for c in robot.calls if c[0] == "blow_out"]
+
+
+def test_a_stop_while_asked_keeps_the_step_done():
+    plan = _two_steps()
+    state = PlanState()
+
+    def after_step(_index):
+        raise Stopped()
+
+    with pytest.raises(Stopped):
+        _run(plan, state, after_step=after_step)
+    assert state.done == [plan.steps[0].id]
+
+
+def test_the_operators_choice_comes_from_another_thread():
+    choice = StepChoice()
+    stop = threading.Event()
+    threading.Timer(0.05, choice.answer, [REPEAT]).start()
+    assert choice.wait(stop) == REPEAT
+
+
+def test_waiting_for_the_choice_obeys_stop():
+    stop = threading.Event()
+    threading.Timer(0.05, stop.set).start()
+    with pytest.raises(Stopped):
+        StepChoice().wait(stop)

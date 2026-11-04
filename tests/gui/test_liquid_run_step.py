@@ -15,15 +15,17 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel               # noqa: E402
+from PySide6.QtWidgets import (QApplication, QLabel,             # noqa: E402
+                               QPushButton)
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.core.liquid import Location                       # noqa: E402
 from micropick.core.liquid_plan import (BlowOutStep, LiquidPlan,  # noqa: E402
                                         MixStep, MoveLiquid, MoveTip, Place,
                                         Spot, WaitForMe, WaitStep)
-from micropick.gui import tasks                                  # noqa: E402
+from micropick.gui import shell, tasks                           # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
+from micropick.gui.pages import liquid as page_module            # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
@@ -53,6 +55,9 @@ def window(app, tmp_path, monkeypatch):
     w.show()
     w.open_task("liquid")
     w.show_step("run")
+    # All in a row; the page is disabled until it has a plan.
+    page.how.set_current(1)
+    page._how_chosen(1)
     yield w
     session.request_stop()
     _until(app, lambda: not page._running and not page.jog.busy)
@@ -188,7 +193,7 @@ def test_a_plan_runs_to_its_end_with_the_counter_and_the_plates_following(
     assert {"A1", "A2", "A3"} <= set(page.putting.plate._fills)
     assert page.putting.plate._fills["A2"].name() == step.color
     assert _footer(window) == ("DONE", "All 2 steps done.")
-    assert _buttons(window) == ["Back to plan", "Start"]
+    assert _buttons(window) == ["Back to plan"]
     assert tasks.step_state(window.session, "liquid", "run").done
     assert not _stop_shown(window)
     assert page.tip_line.text() == "The tip is empty."
@@ -199,7 +204,7 @@ def test_what_the_tip_holds_is_counted_during_a_step(app, window):
     _plan(window, MoveLiquid(source=_wells("H1"), dest=_wells("A1", "A2", "A3"),
                              volume_ul=10, wait_after_s=0.3))
     _started(app, page)
-    assert _until(app, lambda: page.counter.text() == "1 / 3")
+    assert _until(app, lambda: page._step_done(page._step()) >= 1)
     assert page.tip_line.text().startswith("The tip holds ")
     _ended(app, page)
 
@@ -275,12 +280,15 @@ def test_stop_keeps_the_progress_and_continue_carries_on(app, window):
                       volume_ul=10, wait_after_s=0.3)
     _plan(window, step)
     _started(app, page)
-    assert _until(app, lambda: page.counter.text() == "1 / 3")
+    assert _until(app, lambda: page._step_done(page._step()) >= 1)
     page.stop_button.click()
     assert _until(app, lambda: not page._running and not page.jog.busy)
     tag, sentence = _footer(window)
     assert tag == "READY" and sentence.startswith("Stopped. ")
-    assert _buttons(window) == ["Back to plan", "Continue", "Start"]
+    well = page._step_done(step) + 1
+    assert _buttons(window) == ["Back to plan", "Start the step over",
+                                "Start from step 1",
+                                f"Continue step 1 from well {well}"]
     assert not window.session.robot_lease.busy
     assert not _stop_shown(window)
     assert not tasks.step_state(window.session, "liquid", "run").done
@@ -357,3 +365,269 @@ def test_a_point_and_the_trash_are_shown_by_name(app, window):
     assert taking.place_name.text() == "By hand"
     assert taking.place_facts.text() == "X 1.0  Y 2.0  Z 3.0"
     assert putting.stack.currentWidget() is putting.plate
+
+
+# -- one step at a time --------------------------------------------------------
+
+def _one_at_a_time(page):
+    page.how.buttons[0].click()
+    assert page.start_button.text() == "Start step 1"
+
+
+def _three(window):
+    _plan(window,
+          MoveLiquid(source=_wells("H1"), dest=_wells("A1"), volume_ul=10),
+          MoveLiquid(source=_wells("H2"), dest=_wells("B1"), volume_ul=10),
+          MoveLiquid(source=_wells("H3"), dest=_wells("C1"), volume_ul=10))
+
+
+def _puts(window):
+    return [c[2] for c in window.session.robot.calls if c[0] == "dispense"
+            and c[2] != "H12"]
+
+
+def _asked(app, page, step):
+    assert _until(app, lambda: page._asking == step - 1), page.run_status()
+
+
+def test_nothing_moves_between_steps_and_the_robot_stays_busy(app, window):
+    page = window.pages["liquid"]
+    _three(window)
+    _one_at_a_time(page)
+    _started(app, page)
+    _asked(app, page, 1)
+    robot, session = window.session.robot, window.session
+    assert page.after_banner.label.text().startswith(
+        "<b>Step 1 is done. 1 of 1 well.</b>")
+    assert page.repeat_button.text() == "Repeat step 1"
+    assert page.go_button.text() == "Go to step 2"
+    assert _footer(window)[0] == "WAITING FOR YOU"
+    assert page.head_caption.text() == "STEP 1 OF 3 · WAITING FOR YOU"
+    assert session.robot_lease.busy and _stop_shown(window)
+    assert _pill(window) == "Waiting for you"
+    assert not page.pause_button.isEnabled()
+    calls = len(robot.calls)
+    _until(app, lambda: False, timeout_s=0.2)
+    assert len(robot.calls) == calls
+    assert session.robot_lease.busy
+
+
+def test_go_to_runs_the_next_step_and_the_last_ends_with_its_banner(
+        app, window):
+    page = window.pages["liquid"]
+    _three(window)
+    _one_at_a_time(page)
+    _started(app, page)
+    _asked(app, page, 1)
+    page.go_button.click()
+    _asked(app, page, 2)
+    assert _puts(window) == ["A1", "B1"]
+    page.go_button.click()
+    _ended(app, page)
+    assert _puts(window) == ["A1", "B1", "C1"]
+    assert not page.after_banner.isVisibleTo(page)
+    assert page.end_banner.isVisibleTo(page)
+    assert page.end_banner.label.text() == "<b>All 3 steps done.</b>"
+    assert _buttons(window) == ["Back to plan"]
+    assert window.session.is_confirmed("liquid_run")
+
+
+def test_repeat_redoes_the_step(app, window):
+    page = window.pages["liquid"]
+    _three(window)
+    _one_at_a_time(page)
+    _started(app, page)
+    _asked(app, page, 1)
+    page.repeat_button.click()
+    assert _until(app, lambda: _puts(window) == ["A1", "A1"]
+                  and page._asking == 0)
+    assert page.go_button.text() == "Go to step 2"
+
+
+def test_finish_here_lets_the_robot_go_and_continue_goes_on(app, window):
+    page = window.pages["liquid"]
+    _three(window)
+    _one_at_a_time(page)
+    _started(app, page)
+    _asked(app, page, 1)
+    page.finish_button.click()
+    assert _until(app, lambda: page._ended == "finished" and not page.jog.busy
+                  and not window.session.robot_lease.busy)
+    assert _puts(window) == ["A1"]
+    assert not _stop_shown(window)
+    assert _footer(window) == ("READY", "Finished after step 1.")
+    assert _buttons(window) == ["Back to plan", "Start from step 1",
+                                "Continue step 2"]
+    assert not window.session.is_confirmed("liquid_run")
+    assert _until(app, page._startable)
+    page.continue_button.click()
+    _asked(app, page, 2)
+    assert _puts(window) == ["A1", "B1"]
+
+
+def test_a_stop_at_the_banner_keeps_the_step_done(app, window):
+    page = window.pages["liquid"]
+    _three(window)
+    _one_at_a_time(page)
+    _started(app, page)
+    _asked(app, page, 1)
+    window.session.request_stop()
+    assert _until(app, lambda: page._ended == "stopped" and not page.jog.busy)
+    assert not page.after_banner.isVisibleTo(page)
+    assert _buttons(window)[-1] == "Continue step 2"
+
+
+def test_after_the_last_step_run_again_home_and_back_to_plan(app, window):
+    page = window.pages["liquid"]
+    _plan(window, MoveLiquid(source=_wells("H1"), dest=_wells("A1"),
+                             volume_ul=10))
+    _started(app, page)
+    _ended(app, page)
+    assert _until(app, page.again_button.isEnabled)
+    page.again_button.click()
+    assert _until(app, lambda: _puts(window) == ["A1", "A1"]
+                  and page._ended == "done" and not page.jog.busy)
+    assert _until(app, lambda: not window.session.robot_lease.busy)
+    buttons = page.end_banner.findChildren(QPushButton)
+    by_text = {button.text(): button for button in buttons}
+    by_text["Back to plan"].click()
+    assert window.current_page() is window.pages["liquid_plan"]
+    window.show_step("run")
+    by_text["Home"].click()
+    assert window.current_page() is window.home
+
+
+# -- what holds the robot ------------------------------------------------------
+
+@pytest.fixture
+def alerts(monkeypatch):
+    said = []
+    monkeypatch.setattr(shell.QApplication, "alert",
+                        lambda *a: said.append(a))
+    return said
+
+
+def test_pause_after_the_first_well_shows_its_strip_and_flashes(app, window,
+                                                                alerts):
+    page = window.pages["liquid"]
+    _plan(window, MoveLiquid(source=_wells("H1", "H2"),
+                             dest=_wells("A1", "A2"), volume_ul=10,
+                             pause_after_first=True))
+    _started(app, page)
+    assert _until(app, lambda: page._checking is not None)
+    assert page.strip.isVisibleTo(page)
+    assert page.strip.label.text() == (
+        "<b>First well done. Check it, then continue.</b><br>"
+        "You asked for this in the plan.")
+    assert len(alerts) == 1
+    page.pause_button.click()
+    _ended(app, page)
+    assert not page.strip.isVisibleTo(page)
+
+
+def test_wait_for_me_shows_its_message_and_flashes(app, window, alerts):
+    page = window.pages["liquid"]
+    _plan(window, WaitForMe(message="Add <the> cells."))
+    _started(app, page)
+    assert _until(app, lambda: page._checking is not None)
+    assert "Add &lt;the&gt; cells." in page.strip.label.text()
+    assert _pill(window) == "Waiting for you"
+    assert len(alerts) == 1
+    page.pause_button.click()
+    _ended(app, page)
+
+
+def test_the_banner_after_a_step_flashes_too(app, window, alerts):
+    page = window.pages["liquid"]
+    _three(window)
+    _one_at_a_time(page)
+    _started(app, page)
+    _asked(app, page, 1)
+    assert len(alerts) == 1
+
+
+def test_paused_says_where_it_goes_on_from(app, window):
+    page = window.pages["liquid"]
+    _plan(window, MoveLiquid(source=_wells("H1", "H2", "H3"),
+                             dest=_wells("A1", "A2", "A3"), volume_ul=10,
+                             wait_after_s=0.5))
+    _started(app, page)
+    assert _until(app, lambda: page._step_done(page._step()) >= 1)
+    page.pause_button.click()
+    assert _until(app, lambda: page.strip.isVisibleTo(page))
+    assert page.strip.label.text().startswith(
+        "<b>Paused. The robot holds the tip where it is.</b><br>"
+        "Press Continue to go on from well ")
+    page.pause_button.click()
+    _ended(app, page)
+
+
+def test_a_wait_shows_the_time_left_and_obeys_pause_and_stop(app, window):
+    page = window.pages["liquid"]
+    step = WaitStep(seconds=252)
+    _plan(window, step)
+    _started(app, page)
+    assert _until(app, lambda: step.id in page.state.wait_left)
+    assert _until(app, lambda: page.counter.text().endswith(" left"))
+    assert page.counter.text() in ("4:12 left", "4:11 left")
+    assert page.counter.isVisibleTo(page)
+    assert not page.counter_note.isVisibleTo(page)
+    page.pause_button.click()
+    assert _until(app, lambda: _footer(window)[0] == "PAUSED")
+    _until(app, lambda: False, timeout_s=0.15)
+    held = page.state.wait_left[step.id]
+    _until(app, lambda: False, timeout_s=0.2)
+    assert page.state.wait_left[step.id] == held
+    window.session.request_stop()
+    assert _until(app, lambda: page._ended == "stopped" and not page.jog.busy)
+    assert page.counter.text().endswith(" left")   # what it carries on with
+    assert _buttons(window)[-1] == "Continue step 1"
+    assert "Start the step over" in _buttons(window)
+
+
+def test_time_left_rounds_up():
+    assert page_module.time_left(252) == "4:12 left"
+    assert page_module.time_left(251.2) == "4:12 left"
+    assert page_module.time_left(0.1) == "0:01 left"
+
+
+# -- after a stop --------------------------------------------------------------
+
+def _stopped_in_step_two(app, window):
+    page = window.pages["liquid"]
+    _plan(window,
+          MoveLiquid(source=_wells("H1"), dest=_wells("G1"), volume_ul=10),
+          MoveLiquid(source=_wells("A1", "A2", "A3"),
+                     dest=_wells("B1", "B2", "B3"), volume_ul=10,
+                     wait_after_s=0.5))
+    _started(app, page)
+    assert _until(app, lambda: page._index == 1
+                  and page._step_done(page._step()) >= 1)
+    window.session.request_stop()
+    assert _until(app, lambda: page._ended == "stopped" and not page.jog.busy)
+    assert _until(app, page._startable)
+    return page
+
+
+def test_stop_keeps_the_steps_and_continue_resumes_at_the_well_it_says(
+        app, window):
+    page = _stopped_in_step_two(app, window)
+    done = page._step_done(page._step())
+    assert done >= 1
+    assert page.continue_button.text() == f"Continue step 2 from well {done + 1}"
+    assert _buttons(window) == ["Back to plan", "Start the step over",
+                                "Start from step 1", page.continue_button.text()]
+    assert page.cards[page._steps()[0].id].status.text() == "✓ Done"
+    page.continue_button.click()
+    _ended(app, page)
+    # A well put into but still waiting is not put into again.
+    assert _puts(window) == ["G1", "B1", "B2", "B3"]
+
+
+def test_start_the_step_over_redoes_it_from_its_first_well(app, window):
+    page = _stopped_in_step_two(app, window)
+    before = _puts(window)
+    page.over_button.click()
+    _ended(app, page)
+    assert _puts(window) == before + ["B1", "B2", "B3"]
+    assert _puts(window).count("G1") == 1          # step 1 stays done
