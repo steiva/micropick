@@ -104,7 +104,19 @@ is connected, something is on the deck and there is no deck problem; a
 move by drag goes through `Session.move_labware`, which loads again so a
 platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan
 → Well center → Run (no Tip liquid step: it is Picking's card), and a task opens
-on its first step not done that is not optional. The last step of every
+on its first step not done that is not optional. Manual pick is Deck →
+Tip → Source → Well center → Dish bottom → Run, its steps following the
+source (#88, `pages.source`, `Session.source`: a tile for the source dish
+and one per plate, nothing preselected, in memory for the robot session,
+lost with a new session and when that plate is moved or taken off, as its
+labware id tells; `tasks.steps(task, session)`, `tasks.optional`). With a
+plate chosen there is no Dish bottom step, Well center is required for
+that plate only and done once it is confirmed
+(`Session.plate_bottom_confirmed`, the page opening on it), and Run waits
+for that; with the source dish, Dish bottom and Well center are as they
+were and Run waits for Dish bottom. The StepBar follows the choice
+(`MainWindow._refresh`), and a step taken away gives way to the first not
+done. Finish by hand chooses the source dish: the run picked from it. The last step of every
 task is titled Run on screen (#65: Auto's `picking`, the Picking page;
 Manual's `work`, Manual Work; Liquid's `run`); the run statuses and Start
 picking keep their words. Plan needs a plate on the deck (a "plate" need, "Put a plate
@@ -451,7 +463,7 @@ the drawing, Save; in Liquid only Skip this plate, use the drawing -
 `Session.skip_plate`, for the robot session only); Liquid handling only
 reads it. In Liquid the step is required and done when every plate is
 measured or skipped (`Session.well_center_status`); in Manual pick
-(Deck → Tip → Dish bottom → Well center → Run, #63) it is optional
+(#63, unless it picks from a plate, #88) it is optional
 (`tasks.optional`: Next always enabled, the task never opens on it), has
 no Skip - a plate not measured uses its drawing - and is done when every
 plate is measured. Work has no Well center card. So it is in Auto pick

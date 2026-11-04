@@ -40,8 +40,8 @@ def session(app, tmp_path, monkeypatch):
 def test_each_task_is_its_steps_in_order():
     assert tasks.steps("auto") == ["deck", "tip", "dish_bottom", "plan",
                                    "well_center", "picking"]
-    assert tasks.steps("manual") == ["deck", "tip", "dish_bottom",
-                                     "well_center", "work"]
+    assert tasks.steps("manual") == ["deck", "tip", "source", "well_center",
+                                     "dish_bottom", "work"]
     assert tasks.steps("liquid") == ["deck", "tip", "well_center",
                                      "liquid_plan", "run"]
     assert [tasks.title(s) for s in tasks.steps("auto")] == [
@@ -170,10 +170,10 @@ def test_dish_bottom_is_done_once_confirmed_in_this_robot_session(session):
 
 
 def test_picking_needs_the_dish_bottom_and_plan_does_not():
-    picking = [n.key for n in tasks._needs("auto", "picking")
+    picking = [n.key for n in tasks._needs(None, "auto", "picking")
                if n.kind == "step"]
     assert picking == ["deck", "tip", "dish_bottom", "plan"]
-    assert "dish_bottom" not in [n.key for n in tasks._needs("auto", "plan")]
+    assert "dish_bottom" not in [n.key for n in tasks._needs(None, "auto", "plan")]
 
 
 def test_picking_names_the_first_thing_missing(session):
@@ -276,10 +276,10 @@ def test_autos_well_center_needs_a_plan_and_counts_only_its_plate(session):
 
 def test_autos_well_center_needs_a_plan_after_the_tip():
     needs = [(n.kind, n.key, n.text)
-             for n in tasks._needs("auto", "well_center")]
+             for n in tasks._needs(None, "auto", "well_center")]
     assert [k for _kind, k, _t in needs] == ["robot", "deck", "tip", "plan"]
     assert needs[-1] == ("step", "plan", "Make a plan first.")
-    assert "plan" not in [n.key for n in tasks._needs("manual",
+    assert "plan" not in [n.key for n in tasks._needs(None, "manual",
                                                       "well_center")]
 
 
@@ -354,6 +354,7 @@ def test_liquids_run_is_done_by_a_run_to_its_end(session):
     ("auto", "dish_bottom", "step", "tip"),
     ("auto", "plan", "plate", "deck"),
     ("auto", "picking", "step", "tip"),
+    ("manual", "source", None, None),
     ("manual", "work", "step", "tip"),
     ("manual", "well_center", "step", "tip"),
     ("auto", "well_center", "step", "tip"),
@@ -391,6 +392,168 @@ def test_picking_names_the_shake_position_before_the_dish(session):
     _fill_deck(session)
     need = tasks.step_state(session, "auto", "picking").need
     assert need.key == "tip"
-    picking = tasks._needs("auto", "picking")
+    picking = tasks._needs(session, "auto", "picking")
     assert [n.key for n in picking if n.kind == "setup"] == [
         "shake_position", "dish_position"]
+
+
+# -- Manual pick's source (#88) ----------------------------------------------
+
+
+def _measured(session, slot=5):
+    from micropick.config.schema import WellCenter
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=slot, load_name=PLATE, offset=(0.1, 0.2, 0.0), well="A1"))
+
+
+def _with_a_plate(session):
+    _connect(session)
+    session.load_profile("mock")
+    _plate_on_deck(session)
+
+
+def _manual_need(session):
+    return tasks.step_state(session, "manual", "work").need
+
+
+def _past_the_tip(session, monkeypatch):
+    """The Deck and Tip steps done, whatever the tip's state."""
+    monkeypatch.setattr(tasks, "tip_calibration_status",
+                        lambda _session: (True, ""))
+
+
+def test_nothing_is_chosen_at_a_new_start(session):
+    _with_a_plate(session)
+    assert session.source is None
+    state = tasks.step_state(session, "manual", "source")
+    assert not state.done and not state.optional
+    assert tasks.steps("manual", session) == tasks.steps("manual")
+
+
+def test_source_needs_the_deck(session):
+    _connect(session)
+    session.load_profile("mock")
+    need = tasks.step_state(session, "manual", "source").need
+    assert (need.kind, need.key) == ("step", "deck")
+
+
+def test_run_asks_for_the_source_while_none_is_chosen(session, monkeypatch):
+    _with_a_plate(session)
+    _past_the_tip(session, monkeypatch)
+    need = _manual_need(session)
+    assert (need.kind, need.key) == ("step", "source")
+    assert need.text == "Choose the source first."
+    assert tasks.step_state(session, "manual", "dish_bottom").need.key == (
+        "source")
+
+
+def test_with_a_plate_there_is_no_dish_bottom_and_run_waits_for_that_plate(
+        session, monkeypatch):
+    _with_a_plate(session)
+    _past_the_tip(session, monkeypatch)
+    session.load_labware(resolve_definition(PLATE), 6)
+    session.choose_source("5")
+    assert tasks.step_state(session, "manual", "source").done
+    assert tasks.steps("manual", session) == ["deck", "tip", "source",
+                                              "well_center", "work"]
+    well_center = tasks.step_state(session, "manual", "well_center")
+    assert not well_center.optional and not well_center.done
+    need = _manual_need(session)
+    assert (need.kind, need.key) == ("step", "well_center")
+    assert need.text == ("Measure Corning 96 Well Plate 360 µL Flat in "
+                         "slot 5 first.")
+    _measured(session)
+    assert _manual_need(session).key == "well_center"   # not said so yet
+    session.use_plate_bottom(5, PLATE)
+    # Only that plate: the one in slot 6 stays not measured.
+    assert tasks.step_state(session, "manual", "well_center").done
+    assert _manual_need(session) is None
+
+
+def test_with_a_plate_the_position_over_the_dish_is_not_asked_for(
+        session, monkeypatch):
+    _with_a_plate(session)
+    _past_the_tip(session, monkeypatch)
+    assert "dish_position" not in session.profile.positions
+    session.choose_source("5")
+    _measured(session)
+    session.use_plate_bottom(5, PLATE)
+    assert _manual_need(session) is None
+
+
+def test_with_the_source_dish_dish_bottom_is_as_it_was(session, monkeypatch):
+    from micropick.gui.session import SOURCE_DISH
+    _with_a_plate(session)
+    _past_the_tip(session, monkeypatch)
+    session.choose_source(SOURCE_DISH)
+    assert tasks.step_state(session, "manual", "source").done
+    assert tasks.steps("manual", session) == tasks.steps("manual")
+    assert tasks.step_state(session, "manual", "well_center").optional
+    assert tasks.step_state(session, "manual", "dish_bottom").need.key == (
+        "dish_position")
+    need = _manual_need(session)
+    assert (need.key, need.text) == ("dish_bottom",
+                                     "Find the dish bottom first.")
+    session.confirm("dish_bottom")
+    assert _manual_need(session) is None
+
+
+@pytest.mark.parametrize("change", [
+    lambda s: s.unload_labware(5),
+    lambda s: s.move_labware(5, 6),
+])
+def test_a_plate_moved_or_taken_off_clears_the_choice(session, change):
+    _with_a_plate(session)
+    session.choose_source("5")
+    change(session)
+    assert session.source is None
+    assert not tasks.step_state(session, "manual", "source").done
+
+
+def test_a_plate_moved_there_and_back_is_not_chosen_again(session):
+    _with_a_plate(session)
+    session.choose_source("5")
+    session.move_labware(5, 6)
+    session.move_labware(6, 5)
+    assert session.source is None
+
+
+def test_another_plate_in_the_slot_is_not_the_one_chosen(session):
+    _with_a_plate(session)
+    session.choose_source("5")
+    session.unload_labware(5)
+    _plate_on_deck(session)
+    assert session.source is None
+
+
+def test_a_new_robot_session_asks_again(session):
+    from micropick.gui.session import SOURCE_DISH
+    _with_a_plate(session)
+    session.choose_source(SOURCE_DISH)
+    session.new_run()
+    assert session.source is None
+
+
+def test_a_slot_without_a_plate_is_refused(session):
+    from micropick.gui.session import SessionError
+    _with_a_plate(session)
+    with pytest.raises(SessionError):
+        session.choose_source("7")
+    assert session.source is None
+
+
+def test_confirming_a_plate_does_not_mark_dish_bottom_done_in_auto(session):
+    _with_a_plate(session)
+    session.choose_source("5")
+    _measured(session)
+    session.use_plate_bottom(5, PLATE)
+    assert not tasks.step_state(session, "auto", "dish_bottom").done
+    assert tasks.steps("auto", session) == tasks.steps("auto")
+
+
+def test_the_source_changes_only_manual_pick(session):
+    _with_a_plate(session)
+    session.choose_source("5")
+    assert tasks.step_state(session, "auto", "well_center").optional
+    assert not tasks.step_state(session, "liquid", "well_center").optional
+    assert tasks.steps("liquid", session) == tasks.steps("liquid")

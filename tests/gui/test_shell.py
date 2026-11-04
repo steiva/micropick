@@ -14,6 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QPushButton        # noqa: E402
 
 from micropick.gui.app import Options                          # noqa: E402
+from micropick.gui.session import SOURCE_DISH                  # noqa: E402
 from micropick.gui.shell import MainWindow                     # noqa: E402
 
 
@@ -236,14 +237,15 @@ def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.step == "dish_bottom"            # the first not done
     window.session.confirm("dish_bottom")
+    window.session.choose_source(SOURCE_DISH)
     window.top.home_clicked.emit()
     window.home.tiles["manual"].clicked.emit()
     assert window.top.path == ["Manual pick"]
     assert window.step == "work"                   # Well center optional
     assert window.current_page() is window.manual_page
     assert _chips(window) == [("Deck", True), ("Tip", True),
-                              ("Dish bottom", True), ("Well center", False),
-                              ("Run", False)]
+                              ("Source", True), ("Well center", False),
+                              ("Dish bottom", True), ("Run", False)]
     assert window.footer.isVisible() and not window.footer.next.isVisible()
 
 
@@ -279,6 +281,7 @@ def test_dish_bottom_is_its_own_page_and_done_by_use_it_not_by_next(
     window.session.profile.positions["observe"] = (200.0, 150.0, 120.0)
     window.session.profile.calibration.dish_bottom_set_at = datetime.now(
         timezone.utc)
+    window.session.choose_source(SOURCE_DISH)
     window.home.tiles["manual"].clicked.emit()     # opens on Dish bottom
     page = window.dish_bottom_page
     assert window.current_page() is page
@@ -286,7 +289,7 @@ def test_dish_bottom_is_its_own_page_and_done_by_use_it_not_by_next(
     assert not window.footer.next.isEnabled()
     page.use_button.click()
     assert window.footer.next.isEnabled()
-    assert _chips(window)[2] == ("Dish bottom", True)
+    assert _chips(window)[4] == ("Dish bottom", True)
 
 
 def test_dish_bottom_shows_the_z_a_raise_from_the_tip_step_ends_at(

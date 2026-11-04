@@ -1090,9 +1090,9 @@ robot on.
   calibration; a click on Auto pick comes back to Tip.
 
 - [ ] **Auto pick, then Manual pick, opens on Work.**
-  With the deck checked, the tip calibrated and the dish bottom taken
-  (Save dish bottom or Use it), Home › Manual pick
-  shows Deck, Tip and Dish bottom ✓ and the Work page.
+  With the deck checked, the tip calibrated, the source dish chosen and
+  the dish bottom taken (Save dish bottom or Use it), Home › Manual pick
+  shows Deck, Tip, Source and Dish bottom ✓ and the Work page.
 
 - [ ] **Esc still stops, Park parks, Light switches the lights.**
   Esc during a jog stops it; a second Esc within 10 s holds the robot.
@@ -1907,8 +1907,9 @@ plate at hand.
 ## Well center step in Manual pick (#63)
 
 - [ ] **The step.**
-  Manual pick's steps: Deck, Tip, Dish bottom, Well center, Work. With
-  Dish bottom done the task opens on Work, not on Well center. Well center
+  Manual pick's steps: Deck, Tip, Source, Well center, Dish bottom, Run.
+  With the source dish chosen and Dish bottom done the task opens on Run,
+  not on Well center. Well center
   lists the plates on the deck, with no Skip this plate; "A plate not
   measured uses its drawing." Next is enabled with nothing measured.
 
@@ -1920,6 +1921,38 @@ plate at hand.
 - [ ] **Liquid unchanged.**
   Liquid › Well center still has Skip this plate, and Next stays gray
   until every plate is measured or skipped.
+
+## Manual pick's Source step (#88)
+
+- [ ] **Nothing is chosen.**
+  A new start, a 24 well plate on the deck: Manual pick opens on Source
+  (after Deck and Tip), a tile for the source dish and one for the plate,
+  each with its slot, none outlined, Next gray. Run says "Choose the
+  source first." with Go to Source.
+
+- [ ] **From a plate.**
+  Click the plate's tile: Dish bottom leaves the step bar. Well center
+  opens on that plate, "You pick from slot 5: measure it, or Use it.", Next
+  gray beside "Measure the plate in slot 5." A second plate on the deck
+  stays optional. Run says "Measure <plate> in slot 5 first." until Save or
+  Use it; no step asks for the position over the dish.
+
+- [ ] **From the source dish.**
+  Click Source dish: Dish bottom is back, with its Over the dish need. Well
+  center is optional, and Run says "Find the dish bottom first."
+
+- [ ] **The choice goes.**
+  Plate chosen, drag it to another slot on Deck, or take it off: Source
+  loses its ✓, no tile is outlined and Dish bottom is back. Likewise after
+  Home and connect (a new robot session).
+
+- [ ] **Auto pick is not touched.**
+  Confirming the plate in Manual pick leaves Auto pick's Dish bottom not
+  done.
+
+- [ ] **Finish by hand.**
+  A run left short, Finish by hand: Work is not dimmed, Source ✓ on the
+  source dish.
 
 ## A measurement and its module; Use it (#87, #92)
 
@@ -1963,8 +1996,8 @@ plate at hand.
 
 - [ ] **The step bar.**
   Auto pick: Deck, Tip, Dish bottom, Plan, Well center, Run. Manual pick:
-  Deck, Tip, Dish bottom, Well center, Run. Liquid: Deck, Tip, Well
-  center, Plan, Run. No step is called Picking or Work.
+  Deck, Tip, Source, Well center, Dish bottom, Run (no Dish bottom with
+  a plate chosen). Liquid: Deck, Tip, Well center, Plan, Run. No step is called Picking or Work.
 
 - [ ] **The run keeps its words.**
   Auto's Run is the Picking page: Start picking, and the footer and the

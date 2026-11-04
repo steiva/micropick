@@ -72,6 +72,10 @@ _Avoid_: observe (on screen)
 The dish the robot picks from.
 _Avoid_: dish with cuboids, picking dish
 
+**Source**:
+What Manual pick picks from, chosen on its Source step: the source dish or a plate on the deck. Chosen for the robot session; a plate moved or taken off the deck is not the source any more. Auto pick always picks from the source dish.
+_Avoid_: pick source, origin
+
 **Reset setup**:
 Clearing the robot setup to start it again, after the user confirms. The deck and the picking settings are kept.
 
@@ -82,7 +86,7 @@ _Avoid_: hold (a hold is Stop's second press, ended by the robot becoming free)
 ## A day's work
 
 **Task**:
-One of the three kinds of work started from Home: Auto pick, Manual pick, Liquid. A task is a fixed order of steps.
+One of the three kinds of work started from Home: Auto pick, Manual pick, Liquid. A task is an order of steps; Manual pick's follow its source.
 _Avoid_: mode, workflow
 
 **Step**:

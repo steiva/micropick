@@ -1,5 +1,5 @@
 """The Well center step (REDESIGN §6.7): Liquid's third, Manual pick's
-fourth (#63), Auto pick's fifth (#64), the same page in each.
+fourth (#63, #88), Auto pick's fifth (#64), the same page in each.
 
 For each plate on the deck, the real well center and the bottom
 (`config.schema.WellCenter`, one per slot and plate type, saved by
@@ -34,6 +34,8 @@ days ago" (`well_center.measured_bottom`) with **Use it**, as Dish bottom
 does: Use it, or Save, confirms that plate's bottom for this robot session
 (`Session.plate_bottom_confirmed`). A measurement made on another module
 height is not the plate's (`DeckConfig.well_center`): "Not measured yet".
+Manual pick from a plate (#88) needs that plate confirmed: the page opens
+on it while it is not, says so, and Next waits (`tasks.step_state`).
 The plates are the task's (`tasks.well_center_plates`: in Auto pick the
 plan's only); the step is done
 when every one is measured, or in Liquid skipped (`tasks.step_state`).
@@ -79,6 +81,8 @@ INTRO = ("Measure every plate you will use. A plate you skip still works, "
          "with the depth from its drawing.")
 # Where there is no Skip: the step is optional.
 INTRO_OPTIONAL = "A plate not measured uses its drawing."
+# Manual pick from a plate: that one is not optional.
+INTRO_SOURCE = "You pick from slot {slot}: measure it, or Use it."
 NOT_MEASURED_YET = "Not measured yet"
 USING_THE_DRAWING = "Not measured: using the drawing"
 
@@ -322,17 +326,41 @@ class WellCenterPage(QWidget):
         """The task the step is shown in: its plates, and Skip in Liquid
         only."""
         self._task = task
-        skips = task == "liquid"
-        self.skip_button.setVisible(skips)
-        self.intro.setText(INTRO if skips else INTRO_OPTIONAL)
+        self.skip_button.setVisible(task == "liquid")
         self._list_plates()
+        to_do = self._source_to_do()
+        if to_do in self._rows:
+            self.select_plate(*to_do)
 
     def _plates(self):
         return tasks.well_center_plates(self.session, self._task)
 
+    def _source_plate(self):
+        return self.session.source_plate if self._task == "manual" else None
+
+    def _source_to_do(self) -> tuple | None:
+        """The plate picked from, while it is not confirmed."""
+        plate = self._source_plate()
+        if plate is None or self.session.plate_bottom_confirmed(
+                plate.slot, plate.load_name):
+            return None
+        return (plate.slot, plate.load_name)
+
+    def next_reason(self) -> str:
+        plate = self._source_plate()
+        return ("" if plate is None
+                else f"Measure the plate in slot {plate.slot}.")
+
+    def _show_intro(self) -> None:
+        plate = self._source_plate()
+        self.intro.setText(INTRO if self._task == "liquid" else
+                           INTRO_OPTIONAL if plate is None else
+                           INTRO_SOURCE.format(slot=plate.slot))
+
     def _list_plates(self) -> None:
         """The rows again, after a change to the deck; the selection is
         kept while its plate is still there, else the first not done."""
+        self._show_intro()
         while self.plate_list.count():
             widget = self.plate_list.takeAt(0).widget()
             if widget is not None:
@@ -351,9 +379,12 @@ class WellCenterPage(QWidget):
         self.refresh()
 
     def _first_to_do(self) -> tuple:
-        """The first plate not measured or skipped; else the first; else
-        (None, None)."""
+        """The plate picked from while not confirmed; the first plate not
+        measured or skipped; else the first; else (None, None)."""
         keys = list(self._rows)
+        source = self._source_to_do()
+        if source in self._rows:
+            return source
         todo = [k for k in keys
                 if self.session.well_center_status(*k) not in (MEASURED,
                                                                SKIPPED)]

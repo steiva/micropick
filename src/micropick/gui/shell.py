@@ -6,7 +6,7 @@ itself (`Home › Robot setup`, its rows' items under it). While a step is
 shown, the StepBar is over it and the Footer (Back, Next) under it; Home,
 Settings and a setup item have neither.
 
-A **task** is a fixed order of steps (`gui.tasks`); the existing pages are
+A **task** is an order of steps (`gui.tasks`); the existing pages are
 the steps' content, `STEP_PAGES` says which. Deck, Tip and Dish bottom
 are the same page and the same state in every task.
 
@@ -53,7 +53,7 @@ from . import log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
                     dish_bottom, home, labware, liquid, liquid_plan, manual,
                     picking, platforms_sheet, position_sheet, robot_setup, routine,
-                    settings, well_center)
+                    settings, source, well_center)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -81,6 +81,7 @@ PAGES = (
     ("tip_calibration", calibration_pipette.TITLE,
      calibration_pipette.PipetteCalibration),
     ("routine", routine.TITLE, routine.RoutinePage),
+    ("source", source.TITLE, source.SourcePage),
     ("dish_bottom", dish_bottom.TITLE, dish_bottom.DishBottomPage),
     ("picking", picking.TITLE, picking.PickingPage),
     ("well_center", well_center.TITLE, well_center.WellCenterPage),
@@ -93,7 +94,7 @@ PAGES = (
 # The page each step shows.
 STEP_PAGES = {
     "deck": "labware", "tip": "tip_calibration", "plan": "routine",
-    "dish_bottom": "dish_bottom",
+    "source": "source", "dish_bottom": "dish_bottom",
     "picking": "picking", "work": "manual",
     "well_center": "well_center", "liquid_plan": "liquid_plan", "run": "liquid",
 }
@@ -248,6 +249,8 @@ class MainWindow(QMainWindow):
         # had a value typed and not saved (`_ask_unsaved`).
         self.unsaved_question: ConfirmDialog | None = None
         self._need: tasks.Need | None = None
+        # The open task's steps, as the StepBar shows them.
+        self._steps: list[str] = []
         # What the footer was last given (`_refresh`).
         self._navigation: dict | list | None = None
         # What the run's page said it does, last time it was asked: the
@@ -271,7 +274,7 @@ class MainWindow(QMainWindow):
         self.platforms_sheet.said.connect(self.say)
         self.position_sheet.said.connect(self.say)
         self.step_bar.clicked.connect(
-            lambda i: self.show_step(tasks.steps(self.task)[i]))
+            lambda i: self.show_step(self._steps[i]))
         self.footer.back_clicked.connect(self._back)
         self.footer.next_clicked.connect(self._next)
         self.top.home_clicked.connect(self.open_home)
@@ -468,14 +471,20 @@ class MainWindow(QMainWindow):
 
     def _set_task(self, task: str) -> None:
         self.task = task
-        self.step_bar.set_steps([tasks.title(s) for s in tasks.steps(task)])
+        self._list_steps()
+
+    def _list_steps(self) -> None:
+        """The StepBar, for the steps the task has now."""
+        self._steps = tasks.steps(self.task, self.session)
+        self.step_bar.set_steps([tasks.title(s) for s in self._steps])
 
     def open_task(self, task: str) -> None:
         """On its first step not done, an optional one skipped; the last
         when all are."""
         self._set_task(task)
-        steps = tasks.steps(task)
-        first = next((s for s in steps if not tasks.optional(task, s)
+        steps = self._steps
+        first = next((s for s in steps
+                      if not tasks.optional(task, s, self.session)
                       and not tasks.step_state(self.session, task, s).done),
                      steps[-1])
         self.show_step(first)
@@ -542,7 +551,7 @@ class MainWindow(QMainWindow):
             # else the first that is.
             step = (self._task_step
                     if STEP_PAGES.get(self._task_step) == name else
-                    next((s for s in tasks.steps(self.task)
+                    next((s for s in self._steps
                           if STEP_PAGES[s] == name), None))
             if step is not None:
                 self.show_step(step)
@@ -603,7 +612,13 @@ class MainWindow(QMainWindow):
         self._show_lock_button()
         if self.task is None or self.step is None:
             return
-        steps = tasks.steps(self.task)
+        steps = tasks.steps(self.task, self.session)
+        if steps != self._steps:
+            self._list_steps()
+        if self.step not in steps:
+            # The source changed under a step it takes away.
+            self.open_task(self.task)
+            return
         states = [tasks.step_state(self.session, self.task, s)
                   for s in steps]
         index = steps.index(self.step)
@@ -665,7 +680,7 @@ class MainWindow(QMainWindow):
             self.open_setup_item(need.key)
 
     def _back(self) -> None:
-        steps = tasks.steps(self.task)
+        steps = self._steps
         index = steps.index(self.step)
         if index == 0:
             self.open_home()
@@ -673,7 +688,7 @@ class MainWindow(QMainWindow):
             self.show_step(steps[index - 1])
 
     def _next(self) -> None:
-        steps = tasks.steps(self.task)
+        steps = self._steps
         index = steps.index(self.step)
         if index < len(steps) - 1:
             self.show_step(steps[index + 1])
