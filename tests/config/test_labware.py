@@ -75,6 +75,29 @@ def test_missing_ordering_is_rejected(tmp_path):
         labware.local_definitions(tmp_path)
 
 
+def test_a_file_is_parsed_once_until_it_changes(tmp_path, monkeypatch):
+    """`resolve_definition` reads the folder for each name, and a jog step's
+    refreshes ask dozens of times on the GUI thread: parsed each time, the
+    window and the robot stood still for it."""
+    _write_def(tmp_path, "plate_a")
+    parsed = []
+    real = labware._parse
+    monkeypatch.setattr(labware, "_parse",
+                        lambda *a: parsed.append(a) or real(*a))
+
+    first = labware.resolve_definition("plate_a", directory=tmp_path)
+    assert labware.resolve_definition("plate_a", directory=tmp_path) is first
+    assert len(parsed) == 1
+
+    _write_def(tmp_path, "plate_a", ordering=(("A1",),))
+    assert labware.resolve_definition(
+        "plate_a", directory=tmp_path).wells == ["A1"]
+
+    _write_def(tmp_path, "plate_b")
+    assert labware.resolve_definition(
+        "plate_b", directory=tmp_path).load_name == "plate_b"
+
+
 def test_hardware_reexports_still_work():
     from micropick.hardware import labware as hw
     assert hw.LabwareDefinition is labware.LabwareDefinition

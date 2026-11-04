@@ -108,14 +108,30 @@ def _parse(data: dict, source: str, path: Path | None) -> LabwareDefinition:
     )
 
 
+# What each file held when read: path -> ((mtime, size), definition).
+_read: dict[Path, tuple[tuple[int, int], LabwareDefinition]] = {}
+
+
 def read_definition(path: Path) -> LabwareDefinition:
-    """Read one definition file from disk (a local, custom plate)."""
+    """One definition file from disk (a local, custom plate), parsed again
+    only once the file changed: `resolve_definition` reads the whole folder
+    for each name, and it is asked some 85 times per jog step, on the GUI
+    thread, by what refreshes as the robot's lease changes hands. A 1536-well
+    plate is half a megabyte of JSON. The one object is shared, as
+    `shared_definition`'s, so not changed by a caller."""
     path = Path(path)
+    stat = path.stat()
+    stamp = (stat.st_mtime_ns, stat.st_size)
+    known = _read.get(path)
+    if known is not None and known[0] == stamp:
+        return known[1]
     try:
         with path.open(encoding="utf-8") as fh:
-            return _parse(json.load(fh), "local", path)
+            definition = _parse(json.load(fh), "local", path)
     except json.JSONDecodeError as exc:
         raise LabwareError(f"could not read {path.name}: {exc}") from exc
+    _read[path] = (stamp, definition)
+    return definition
 
 
 def local_definitions(directory: Path | None = None
