@@ -1069,5 +1069,8 @@ class PipetteCalibration(QWidget):
         if (travel is not None and pose is not None
                 and pose[2] >= travel - READ_TOL_MM):
             return
-        self.jog.run_job(lambda log: motion.raise_tip(log=log),
-                         what="raising the tip")
+
+        def job(log):
+            motion.raise_tip(log=log)
+
+        self.jog.run_job(job, what="raising the tip")

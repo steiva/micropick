@@ -4,6 +4,7 @@ disc, Calibrate, the fine-tune - whose touch-up arrows follow the lower
 camera."""
 
 import os
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -402,6 +403,27 @@ def test_leaving_the_step_raises_the_tip_to_the_travel_height(
                for c in session.robot.calls[before:])
 
 
+def test_the_panel_is_free_again_after_the_tip_was_raised(app, page, ready):
+    """The raise ends the panel's job like any other: the number `raise_tip`
+    returns is not what a job may return, and it broke the job's end before
+    `moved`."""
+    _tip_on(app, page)
+    errors = []
+    sys.excepthook, hook = lambda *e: errors.append(e), sys.excepthook
+    moved = []
+    page.jog.moved.connect(lambda: moved.append(True))
+    try:
+        page.show()
+        # shown, the panel reads the pose; a raise then would be refused
+        assert _until(app, lambda: not page.jog.busy
+                      and not page.session.robot_lease.busy)
+        page.hide()
+        assert _until(app, lambda: moved or errors)
+    finally:
+        sys.excepthook = hook
+    assert not errors
+
+
 def test_leaving_the_step_moves_nothing_while_the_robot_is_held(
         app, page, ready):
     session = page.session
@@ -426,7 +448,11 @@ def test_leaving_the_step_high_moves_nothing(app, page, ready):
     assert _until(app, lambda: not session.robot_lease.busy
                   and not page.jog.busy)
     motion = session.motion
-    assert page.jog.run_job(lambda log: motion.raise_tip(log=log))
+
+    def job(log):
+        motion.raise_tip(log=log)
+
+    assert page.jog.run_job(job)
     assert _until(app, lambda: not page.jog.busy)
     page.jog.refresh_position()
     # the pose reaches the page by a signal after the job lets go
