@@ -253,11 +253,6 @@ QFrame#runEnd {
     border: 1px solid @card-border;
     border-radius: 16px;
 }
-QFrame#planForm {
-    background: @bar;
-    border: 1px solid @card-border;
-    border-radius: 10px;
-}
 QPushButton#trashRow {
     background: @card;
     border: 1px solid @card-border;

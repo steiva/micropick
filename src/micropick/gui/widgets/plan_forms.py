@@ -1,9 +1,8 @@
 """What an open plan step asks that is not a place (LIQUID.md §3.4 - §3.6).
 
-Amount and Extras of a Move liquid and How of a Mix, a Blow out or a Move the
-tip have the left area to themselves (`AmountForm`, `ExtrasForm`, `HowForm`);
-the time of a Wait and the message of a Wait for me are in the card
-(`StepForm`).
+Amount and Extras of a Move liquid, How of a Mix, a Blow out or a Move the tip,
+the time of a Wait and the message of a Wait for me have the left area to
+themselves (`AmountForm`, `ExtrasForm`, `HowForm`, `WaitForm`, `MessageForm`).
 There is nothing to confirm: a change goes out as it is typed, as
 `edited(key, values)`, the step's fields and their new values, and the page
 makes it part of the plan. `key` names the field, so a number typed digit by
@@ -15,18 +14,19 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QLineEdit,
-                               QStackedWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QVBoxLayout,
+                               QWidget)
 
-from ...core.liquid_plan import Height, height_words
+from ...core.liquid_plan import Height, duration, height_words
 from ..theme import COLORS, SPACING
-from ..theme.factory import (caption, card, double_spin_box, muted_label,
-                             spin_box)
+from ..theme.factory import (caption, card, double_spin_box, heading,
+                             muted_label, spin_box)
+from .banner import Banner
 from .controls import Segmented, Switch
 from .well_heights import DEPTH_MM, WellDrawing
 
-__all__ = ["AmountForm", "ExtrasForm", "HeightCard", "HowForm", "StepForm",
-           "uses_height"]
+__all__ = ["AmountForm", "ExtrasForm", "HeightCard", "HowForm", "MessageForm",
+           "WAITING_WHY", "WaitForm", "uses_height"]
 
 REFS = (("bottom", "Bottom"), ("middle", "Middle"), ("top", "Top"))
 MAX_UL = 100000.0
@@ -40,6 +40,9 @@ DRAWING_PX = (140, 150)
 DRAWING_WELL = 0.34
 SHORT_FIELD_PX = 110
 WAIT_HELP = "The robot stays still this long."
+WAIT_STEP_HELP = ("The robot does nothing for this long. Pause and Stop still "
+                  "work.")
+WAITING_WHY = "You asked for this in the plan."
 NO_HEIGHT = "A point and the trash are used at their own height."
 
 
@@ -348,90 +351,66 @@ class HowForm(_Fields):
         self.at.show_height(step.at, note, depth_mm)
 
 
-class StepForm(QFrame):
-    edited = Signal(str, dict)              # key, {field: value}
+class WaitForm(_Fields):
+    """The time, large, over its Minutes and Seconds and the help line."""
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setObjectName("planForm")
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(10, 8, 10, 8)
-        self.stack = QStackedWidget(self)
-        outer.addWidget(self.stack)
-        self.pages = {"wait": self._wait(), "message": self._message()}
-        for page in self.pages.values():
-            self.stack.addWidget(page)
-
-    def _say(self, field: str):
-        """A slot sending the one field's new value."""
-        def say(value) -> None:
-            self.edited.emit(field, {field: value})
-        return say
-
-    def _page(self) -> tuple[QWidget, QVBoxLayout]:
-        page = QWidget(self)
-        page.setObjectName("plain")
-        column = QVBoxLayout(page)
+        column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
-        return page, column
-
-    def _line(self, parent: QWidget, column: QVBoxLayout, label: str,
-              field: QWidget) -> QWidget:
-        """`label` and its field on a line of `column`; the line."""
-        line = QWidget(parent)
-        line.setObjectName("plain")
-        row = QHBoxLayout(line)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.addWidget(QLabel(label, line), 1)
-        row.addWidget(field)
-        column.addWidget(line)
-        return line
-
-    # -- the sections --------------------------------------------------------
-
-    def _wait(self) -> QWidget:
-        page, column = self._page()
-        self.minutes = spin_box(page)
+        self.time = heading("", 1, self)
+        column.addWidget(self.time, alignment=Qt.AlignmentFlag.AlignHCenter)
+        box = card(self)
+        row = QHBoxLayout()
+        row.setSpacing(SPACING * 3)
+        box.layout().addLayout(row)
+        self.minutes = spin_box(box)
         self.minutes.setRange(0, MAX_MINUTES)
         self.minutes.setSuffix(" min")
-        self.seconds = _number(page, 0, 59.9, " s")
-        self.minutes.valueChanged.connect(lambda _v: self._wait_changed())
-        self.seconds.valueChanged.connect(lambda _v: self._wait_changed())
-        self._line(page, column, "Minutes", self.minutes)
-        self._line(page, column, "Seconds", self.seconds)
-        return page
+        self.seconds = _number(box, 0, 59.9, " s")
+        for label, field in (("Minutes", self.minutes),
+                             ("Seconds", self.seconds)):
+            row.addWidget(_labeled(box, label, field), 1)
+            field.valueChanged.connect(lambda _v: self._changed())
+        column.addWidget(box)
+        # Its own alignment, not the layout's: a wrapping label given less
+        # than the column is cut off.
+        said = muted_label(WAIT_STEP_HELP, self)
+        said.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        column.addWidget(said)
 
-    def _wait_changed(self) -> None:
+    def _changed(self) -> None:
         self.edited.emit("seconds", {
             "seconds": self.minutes.value() * 60 + self.seconds.value()})
 
-    def _message(self) -> QWidget:
-        page, column = self._page()
-        column.addWidget(QLabel("The message you will see", page))
-        self.message = QLineEdit(page)
-        self.message.textEdited.connect(self._say("message"))
-        column.addWidget(self.message)
-        return page
-
-    # -- from the step -------------------------------------------------------
-
-    def show_section(self, step, section: str | None) -> None:
-        """The fields of `section`; hidden for one asked on the left only."""
-        page = self.pages.get(section)
-        self.setVisible(page is not None)
-        if page is None:
-            return
-        self.stack.setCurrentWidget(page)
-        getattr(self, f"_show_{section}")(step)
-        # Only the page shown counts for the card's height.
-        self.stack.setFixedHeight(page.sizeHint().height())
-
-    def _show_wait(self, step) -> None:
+    def show_step(self, step) -> None:
+        self.time.setText(duration(step.seconds))
         minutes, seconds = divmod(step.seconds, 60)
         _put(self.minutes, int(minutes))
         _put(self.seconds, round(seconds, 1))
 
-    def _show_message(self, step) -> None:
+
+class MessageForm(_Fields):
+    """The message over how the Run step will show it."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(SPACING)
+        box = card(self)
+        self.message = QLineEdit(box)
+        self.message.textEdited.connect(self._say("message"))
+        box.layout().addWidget(_labeled(box, "The message you will see",
+                                        self.message))
+        column.addWidget(box)
+        column.addWidget(muted_label("The Run step will show:", self))
+        self.strip = Banner("", tone="warn", parent=self)
+        column.addWidget(self.strip)
+        column.addWidget(muted_label(WAITING_WHY, self))
+
+    def show_step(self, step) -> None:
         if self.message.text() != step.message:
             self.message.setText(step.message)
+        self.strip.set_text(step.message)

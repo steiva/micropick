@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (QAbstractButton,                  # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.core.liquid import Location, Program              # noqa: E402
-from micropick.core.liquid_plan import LiquidPlan, Place         # noqa: E402
+from micropick.core.liquid_plan import (BlowOutStep,  # noqa: E402
+                                        LiquidPlan, Place)
 from micropick.gui import session as session_module              # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid_plan as page_module       # noqa: E402
@@ -560,6 +561,11 @@ def _step(page, index=0):
     return page.plan.steps[index]
 
 
+def _fields_in_the_card(page):
+    return (page.card.findChildren(QAbstractSpinBox)
+            + page.card.findChildren(QLineEdit))
+
+
 def test_the_drawing_and_its_sentence_follow_the_fields_live(app, page):
     page.first_step_button.click()
     _click(app, page, "A1")
@@ -663,11 +669,11 @@ def test_amount_and_extras_are_asked_on_the_left_not_in_the_card(app, page):
     _click(app, page, "B1", "B2")
     page.next_button.click()
     assert page.amount_form.volume.isVisibleTo(page)
-    assert not page.card.form.isVisibleTo(page)
+    assert not _fields_in_the_card(page)
     _to_section(page, "extras")
     assert page.answer_title.text() == "Anything else in this step?"
     assert page.extras_form.slow_lift.isVisibleTo(page)
-    assert not page.card.form.isVisibleTo(page)
+    assert not _fields_in_the_card(page)
 
 
 def test_amount_and_extras_sit_in_the_middle_of_the_room(app, page):
@@ -739,25 +745,113 @@ def test_what_a_tip_holds_is_beside_the_trash_row(app, page):
     assert page.tip_ul.value() == page.plan.tip_ul != 300
 
 
-def test_a_wait_shows_its_time_and_says_stop_still_works(app, page):
+def _top(widget, page):
+    return widget.mapTo(page, widget.rect().topLeft()).y()
+
+
+def test_a_wait_asks_its_time_on_the_left_under_the_large_time(app, page):
     page.add_step("wait")
-    form = page.card.form
+    form = page.wait_form
     assert page.card.rows[0].label.text() == "How long"
     assert page.answer_body.currentWidget() is page.wait_box
+    assert form.minutes.isVisibleTo(page) and form.seconds.isVisibleTo(page)
+    app.processEvents()
+    assert _top(form.minutes, page) > _top(form.time, page)
+    assert _top(form.seconds, page) > _top(form.time, page)
     _type(form.minutes, "5")
-    _type(form.seconds, "0")
-    assert _step(page).seconds == 300
-    assert page.wait_time.text() == "5 min"
-    assert page.step_list.cards()[0].title.text() == "Wait 5 min"
+    assert form.time.text() == "5 min"
+    _type(form.seconds, "30")
+    assert _step(page).seconds == 330
+    assert form.time.text() == "5 min 30 s"
+    assert page.step_list.cards()[0].title.text() == "Wait 5 min 30 s"
 
 
-def test_a_wait_for_me_previews_its_message(app, page):
+def test_a_wait_still_says_stop_works(app, page):
+    page.add_step("wait")
+    said = [label.text() for label in page.wait_form.findChildren(QLabel)
+            if label.isVisibleTo(page)]
+    assert ("The robot does nothing for this long. Pause and Stop still work."
+            in said)
+
+
+def test_the_wait_help_line_is_not_cut_off_on_a_small_window(app, themed,
+                                                             window, page):
+    window.resize(1280, 800)
+    page.add_step("wait")
+    app.processEvents()
+    (line,) = [label for label in page.wait_form.findChildren(QLabel)
+               if "Pause and Stop" in label.text()]
+    assert line.width() == page.wait_form.width()
+    assert line.height() >= line.heightForWidth(line.width())
+
+
+@pytest.mark.parametrize("step_kind, form", [
+    ("wait", lambda page: page.wait_form),
+    ("wait_for_me", lambda page: page.message_form)])
+def test_the_waits_are_a_column_in_the_middle_under_the_title(app, window,
+                                                              page, step_kind,
+                                                              form):
+    page.add_step(step_kind)
+    app.processEvents()
+    shown = form(page)
+    room = shown.parentWidget()
+    assert shown.width() == 480
+    assert abs(shown.geometry().center().x() - room.rect().center().x()) <= 2
+    assert abs(shown.geometry().center().y() - room.rect().center().y()) <= 2
+
+
+def test_a_wait_for_me_asks_its_message_over_the_preview(app, page):
     page.add_step("wait_for_me")
-    form = page.card.form
+    form = page.message_form
+    assert form.message.isVisibleTo(page)
+    app.processEvents()
+    assert _top(form.message, page) < _top(form.strip, page)
     form.message.clear()
     QTest.keyClicks(form.message, "Add the drug")
     assert _step(page).message == "Add the drug"
-    assert page.message_strip.label.text() == "Add the drug"
+    assert form.strip.label.text() == "Add the drug"
+
+
+@pytest.mark.parametrize("step_kind", [kind for kind, _name, _help
+                                       in page_module.KINDS])
+def test_no_kind_of_step_has_a_field_in_the_open_card(app, page, step_kind):
+    page.add_step(step_kind)
+    assert page.card.isVisibleTo(page)
+    assert not _fields_in_the_card(page)
+
+
+def test_digits_typed_into_a_wait_are_one_undo(app, page):
+    page.add_step("wait")
+    before = _step(page).seconds
+    _type(page.wait_form.minutes, "120")
+    assert _step(page).seconds == 7200
+    page.undo()
+    assert _step(page).seconds == before
+    assert page.wait_form.time.text() == "1 min"
+
+
+def test_a_message_typed_is_one_undo(app, page):
+    page.add_step("wait_for_me")
+    before = _step(page).message
+    field = page.message_form.message
+    field.selectAll()
+    QTest.keyClicks(field, "Add the drug")
+    page.undo()
+    assert _step(page).message == before
+    assert field.text() == before
+
+
+@pytest.mark.parametrize("step_kind, form", [
+    ("wait", lambda page: page.wait_form),
+    ("wait_for_me", lambda page: page.message_form)])
+def test_the_waits_are_locked_during_a_run(app, window, page, step_kind, form):
+    page.add_step(step_kind)
+    held = window.session.robot_lease.claim("liquid run", run=True)
+    app.processEvents()
+    assert not form(page).isEnabled()
+    held.release()
+    app.processEvents()
+    assert form(page).isEnabled()
 
 
 def _how_shown(page):
@@ -772,8 +866,6 @@ def _how_shown(page):
 def test_a_blow_out_in_a_well_asks_its_speed_and_height(app, page):
     page.add_step("blow_out")
     assert page.question_title.text() == "Where is the tip blown out?"
-    assert page.into_trash.isVisibleTo(page)
-    page.kinds["blow_out"].buttons[0].click()      # A well
     _click(app, page, "C3")
     assert _step(page).place.wells == ["C3"]
     page.next_button.click()
@@ -782,7 +874,77 @@ def test_a_blow_out_in_a_well_asks_its_speed_and_height(app, page):
     assert _step(page).flow_ul_s == 75
 
 
-@pytest.mark.parametrize("choice", [1, 2], ids=["a point", "the trash"])
+def test_a_blow_out_offers_a_well_a_point_by_hand_and_the_trash(app, page):
+    page.add_step("blow_out")
+    assert [b.text() for b in page.kinds["blow_out"].buttons] == [
+        "A well", "A point", "By hand", "Trash"]
+
+
+def test_a_new_blow_out_opens_on_a_well_with_nothing_chosen(app, page):
+    page.add_step("blow_out")
+    assert page.kinds["blow_out"].current() == 0
+    assert page.on_plate.isVisibleTo(page)
+    assert page.plate.isVisibleTo(page)
+    assert not page.plate.selection
+    assert _step(page).place.kind == "wells" and _step(page).place.empty
+    assert page.card.rows[0].value.text() == "choose"
+
+
+@pytest.mark.parametrize("choice", [0, 1, 2],
+                         ids=["a well", "a point", "by hand"])
+def test_a_blow_out_with_no_place_says_so_and_grays_try_and_next(
+        app, window, page, choice):
+    page.add_step("blow_out")
+    page.kinds["blow_out"].buttons[choice].click()
+    app.processEvents()
+    rule = page.rule if choice == 0 else page.camera_rule
+    assert rule.isVisibleTo(page)
+    assert rule.text() == "Choose the place."
+    assert not page.try_button.isEnabled()
+    assert page.try_button.toolTip() == "Choose the place."
+    assert not window.footer.next.isEnabled()
+    assert (window.session.liquid_plan_problems()[_step(page).id]
+            == ["Choose the place."])
+
+
+def test_a_blow_out_given_a_place_can_be_tried_and_stops_saying_so(app, window,
+                                                                   page):
+    page.add_step("blow_out")
+    _click(app, page, "C3")
+    app.processEvents()
+    assert page.rule.text() == "Click a well."
+    assert page.try_button.isEnabled()
+    assert page.try_button.toolTip() == page_module.TRY_HELP
+    assert not window.session.liquid_plan_problems().get(_step(page).id)
+
+
+def test_a_mix_with_no_wells_grays_try_once_too(app, page):
+    page.add_step("mix")
+    assert not page.try_button.isEnabled()
+    assert page.try_button.toolTip() == "Choose the wells."
+    assert page.rule.text() == "Click the wells to mix."
+
+
+def test_a_blow_out_by_hand_keeps_the_spot_in_the_step(app, window, page):
+    page.add_step("blow_out")
+    page.kinds["blow_out"].buttons[2].click()      # By hand
+    assert page.use_spot_button.isVisibleTo(page)
+    assert _until(app, lambda: page.jog.pose is not None
+                  and page.use_spot_button.isEnabled())
+    pose = page.jog.pose
+    page.use_spot_button.click()
+    place = _step(page).place
+    assert place.kind == "spot"
+    assert (place.spot.x, place.spot.y, place.spot.z) == pytest.approx(pose[:3])
+    assert page.card.rows[0].value.text() == "By hand"
+    assert page.kinds["blow_out"].current() == 2
+    assert page.try_button.isEnabled()
+    assert not window.session.liquid_plan_problems().get(_step(page).id)
+    page.next_button.click()
+    assert _how_shown(page) == {"speed", "own height"}
+
+
+@pytest.mark.parametrize("choice", [1, 3], ids=["a point", "the trash"])
 def test_a_blow_out_elsewhere_says_it_uses_its_own_height(app, page, choice):
     page.add_step("blow_out")
     page.kinds["blow_out"].buttons[choice].click()
@@ -790,6 +952,16 @@ def test_a_blow_out_elsewhere_says_it_uses_its_own_height(app, page, choice):
     assert _how_shown(page) == {"speed", "own height"}
     assert page.how_form.no_height.text() == (
         "A point and the trash are used at their own height.")
+
+
+def test_a_saved_blow_out_into_the_trash_opens_as_it_was(app, tmp_path, page):
+    path = tmp_path / "old.json"
+    LiquidPlan(steps=[BlowOutStep()]).save(path)
+    page.open_template(path)
+    assert _step(page).place == Place(kind="trash")
+    page.step_list.set_open(_step(page).id)
+    assert page.kinds["blow_out"].current() == 3
+    assert page.into_trash.isVisibleTo(page)
 
 
 def test_a_move_of_the_tip_in_a_well_asks_only_its_height(app, page):
@@ -831,7 +1003,7 @@ def test_how_is_asked_on_the_left_not_in_the_card(app, page):
     _click(app, page, "A1")
     page.next_button.click()
     assert page.how_form.isVisibleTo(page)
-    assert not page.card.form.isVisibleTo(page)
+    assert not _fields_in_the_card(page)
 
 
 @pytest.mark.parametrize("size", [(1400, 900), (1280, 800)],
@@ -886,13 +1058,14 @@ def test_every_kind_of_step_is_added_filled_in_and_run(app, window, page):
     _click(app, page, "B1")
     _done(page)
     page.add_step("blow_out")
+    page.kinds["blow_out"].buttons[3].click()      # Trash
     _done(page)
     page.add_step("move_tip")
     _click(app, page, "C1")
     _done(page)
     page.add_step("wait")
-    _type(page.card.form.minutes, "0")
-    _type(page.card.form.seconds, "0.1")
+    _type(page.wait_form.minutes, "0")
+    _type(page.wait_form.seconds, "0.1")
     _done(page)
     page.add_step("wait_for_me")
     _done(page)
@@ -1509,8 +1682,8 @@ def test_going_back_a_section_leaves_no_field_with_the_focus(app, window,
 
 @pytest.mark.parametrize("kind, field", [
     ("mix", lambda page: page.how_form.volume),
-    ("wait", lambda page: page.card.form.minutes),
-    ("wait_for_me", lambda page: page.card.form.message)])
+    ("wait", lambda page: page.wait_form.minutes),
+    ("wait_for_me", lambda page: page.message_form.message)])
 def test_opening_a_step_leaves_no_field_with_the_focus(app, window, page, kind,
                                                        field):
     page.add_step(kind)
@@ -1528,7 +1701,7 @@ def test_opening_a_step_leaves_no_field_with_the_focus(app, window, page, kind,
 
 def test_done_leaves_no_field_with_the_focus(app, window, page):
     page.add_step("wait")
-    page.card.form.minutes.setFocus()
+    page.wait_form.minutes.setFocus()
     page.next_button.click()                       # Done
     app.processEvents()
     assert _field_focused(window) is None
@@ -1548,8 +1721,8 @@ def test_a_key_after_a_change_of_section_changes_nothing(app, window, page):
 
 @pytest.mark.parametrize("kind, field", [
     ("mix", lambda page: page.how_form.volume),
-    ("wait", lambda page: page.card.form.minutes),
-    ("wait_for_me", lambda page: page.card.form.message)])
+    ("wait", lambda page: page.wait_form.minutes),
+    ("wait_for_me", lambda page: page.message_form.message)])
 def test_a_clicked_field_keeps_the_focus_through_its_digits(app, window, page,
                                                             kind, field):
     page.add_step(kind)

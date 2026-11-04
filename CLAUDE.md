@@ -380,10 +380,12 @@ Add a step - Move liquid from → to, Mix, Blow out, Move the tip, Wait, Wait
 for me - each a card read as a sentence, its id and color its own, its number
 its place in the list. One card is open at a time, its rows the sections
 (`sections`: Take from before Put into, then Amount and Extras); the left area
-is what the section asks (the plate, the camera, Amount's, Extras' and How's
-fields, `widgets.plan_forms`, in the middle of the room under the title; the
-waits' fields are in the card), with no card open the whole plan in each
-step's color. The place choice is on the title's row, centered in the left area,
+is what the section asks (the plate, the camera, or the fields of Amount,
+Extras, How, Wait and Wait for me, `widgets.plan_forms`, in the middle of the
+room under the title; the card has only rows and buttons), with no card open
+the whole plan in each step's color. A Blow out made by Add a step has no place
+yet (A well, nothing chosen; "Choose the place."), its stored default staying
+Trash for the plans saved before. The place choice is on the title's row, centered in the left area,
 moved right only to clear the title. After a change of section no field has the
 focus (`LiquidPlanPage._leave_the_fields`): one clicked keeps it while typed in. A card moves by its handle
 (`widgets.step_list`: never `QListWidget` with item widgets), Alt+↑ / ↓ or

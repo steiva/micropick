@@ -1,6 +1,7 @@
 """A liquid plan: its file, its order, its pairing rule, what it compiles to."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -289,6 +290,25 @@ def test_mix_is_a_group_of_its_wells():
     (mix,) = group.steps
     assert (mix.cycles, mix.volume_ul, mix.flow_rate) == (5, 30, 15)
     assert mix.location.kind == "this_well" and mix.location.level == "center"
+
+
+def test_a_blow_out_at_a_spot_compiles_to_a_program():
+    step = BlowOutStep(id="b", flow_ul_s=40, place=Place(
+        kind="spot", spot=Spot(name="By hand", x=1, y=2, z=3)))
+    program = _compiled(step)
+    (blow,) = program.groups[0].steps
+    assert isinstance(blow, BlowOut) and blow.flow_rate == 40
+    assert blow.location.kind == "point"
+    assert blow.location.point == spot_name(step, "place")
+    assert program.groups[0].slot == CARRIER_SLOT
+
+
+def test_a_blow_out_keeps_the_trash_for_a_default_and_in_a_file(tmp_path):
+    assert BlowOutStep().place == Place(kind="trash")
+    path = tmp_path / "plan.json"
+    path.write_text(json.dumps({"steps": [{"kind": "blow_out"}]}),
+                    encoding="utf-8")
+    assert LiquidPlan.load(path).steps[0].place == Place(kind="trash")
 
 
 def test_blow_out_and_move_the_tip_ride_on_a_carrier():

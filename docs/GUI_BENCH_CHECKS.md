@@ -2037,6 +2037,22 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   offset: the drawing, the sentence and the note follow, and one Ctrl+Z takes
   the digits back. During a run the fields are gray.
 
+- [ ] **Wait and Wait for me on the left.**
+  A Wait: the large time over Minutes and Seconds, in a column in the middle
+  under the title, the whole line "Pause and Stop still work." under them, and
+  only rows and buttons in the open card. Type minutes: the time, the row and
+  the card's title follow, and one Ctrl+Z takes the digits back. A Wait for me:
+  the message field over the preview, which follows it as it is typed. During a
+  run the fields are gray.
+
+- [ ] **Blow out: By hand, and A well first.**
+  Add a Blow out: it opens on A well | A point | By hand | Trash with the plate
+  shown and nothing chosen, "Choose the place." under it, Try once and the
+  footer's Next gray. At 1280×800 the four buttons touch no title. By hand:
+  bring the tip to a spot with Controls, Use this spot; How shows Speed and "A
+  point and the trash are used at their own height.", and a run blows out
+  there. A template saved with a Blow out into the trash opens on Trash.
+
 - [ ] **The place choice in the middle.**
   In Take from, Put into, Where and the trash chooser, A well | A point and its
   variations are on the title's row, in the middle of the left area, and the

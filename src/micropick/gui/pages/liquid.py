@@ -90,10 +90,11 @@ from ..theme.icons import pixmap
 from ..widgets.banner import Banner
 from ..widgets.controls import Segmented
 from ..widgets.jog_panel import JogPanel
+from ..widgets.plan_forms import WAITING_WHY
 from ..widgets.plate_grid import PlateGrid, dim_color
 from ..widgets.step_list import PlanStepCard
 from ..workers import describe_error
-from .liquid_plan import WAITING_WHY, robot_problems, trash_place
+from .liquid_plan import robot_problems, trash_place
 
 __all__ = ["LiquidHandlingPage"]
 

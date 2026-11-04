@@ -74,7 +74,7 @@ A **plan** is an ordered list of **steps**. Kinds of step:
 |---|---|---|
 | **Move liquid** | Take from a source, put into destinations. | "From a well or a point into wells, or into the trash." |
 | **Mix** | Pipette up and down in wells. | "Pipette up and down in wells, so what was added mixes in." |
-| **Blow out** | Blow the tip out in a well, at a point or over the trash. | "Blows what is left out of the tip." |
+| **Blow out** | Blow the tip out in a well, at a point, at a spot brought to by hand or over the trash. | "Blows what is left out of the tip." |
 | **Move the tip** | Take the tip to a well, a point or a spot, with no liquid. | "Moves the tip to a place, with no liquid." |
 | **Wait** | Do nothing for a set time. | "The robot does nothing for a set time, e.g. 5 min." |
 | **Wait for me** | Hold until the user presses Continue. | "The robot stops until you press Continue." |
@@ -490,20 +490,28 @@ middle of the room under the title. Each one has its help line under it:
 - **Mix:** sections *Wells* (the plate, the same as Put into, colored with the
   step) and *How*: Times, Volume and Speed in one row in a card, over the
   height card.
-- **Blow out:** sections *Where* (**A well | A point | Trash**, the trash by
-  default) and *How*: Speed over the height card in a well, anywhere else Speed
-  and the line "A point and the trash are used at their own height."
+- **Blow out:** sections *Where* (**A well | A point | By hand | Trash**, By
+  hand as Move the tip's, a spot kept in the plan) and *How*: Speed over the
+  height card in a well, anywhere else Speed and the line "A point and the
+  trash are used at their own height." Add a step makes one on A well with
+  nothing chosen, so the plate is seen and the place chosen on purpose: until
+  then it says "Choose the place." and Try once and the footer's Next are gray.
+  Only Add a step does: a step's stored default stays Trash, so plans and
+  templates saved before read as they were.
 - **Move the tip:** sections *Where* (**A well | A point | By hand**) and, in a
   well, *How*: only the height card.
 
 *How* is asked in the left area with Amount's parts, in a column of Extras'
 width, 480 px, in the middle of the room under the title. The open card holds
 none of it.
-- **Wait:** one field, minutes and seconds. The left area shows a large
-  "5 min" and "The robot does nothing for this long. Pause and Stop still
-  work."
-- **Wait for me:** one field, the message the user will see. The left area
-  shows a preview of the Run screen's waiting strip.
+- **Wait:** in the left area, in the same column, a large "5 min" over
+  **Minutes** and **Seconds** in a card, which it follows as they are typed,
+  and "The robot does nothing for this long. Pause and Stop still work."
+- **Wait for me:** in the left area, in the same column, the message the user
+  will see in a card, over a preview of the Run screen's waiting strip, which
+  follows it as it is typed.
+
+No kind of step has a field in the open card: only its rows and buttons.
 
 ### 3.7 Trash row (once per plan)
 
@@ -738,7 +746,9 @@ StepBar: Deck ✓, Tip ✓, Well center ✓, Plan ✓ (clickable, back to Plan),
   tip holds 150 µl." when it ends.
 - It needs no trash, unless the step itself goes into the trash: then it is
   refused with "Set the trash to try this step." It is refused, with a
-  sentence, when the step has a problem.
+  sentence, when the step has a problem. While the one place of a Mix, a Blow
+  out or a Move the tip is not chosen the button is gray, that sentence its
+  tooltip.
 
 ---
 

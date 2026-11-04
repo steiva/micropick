@@ -8,9 +8,8 @@ then Next is gray with one sentence (`next_reason`, read by the shell).
 
 **Right:** Start from, the Trash row, the steps (`widgets.step_list`) and Add
 a step, and beside the Trash row what a tip holds. One card is open at a time;
-its rows choose the section. Take from comes before Put into. The time of a
-Wait and the message of a Wait for me are fields in the card
-(`widgets.plan_forms`). A step's sections are `sections`.
+its rows choose the section, and it holds only them and its buttons. Take from
+comes before Put into. A step's sections are `sections`.
 
 **Left:** what the open section asks: on the title's row, in the middle of the
 left area, the place choice; the plate from the `MiniDeckDropdown`,
@@ -18,12 +17,12 @@ its wells clicked, the wells of other steps dim, and under it the rule of how
 sources pair with destinations (`core.liquid_plan.pairing`), warn-colored with
 what would work. A plate not measured (nor skipped on the Well center step)
 shows a warning with **Measure now** and **Use anyway**: it is not blocked,
-the robot then uses the plate's drawing. For Amount, Extras and How, their
-fields (`widgets.plan_forms`) in the middle of the room under the title, a
-height drawn (`widgets.well_heights`) following its fields; for a Wait the
-time, for a Wait for me how its message will read. With
-no card open: the whole plan's wells in each step's color and a legend; with
-no steps, the first step's button.
+the robot then uses the plate's drawing. For Amount, Extras, How, a Wait and a
+Wait for me, their fields (`widgets.plan_forms`) in the middle of the room
+under the title, a height drawn (`widgets.well_heights`) following its fields,
+a Wait's large time and how a Wait for me's message will read following theirs.
+With no card open: the whole plan's wells in each step's color and a legend;
+with no steps, the first step's button.
 
 After a change of section no field has the focus (`_leave_the_fields`), so a
 stray key changes nothing; a field clicked keeps it while it is typed in.
@@ -56,9 +55,11 @@ is named and saved first. The chooser stays open until Done, for the height.
 
 Try once runs the open step on its first well, through the page's panel, and
 leaves the tip where the step put it. A short job and not a run: Esc stops it
-and it does not lock the plan. A step with a problem is refused with its
-sentence, so the button is gray only while the robot is busy. What the tip
-holds then is `Session.in_tip`, which the Run step reads too.
+and it does not lock the plan. It is gray while the robot is busy and while the
+one place of a Mix, a Blow out or a Move the tip is not chosen (`_unplaced`),
+that sentence its tooltip. Any other step with a problem is refused with its
+sentence. What the tip holds then is `Session.in_tip`, which the Run step reads
+too.
 
 Start from is A template or New plan, as on Auto pick's Plan: the list, Open
 from file…, Save as template and Save changes to "<name>". The name in the plan
@@ -112,8 +113,8 @@ from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
-from ..widgets.plan_forms import (AmountForm, ExtrasForm, HowForm, StepForm,
-                                  uses_height)
+from ..widgets.plan_forms import (AmountForm, ExtrasForm, HowForm, MessageForm,
+                                  WaitForm, uses_height)
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
@@ -146,8 +147,6 @@ NO_PLATE = "There is no plate on the deck. Add it on the Deck step."
 NOT_MEASURED_TEXT = ("The well center of this plate was not measured. The "
                      "robot will use the plate's drawing.")
 LOCKED = "The plan cannot change during a run."
-WAIT_HELP = "The robot does nothing for this long. Pause and Stop still work."
-WAITING_WHY = "You asked for this in the plan."
 NO_CAMERA = ("There is no camera picture. The points and Controls still work.")
 POINTS_HELP = ("Right-click the picture to add a point. The star keeps a "
                "point for later experiments.")
@@ -213,7 +212,7 @@ CHOICES = {
     "source": (("wells", "A well"), ("point", "A point"), ("spot", "By hand")),
     "dest": (("wells", "Wells"), ("point", "A point"), ("trash", "Trash")),
     "blow_out": (("wells", "A well"), ("point", "A point"),
-                 ("trash", "Trash")),
+                 ("spot", "By hand"), ("trash", "Trash")),
     "move_tip": (("wells", "A well"), ("point", "A point"),
                  ("spot", "By hand")),
     TRASH: (("wells", "A well"), ("point", "A point")),
@@ -246,12 +245,14 @@ def plan_file() -> Path:
 
 
 def new_step(step_kind: str, color: str):
-    """A step of that kind, as Add a step makes it."""
+    """A step of that kind, as Add a step makes it. A Blow out starts with no
+    place, to be chosen on purpose; its stored default stays the trash, which
+    plans saved before rely on."""
     return {
         "move_liquid": lambda: MoveLiquid(color=color, take_at=TAKE_AT,
                                           put_at=PUT_AT),
         "mix": lambda: MixStep(color=color, at=TAKE_AT),
-        "blow_out": lambda: BlowOutStep(color=color),
+        "blow_out": lambda: BlowOutStep(color=color, place=Place()),
         "move_tip": lambda: MoveTip(color=color),
         "wait": lambda: WaitStep(color=color),
         "wait_for_me": lambda: WaitForMe(color=color),
@@ -372,8 +373,6 @@ class _OpenCard(QWidget):
         self.rows = [_Row(self) for _section in range(4)]
         for row in self.rows:
             column.addWidget(row)
-        self.form = StepForm(self)
-        column.addWidget(self.form)
         buttons = QHBoxLayout()
         buttons.setContentsMargins(0, 6, 0, 0)
         self.delete_button = danger_text_button("Delete", self)
@@ -736,8 +735,10 @@ class LiquidPlanPage(QWidget):
         self.extras_box = self._centered(self.extras_form, EXTRAS_WIDTH)
         self.how_form = HowForm(box)
         self.how_box = self._centered(self.how_form, EXTRAS_WIDTH)
-        self.wait_box = self._wait_shown()
-        self.message_box = self._message_shown()
+        self.wait_form = WaitForm(box)
+        self.wait_box = self._centered(self.wait_form, EXTRAS_WIDTH)
+        self.message_form = MessageForm(box)
+        self.message_box = self._centered(self.message_form, EXTRAS_WIDTH)
         for widget in (self.amount_box, self.extras_box, self.how_box,
                        self.wait_box, self.message_box):
             self.answer_body.addWidget(widget)
@@ -757,29 +758,6 @@ class LiquidPlanPage(QWidget):
         row.addStretch(1)
         column.addStretch(1)
         column.addLayout(row)
-        column.addStretch(1)
-        return box
-
-    def _wait_shown(self) -> QWidget:
-        box = QWidget(self)
-        column = QVBoxLayout(box)
-        column.addStretch(1)
-        self.wait_time = heading("", 1, box)
-        column.addWidget(self.wait_time, alignment=Qt.AlignmentFlag.AlignHCenter)
-        column.addWidget(muted_label(WAIT_HELP, box),
-                         alignment=Qt.AlignmentFlag.AlignHCenter)
-        column.addStretch(1)
-        return box
-
-    def _message_shown(self) -> QWidget:
-        box = QWidget(self)
-        column = QVBoxLayout(box)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-        column.addWidget(muted_label("The Run step will show:", box))
-        self.message_strip = Banner("", tone="warn", parent=box)
-        column.addWidget(self.message_strip)
-        column.addWidget(muted_label(WAITING_WHY, box))
         column.addStretch(1)
         return box
 
@@ -883,8 +861,8 @@ class LiquidPlanPage(QWidget):
         self.card.hide()
         self.next_button = self.card.next_button
         self.next_button.clicked.connect(self._next_section)
-        for form in (self.card.form, self.amount_form, self.extras_form,
-                     self.how_form):
+        for form in (self.amount_form, self.extras_form, self.how_form,
+                     self.wait_form, self.message_form):
             form.edited.connect(self._edited)
         self.card.delete_button.clicked.connect(
             lambda: self.delete_step(self.open_id))
@@ -1304,15 +1282,22 @@ class LiquidPlanPage(QWidget):
                 label, color = LABELS[asked[n]]
                 row.show_row(label, section_value(step, asked[n]), color,
                              asked[n] == self.section)
-        self.card.form.show_section(step, self.section)
         busy = self.session.robot_lease.busy
+        unplaced = self._unplaced(step)
         self.try_button.setVisible(compiles(step))
-        self.try_button.setEnabled(not busy)
+        self.try_button.setEnabled(not busy and not unplaced)
         self.try_button.setToolTip(self.session.robot_lease.refusal if busy
-                                   else TRY_HELP)
+                                   else unplaced or TRY_HELP)
         at = asked.index(self.section) if self.section in asked else -1
         self.next_button.setText(f"Next: {LABELS[asked[at + 1]][0]}"
                                  if at + 1 < len(asked) else "Done")
+
+    def _unplaced(self, step) -> str:
+        """The step's sentence while the one place it has is not chosen."""
+        asked = places(step)
+        if len(asked) != 1 or not asked[0][1].empty:
+            return ""
+        return self.session.liquid_plan_problems()[step.id][0]
 
     # -- the wells -----------------------------------------------------------
 
@@ -1622,7 +1607,8 @@ class LiquidPlanPage(QWidget):
                        self.template_box, self.trash_row, self.tip_ul,
                        self.add_button, self.card, self.first_step_button,
                        self.point_area, self.trash_options, self.amount_form,
-                       self.extras_form, self.how_form):
+                       self.extras_form, self.how_form, self.wait_form,
+                       self.message_form):
             widget.setEnabled(not locked)
         self._show_trash_row()
         self._show_saves()
@@ -1769,8 +1755,10 @@ class LiquidPlanPage(QWidget):
         rule = (pairing(step) if self.section != TRASH
                 and step.kind == "move_liquid" else None)
         warn = rule is not None and not rule.allowed
-        self.camera_rule.setText(("ⓘ " if warn else "")
-                                 + (rule.sentence if rule is not None else ""))
+        sentence = rule.sentence if rule is not None else ""
+        if self.section == "place":
+            sentence = self._unplaced(step)
+        self.camera_rule.setText(("ⓘ " if warn else "") + sentence)
         self.camera_rule.setVisible(bool(self.camera_rule.text()))
         if self.camera_rule.property("warn") != warn:
             self.camera_rule.setProperty("warn", warn)
@@ -1808,6 +1796,8 @@ class LiquidPlanPage(QWidget):
         rule = pairing(step) if section in ("source", "dest") else None
         warn = rule is not None and not rule.allowed
         sentence = rule.sentence if rule is not None else ""
+        if section == "place":
+            sentence = self._unplaced(step)
         self.rule.setText(("ⓘ " if warn else "") + (sentence or hint))
         if self.rule.property("warn") != warn:
             self.rule.setProperty("warn", warn)
@@ -1863,10 +1853,10 @@ class LiquidPlanPage(QWidget):
                                     *self._height_said(step.at, place.slot))
             self.answer_body.setCurrentWidget(self.how_box)
         elif section == "wait":
-            self.wait_time.setText(duration(step.seconds))
+            self.wait_form.show_step(step)
             self.answer_body.setCurrentWidget(self.wait_box)
         else:
-            self.message_strip.set_text(step.message)
+            self.message_form.show_step(step)
             self.answer_body.setCurrentWidget(self.message_box)
 
     def _note(self, height: Height, slot: str | None) -> str:
