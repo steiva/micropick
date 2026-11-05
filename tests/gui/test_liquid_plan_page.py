@@ -639,6 +639,7 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     assert page.section == "extras"
     extras = page.extras_form
     extras.slow_lift.click()
+    assert page.card.rows[3].value.text() == "retract slowly"
     page.next_button.click()                       # Done
 
     page.add_step("move_liquid")
@@ -656,8 +657,7 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     assert first.wells == ["A1", "A2", "A3"]
     assert take.volume_ul == 100 and take.flow_rate == 10
     assert take.location.offset == [-2, 0, 2.5]
-    assert (take.lift_steps, take.lift_step_mm, take.lift_pause_s) == (
-        4, 0.1, 0.2)
+    assert take.slow_rise
     assert put.auto_empty and put.flow_rate == 200
     second = compile_step(page.plan, 1, plates).groups[0]
     assert second.pause_after_first

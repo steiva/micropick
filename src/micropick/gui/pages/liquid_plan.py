@@ -282,7 +282,7 @@ def extras(step: MoveLiquid) -> str:
     said = [text for on, text in (
         (step.mix_after and step.dest.kind == "wells", "mix after"),
         (step.pause_after_first, "pause after the first well"),
-        (step.slow_lift and step.source.kind == "wells", "lift out slowly"),
+        (step.slow_lift and step.source.kind == "wells", "retract slowly"),
         (step.wait_after_s > 0, f"wait {step.wait_after_s:g} s"),
         (not step.empty_at_end, "keep what is left")) if on]
     return ", ".join(said) or "none"

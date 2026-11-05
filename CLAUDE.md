@@ -522,12 +522,12 @@ tip holds.
 Each step but Wait and Wait for me compiles to a `core.liquid.Program`
 (`compile_step`), and `workflows.liquid_plan.run_plan` runs them through the
 engine (`workflows.liquid.run`), whose rules stay as they were: refill, auto
-empty, the measured bottom, slow lift, pause / stop / resume. Its one addition
+empty, the measured bottom, slow rise, pause / stop / resume. Its one addition
 is `Group.empty_after`. A step with no wells rides on a stand-in plate that
 never reaches the screen. Start blows the tip out over the trash before the
 first step, automatically and only with nothing done (`PlanState.fresh`);
 Continue does not. Washing is a two-step plan (measured bottom, an aside shift,
-slow lift, auto empty, pause after the first well), not a page of its own.
+Retract slowly, auto empty, pause after the first well), not a page of its own.
 
 Run (`pages.liquid`, LIQUID.md §6) runs that plan through a jog panel never
 shown (`JogPanel.run_job`, lease `run=True`: STOP, the pill "Liquid · step 2 of

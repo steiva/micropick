@@ -75,7 +75,8 @@ import tempfile
 from pathlib import Path
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError,
+                      model_validator)
 
 __all__ = ["LEVELS", "MEASURED_BOTTOM", "LEVEL_NAMES", "KINDS", "ACTIONS", "Location", "Aspirate", "Dispense",
            "MoveTo", "Mix", "BlowOut", "Wait", "Pause", "Step", "Group",
@@ -173,18 +174,27 @@ class Aspirate(_Model):
     follow, else the tip is topped up to `volume_ul`. See "What the tip
     holds".
 
-    `lift_steps` small rises of `lift_step_mm` after drawing, `lift_pause_s`
-    apart: notebook 03's slow lift, so the liquid leaving with the tip does
-    not pull a cuboid along. 0 is no slow lift."""
+    `slow_rise`: after drawing the tip goes up slowly, one move with a speed
+    (`Motion.rise_slowly`), so the liquid leaving with the tip does not pull
+    a cuboid along. A program from before it has `lift_steps`, `lift_step_mm`
+    and `lift_pause_s`: any `lift_steps` is a slow rise."""
 
     action: Literal["aspirate"] = "aspirate"
     volume_ul: float = Field(default=50.0, gt=0)
     flow_rate: float = _flow()
     location: Location = Field(default_factory=Location)
     refill: bool = True
-    lift_steps: int = Field(default=0, ge=0, le=50)
-    lift_step_mm: float = Field(default=0.1, gt=0, le=5)
-    lift_pause_s: float = Field(default=0.2, ge=0, le=10)
+    slow_rise: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _older_lift(cls, data):
+        if not isinstance(data, dict) or "lift_steps" not in data:
+            return data
+        data = {key: value for key, value in data.items()
+                if key not in ("lift_step_mm", "lift_pause_s")}
+        data["slow_rise"] = bool(data.pop("lift_steps"))
+        return data
 
 
 class Dispense(_Model):
@@ -403,9 +413,8 @@ def describe(step, slot=None) -> str:
         text = (f"Refill to {step.volume_ul:g} µl when short"
                 if refills(step) else f"Aspirate {step.volume_ul:g} µl")
         text += f" at {step.flow_rate:g} µl/s"
-        if step.lift_steps:
-            text += (f", slow lift {step.lift_steps}×{step.lift_step_mm:g} "
-                     f"mm")
+        if step.slow_rise:
+            text += ", retract slowly"
     elif action == "dispense" and step.auto_empty:
         text = f"Empty the tip when full at {step.flow_rate:g} µl/s"
     elif action == "dispense":

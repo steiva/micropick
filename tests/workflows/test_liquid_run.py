@@ -67,6 +67,27 @@ def test_the_same_place_and_here_do_not_move():
         "blow_out", "move_to_well", "aspirate", "dispense"]
 
 
+def test_an_older_program_with_a_slow_lift_runs_with_one_slow_move():
+    older = {"action": "aspirate", "volume_ul": 20, "lift_steps": 4,
+             "lift_step_mm": 0.1, "lift_pause_s": 0.2,
+             "location": {"kind": "this_well", "level": "measured_bottom",
+                          "offset": [0, 0, 2.5]}}
+    measured = Plate("5", "plate-id", "plate", [["A1", "B1"], ["A2", "B2"]],
+                     center=(0.0, 0.0, 0.0), depth=10.0)
+    robot = MockRobot()
+    liquid.run(Motion(robot), _program([Aspirate.model_validate(older)],
+                                       wells=["A1"]),
+               {"5": measured}, POSITIONS, LiquidState())
+    assert len([c for c in robot.calls if c[0] == "move_with_speed"]) == 1
+    assert not [c for c in robot.calls if c[0] == "move_relative"]
+
+
+def test_an_older_program_without_a_slow_lift_has_none():
+    older = {"action": "aspirate", "lift_steps": 0, "lift_step_mm": 0.1,
+             "lift_pause_s": 0.2}
+    assert not Aspirate.model_validate(older).slow_rise
+
+
 def test_a_point_is_reached_with_its_offset():
     robot = MockRobot()
     motion = Motion(robot)

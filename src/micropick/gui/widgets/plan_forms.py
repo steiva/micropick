@@ -248,8 +248,8 @@ class ExtrasForm(_Fields):
             column, "Empty the tip into the trash at the end",
             "Leftover liquid goes to the trash.", "empty_at_end")
         self.slow_lift, _said, self.lift_box = self._switch(
-            column, "Lift out slowly",
-            "Small steps up after taking, so tissue is not pulled along.",
+            column, "Retract slowly",
+            "Up slowly after taking, so tissue is not pulled along.",
             "slow_lift")
         box = card(self)
         row = QHBoxLayout()

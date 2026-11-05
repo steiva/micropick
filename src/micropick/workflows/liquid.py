@@ -34,8 +34,8 @@ the liquid commands there are the in-place ones.
 
 Leaving a well the robot does not know the tip is in
 ----------------------------------------------------
-After a move by coordinates - down to a measured bottom, or the small rises
-of a slow lift - the robot no longer knows the tip is in a well, and its
+After a move by coordinates - down to a measured bottom, or the slow rise
+after a draw - the robot no longer knows the tip is in a well, and its
 next well command plans from nowhere: up to its travel height, over, down.
 Out of the well the tip was in, that was up, down to the top of the same
 well, and up again to go anywhere. So the tip leaves such a well with one
@@ -110,8 +110,7 @@ from pathlib import Path
 from ..core.liquid import (MEASURED_BOTTOM, BlowOut, Dispense, Group,
                            Location, Program, aspirate_volume, empties_now,
                            needed_after, ordered_wells, refills)
-from ..hardware.protocols import (Robot, move_relative, prepare_to_aspirate,
-                                  require_ok)
+from ..hardware.protocols import Robot, prepare_to_aspirate, require_ok
 from . import manual as moves
 from .motion import Motion, descend
 
@@ -659,7 +658,7 @@ def do_step(motion: Motion, step, group: Group, well: str,
         state.last = (location, group, well)
     # After a blow out in a well the tip is at its top (`_blow_out`), and
     # that is where `state` already says it is.
-    return _liquid(robot, step, place, blow, state, pause, stop, log)
+    return _liquid(motion, step, place, blow, state, pause, stop, log)
 
 
 def _aspirate(robot: Robot, place, volume: float, rate: float) -> None:
@@ -678,28 +677,25 @@ def _dispense(robot: Robot, place, volume: float, rate: float) -> None:
                  flow_rate=float(rate))
 
 
-def _slow_lift(robot: Robot, step, state: LiquidState, pause, stop,
+def _slow_rise(motion: Motion, step, state: LiquidState, pause, stop,
                log) -> None:
-    """The aspirate's slow lift, if it has one: small rises with a wait
-    between, so the liquid going up with the tip does not pull a cuboid.
-    Moves by coordinates, so the tip is `loose` afterwards and leaves the
-    well straight up (`_lift_out`)."""
-    if not step.lift_steps:
+    """The aspirate's slow rise, if it has one: one slow move up, so the
+    liquid going up with the tip does not pull a cuboid. A move by
+    coordinates, so the tip is `loose` afterwards and leaves the well
+    straight up (`_lift_out`)."""
+    if not step.slow_rise:
         return
+    gate(pause, stop)
     state.loose = state.at is not None and state.at[0] in ("this_well", "well")
-    _say(log, f"slow lift: {step.lift_steps} × {step.lift_step_mm:g} mm, "
-              f"{step.lift_pause_s:g} s apart")
-    for _ in range(step.lift_steps):
-        gate(pause, stop)
-        move_relative(robot, "z", float(step.lift_step_mm))
-        time.sleep(float(step.lift_pause_s))
+    motion.rise_slowly(log=log)
 
 
-def _liquid(robot: Robot, step, place, blow, state: LiquidState, pause,
+def _liquid(motion: Motion, step, place, blow, state: LiquidState, pause,
             stop, log) -> str:
     """The liquid part of a step: in the well `place` with the robot's
     well-based commands, or where the tip is when `place` is None. `blow()`
     blows out (`_blow_out`)."""
+    robot = motion.robot
     action = step.action
     at = f" in {_where(place)}" if place is not None else ""
     if action == "aspirate":
@@ -707,7 +703,7 @@ def _liquid(robot: Robot, step, place, blow, state: LiquidState, pause,
                   f"µl/s{at}")
         _aspirate(robot, place, step.volume_ul, step.flow_rate)
         state.in_tip += step.volume_ul
-        _slow_lift(robot, step, state, pause, stop, log)
+        _slow_rise(motion, step, state, pause, stop, log)
         return f"aspirated {step.volume_ul:g} µl"
     if action == "dispense" and step.auto_empty:
         volume = state.in_tip

@@ -9,6 +9,7 @@ from micropick.core.liquid import Location
 from micropick.core.liquid_plan import (Height, LiquidPlan, MoveLiquid, Place,
                                         Spot, WaitStep)
 from micropick.hardware.mock import MockRobot
+from micropick.hardware.protocols import xyz
 from micropick.workflows.liquid import Plate, Stopped
 from micropick.workflows.liquid_plan import (FINISH, NEXT, REPEAT, PlanState,
                                              StepChoice, plan_problems,
@@ -157,6 +158,73 @@ def test_the_bench_wash_on_the_robot():
     assert [c[3] for c in robot.calls if c[:2] == ("dispense", "trash-id")
             and c[3] > 10] == [200.0, 100.0]
     assert state.in_tip == 0.0
+
+
+def _slow_rises(robot) -> list:
+    return [c for c in robot.calls if c[0] == "move_with_speed"]
+
+
+def _drawn_slowly(*wells) -> MoveLiquid:
+    """From the measured bottom: the one way the mock's tip is really down
+    in the well, so there is way up for the slow rise."""
+    return MoveLiquid(source=_wells(*wells), dest=TO_TRASH, volume_ul=20,
+                      slow_lift=True,
+                      take_at=Height(ref="bottom", offset_mm=2.5))
+
+
+def test_retract_slowly_is_one_move_with_the_speed_after_each_draw():
+    plan = _plan(_drawn_slowly("A1", "A2"))
+    robot, _state = _run(plan)
+    rises = _slow_rises(robot)
+    assert len(rises) == 2
+    assert [c[2] for c in rises] == [0.5, 0.5]
+    assert not [c for c in robot.calls if c[0] == "move_relative"]
+
+
+def test_retract_slowly_rises_two_mm_straight_up_from_the_draw():
+    plan = _plan(_drawn_slowly("A1"))
+    robot = MockRobot(noise_mm=0.0)
+    poses = []
+    drawn = robot.aspirate_in_place
+
+    def aspirate_in_place(*args, **kw):
+        poses.append(xyz(robot))
+        return drawn(*args, **kw)
+
+    robot.aspirate_in_place = aspirate_in_place
+    run_plan(Motion(robot), plan, PLATES, POSITIONS, PlanState())
+    ((_name, target, _speed),) = _slow_rises(robot)
+    assert target == pytest.approx(
+        (poses[0][0], poses[0][1], poses[0][2] + 2.0))
+
+
+def test_after_retract_slowly_the_tip_leaves_the_well_straight_up():
+    plan = _plan(_drawn_slowly("A1"))
+    robot, _state = _run(plan)
+    calls = robot.calls
+    rise = next(i for i, c in enumerate(calls) if c[0] == "move_with_speed")
+    assert calls[rise + 1:][0][:4] == ("move_to_well", "plate-id", "A1", "top")
+
+
+def test_a_stop_after_the_draw_comes_before_the_slow_rise():
+    stop = threading.Event()
+
+    def log(text):
+        if text.startswith("aspirate 20"):
+            stop.set()
+
+    plan = _plan(_drawn_slowly("A1"))
+    robot = MockRobot()
+    with pytest.raises(Stopped):
+        run_plan(Motion(robot), plan, PLATES, POSITIONS, PlanState(),
+                 stop=stop, log=log)
+    assert _slow_rises(robot) == []
+
+
+def test_a_saved_plan_with_slow_lift_still_loads_and_rises():
+    saved = _plan(_drawn_slowly("A1")).model_dump_json()
+    robot, _state = _run(LiquidPlan.model_validate_json(saved))
+    assert len(_slow_rises(robot)) == 1
 
 
 def test_a_run_needs_the_trash():

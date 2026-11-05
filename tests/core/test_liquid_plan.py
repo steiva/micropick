@@ -370,15 +370,14 @@ def test_empty_at_end_off_leaves_the_tip():
     assert not program.groups[-1].empty_after
 
 
-def test_slow_lift_is_notebook_03s_and_only_out_of_a_well():
+def test_retract_slowly_is_only_out_of_a_well():
     program = _compiled(MoveLiquid(source=_wells("A1"), dest=TO_TRASH,
                                    slow_lift=True))
     aspirate = program.groups[0].steps[0]
-    assert (aspirate.lift_steps, aspirate.lift_step_mm,
-            aspirate.lift_pause_s) == (4, 0.1, 0.2)
+    assert aspirate.slow_rise
     program = _compiled(MoveLiquid(source=RESERVOIR, dest=TO_TRASH,
                                    slow_lift=True))
-    assert program.groups[0].steps[0].lift_steps == 0
+    assert not program.groups[0].steps[0].slow_rise
 
 
 @pytest.mark.parametrize("ref, slot, level", [
@@ -432,8 +431,7 @@ def test_the_wash_compiles_to_the_bench_wash():
     assert group.wells == wells
     aspirate, dispense = group.steps
     assert aspirate == Aspirate(
-        volume_ul=100, flow_rate=10, refill=False, lift_steps=4,
-        lift_step_mm=0.1, lift_pause_s=0.2,
+        volume_ul=100, flow_rate=10, refill=False, slow_rise=True,
         location=Location(kind="this_well", level="measured_bottom",
                           offset=[-2, 0, 2.5]))
     assert dispense == Dispense(location=TRASH, auto_empty=True, flow_rate=200,

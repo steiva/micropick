@@ -300,7 +300,7 @@ class Motion:
         move, if there is that much way up. Returns the pose reached."""
         robot = self._need_robot()
         if slowly:
-            self._rise_slowly(log)
+            self.rise_slowly(log=log)
         top = self.top
         if top is None:
             self.retract(log=log)
@@ -370,12 +370,11 @@ class Motion:
         descend(robot, labware_id, well, xy, rim, depth, height,
                 prepare=prepare, log=log)
 
-    # -- inside ---------------------------------------------------------------
-
-    def _rise_slowly(self, log) -> None:
-        """Measured or not, the top is not gone to for this: a retract would
-        leave the liquid at full speed. Not measured, the jog envelope's
-        top says how much way up there is."""
+    def rise_slowly(self, *, log=None) -> None:
+        """The tip straight up `SLOW_RISE_MM` at `SLOW_RISE_MM_S`, one move,
+        if there is that much way up. Measured or not, the top is not gone
+        to for this: a retract would leave the liquid at full speed. Not
+        measured, the jog envelope's top says how much way up there is."""
         robot = self._need_robot()
         x, y, z = xyz(robot)
         ceiling = self.travel_z
@@ -387,6 +386,8 @@ class Motion:
             log(f"tip up {SLOW_RISE_MM:g} mm at {SLOW_RISE_MM_S:g} mm/s")
         move_to(robot, (x, y, z + SLOW_RISE_MM), min_z_height=1.0,
                 force_direct=True, speed=SLOW_RISE_MM_S)
+
+    # -- inside ---------------------------------------------------------------
 
     def _forget_top(self) -> None:
         with self._lock:

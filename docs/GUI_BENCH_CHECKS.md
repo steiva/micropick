@@ -995,9 +995,9 @@ Kept for the record of what washing needs when it returns as a program.
 - [ ] **A wash.**
   Group of the wells with cuboids, Pause after the first well on, tip 200 µl:
   Aspirate 100 µl @ each well, bottom (measured) +2.5 mm, X -2 mm, 10 µl/s,
-  slow lift 4 × 0.10 mm, 0.2 s; Dispense, Auto empty @ one fixed well
+  Retract slowly; Dispense, Auto empty @ one fixed well
   (waste), top +5 mm, 200 µl/s. Start: the first well is drawn beside the
-  cuboid, the tip rises in four small steps, and the run pauses to look at
+  cuboid, the tip rises 2 mm slowly in one move, and the run pauses to look at
   it - the cuboid is still in its well. Continue: the waste is visited after
   every second well and after the last, with a blow out each time; no
   retract between wells.
@@ -2110,12 +2110,12 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   On a plate measured on Well center, not skipped. A tip of 200 µl and the trash
   a well of the waste, Top, +5 mm. Step 1: Move liquid from the wells with
   cuboids to the Trash, 100 µl, Take speed 10, Put speed 200, Take it at Bottom
-  +2.5 mm, Aside X −2 mm, Lift out slowly on; the drawing says "Bottom measured
+  +2.5 mm, Aside X −2 mm, Retract slowly on; the drawing says "Bottom measured
   in Well center". Step 2: Move
   liquid from the reservoir to the same wells, 100 µl, Pause after the first
   well on. Start: each well is drawn beside the cuboid, 2 mm to the side of the
-  measured center and 2.5 mm over the bottom, and the tip rises in four small
-  steps. The waste is visited after every second well and after the last, with
+  measured center and 2.5 mm over the bottom, and the tip rises 2 mm slowly in
+  one move, then straight up out of the well. The waste is visited after every second well and after the last, with
   a blow out each time, no retract between wells and no second trip at the end.
   Step 2 pauses after its first well: the cuboid is still in it. A draw over the
   cuboid means the aside did not reach the engine; a trip to the waste after

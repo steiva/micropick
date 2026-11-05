@@ -2,7 +2,7 @@
 
 The plan is `core.liquid_plan`. Each of its steps compiles to a program and
 goes through `workflows.liquid.run`, so refills, auto empty, the measured
-bottom, the slow lift and pause and stop behave as they do there. No Qt in
+bottom, the slow rise and pause and stop behave as they do there. No Qt in
 it: the page runs `run_plan` on its jog panel's worker and a notebook can
 call it directly.
 

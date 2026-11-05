@@ -10,6 +10,9 @@ the third for fixes.
 
 ## Unreleased
 
+- Liquid: Lift out slowly is now Retract slowly, the same movement as Manual
+  pick's: 2 mm at 0.5 mm/s in one move, not four small rises. Saved plans and
+  older programs load and run with it.
 - Manual pick: Aspirate, Dispense and Points are always open, and Dispense
   is gray while the tip is empty: no card opens by itself.
 - Manual pick: Aspirate and Dispense each say how the tip leaves: Retract

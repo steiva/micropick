@@ -101,8 +101,6 @@ SPOT_PREFIX = "plan-spot:"
 # The name of a spot the tip was brought to; any other is a memo point's.
 BY_HAND = "By hand"
 
-# Notebook 03's slow lift: 4 rises of 0.1 mm, 0.2 s apart.
-SLOW_LIFT = {"lift_steps": 4, "lift_step_mm": 0.1, "lift_pause_s": 0.2}
 
 # What each height is to the engine; a bottom measured is `_level`'s.
 LEVELS = {"top": "top", "middle": "center", "bottom": "bottom"}
@@ -450,12 +448,13 @@ def _move_groups(plan: LiquidPlan, index: int, step: MoveLiquid,
         raise ValueError(f"step {index + 1}: no source or no destination")
     if not pairing(step).allowed:
         raise ValueError(f"step {index + 1}: {pairing(step).sentence}")
-    lift = SLOW_LIFT if step.slow_lift and source.kind == "wells" else {}
+    slow_rise = step.slow_lift and source.kind == "wells"
 
     def take(location: Location, volume: float = step.volume_ul,
              refill: bool = False) -> Aspirate:
         return Aspirate(volume_ul=volume, flow_rate=step.take_flow_ul_s,
-                        location=location, refill=refill, **lift)
+                        location=location, refill=refill,
+                        slow_rise=slow_rise)
 
     def put(location: Location) -> list:
         if dest.kind == "trash":

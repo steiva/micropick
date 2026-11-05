@@ -118,7 +118,7 @@ optional polish, so do it last.
 ### 2.3 Code: a plan layer over the existing engine
 
 Do **not** rewrite `core.liquid.Program` or `workflows.liquid.run`. They are
-correct and tested: refills, auto empty, measured bottom, slow lift, the
+correct and tested: refills, auto empty, measured bottom, slow rise, the
 trash blow-out, pause/stop/resume. Add a thin layer that compiles each step
 into the existing model.
 
@@ -148,7 +148,7 @@ MoveLiquid
   mix_after: bool; mix_cycles: int = 3; mix_ul: float | None (None: = volume_ul)
   pause_after_first: bool
   empty_at_end: bool = True
-  slow_lift: bool                 # notebook 03's slow lift after taking from wells
+  slow_lift: bool                 # Retract slowly after taking from wells
   wait_after_s: float = 0         # the old per-well Wait: seconds after each well
 
 Place
@@ -199,8 +199,9 @@ Then, for all of the above:
   visit the trash per well.
 - `wait_after_s` adds a `Wait` at the end of each compiled well's steps, after
   any mixing.
-- *slow_lift* sets `Aspirate.lift_steps`, `lift_step_mm` and `lift_pause_s`
-  to notebook 03's values: 4 rises of 0.1 mm, 0.2 s apart.
+- *slow_lift* (on screen Retract slowly) sets `Aspirate.slow_rise`: one move
+  of `motion.SLOW_RISE_MM` at `SLOW_RISE_MM_S`, as Manual pick's. A program
+  from before it, with `lift_steps`, loads as a slow rise.
 
 **Heights** map to `Location.level` and `offset[2]`:
 
@@ -274,7 +275,7 @@ bundled template: it would not know the bench's slots and wells), and a bench
 check:
 
 1. *Move liquid* from the N wells (bottom, measured, +2.5 mm, aside X −2 mm,
-   10 µl/s) to the Trash (200 µl/s), with *slow lift* on.
+   10 µl/s) to the Trash (200 µl/s), with *Retract slowly* on.
 2. *Move liquid* from the reservoir to the same N wells (top), with *pause
    after the first well* on.
 
@@ -482,7 +483,7 @@ middle of the room under the title. Each one has its help line under it:
 | Mix after putting it in | "Pipettes up and down 3 times in each well." When on, *times* and *µl* appear inline | the destination is wells |
 | Pause after the first well | "So you can check it before the rest." | always |
 | Empty the tip into the trash at the end | "Leftover liquid goes to the trash." | always; on by default |
-| Lift out slowly | "Small steps up after taking, so tissue is not pulled along." | the source is wells |
+| Retract slowly | "Up slowly after taking, so tissue is not pulled along." | the source is wells |
 | Wait after each well | "The robot stays still this long." A seconds field, 0 for none | always |
 
 ### 3.6 Mix, Blow out, Move the tip, Wait, Wait for me (other step kinds)
