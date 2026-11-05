@@ -8,5 +8,5 @@ it as source for layout, sizes, colors, copy and states. Drawn at 1920×1080
 |---|---|---|
 | ManualPick.dc.html | Manual pick ⑤ Run (tweak `scenario`: aspirate by clicking, from a point, lifting settings open, dispense into a well, tip empty, Controls folded) | `MANUAL.md` |
 
-Replaces `Manual.dc.html` (the old §6.6 design); delete that file when you add
-this one. Where the file and `MANUAL.md` disagree, `MANUAL.md` wins.
+Replaces the old §6.6 design. Where the file and `MANUAL.md` disagree,
+`MANUAL.md` wins.

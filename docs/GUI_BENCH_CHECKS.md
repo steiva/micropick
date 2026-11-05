@@ -12,7 +12,7 @@ The entries before "Redesign, phase 1" were written for the old window:
 tabs, a status bar, the Profile page, Manual control. The checks still
 stand; where they are done moved. The pages are now steps of a task from
 Home (Robot & Deck is the Deck step, Tip calibration the Tip step, Plate
-plan the Plan step, Manual control Manual pick's Work), the profile's
+plan the Plan step, Manual control Manual pick's Run), the profile's
 settings are Robot setup's rows and the Settings sheet's second column,
 the status bar's light is Light in the top bar, its tip button the Tip
 step, and a camera's focus is set under the picture in Robot setup's
@@ -2447,9 +2447,10 @@ On a full HD window, the page in two columns.
 
 ## Manual pick: what the Aspirate and Dispense cards hold (#115)
 
-The checks above that say By hand, Change, Retract automatically, Don't retract
-and Retract after delay now read By clicking, the fields in the card, Right away,
-Stay and After a wait; what the robot does is as they say.
+The checks above that say By hand, Change, Retract automatically, Don't retract,
+Retract after delay, Retract slowly and Analyze now read By clicking, the fields
+in the card, Right away, Stay, After a wait, Lift slowly and Detect cuboids; what
+the robot does is as they say.
 
 - [ ] **The fit.**
   1920×1080, 100 % scaling, a plate on the deck. No scroll bar with Aspirate open
@@ -2490,3 +2491,34 @@ Stay and After a wait; what the robot does is as they say.
 - [ ] **Toasts.**
   "Aspirated 10 µl.", "Dispensed 10 µl into A3.", "Camera moved to slot 4.", "23
   cuboids found.". No "Tip moved here."
+
+## Manual pick (#107)
+
+MANUAL.md §8, the whole screen. Dish bottom and Well center have no picture, so
+they are not in the chrome check (§10.19), and nothing counts filled wells on this
+screen (§10.10).
+
+- [ ] **The whole screen fits.**
+  1920×1080, 100 % scaling, a plate on the deck: no scrolling with Aspirate open
+  and its lifting row open, nor with Dispense open on In a well. A scroll bar here
+  means a card grew past the column, and the action's fields leave the screen.
+- [ ] **One look.**
+  Side by side with `docs/redesign/prototype/ManualPick.dc.html`: every text is
+  Inter or JetBrains Mono. The buttons have three heights, 44, 40 (Aspirate and
+  Dispense in their headers) and 36; a choice's segments, a Switch and a card's
+  fold header are not counted. A different font means Inter or JetBrains Mono did
+  not load on this computer, or a widget has a font of its own.
+- [ ] **A manual pick by clicking.**
+  Aspirate as soon as I click on: a click on a cuboid aspirates it and the
+  TipGauge rises, the Dispense card open. Dispense In a well: the tip goes to the
+  well, the gauge falls, "Dispensed 10 µl into A3.", the Aspirate card open once
+  the tip is empty.
+- [ ] **A manual pick with A and D only.**
+  The tip jogged down to a cuboid, A aspirates; jogged over a well and down, D
+  dispenses. Neither moves the tip or switches a card, and Retract in the top bar
+  raises it.
+- [ ] **The camera chrome.**
+  Picking beside Manual pick's Run: X Y Z and the step in one plate top left, the
+  chips and the picture button top right, the mouse row bottom left, Controls
+  bottom right, the same corners and chip style. A page's own buttons and the
+  histogram stay where they were.

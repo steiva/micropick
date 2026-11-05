@@ -17,7 +17,6 @@ need the canvas runtime (`support.js`). Read them as source:
 | AutoPlan.dc.html | Auto plan | 6.3 |
 | AutoBottom.dc.html | Dish bottom (shared step) | 6.4 |
 | AutoPicking.dc.html | Picking (tweak `situation`: ready, running, paused, waiting, done, no tip) | 6.5 |
-| Manual.dc.html | Manual pick: Work | 6.6 |
 | LiquidCenter.dc.html | Well center | 6.7 |
 | LiquidPlan.dc.html | Liquid plan | `LIQUID.md` §3, §5 |
 | LiquidRun.dc.html | Liquid run | `LIQUID.md` §6 |

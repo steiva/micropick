@@ -41,7 +41,7 @@ and, in a build, its commit.
 
 ## Decisions to keep
 
-### Picking: analysis is live, a run holds its decision frame
+### Picking: detection is live, a run holds its decision frame
 
 - On the Picking page, *Detect cuboids* draws its contours over the
   **live** feed. If the dish moves afterwards, the contours visibly stop
@@ -60,9 +60,9 @@ and, in a build, its commit.
 
 ### Camera view chrome
 
-Over the picture is only what is used there (REDESIGN §3), in one overlay
-style (`theme.overlay_box`, `overlay_button`, #109) and the same places on
-every feed. The status plate at the top left: Manual's TipGauge
+Over the picture is only what is used there (REDESIGN §3, MANUAL.md §2.2), in
+one overlay style (`theme.overlay_box`, `overlay_button`, #109), what the feeds
+have in common in the same places. The status plate at the top left: Manual's TipGauge
 (`add_top_left_widget`), the robot's X, Y and Z one per line (fixed font), the
 step (`CameraView.set_step_line`), dividers between; nothing under it but
 Manual pick Run's height line (`set_height_line`), its row kept. At the top
@@ -136,7 +136,7 @@ and the card's own top stay (`tests/gui/test_nothing_shifts.py`).
 
 There are no tabs, no status bar, no floating next step and no Profile
 page (removed in redesign phase 2; do not bring them back). The window is
-`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park, Retract, STOP
+`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Lock, Park, Retract, STOP
 and the StatusPill while a run has the robot, Settings) over
 one stack: Home (`pages.home`: the robot, the Robot setup, three task
 tiles) and the existing pages, reused as the content of a **task**'s
@@ -172,7 +172,7 @@ were and Run waits for Dish bottom. The StepBar follows the choice
 (`MainWindow._refresh`), and a step taken away gives way to the first not
 done. Finish by hand chooses the source dish: the run picked from it. The last step of every
 task is titled Run on screen (#65: Auto's `picking`, the Picking page;
-Manual's `work`, Manual Work; Liquid's `run`); the run statuses and Start
+Manual's `work`, `pages.manual`; Liquid's `run`); the run statuses and Start
 picking keep their words. Plan needs a plate on the deck (a "plate" need, "Put a plate
 on the deck first." with Go to Deck), not the Deck step. The Deck step
 is `pages.labware`: the tiles of `widgets.deck_tiles` in the deck's
@@ -353,7 +353,7 @@ panel's Go to, and the picking run's own moves to them) is reached no
 higher than that travel height (`Motion.reachable`): taught after a
 retract, it is out of bounds for the robot.
 
-On Manual pick's Run step (`pages.manual`, REDESIGN §6.6) a **single
+On Manual pick's Run step (`pages.manual`, MANUAL.md) a **single
 left** click moves only the camera (#59), on a detected cuboid or not -
 checked against the jog envelope (`Motion.refused`) and through
 `JogPanel.run_job`; a click never lowers the tip. The Camera | Tip choice
@@ -409,12 +409,12 @@ a deck module's top is flagged (`Session.memo_problem`, the jog
 envelope's floors, `Motion.envelope`: the profile's modules over the deck
 definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Both kinds drawn in cyan
 on the "points" layer (`position_marks.memo_items`), a saved point with a
-filled disc, the chosen one ringed; on Work the Points chip alone says whether
+filled disc, the chosen one ringed; on Run the Points chip alone says whether
 they are drawn, on at start (`CameraView.marks_default`) and never turned on by
 a new point, which is chosen in the list. Both kinds are chips under "At a
 point" too (`widgets.point_chips.PointChips`, a star and a name, three rows high,
 more scrolling, only for choosing; the one flagged red as in the list). **In place** (#111, `ManualPage._in_place_card`, first of the
-cards for now), always shown: Aspirate in place and Dispense in place, their
+work column), always shown: Aspirate in place and Dispense in place, their
 keys drawn as bound, A and D doing the same and nothing while a field has the
 keyboard, with an amount and speed of their own (starting as Aspirate's fields,
 then in the page's memory): where the tip is, no move and no lift whatever the
@@ -502,7 +502,7 @@ picture's top left is the `TipGauge` (`CameraView.add_top_left_widget`,
 X, Y, Z under it), the tip's volume counted from the page's aspirates and
 dispenses; the Past picks chip draws where it aspirated, the last bright
 (`PositionMarks.set_picks`); Look at (a `MiniDeckDropdown`) sends the
-camera over a slot. Work shows the upper camera only.
+camera over a slot. Run shows the upper camera only.
 
 Under X, Y, Z on this page only, the one exception to nothing under them, is
 the height line (#95, `ManualPage._heights_here`), for the slot the camera
@@ -576,8 +576,8 @@ dim. A step's place is wells, a saved point, a **spot** (coordinates kept in
 the plan: By hand's Use this spot, or a memo point used there, one with no Z
 at the travel height, so a plan never depends on what is in memory) or the
 trash. The points are `Session.saved_points` and the memo points; a right
-click adds a memo point and the star keeps it as a saved point, as Manual
-pick's Save does. A jog panel still saves nothing (no Space, #62;
+click adds a memo point and the star keeps it as a saved point, as on Manual
+pick's Run. A jog panel still saves nothing (no Space, #62;
 `jog_panel.UNBOUND`).
 
 The plan is handed to the session as it is edited
@@ -634,10 +634,10 @@ measured or skipped (`Session.well_center_status`); in Manual pick
 (#63, unless it picks from a plate, #88) it is optional
 (`tasks.optional`: Next always enabled, the task never opens on it), has
 no Skip - a plate not measured uses its drawing - and is done when every
-plate is measured. Work has no Well center card. So it is in Auto pick
+plate is measured. Manual pick's Run has no Well center card. So it is in Auto pick
 (after Plan, #64), where it shows only the plan's plate
 (`workflows.well_center.plan_plate`, the one a deposit reads) and, without
-the plan in use, is dimmed under "Make a plan first." with Go to Plan. Manual Work's Aspirate and Dispense in a well and a
+the plan in use, is dimmed under "Make a plan first." with Go to Plan. Manual pick's Aspirate and Dispense in a well and a
 picking deposit add its x and y, Liquid handling's steps all of it. It is the plate's, wherever it
 was measured, and every page reads it the same way:
 `workflows.well_center` holds the measurement both pages take
@@ -838,7 +838,7 @@ failure), "N cuboids in M wells", Choose plan (primary: Plan with the
 same plan on screen, not in use, `Session.plan_chosen`, so Use this plan
 makes it again with nothing filled) and Close; with wells of the plan
 left short, "N wells were not filled" and Finish by hand instead of
-Choose plan (`Session.task_requested`: Manual pick's Work, Dispense on In
+Choose plan (`Session.task_requested`: Manual pick's Run, Dispense on In
 a well and the first of them). While the plan is done Start picking is
 not offered. The positions are Robot setup's.
 The footer is the run's status: the page's `run_status` and
@@ -858,7 +858,7 @@ does", split at its first three spaces.
 The keys that move the robot (and Manual pick's aspirate, dispense) are
 `gui.keys` actions with today's keys as defaults, rebound on the Settings
 page's Keys card (`AppSettings.keys`, only the changed ones stored). The
-jog panel and Manual pick's Work bind from it, rebind on save, and the pad
+jog panel and Manual pick's Run bind from it, rebind on save, and the pad
 names the keys as bound. A new robot key is an action there, never a
 hard-coded QShortcut.
 
