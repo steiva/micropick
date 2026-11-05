@@ -119,9 +119,9 @@ only down the column it is in: a Section, Change, Keys, a Save as template's nam
 row, and a choice showing other controls, which is as tall as what it shows, no
 room kept for a choice not made (From and Where on Manual pick's Run, Change's
 height rows, Liquid in tip's From). Show and hide those inside
-`theme.factory.laid_out_at_once`, so nothing is painted at the old height. Manual
-pick's work column scrolls on a full HD window with its long settings open, until
-Aspirate and Dispense fold (#114).
+`theme.factory.laid_out_at_once`, so nothing is painted at the old height (a
+`FoldCard` does so itself). Aspirate and Dispense folding and opening (#114) move
+what is under them, the one thing a job's end moves.
 
 A status line or a warning moves nothing: a message is the toast, and what comes
 and goes by itself has its place kept, `theme.factory.reserve` for a line or a
@@ -462,16 +462,27 @@ the tip stays down." in a toast. Retract slowly (#103, a Switch, off at the
 start, gray with Don't retract; "retract slowly after 5 s"): after any delay
 the tip goes straight up `motion.SLOW_RISE_MM` at `SLOW_RISE_MM_S` in one
 force_direct move with `speed`, then up to the travel height; with less than
-that way up it only goes there. Aspirate,
-Dispense and Points never fold and no card opens by itself (#105); Dispense
-is gray while the tip is empty: Part | All (#99: Part chosen at
+that way up it only goes there. Aspirate and Dispense are
+`widgets.fold_card.ActionCard`s (#114, MANUAL.md §4.1, replacing #105): one open at
+a time (`ManualPage.work_cards`, Aspirate at the start), either at any time, each
+its number, title, a summary of the whole action cut to one line (the whole in
+its tooltip) and its button in the header, working folded; open, its border is
+its color. What the tip holds says only which button is primary: Aspirate while
+it is empty, Dispense gray with "The tip is empty. Aspirate first." in warn-text,
+then Dispense. A card opens by itself only where a job ends, never on
+`in_tip_changed`: an Aspirate, by the button or a click, opens Dispense, a Dispense
+that empties the tip opens Aspirate, and In place switches none. Finish by hand
+opens Dispense. A card folding takes the keyboard off its fields, and the action
+buttons take no focus: else it passes to the next field, and the robot's keys
+with it. Dispense: Part | All (#99: Part chosen at
 start, its volume `picking.vol`), under it its settings as one line with
 Change, as Aspirate's (#97, `manual._settings_line`: its own speed, from
 `picking.flow_rate` at start, in the page's memory), In a
 well (a mini map
 of the plan's plate; a well's bottom, as Aspirate's, plus the deposit
-offset, from its well center) / At a point, its button saying what it does ("Go
-to A7 and dispense"), gray while the tip is empty. What
+offset, from its well center) / At a point, its button saying what it does
+("Dispense into A7", "Dispense 10 µl"), gray and only "Dispense" while the tip is
+empty. What
 is in the tip is the session's count (`Session.in_tip`,
 `Session.aspirate`, `Session.dispense`: all or a part no larger than it;
 another tip holds nothing). The last Z given is typed into a point or

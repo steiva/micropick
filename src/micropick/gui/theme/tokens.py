@@ -53,9 +53,11 @@ COLORS: dict[str, str] = {
     # Kinds of labware.
     "plate": "#A99BFA",
     "plate-bg": "#221E35",
+    "plate-border": "#3A3360",    # an open Dispense card
     "planned": "#3A3360",         # planned, still empty wells
     "tips": "#4FC9B8",
     "tips-bg": "#15282A",
+    "tips-border": "#2F4A47",     # an open Aspirate card
     "dish": "#EE93BE",
     "dish-bg": "#2C1A24",
     "point": "#4FC9E0",           # memo points

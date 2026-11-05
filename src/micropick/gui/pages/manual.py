@@ -165,8 +165,7 @@ lowering, go down to a touch.
 
 Dispense
 --------
-Under Aspirate, always open and gray while the tip is empty (#105: what
-the tip holds moves no card): Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
+Under Aspirate: Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
 the run's volume) or All. Under it the settings as one line, as Aspirate's,
 "50 µl/s", and Change unfolds them: its own speed, starting from the picking
 settings' flow rate and kept by the page, never in the profile. Then where:
@@ -178,8 +177,19 @@ settings' flow rate and kept by the page, never in the profile. Then where:
   picking settings' deposit offset, from the plate's well center.
 * **At a point** - a memo or saved point.
 
-Its button says what it does - "Go to A7 and dispense" - and is gray while
-the tip is empty.
+Its button says what it does - "Dispense into A7", "Dispense 10 µl" - and,
+gray while the tip is empty, only "Dispense".
+
+Aspirate and Dispense fold
+--------------------------
+`ActionCard`s, one open at a time, each with its button and a summary of the
+whole action in the header, so a button works with its card folded (#114,
+MANUAL.md §4.1). What the tip holds says which button is primary, and only that:
+with the tip empty Aspirate, and Dispense's summary says so. A card opens by the
+operator's click or as the next thing to do: Dispense after an Aspirate, by the
+button or by a click on the picture, Aspirate after a Dispense that empties the
+tip. So it is said where those two jobs end, not on `in_tip_changed`: In place's
+buttons change what the tip holds too, and switch no card.
 
 In place
 --------
@@ -263,12 +273,12 @@ from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (card, combo_box, compact, heading,
                              double_spin_box, laid_out_at_once, muted_label,
-                             primary_button, reserve, secondary_button, select,
+                             reserve, secondary_button, select, set_primary,
                              tool_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented, Switch
 from ..widgets.feed_row import FeedRow
-from ..widgets.fold_card import FoldCard
+from ..widgets.fold_card import ActionCard, FoldCard, FoldGroup
 from ..position_marks import PositionMarks
 from ..widgets.jog_pad import KeycapButton
 from ..widgets.jog_panel import JogPanel
@@ -345,6 +355,7 @@ def _number_box(parent: QWidget, value: float, span, suffix: str,
     return box
 
 
+TIP_EMPTY = "The tip is empty. Aspirate first."
 POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
 # The Points card's list, and the one under "At a point".
 POINTS_LIST_PX = 280
@@ -357,6 +368,17 @@ TRAVEL_Z, TIP_Z, LAST_Z = NEW_Z = ("Travel height", "Z of the tip now",
 
 def _memo_z_text(z) -> str:
     return TRAVEL_TEXT if z is None else f"{z:g}"
+
+
+def _well_words(well) -> str:
+    """`_WellPicker.chosen()` as a summary says it."""
+    return f"Slot {well[0]} · {well[3]}"
+
+
+def _point_words(point) -> tuple[str, str]:
+    """A point as a summary says it: it has its own height."""
+    return (point.name,
+            "travel height" if point.z is None else f"Z {point.z:g} mm")
 
 
 def _row(box, label: str, widget) -> QWidget:
@@ -600,6 +622,7 @@ class ManualPage(QWidget):
         columns = WorkColumns([self.in_place_card, self._aspirate_card(),
                                self._dispense_card()],
                               self._points_card(), self, last=self.jog)
+        self.work_cards = FoldGroup([self.aspirate_card, self.dispense_card])
         columns.two_columns_changed.connect(self._columns_changed)
 
         body = QHBoxLayout()
@@ -691,8 +714,12 @@ class ManualPage(QWidget):
         return box
 
     def _aspirate_card(self) -> QWidget:
-        """The settings as one line, From, and Aspirate; see "Aspirate"."""
-        self.aspirate_card = FoldCard("Aspirate", fold=False, parent=self)
+        """The settings as one line and From, Aspirate in the header; see
+        "Aspirate"."""
+        self.aspirate_card = ActionCard("Aspirate", 1, "tips", open=True,
+                                        parent=self)
+        self.aspirate_button = self.aspirate_card.button
+        self.aspirate_button.clicked.connect(self._aspirate_from_source)
         body = self.aspirate_card.body.layout()
 
         self.settings_line, self.change_button, self.settings_box = (
@@ -748,15 +775,15 @@ class ManualPage(QWidget):
             hand.addWidget(widget)
         body.addWidget(self.hand_box)
 
-        self.aspirate_button = primary_button("Aspirate", self)
-        self.aspirate_button.clicked.connect(self._aspirate_from_source)
-        body.addWidget(self.aspirate_button)
         self._show_settings_line()
         return self.aspirate_card
 
     def _dispense_card(self) -> QWidget:
-        """How much and where, and a button that says it; see "Dispense"."""
-        self.dispense_card = FoldCard("Dispense", fold=False, parent=self)
+        """How much and where, a button that says it in the header; see
+        "Dispense"."""
+        self.dispense_card = ActionCard("Dispense", 2, "plate", parent=self)
+        self.dispense_button = self.dispense_card.button
+        self.dispense_button.clicked.connect(self._dispense_to_target)
         body = self.dispense_card.body.layout()
 
         row = QHBoxLayout()
@@ -806,9 +833,6 @@ class ManualPage(QWidget):
         self.target_points.chosen.connect(lambda _name: self._refresh())
         body.addWidget(self.target_points)
 
-        self.dispense_button = primary_button("Dispense", self)
-        self.dispense_button.clicked.connect(self._dispense_to_target)
-        body.addWidget(self.dispense_button)
         self._show_dispense_line()
         return self.dispense_card
 
@@ -871,7 +895,7 @@ class ManualPage(QWidget):
         row.addWidget(self.new_z)
         layout.addLayout(row)
 
-        self.session.memo_points_changed.connect(self._refresh_memo_buttons)
+        self.session.memo_points_changed.connect(self._refresh)
         self.jog.pose_changed.connect(lambda _p: self._refresh_memo_buttons())
         return self.points_card
 
@@ -934,17 +958,56 @@ class ManualPage(QWidget):
     # -- liquid ------------------------------------------------------------------
 
     def _show_settings_line(self) -> None:
-        height = (f"Z {self.hand_z.value():g} mm" if self._hand_z_chosen()
-                  else f"{self.above_bottom.value():g} mm above "
-                       f"{self._bottom_words()}")
-        self.settings_line.setText(" · ".join((
-            height, f"{self.volume.value():g} µl",
-            f"{self.flow_rate.value():g} µl/s",
-            self.aspirate_retract.words())))
+        """The line, and the header's summary: that and where from."""
+        settings = (f"{self.volume.value():g} µl",
+                    f"{self.flow_rate.value():g} µl/s",
+                    self.aspirate_retract.words())
+        self.settings_line.setText(" · ".join((self._height_words(),
+                                               *settings)))
+        self.aspirate_card.set_summary(" · ".join((*self._source_words(),
+                                                   *settings)))
 
     def _show_dispense_line(self) -> None:
-        self.dispense_line.setText(f"{self.dispense_rate.value():g} µl/s · "
-                                   f"{self.dispense_retract.words()}")
+        """The line, and the header's summary: that, where and how much."""
+        line = (f"{self.dispense_rate.value():g} µl/s · "
+                f"{self.dispense_retract.words()}")
+        self.dispense_line.setText(line)
+        if self.session.in_tip <= 0:
+            self.dispense_card.set_summary(TIP_EMPTY, warn=True)
+            return
+        part = self._part()
+        self.dispense_card.set_summary(" · ".join((
+            *self._target_words(),
+            "everything" if part is None else f"{part:g} µl", line)))
+
+    def _height_words(self) -> str:
+        if self._hand_z_chosen():
+            return f"Z {self.hand_z.value():g} mm"
+        return f"{self.above_bottom.value():g} mm above {self._bottom_words()}"
+
+    def _source_words(self) -> tuple[str, ...]:
+        """Where Aspirate takes from and at what height, for the summary."""
+        source = self._source()
+        if source is None:
+            return (FROM[self.source.current()],)
+        kind, what = source
+        if kind == "point":
+            return _point_words(what)
+        return ("By hand" if kind == "hand" else _well_words(what),
+                self._height_words())
+
+    def _target_words(self) -> tuple[str, ...]:
+        """Where Dispense gives back, for the summary."""
+        target = self._target()
+        if target is None:
+            return (WHERE[self.target.current()],)
+        kind, what = target
+        return _point_words(what) if kind == "point" else (_well_words(what),)
+
+    def _part(self) -> float | None:
+        """Dispense's volume; None for All."""
+        return (None if AMOUNT[self.amount.current()] == "All"
+                else float(self.part.value()))
 
     def _bottom_words(self) -> str:
         """Which bottom Aspirate's height is above: in a well, the one it
@@ -1143,12 +1206,15 @@ class ManualPage(QWidget):
         return None if point is None else ("point", point)
 
     def _dispense_text(self, target) -> str:
-        if target is None:
-            return ("Go to the well and dispense"
-                    if WHERE[self.target.current()] == "In a well"
-                    else "Go to the point and dispense")
+        # Gray, the word alone: the room is the empty tip's sentence's.
+        if target is None or self.session.in_tip <= 0:
+            return "Dispense"
         kind, what = target
-        return f"Go to {what[3] if kind == 'well' else what.name} and dispense"
+        if kind == "well":
+            return f"Dispense into {what[3]}"
+        part = self._part()
+        return (f"Dispense "
+                f"{self.session.in_tip if part is None else part:g} µl")
 
     def _well_offset(self, slot, definition, z: float):
         """(x, y, z) from a well's bottom: the plate's well center and the
@@ -1269,6 +1335,7 @@ class ManualPage(QWidget):
         def then(result):
             at, rose = result
             self.record_pick(at)
+            self.work_cards.open(self.dispense_card)
             if how.rises and not rose:
                 return STOPPED_DOWN
             return f"Aspirated {volume:g} µl at {rate:g} µl/s, {where}."
@@ -1340,6 +1407,7 @@ class ManualPage(QWidget):
         def then(result):
             at, rose = result
             self.record_pick(at)
+            self.work_cards.open(self.dispense_card)
             if how.rises and not rose:
                 return STOPPED_DOWN
             return (f"Aspirated {volume:g} µl at {rate:g} µl/s, "
@@ -1402,8 +1470,7 @@ class ManualPage(QWidget):
         the deposit's height above its bottom."""
         problem = self._tip_problem("dispense")
         held = self.session.in_tip
-        volume = (None if AMOUNT[self.amount.current()] == "All"
-                  else float(self.part.value()))
+        volume = self._part()
         if not problem and held <= 0:
             problem = "Nothing is in the tip."
         elif not problem and volume is not None and volume > held + 1e-6:
@@ -1430,7 +1497,12 @@ class ManualPage(QWidget):
                 return STOPPED_DOWN
             return f"Dispensed {amount:g} µl at {rate:g} µl/s, {where}."
 
-        if not self.jog.run_job(job):
+        def then(said):
+            if session.in_tip <= 0:
+                self.work_cards.open(self.aspirate_card)
+            return said
+
+        if not self.jog.run_job(job, then=then):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
@@ -1474,6 +1546,7 @@ class ManualPage(QWidget):
         destination = getattr(routine, "destination", None)
         if destination is None or not getattr(destination, "is_plate", False):
             return
+        self.work_cards.open(self.dispense_card)
         self.target.set_current(WHERE.index("In a well"))
         self._show_plan()
         short = [w for c in destination.ordering for w in c
@@ -2022,9 +2095,12 @@ class ManualPage(QWidget):
         self.dispense_in_place.setEnabled(ready and self.session.in_tip > 0)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
-        self.dispense_card.setEnabled(self.session.in_tip > 0)
         self.dispense_button.setEnabled(has_robot and target is not None
                                         and self.session.in_tip > 0 and free)
+        set_primary(self.aspirate_button, self.session.in_tip <= 0)
+        set_primary(self.dispense_button, self.session.in_tip > 0)
+        self._show_settings_line()
+        self._show_dispense_line()
         self.view.set_status(self._status_lines(busy, problems))
 
     def _status_lines(self, busy: bool, problems: list[str]) -> list[str]:

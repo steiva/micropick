@@ -516,15 +516,11 @@ def test_part_is_chosen_when_the_page_opens(app, session):
 def test_dispense_is_gray_until_the_tip_holds_and_gives_back_part_then_all(
         app, page, session):
     _tip_on(app, page, session)
-    assert page.dispense_card.is_open()                  # #105: always
-    assert not page.dispense_card.isEnabled()            # the tip is empty
-    assert not page.dispense_button.isEnabled()
+    assert not page.dispense_button.isEnabled()          # the tip is empty
     page.in_place_amount.setValue(15.0)
     page._aspirate_in_place()
     _wait(app, page)
-    assert page.dispense_card.isEnabled()
     _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
-    assert page.dispense_button.text() == "Go to M1 and dispense"
     assert page.dispense_button.isEnabled()
     page.part.setValue(6.0)                              # Part, from the start
     page.dispense_button.click()
@@ -534,19 +530,10 @@ def test_dispense_is_gray_until_the_tip_holds_and_gives_back_part_then_all(
     page.dispense_button.click()
     _wait(app, page)
     assert session.in_tip == 0.0
-    assert not page.dispense_card.isEnabled()
     assert not page.dispense_button.isEnabled()
 
 
-def test_aspirate_and_dispense_never_fold(page):
-    """#105: what the tip holds or a click cannot move a card."""
-    for card in (page.aspirate_card, page.dispense_card):
-        assert card.is_open()
-        card.set_open(False)
-        assert card.is_open()
-
-
-def test_liquid_in_the_tip_and_a_right_click_move_no_card(app, page, session):
+def test_liquid_in_place_and_a_right_click_move_no_card(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
     _wait(app, page)
@@ -578,7 +565,7 @@ def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
     _wait(app, page)
     page.target.buttons[0].click()                       # In a well
     page.target_wells.well.setCurrentText("A7")
-    assert page.dispense_button.text() == "Go to A7 and dispense"
+    assert page.dispense_button.text() == "Dispense into A7"
     _wait(app, page)                                     # a busy panel refuses
     page.dispense_button.click()
     _wait(app, page)
@@ -591,6 +578,7 @@ def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
 
 
 def test_the_plan_map_chooses_the_well_to_dispense_into(app, page, session):
+    _held(app, page, session)
     from micropick.config.labware import resolve_definition
     from micropick.core.routine import Destination, Routine
     definition = resolve_definition("corning_96_wellplate_360ul_flat")
@@ -600,7 +588,7 @@ def test_the_plan_map_chooses_the_well_to_dispense_into(app, page, session):
     page.target.buttons[0].click()
     page.plan_map.well_clicked.emit("B7")
     assert page.target_wells.chosen()[3] == "B7"
-    assert page.dispense_button.text() == "Go to B7 and dispense"
+    assert page.dispense_button.text() == "Dispense into B7"
 
 
 def test_no_counter_finish_or_step_numbers(page):
@@ -1542,6 +1530,7 @@ def test_the_dispense_button_uses_dispenses_speed(app, page, session):
 
 
 def test_the_dispense_line_says_the_speed_and_change_edits_it(page):
+    page.dispense_card.set_open(True)
     page.dispense_rate.setValue(25.0)
     assert page.dispense_line.text() == "25 µl/s · retract automatically"
     assert not page.dispense_box.isVisibleTo(page)
@@ -1565,6 +1554,7 @@ def test_aspirates_line_does_not_follow_dispenses_speed(page):
 
 
 def test_the_dispense_line_stands_under_amount_and_over_where(app, page):
+    page.dispense_card.set_open(True)
     page.dispense_change.setChecked(True)
     page.show()
     app.processEvents()
@@ -2169,3 +2159,169 @@ def test_in_place_keeps_what_was_found_on_the_picture(app, page, session):
     page._aspirate_in_place()
     _wait(app, page)
     assert page._cuboids is not None
+
+
+# -- Aspirate and Dispense, folding cards (#114) -----------------------------
+
+def _held(app, page, session, ul=15.0):
+    """Liquid in the tip by In place, which opens no card."""
+    _tip_on(app, page, session)
+    page.in_place_amount.setValue(ul)
+    page._aspirate_in_place()
+    _wait(app, page)
+
+
+def test_aspirate_is_open_at_start_and_one_card_opens_at_a_time(page):
+    assert page.aspirate_card.is_open()
+    assert not page.dispense_card.is_open()
+    page.dispense_card.header.click()
+    assert page.dispense_card.is_open()
+    assert not page.aspirate_card.is_open()
+
+
+def test_the_buttons_are_in_the_headers_and_work_folded(app, page, session):
+    _held(app, page, session)
+    _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
+    page.part.setValue(10.0)
+    assert not page.dispense_card.is_open()
+    assert not page.dispense_card.body.isAncestorOf(page.dispense_button)
+    assert not page.aspirate_card.body.isAncestorOf(page.aspirate_button)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(5.0)
+
+
+def test_the_empty_tip_grays_dispense_and_a_full_one_makes_it_primary(
+        app, page, session):
+    _tip_on(app, page, session)
+    assert page.aspirate_button.objectName() == "primary"
+    assert page.dispense_button.objectName() == "secondary"
+    assert not page.dispense_button.isEnabled()
+    assert page.dispense_card.summary.full == (
+        "The tip is empty. Aspirate first.")
+    assert page.dispense_card.summary.property("warn") is True
+
+    page._aspirate_in_place()
+    _wait(app, page)
+    assert page.aspirate_button.objectName() == "secondary"
+    assert page.dispense_button.objectName() == "primary"
+    assert page.dispense_card.summary.property("warn") is False
+
+
+def test_an_empty_tip_leaves_dispense_openable_and_its_settings_at_hand(page):
+    page.dispense_card.header.click()
+    assert page.dispense_card.is_open()
+    assert page.dispense_card.isEnabled()
+
+
+def test_a_successful_aspirate_opens_dispense(app, page, session):
+    _tip_on(app, page, session)
+    session.add_memo_point(150.0, 150.0, 70.0)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose("M1")
+    _wait(app, page)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert session.in_tip > 0
+    assert page.dispense_card.is_open()
+    assert not page.aspirate_card.is_open()
+
+
+def test_an_aspirate_by_a_click_opens_dispense(app, page, session):
+    _ready_by_hand(app, page, session)
+    page.aspirate_on_click.setChecked(True)
+    page.height_mode.buttons[0].click()                 # Z
+    page.hand_z.setValue(70.0)
+    _left_click(app, page, W / 2 + 100, H / 2)
+    assert session.in_tip > 0
+    assert page.dispense_card.is_open()
+
+
+def test_an_aspirate_refused_opens_nothing(app, page, session):
+    session.add_memo_point(150.0, 150.0, 70.0)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose("M1")
+    _wait(app, page)
+    page.aspirate_button.click()                         # no tip on
+    _wait(app, page)
+    assert page.aspirate_card.is_open()
+
+
+def test_a_dispense_that_empties_the_tip_opens_aspirate(app, page, session):
+    _held(app, page, session)
+    _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
+    page.dispense_card.set_open(True)
+    page.part.setValue(6.0)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(9.0)
+    assert page.dispense_card.is_open()                  # some is left
+    page.amount.buttons[1].click()                       # All
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert page.aspirate_card.is_open()
+    assert not page.dispense_card.is_open()
+
+
+def test_in_place_switches_no_card(app, page, session):
+    _held(app, page, session)
+    assert session.in_tip > 0
+    assert page.aspirate_card.is_open()                  # not Dispense
+    page.dispense_card.set_open(True)
+    page._dispense_in_place()                            # empties it
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert page.dispense_card.is_open()                  # not Aspirate
+
+
+def test_the_summaries_state_the_whole_action(app, page, session):
+    from micropick.config.labware import resolve_definition
+    session.load_labware(
+        resolve_definition("corning_96_wellplate_360ul_flat"), 5)
+    aspirate = page.aspirate_card.summary
+    assert aspirate.full.startswith("By hand · ")
+    page.volume.setValue(12.0)
+    page.flow_rate.setValue(30.0)
+    page.aspirate_retract.choice.setCurrentText("Retract after delay")
+    assert aspirate.full.endswith(
+        "12 µl · 30 µl/s · retract after 5 s")
+    page.aspirate_retract.slowly.setChecked(True)
+    assert aspirate.full.endswith("retract slowly after 5 s")
+    page.source.buttons[0].click()                       # In a well
+    page.source_wells.well.setCurrentText("A3")
+    assert aspirate.full.startswith("Slot 5 · A3 · 0.5 mm above ")
+
+    _held(app, page, session)
+    dispense = page.dispense_card.summary
+    page.target.buttons[0].click()                       # In a well
+    page.target_wells.well.setCurrentText("A7")
+    page.part.setValue(6.0)
+    page.dispense_rate.setValue(20.0)
+    assert dispense.full == ("Slot 5 · A7 · 6 µl · 20 µl/s · "
+                             "retract automatically")
+    page.amount.buttons[1].click()                       # All
+    assert dispense.full.startswith("Slot 5 · A7 · everything · ")
+
+
+def test_a_point_in_a_summary_is_the_point_as_it_stands(app, page, session):
+    """Its own Z, not a height above a bottom; and edited, it follows."""
+    session.add_memo_point(150.0, 150.0, 70.0)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose("M1")
+    summary = page.aspirate_card.summary
+    assert summary.full.startswith("M1 · Z 70 mm · 10 µl")
+    session.change_memo_point("M1", z=65.0)
+    assert summary.full.startswith("M1 · Z 65 mm · ")
+
+
+def test_the_dispense_button_says_what_it_does_in_a_header_it_fits(
+        app, page, session):
+    _held(app, page, session)
+    page.target.buttons[1].click()                       # At a point
+    assert page.dispense_button.text() == "Dispense"     # none chosen
+    _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
+    page.part.setValue(6.0)
+    assert page.dispense_button.text() == "Dispense 6 µl"
+    page.amount.buttons[1].click()                       # All
+    assert page.dispense_button.text() == "Dispense 15 µl"

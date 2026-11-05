@@ -322,6 +322,24 @@ QToolButton#foldHeader {
     padding: 0;
 }
 QLabel#foldSummary { color: @text-2; }
+QLabel#foldSummary[warn="true"] { color: @warn-text; }
+
+/* Manual pick's Aspirate and Dispense (MANUAL.md §4.1). */
+QFrame#card[tint="tips"][open="true"] { border-color: @tips-border; }
+QFrame#card[tint="plate"][open="true"] { border-color: @plate-border; }
+QLabel#actionTitle { font-size: 17px; font-weight: 600; }
+QLabel#cardBadge {
+    border-radius: 11px;
+    color: @on-accent;
+    font-weight: 600;
+}
+QLabel#cardBadge[tint="tips"] { background: @tips; }
+QLabel#cardBadge[tint="plate"] { background: @plate; }
+QPushButton#primary[cardAction="true"],
+QPushButton#secondary[cardAction="true"] {
+    min-height: 38px;
+    max-height: 38px;
+}
 
 QFrame#banner[tone="info"] {
     background: @accent-bg;

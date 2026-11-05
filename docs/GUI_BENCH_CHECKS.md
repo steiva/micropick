@@ -1765,12 +1765,23 @@ tip box and a 384 plate at hand.
   chosen.
 
 - [ ] **Dispense.**
-  Empty tip: Dispense folded, its button gray. After an aspirate it opens
+  Empty tip: Dispense folded, its button gray. After an Aspirate it opens
   by itself, on Part with the picking volume. Part 6 µl of 15: the gauge reads 9 µl;
   All: 0 µl and the button grays. In a well: with a plate plan made, the
   mini map shows Filled / Planned; a click on a well chooses it and the
-  button reads "Go to A7 and dispense"; the tip goes into that well at
-  the deposit height, above the same bottom as Aspirate's. At a point: "Go to M1 and dispense".
+  button reads "Dispense into A7"; the tip goes into that well at
+  the deposit height, above the same bottom as Aspirate's. At a point: "Dispense 6 µl".
+
+- [ ] **Aspirate and Dispense fold (#114).**
+  Manual pick's Run, tip empty: Aspirate open and primary, Dispense folded, outlined
+  and gray, "The tip is empty. Aspirate first." in yellow and whole. A press on the
+  gray button folds nothing; either card opens at any time, one at a time, the open
+  one's border in its color. Aspirate by the button, then by a click with Aspirate
+  as soon as I click: Dispense opens and is primary. Press Aspirate with its card
+  folded: it works. A Dispense leaving some keeps the card, one that empties the
+  tip opens Aspirate. In place's buttons and keys switch no card. Change a setting:
+  the summary follows, the whole in its tooltip. Type in Volume and Aspirate: the
+  arrows move the robot afterwards, no other field has the keyboard.
 
 - [ ] **Dispense has its own speed (#97).**
   Dispense open: under Part | All the line reads "50 µl/s" (the profile's
@@ -2359,7 +2370,7 @@ On a full HD window, the page in two columns.
 - [ ] **The line between the columns stands still.**
   Manual pick's Run. Aspirate From In a well, At a point, By hand; fold and
   open Memo and Saved; open Change until a scroll bar shows; Dispense In a
-  well until the button reads "Go to A7 and dispense". The two columns stay
+  well until the button reads "Dispense into A7". The two columns stay
   the same width and no card goes to the other column. A plate's long name
   is cut in its Select.
 

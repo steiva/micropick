@@ -91,7 +91,7 @@ def _actions(page, session):
     def well_a7():
         page.target.buttons[0].click()                   # In a well
         page.target_wells.well.setCurrentText("A7")
-        assert page.dispense_button.text() == "Go to A7 and dispense"
+        assert page.dispense_button.text() == "Dispense into A7"
 
     def long_named_point():
         session.add_memo_point(120.0, 90.0, 70.0)
@@ -102,7 +102,7 @@ def _actions(page, session):
     yield "the tip", lambda: (session.load_labware(rack, 10),
                               session.pick_up_tip(10, "A1"))
     yield "liquid in the tip", lambda: session.aspirate(20.0, 50.0)
-    yield "Go to A7 and dispense", well_a7
+    yield "Dispense into A7", well_a7
     yield "Part", lambda: page.amount.buttons[0].click()
     yield "All", lambda: page.amount.buttons[1].click()
     yield "At a point", lambda: page.target.buttons[1].click()
@@ -162,7 +162,7 @@ def test_the_list_fills_the_points_column(app, page):
 
 
 def test_the_scroll_bar_does_not_narrow_the_columns(app, page):
-    _shown(app, page, (2560, 960))
+    _shown(app, page, (2560, 640))
     area = next(a for a in page.findChildren(QScrollArea)
                 if a.widget() is page.aspirate_card.parentWidget())
     first = _where(page)
@@ -232,3 +232,15 @@ def test_a_status_and_a_toast_move_nothing(app, page, stands_still, size):
     stands_still(page, lambda: page.view.set_status([]))
     stands_still(page, lambda: show_toast(page, "Saved: M1"))
     stands_still(page, lambda: show_toast(page, "Not reachable.", refusal=True))
+
+
+def test_the_empty_tip_warning_is_read_whole_with_a_well_chosen(
+        app, page, session):
+    """#114: the one summary that must not be cut, beside the gray button."""
+    _shown(app, page, (1920, 860))
+    session.load_labware(
+        resolve_definition("corning_96_wellplate_360ul_flat"), 5)
+    _settle(app, page)
+    summary = page.dispense_card.summary
+    assert summary.full == "The tip is empty. Aspirate first."
+    assert summary.text() == summary.full
