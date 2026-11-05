@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
 
 from ..theme import COLORS
 from ..theme.icons import icon
-from .controls import CutLabel
+from .controls import CutLabel, closed_by
 
 __all__ = ["DECK_ROWS", "KIND_COLORS", "DeckTile", "MiniDeckDropdown"]
 
@@ -93,6 +93,7 @@ class _Popover(QFrame):
         # is to look the same wherever it is opened.
         super().__init__(owner.window(), Qt.WindowType.Popup)
         self.setObjectName("raisedCard")
+        closed_by(self, owner)
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 12, 12, 12)
         grid.setSpacing(8)

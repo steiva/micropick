@@ -1708,7 +1708,8 @@ tip box and a 384 plate at hand.
 - [ ] **Detect cuboids and Look at.**
   Detect cuboids, on the picture, draws the contours and "N cuboids found ·
   M in size" under the chips; a click on a cuboid only moves the camera there, the tip
-  stays up. Look at: the dropdown shows the whole deck with what is on it;
+  stays up. Look at: the dropdown shows the whole deck with what is on it, and a
+  second click on the button closes it, nothing flashing;
   a slot chosen sends the camera over its center (check slot 8 by eye).
 
 ## Redesign — Manual Work: Aspirate and Dispense (#19)

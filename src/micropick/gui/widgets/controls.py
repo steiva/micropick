@@ -12,8 +12,8 @@ the click target.
 
 from __future__ import annotations
 
-from PySide6.QtCore import (Property, QPropertyAnimation, QRectF, QSize, Qt,
-                            Signal)
+from PySide6.QtCore import (Property, QEvent, QObject, QPropertyAnimation,
+                            QRectF, QSize, Qt, Signal)
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFrame,
                                QHBoxLayout, QLabel, QPushButton, QSizePolicy,
@@ -21,7 +21,28 @@ from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFrame,
 
 from ..theme import COLORS, ui_font
 
-__all__ = ["Segmented", "Switch"]
+__all__ = ["Segmented", "Switch", "closed_by"]
+
+
+class _AnchorPress(QObject):
+    def __init__(self, popup: QWidget, anchor: QWidget):
+        super().__init__(popup)
+        self._popup, self._anchor = popup, anchor
+
+    def eventFilter(self, _watched, event) -> bool:
+        if event.type() == QEvent.Type.MouseButtonPress:
+            at = self._anchor.mapFromGlobal(event.globalPosition().toPoint())
+            self._popup.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay,
+                                     self._anchor.rect().contains(at))
+        return False
+
+
+def closed_by(popup: QWidget, anchor: QWidget) -> None:
+    """A press on the button that opened `popup` only closes it. Any press
+    outside a popup closes it and is then given to what is under it, so that
+    button would open it again; a press anywhere else still goes through. As
+    Qt does for a button's own menu, which `setMenu` covers."""
+    popup.installEventFilter(_AnchorPress(popup, anchor))
 
 
 class CutLabel(QLabel):

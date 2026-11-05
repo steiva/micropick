@@ -277,7 +277,7 @@ from ..theme.factory import (card, heading, labeled, laid_out_at_once,
                              tool_button)
 from ..theme.icons import icon
 from ..widgets.camera_view import CameraView
-from ..widgets.controls import Segmented, Switch
+from ..widgets.controls import Segmented, Switch, closed_by
 from ..widgets.feed_row import FeedRow
 from ..widgets.fold_card import ActionCard, FoldCard, FoldGroup
 from ..position_marks import PositionMarks
@@ -1641,6 +1641,7 @@ class ManualPage(QWidget):
         """The sizes against the window, under the link."""
         if self.sizes_popover is None:
             self.sizes_popover = _SizesPopover(self)
+            closed_by(self.sizes_popover, self.sizes_link)
         popover, link = self.sizes_popover, self.sizes_link
         popover.histogram.show_detection(self._cuboids, self._size_window())
         popover.adjustSize()

@@ -110,7 +110,7 @@ from ..theme.factory import (caption, compact, danger_text_button,
                              tool_button)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
-from ..widgets.controls import Segmented
+from ..widgets.controls import Segmented, closed_by
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
 from ..widgets.plan_forms import (AmountForm, ExtrasForm, HowForm, MessageForm,
@@ -820,6 +820,7 @@ class LiquidPlanPage(QWidget):
         self.add_button.clicked.connect(self._open_add_menu)
         column.addWidget(self.add_button)
         self.add_menu = QMenu(self)
+        closed_by(self.add_menu, self.add_button)
         for step_kind, name, help_line in KINDS:
             action = QWidgetAction(self.add_menu)
             action.setText(name)

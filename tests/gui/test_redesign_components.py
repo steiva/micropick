@@ -8,7 +8,7 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QPointF, Qt, QTimer                 # noqa: E402
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt, QTimer         # noqa: E402
 from PySide6.QtGui import QMouseEvent                                   # noqa: E402
 from PySide6.QtWidgets import QApplication, QWidget                     # noqa: E402
 
@@ -293,6 +293,37 @@ def test_the_deck_looks_the_same_opened_from_the_picture(app):
     plain._popover.close()
     over._popover.close()
     view.deleteLater()
+
+
+def test_a_press_on_its_button_is_not_given_back_to_it(app):
+    """A press outside a popup goes on to what is under it, and the button
+    would open it again; `offscreen` replays nothing, so this says the popup
+    was told not to."""
+    host = QWidget()
+    host.resize(600, 700)
+    deck = MiniDeckDropdown(host)
+    deck.setGeometry(10, 10, 300, 40)
+    host.show()
+    deck.open_popover()
+    popup = deck._popover
+    replay = Qt.WidgetAttribute.WA_NoMouseReplay
+
+    def press(widget):
+        at = QPointF(widget.mapToGlobal(widget.rect().center()))
+        app.sendEvent(popup, QMouseEvent(
+            QEvent.Type.MouseButtonPress, popup.mapFromGlobal(at), at,
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier))
+
+    other = QWidget(host)
+    other.setGeometry(10, 600, 100, 40)
+    press(other)
+    assert not popup.testAttribute(replay)
+    deck.open_popover()
+    popup = deck._popover
+    press(deck)
+    assert popup.testAttribute(replay)
+    host.deleteLater()
 
 
 def test_sheet_done_and_cancel(app):

@@ -548,6 +548,9 @@ Settings, Advanced.
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
 
+A popup a button opens is closed by that button (`controls.closed_by`, or
+`setMenu`): `offscreen` replays no press, so only `windows` shows it reopening.
+
 A section that folds (`theme.factory.Section`;
 `flat` inside a card, Points' Memo and Saved)
 has an arrow as tall as a capital letter (`fold_arrow`), and
