@@ -18,8 +18,9 @@ from __future__ import annotations
 from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
-                               QPushButton, QScrollArea, QSpinBox, QToolButton,
-                               QVBoxLayout, QWidget)
+                               QPushButton, QScrollArea, QSpinBox,
+                               QStackedWidget, QToolButton, QVBoxLayout,
+                               QWidget)
 
 from . import COLORS, SPACING
 from .icons import icon
@@ -29,7 +30,7 @@ __all__ = ["primary_button", "secondary_button", "tool_button", "set_primary",
            "danger_button", "danger_text_button", "compact", "card",
            "heading", "caption", "muted_label", "combo_box", "select",
            "spin_box", "double_spin_box", "scroll_column", "Section",
-           "fold_arrow"]
+           "fold_arrow", "reserve", "choice_stack"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -106,6 +107,32 @@ def compact(button: QPushButton) -> QPushButton:
     """The 28 px variant, for a control inside a card's row."""
     button.setProperty("compact", True)
     return button
+
+
+def reserve(*widgets: QWidget) -> None:
+    """Hidden, these keep their place, so what stands around them does not
+    move when they appear: for a status line or a field depending on a
+    choice. An empty label holds one line."""
+    for widget in widgets:
+        policy = widget.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        widget.setSizePolicy(policy)
+
+
+def choice_stack(*pages: QWidget, parent: QWidget | None = None
+                 ) -> QStackedWidget:
+    """What a choice shows, one page at a time, in the room of the tallest:
+    choosing moves nothing under it. `setCurrentWidget` chooses."""
+    stack = QStackedWidget(parent)
+    stack.setObjectName("plain")
+    # A page out of sight still answers for its height: a stack asks only
+    # pages that are not empty whether their height follows their width.
+    reserve(*pages)
+    for page in pages:
+        if not page.objectName():
+            page.setObjectName("plain")
+        stack.addWidget(page)
+    return stack
 
 
 def card(parent: QWidget | None = None) -> QFrame:

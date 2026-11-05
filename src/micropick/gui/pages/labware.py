@@ -68,7 +68,7 @@ from ..labware_kinds import CHIPS, catalogue, facts, in_chip, kind
 from ...hardware.labware import LoadedLabware
 from ..session import Session
 from ..theme import COLORS, SIZES, SPACING
-from ..theme.factory import (card, compact, heading, muted_label,
+from ..theme.factory import (card, compact, heading, muted_label, reserve,
                              scroll_column, secondary_button)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
@@ -167,6 +167,7 @@ class LabwarePage(QWidget):
         self.problems = Banner("", "warn", self)
         self.reload_button = self.problems.add_action("Load again")
         self.reload_button.clicked.connect(self._reload_problems)
+        reserve(self.problems)
         column.addWidget(self.problems)
         self.deck = DeckTiles(self)
         self.deck.slot_clicked.connect(self.choose)
@@ -179,15 +180,6 @@ class LabwarePage(QWidget):
         self.clear_button.clicked.connect(self.clear_all)
         under.addWidget(self.clear_button)
         column.addLayout(under)
-        # Refusals land here rather than in a dialog: a slot the robot will
-        # not load into is ordinary, and its text says what to do.
-        self.message = QLabel(self)
-        self.message.setWordWrap(True)
-        self.message.setStyleSheet(f"color: {COLORS['warn-text']};")
-        self.message.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.message.hide()
-        column.addWidget(self.message)
         return column
 
     def _panel(self) -> QVBoxLayout:
@@ -335,7 +327,6 @@ class LabwarePage(QWidget):
         if self.session.refuses_labware(slot):
             return
         self.slot = slot
-        self._say("")
         self._refresh()
 
     def put(self, definition: LabwareDefinition) -> None:
@@ -410,9 +401,8 @@ class LabwarePage(QWidget):
             return False
         lease = self.session.robot_lease.claim(what)
         if lease is None:
-            self._say(self.session.robot_lease.refusal)
+            show_toast(self, self.session.robot_lease.refusal, refusal=True)
             return False
-        self._say("")
         worker.lease = lease
         self._worker = worker
         self._done_text = done
@@ -443,7 +433,7 @@ class LabwarePage(QWidget):
             return
         self._worker = None
         self._loading_name = None
-        self._say(reason)
+        show_toast(self, reason, refusal=True)
         log.error("deck: %s", reason)
         self._refresh()
 
@@ -453,10 +443,6 @@ class LabwarePage(QWidget):
         if self.session.robot is None:
             self.slot = None
         self._refresh()
-
-    def _say(self, text: str) -> None:
-        self.message.setText(text)
-        self.message.setVisible(bool(text))
 
     def _held(self) -> dict[str, LoadedLabware]:
         """What the run holds, by slot name; nothing with no robot."""

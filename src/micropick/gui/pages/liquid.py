@@ -83,9 +83,9 @@ from ...workflows.liquid_plan import (FINISH, NEXT, REPEAT, PlanState,
                                        StepChoice, compile_plan, run_plan)
 from ..session import Session
 from ..theme import COLORS, SPACING, mono_font
-from ..theme.factory import (caption, danger_button, heading, muted_label,
-                             primary_button, scroll_column, secondary_button,
-                             set_primary)
+from ..theme.factory import (caption, choice_stack, danger_button, heading,
+                             muted_label, primary_button, reserve,
+                             scroll_column, secondary_button, set_primary)
 from ..theme.icons import pixmap
 from ..widgets.banner import Banner
 from ..widgets.controls import Segmented
@@ -279,6 +279,7 @@ class LiquidHandlingPage(QWidget):
         self._pause = threading.Event()
         self._stop = threading.Event()
         self._running = False
+        self._strip_shown = False
         self._can_carry_on = False
         self._checking: str | None = None        # what the plan holds it for
         self._one_at_a_time = True
@@ -371,6 +372,7 @@ class LiquidHandlingPage(QWidget):
         self.counter.setFont(mono_font(COUNTER_PX, 600))
         self.counter_note = muted_label("", box)
         self.counter_note.setWordWrap(False)
+        reserve(self.counter, self.counter_note)
         counts.addWidget(self.counter, alignment=Qt.AlignmentFlag.AlignRight)
         counts.addWidget(self.counter_note,
                          alignment=Qt.AlignmentFlag.AlignRight)
@@ -399,7 +401,6 @@ class LiquidHandlingPage(QWidget):
 
     def _banners(self, box: QWidget, column: QVBoxLayout) -> None:
         self.strip = Banner(tone="warn", parent=box)
-        column.addWidget(self.strip)
         self.after_banner = Banner(tone="ok", parent=box)
         self.finish_button = self.after_banner.add_action("Finish here")
         self.finish_button.clicked.connect(lambda: self._answer(FINISH))
@@ -408,7 +409,6 @@ class LiquidHandlingPage(QWidget):
         self.go_button = self.after_banner.add_action("Go on")
         self.go_button.clicked.connect(lambda: self._answer(NEXT))
         set_primary(self.go_button, True)
-        column.addWidget(self.after_banner)
         self.end_banner = Banner(tone="ok", parent=box)
         self.again_button = self.end_banner.add_action("Run again")
         self.again_button.clicked.connect(self._start)
@@ -416,7 +416,13 @@ class LiquidHandlingPage(QWidget):
             lambda: self.session.page_requested.emit("liquid_plan"))
         self.end_banner.add_action("Home").clicked.connect(
             lambda: self.session.page_requested.emit("home"))
-        column.addWidget(self.end_banner)
+        # One at a time, in the room of the tallest: the plates under them
+        # keep their size.
+        self.no_banner = QWidget(box)
+        self.banners = choice_stack(self.no_banner, self.strip,
+                                    self.after_banner, self.end_banner,
+                                    parent=box)
+        column.addWidget(self.banners)
 
     def _panel(self) -> QWidget:
         panel = QWidget(self)
@@ -1049,14 +1055,14 @@ class LiquidHandlingPage(QWidget):
                 title = PAUSED
                 why = ("Press Continue to go on from well "
                        f"{well}." if well else "Press Continue to go on.")
-        self.strip.setVisible(title is not None)
+        self._strip_shown = title is not None
         if title is not None:
             self.strip.set_text(f"<b>{html.escape(title)}</b><br>{why}")
+        self._show_banner()
 
     def _show_after(self) -> None:
         """The banner after a step, and the one after the last."""
         asking = self._asking
-        self.after_banner.setVisible(asking is not None)
         if asking is not None:
             number, step = asking + 1, self._steps()[asking]
             wells = sum(1 for pair in self._step_pairs(step) if any(pair))
@@ -1066,8 +1072,15 @@ class LiquidHandlingPage(QWidget):
             self.repeat_button.setText(f"Repeat step {number}")
             self.go_button.setText(f"Go to step {number + 1}")
         ended = self._ended == "done" and not self._running
-        self.end_banner.setVisible(ended)
         self.end_banner.set_text(f"<b>{self._outcome}</b>" if ended else "")
+        self._show_banner()
+
+    def _show_banner(self) -> None:
+        ended = self._ended == "done" and not self._running
+        self.banners.setCurrentWidget(
+            self.strip if self._strip_shown
+            else self.after_banner if self._asking is not None
+            else self.end_banner if ended else self.no_banner)
 
     def _hovered(self, name: str | None) -> None:
         """The well and how far the run got with it."""

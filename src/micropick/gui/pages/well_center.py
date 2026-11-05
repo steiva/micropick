@@ -60,7 +60,7 @@ from ..session import MEASURED, SKIPPED, Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, double_spin_box, heading,
                              muted_label, primary_button, quiet_button,
-                             scroll_column, secondary_button, select)
+                             reserve, scroll_column, secondary_button, select)
 from ..theme.icons import pixmap
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.jog_pad import StepChip
@@ -266,6 +266,7 @@ class WellCenterPage(QWidget):
         self.use_button.clicked.connect(self._use_last)
         row.addWidget(self.use_button)
         self.last_card.layout().addLayout(row)
+        reserve(self.last_card)
         column.addWidget(self.last_card)
 
         self.well_step = StepCard(panel, 1, "Tip to a well")

@@ -35,8 +35,8 @@ from ...config.schema import (DEFAULT_MODULE_HEIGHT_MM, DeckModule,
 from ..session import Session
 from ..tasks import SETUP_TITLES
 from ..theme.factory import (caption, compact, double_spin_box, heading,
-                             muted_label, primary_button, secondary_button,
-                             select)
+                             muted_label, primary_button, reserve,
+                             secondary_button, select)
 from ..widgets.deck_tiles import DeckTiles
 from ..widgets.mini_deck import DeckTile
 from ..widgets.overlays import ConfirmDialog, SheetWindow
@@ -116,6 +116,7 @@ class PlatformsSheet(SheetWindow):
         self.delete_button.setToolTip("Placed platforms are kept.")
         self.delete_button.clicked.connect(self.delete_type)
         line.addWidget(self.delete_button)
+        reserve(self.height_row)
         panel.addWidget(self.height_row)
         hint = muted_label(HINT, self.body_widget)
         hint.setWordWrap(True)

@@ -80,7 +80,7 @@ from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
 from ..theme.factory import (muted_label, primary_button, quiet_button,
-                             scroll_column, select)
+                             reserve, scroll_column, select)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import NO_CLICK_MOVE, ZOOM_AND_PAN, CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
@@ -267,6 +267,7 @@ class PositionSheet(SheetWindow):
         self.goto_button.clicked.connect(self._goto)
         panel.addWidget(self.goto_button)
         self.note = Banner(CANT_SEE, tone="warn", parent=column)
+        reserve(self.saved_line, self.goto_button, self.note)
         panel.addWidget(self.note)
         # The step cards go between here and the jog panel (`_build`).
         self._cards_at = panel.count()

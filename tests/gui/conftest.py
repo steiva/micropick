@@ -20,6 +20,7 @@ each window's.
 import logging
 import sys
 import threading
+import time
 
 import pytest
 
@@ -66,3 +67,39 @@ def themed(app):
     app.setPalette(palette)
     app.setFont(font)
     app.setStyle(style)
+
+
+def _places(root) -> dict:
+    """Where every widget shown under `root` stands, in `root`'s pixels."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QWidget
+    return {widget: widget.mapTo(root, QPoint(0, 0))
+            for widget in root.findChildren(QWidget)
+            if widget.isVisible() and not widget.isWindow()
+            and not widget.objectName().startswith("qt_")}
+
+
+@pytest.fixture
+def stands_still(app):
+    """`stands_still(root, act)`: fails naming what `act` moved under `root`
+    (#106). What appears or goes is not asked about, only what stayed."""
+
+    def settle():
+        # A scroll column measures itself on a timer of its own.
+        end = time.monotonic() + 0.15
+        while time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.005)
+
+    def check(root, act):
+        settle()
+        before = _places(root)
+        act()
+        settle()
+        after = _places(root)
+        moved = [f"{type(w).__name__} {w.objectName() or getattr(w, 'text', str)()!r}"
+                 f" {before[w].toTuple()} -> {after[w].toTuple()}"
+                 for w in before if w in after and before[w] != after[w]]
+        assert not moved, "\n".join(moved[:12])
+
+    return check

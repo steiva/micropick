@@ -2388,3 +2388,13 @@ On a full HD window, the page in two columns.
   Don't retract in Aspirate: A leaves the tip down. Retract after delay in
   Dispense: D gives back and rises after the delay, Esc in it leaves the tip
   down.
+
+
+- [ ] **Nothing shifts.**
+  Manual pick's Run: click through From and Where, Part and All, with Change
+  open and closed: no card or button moves, the column scrolls instead of
+  growing. Tip step: Take tip and Drop in trash, the Calibrate card stays. A
+  liquid run: Pause and Continue, the plates keep their size. Home: the same
+  with the robot switched off and on. Plan: A template and New plan, what is
+  under the tiles stays. A refusal on Deck or Plan is a red toast at the bottom
+  left, no line on the page.

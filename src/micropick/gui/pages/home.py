@@ -39,7 +39,7 @@ from ..session import Session
 from ..tasks import SETUP_TITLES, TASKS, missing_setup
 from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, card, muted_label, primary_button,
-                             quiet_button)
+                             quiet_button, reserve)
 from ..theme.icons import pixmap
 from ..widgets.overlays import DimCover
 from ..workers import Worker
@@ -169,6 +169,7 @@ class HomePage(QWidget):
         column.addWidget(self.robot_box)
         # Until the robot is connected: one line, and the rest dimmed.
         self.waiting = muted_label("Waiting for the robot.", self)
+        reserve(self.waiting)
         column.addWidget(self.waiting)
         self.below = QWidget(self)
         below = QVBoxLayout(self.below)
@@ -214,6 +215,7 @@ class HomePage(QWidget):
         self.error.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         self.error.hide()
+        reserve(self.error)
         text.addWidget(self.error)
         row.addLayout(text, 1)
         self.home_button = primary_button("Home and connect", box)
@@ -262,6 +264,7 @@ class HomePage(QWidget):
         # During a run: one line, and the tiles dimmed under it.
         self.run_note = muted_label("", box)
         self.run_note.hide()
+        reserve(self.run_note)
         box.layout().addWidget(self.run_note)
         self.tile_row = QWidget(box)
         grid = QGridLayout(self.tile_row)

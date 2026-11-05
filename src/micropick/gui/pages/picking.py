@@ -173,7 +173,7 @@ from ..session import SOURCE_DISH, Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (compact, danger_button, heading,
                              muted_label, primary_button, quiet_button,
-                             scroll_column, secondary_button)
+                             reserve, scroll_column, secondary_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO, Check
 from ..widgets.controls import Switch
@@ -314,6 +314,7 @@ class PickingPage(QWidget):
         # The settings changed since the cuboids shown were found.
         self.again_line = muted_label(ANALYZE_AGAIN, panel)
         self.again_line.hide()
+        reserve(self.again_line)
         column.addWidget(self.again_line)
         self._stale = False
         cards = QHBoxLayout()
@@ -411,6 +412,7 @@ class PickingPage(QWidget):
                            f'&#9632;</span> {name}', self.plate_card)
             legend.addWidget(label)
             self.legend[name] = label
+            reserve(label)
         legend.addStretch(1)
         body.addLayout(legend)
         return self.plate_card

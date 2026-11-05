@@ -111,9 +111,9 @@ from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (card, heading, muted_label,
-                             primary_button, scroll_column, secondary_button,
-                             select)
+from ..theme.factory import (card, choice_stack, heading, muted_label,
+                             primary_button, reserve, scroll_column,
+                             secondary_button, select)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
@@ -208,27 +208,31 @@ class TipOnBlock(QObject):
         self.back_to_deck = self.no_rack.add_action("Back to Deck")
         self.back_to_deck.clicked.connect(
             lambda: self.session.page_requested.emit("labware"))
-        box.layout().addWidget(self.no_rack)
 
+        self.offer = QWidget(box)
+        offer = QVBoxLayout(self.offer)
+        offer.setContentsMargins(0, 0, 0, 0)
         self.racks = select(box)
         # The keys over this page are the gantry's.
         self.racks.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.racks.currentIndexChanged.connect(lambda _i: self.refresh())
-        box.layout().addWidget(self.racks)
+        offer.addWidget(self.racks)
         self.rack_hint = muted_label("Click the tip to take.", box)
-        box.layout().addWidget(self.rack_hint)
+        offer.addWidget(self.rack_hint)
         self.rack_grid = PlateGrid(mini=True, parent=box)
         self.rack_grid.well_clicked.connect(self._choose_tip)
-        box.layout().addWidget(self.rack_grid)
+        offer.addWidget(self.rack_grid)
         self.take_button = primary_button("Take tip", box)
         metrics = self.take_button.fontMetrics()
         self.take_button.setFixedWidth(
             metrics.horizontalAdvance("Take tip H12") + 6 * SPACING)
         self.take_button.clicked.connect(self._take)
-        box.layout().addWidget(self.take_button)
+        offer.addWidget(self.take_button)
+        reserve(self.racks, self.rack_hint, self.rack_grid, self.take_button)
 
-        self.tip_state = wrapped()
-        box.layout().addWidget(self.tip_state)
+        self.dropping = QWidget(box)
+        dropping = QVBoxLayout(self.dropping)
+        dropping.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
         self.drop_button = secondary_button("Drop in trash", box)
         self.drop_button.clicked.connect(self._drop_in_trash)
@@ -237,9 +241,18 @@ class TipOnBlock(QObject):
         row.addWidget(self.drop_button)
         row.addWidget(self.drop_here_button)
         row.addStretch(1)
-        box.layout().addLayout(row)
+        dropping.addLayout(row)
+        dropping.addStretch(1)
+        # A tip taken or dropped leaves the card its height: the Calibrate
+        # card under it stays.
+        self.tip_stack = choice_stack(self.offer, self.no_rack, self.dropping,
+                                      parent=box)
+        box.layout().addWidget(self.tip_stack)
+        self.tip_state = wrapped()
+        box.layout().addWidget(self.tip_state)
         self.tip_note = muted_label("", box)
         self.tip_note.setWordWrap(True)
+        reserve(self.tip_state, self.tip_note)
         box.layout().addWidget(self.tip_note)
         return box
 
@@ -352,7 +365,9 @@ class TipOnBlock(QObject):
 
         on = tip.attached is True
         offering = connected and not on and bool(racks)
-        self.no_rack.setVisible(connected and not on and not racks)
+        self.tip_stack.setCurrentWidget(
+            self.dropping if on else self.no_rack if connected and not racks
+            else self.offer)
         for widget in (self.racks, self.rack_hint, self.rack_grid,
                        self.take_button):
             widget.setVisible(offering)

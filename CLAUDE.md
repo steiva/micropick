@@ -101,6 +101,18 @@ between them), and long text wraps or is cut. A card stays in its column
 until the arrangement changes. A row of buttons in these cards has to fit a
 full HD window's column, or goes one under the other.
 
+### Nothing shifts
+
+Only what the operator folds or unfolds with a click moves others (#106): a
+Section, Change, Keys, a Save as template's name row. A choice, a status line
+or a warning moves nothing else on the page. A message is the toast. Anything
+else that comes and goes has its place kept: `theme.factory.reserve` for a line
+or a field, `choice_stack` for what a choice shows, one page at a time in the
+room of the tallest (From and Where on Manual pick's Run, the Tip step's rack
+or drop buttons, a liquid run's banners). So Manual pick's Run scrolls on a full
+HD window: that is the room At a point takes. A test says it with
+`stands_still` (`tests/gui/conftest.py`).
+
 ### The shell: Home, tasks as steps (REDESIGN §4)
 
 There are no tabs, no status bar, no floating next step and no Profile

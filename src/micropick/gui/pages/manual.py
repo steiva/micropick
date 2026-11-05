@@ -248,9 +248,9 @@ from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (Section, card, combo_box, compact,
+from ..theme.factory import (Section, card, choice_stack, combo_box, compact,
                              double_spin_box, muted_label, primary_button,
-                             scroll_column, secondary_button, select,
+                             reserve, scroll_column, secondary_button, select,
                              tool_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
@@ -664,6 +664,7 @@ class ManualPage(QWidget):
                                              self._show_settings_line)
         self.hand_z_row = rows["Z"]
         self.above_row = rows["Above bottom"]
+        reserve(self.height_row, self.hand_z_row, self.above_row)
 
         self.source = Segmented(list(FROM), current=FROM.index("By hand"),
                                 parent=self)
@@ -673,12 +674,10 @@ class ManualPage(QWidget):
         self.source_wells = _WellPicker(self)
         self.source_wells.changed.connect(self._show_settings_line)
         self.source_wells.changed.connect(self._refresh)
-        body.addWidget(self.source_wells)
 
         # Both kinds, to aspirate from; made and moved to in their cards.
         self.source_points = self._points_table(None)
         self.source_points.chosen.connect(lambda _name: self._refresh())
-        body.addWidget(self.source_points)
 
         self.hand_box = QWidget(self)
         hand = QVBoxLayout(self.hand_box)
@@ -691,7 +690,11 @@ class ManualPage(QWidget):
                                         parent=self.hand_box)
         for widget in (self.snap, self.aspirate_on_click):
             hand.addWidget(widget)
-        body.addWidget(self.hand_box)
+        self.source_here = QWidget(self)
+        self.source_stack = choice_stack(
+            self.source_wells, self.source_points, self.hand_box,
+            self.source_here, parent=self)
+        body.addWidget(self.source_stack)
 
         self.aspirate_button = primary_button("Aspirate", self)
         self.aspirate_button.clicked.connect(self._aspirate_from_source)
@@ -710,6 +713,7 @@ class ManualPage(QWidget):
         self.part = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
         self.part.valueChanged.connect(lambda _v: self._refresh())
         row.addWidget(self.amount)
+        reserve(self.part)
         row.addWidget(self.part)
         row.addStretch(1)
         body.addLayout(row)
@@ -730,7 +734,10 @@ class ManualPage(QWidget):
 
         self.target_wells = _WellPicker(self)
         self.target_wells.changed.connect(self._refresh)
-        body.addWidget(self.target_wells)
+        self.target_well = QWidget(self)
+        well = QVBoxLayout(self.target_well)
+        well.setContentsMargins(0, 0, 0, 0)
+        well.addWidget(self.target_wells)
         # The plate plan's plate: what a run filled and what it left.
         self.plan_box = QWidget(self)
         plan = QVBoxLayout(self.plan_box)
@@ -744,11 +751,15 @@ class ManualPage(QWidget):
                                     f'&#9632;</span> {name}', self.plan_box))
         legend.addStretch(1)
         plan.addLayout(legend)
-        body.addWidget(self.plan_box)
+        well.addWidget(self.plan_box)
 
         self.target_points = self._points_table(None)
         self.target_points.chosen.connect(lambda _name: self._refresh())
-        body.addWidget(self.target_points)
+        self.target_here = QWidget(self)
+        self.target_stack = choice_stack(
+            self.target_well, self.target_points, self.target_here,
+            parent=self)
+        body.addWidget(self.target_stack)
 
         self.dispense_button = primary_button("Dispense here", self)
         self.dispense_button.clicked.connect(self._dispense_to_target)
@@ -1046,9 +1057,9 @@ class ManualPage(QWidget):
     def _source_changed(self) -> None:
         """From's own controls under it; the points drawn or not."""
         chosen = FROM[self.source.current()]
-        self.source_wells.setVisible(chosen == "In a well")
-        self.source_points.setVisible(chosen == "At a point")
-        self.hand_box.setVisible(chosen == "By hand")
+        self.source_stack.setCurrentWidget(
+            {"In a well": self.source_wells, "At a point": self.source_points,
+             "By hand": self.hand_box}.get(chosen, self.source_here))
         self.height_row.setVisible(chosen == "By hand")
         self.hand_z_row.setVisible(self._hand_z_chosen())
         self.above_row.setVisible(not self._hand_z_chosen()
@@ -1062,9 +1073,10 @@ class ManualPage(QWidget):
         not."""
         chosen = WHERE[self.target.current()]
         well = chosen == "In a well"
-        self.target_wells.setVisible(well)
-        self.plan_box.setVisible(well and bool(self.plan_map.wells))
-        self.target_points.setVisible(chosen == "At a point")
+        self.target_stack.setCurrentWidget(
+            self.target_well if well else self.target_points
+            if chosen == "At a point" else self.target_here)
+        self.plan_box.setVisible(bool(self.plan_map.wells))
         self.part.setVisible(AMOUNT[self.amount.current()] == "Part")
         self._points_toggled()
         self._refresh()

@@ -62,8 +62,8 @@ from ..readiness import DISH_POSITION
 from ..session import Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, heading, muted_label,
-                             primary_button, scroll_column, secondary_button,
-                             set_primary)
+                             primary_button, reserve, scroll_column,
+                             secondary_button, set_primary)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
 from ..widgets.checklist import BLOCKED, OK, TODO
@@ -274,6 +274,7 @@ class DishBottomPage(QWidget):
         self.use_button.clicked.connect(self._use_last)
         row.addWidget(self.use_button)
         self.last_card.layout().addLayout(row)
+        reserve(self.last_card)
         column.addWidget(self.last_card)
 
         dish_card = card(panel)

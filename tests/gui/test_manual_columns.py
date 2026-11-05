@@ -138,7 +138,7 @@ def test_no_action_changes_the_columns(app, page, session, size):
 
 
 def test_the_scroll_bar_does_not_narrow_the_columns(app, page):
-    panel = _shown(app, page, (1920, 860))
+    panel = _shown(app, page, (2560, 1120))
     area = next(a for a in page.findChildren(QScrollArea)
                 if a.widget() is panel)
     first = _where(panel)

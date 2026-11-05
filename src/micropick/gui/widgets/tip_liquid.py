@@ -44,7 +44,7 @@ from ..labware_kinds import facts, kind
 from ..pages.dish_bottom import dish_center
 from ..session import Session
 from ..theme.factory import (caption, compact, double_spin_box, muted_label,
-                             primary_button, secondary_button)
+                             primary_button, reserve, secondary_button)
 from .controls import Segmented
 from .jog_panel import JogPanel
 from .mini_deck import DeckTile, MiniDeckDropdown
@@ -170,10 +170,12 @@ class TipLiquidBox(QWidget):
         self.well_line = muted_label("Click a well.", self.well_box)
         wells.addWidget(self.well_line)
         self.well_box.setVisible(False)
+        reserve(self.well_box, self.plate_map, self.well_line)
         body.addWidget(self.well_box)
 
         self.holds = muted_label("", self)
         self.holds.setVisible(False)
+        reserve(self.holds)
         body.addWidget(self.holds)
         buttons = QHBoxLayout()
         self.aspirate_button = primary_button("", self)

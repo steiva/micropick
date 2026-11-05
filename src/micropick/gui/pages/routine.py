@@ -66,7 +66,7 @@ from ..labware_kinds import facts, kind
 from ..session import Session, SessionError
 from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, card, muted_label, primary_button,
-                             secondary_button)
+                             reserve, secondary_button)
 from ..theme.icons import icon
 from ..widgets.banner import Banner
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
@@ -154,6 +154,7 @@ class RoutinePage(QWidget):
         self.back_to_deck = self.no_plate.add_action("Back to Deck")
         self.back_to_deck.clicked.connect(
             lambda: self.session.page_requested.emit("labware"))
+        reserve(self.no_plate)
         left.addWidget(self.no_plate)
         left.addWidget(self.plate, 1)
 
@@ -270,13 +271,13 @@ class RoutinePage(QWidget):
         self.open_file_button.clicked.connect(self._open_file)
         box.addWidget(self.open_file_button,
                       alignment=Qt.AlignmentFlag.AlignLeft)
+        reserve(self.template_box)
         column.addWidget(self.template_box)
 
         self.choose_wells = Banner(CHOOSE_WELLS, parent=self)
+        reserve(self.choose_wells)
         column.addWidget(self.choose_wells)
         # What a template could not do ("No plate of this kind…").
-        self.message = muted_label("", self)
-        column.addWidget(self.message)
         self._template_mode = False
         self.new_tile.setChecked(True)
 
@@ -335,6 +336,7 @@ class RoutinePage(QWidget):
             "Save changes to template", box)
         self.save_changes_button.clicked.connect(self._save_changes)
         box.layout().addWidget(self.save_changes_button)
+        reserve(self.save_as_button, self.save_changes_button)
         self.template_note = muted_label("", box)
         box.layout().addWidget(self.template_note)
         return box
@@ -388,7 +390,7 @@ class RoutinePage(QWidget):
         try:
             destination = Destination.from_labware(load_name, slot)
         except (RoutineError, LabwareError) as exc:
-            self._say(str(exc))
+            show_toast(self, str(exc), refusal=True)
             log.error("%s", exc)
             return
         if self.destination is not None \
@@ -506,7 +508,7 @@ class RoutinePage(QWidget):
                               / f"{now:%Y%m%d-%H%M%S}-slot{self.destination.slot}.json")
             routine.save()
         except (RoutineError, OSError) as exc:
-            self._say(str(exc))
+            show_toast(self, str(exc), refusal=True)
             log.error("%s", exc)
             return
         log.info("plan in use: %s", routine.summary().replace("\n", " | "))
@@ -560,9 +562,8 @@ class RoutinePage(QWidget):
                     preset.name or path.stem, path, len(preset.plan),
                     datetime.fromtimestamp(path.stat().st_mtime))
         except (RoutineError, OSError) as exc:
-            self._say(str(exc))
+            show_toast(self, str(exc), refusal=True)
             return
-        self._say("")
         slots = {int(slot) for slot, load_name
                  in self._loaded_plates_by_slot()
                  if load_name == preset.load_name and slot.isdigit()}
@@ -589,7 +590,7 @@ class RoutinePage(QWidget):
             destination = preset.destination(slot)
             plan = preset.plan_for(destination)
         except (RoutineError, LabwareError) as exc:
-            self._say(str(exc))
+            show_toast(self, str(exc), refusal=True)
             return
         self._pending = None
         if self.destination is None or self.destination.slot != slot:
@@ -614,7 +615,7 @@ class RoutinePage(QWidget):
             return PlanPreset.from_plan(self.destination, self.plan(),
                                         strategy=self.strategy)
         except RoutineError as exc:
-            self._say(str(exc))
+            show_toast(self, str(exc), refusal=True)
             return None
 
     def _ask_name(self) -> None:
@@ -664,10 +665,6 @@ class RoutinePage(QWidget):
 
     # -- display -------------------------------------------------------------
 
-    def _say(self, text: str) -> None:
-        self.message.setText(text)
-        self.message.setVisible(bool(text))
-
     def _refresh(self) -> None:
         has_plate = self.destination is not None
         plan = self.plan()
@@ -694,7 +691,6 @@ class RoutinePage(QWidget):
         self.which_plate.setVisible(self._pending is not None)
         self.choose_wells.setVisible(not self._template_mode and has_plate
                                      and not plan)
-        self.message.setVisible(bool(self.message.text()))
 
         for strategy, button in self.order_tiles.items():
             button.setChecked(strategy == self.strategy)

@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QVBoxLayout,
 from ...core.liquid_plan import Height, duration, height_words
 from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, card, double_spin_box, heading,
-                             muted_label, spin_box)
+                             muted_label, reserve, spin_box)
 from .banner import Banner
 from .controls import Segmented, Switch
 from .well_heights import DEPTH_MM, WellDrawing
@@ -229,6 +229,7 @@ class ExtrasForm(_Fields):
             column, "Mix after putting it in", "", "mix_after")
         self.mix_fields = QWidget(self.mix_box)
         self.mix_fields.setObjectName("plain")
+        reserve(self.mix_fields)
         row = QHBoxLayout(self.mix_fields)
         row.setContentsMargins(0, 0, 0, 0)
         self.mix_cycles = spin_box(self.mix_fields)

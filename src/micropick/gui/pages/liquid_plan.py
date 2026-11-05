@@ -106,7 +106,8 @@ from ..session import MEASURED, NOT_MEASURED, Session, SessionError
 from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, compact, danger_text_button,
                              double_spin_box, heading, muted_label, primary_button,
-                             secondary_button, set_primary, tool_button)
+                             reserve, secondary_button, set_primary,
+                             tool_button)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented
@@ -781,6 +782,7 @@ class LiquidPlanPage(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
         self.locked_note = muted_label(LOCKED, panel)
+        reserve(self.locked_note)
         column.addWidget(self.locked_note)
         column.addWidget(caption("Start from", panel))
         tiles = QHBoxLayout()
@@ -797,6 +799,7 @@ class LiquidPlanPage(QWidget):
             tiles.addWidget(tile)
         column.addLayout(tiles)
         self.template_box = self._template_box(panel)
+        reserve(self.template_box)
         column.addWidget(self.template_box)
 
         self.trash_row = QPushButton(panel)
@@ -895,6 +898,7 @@ class LiquidPlanPage(QWidget):
         self.save_changes_button.clicked.connect(self._save_changes)
         row.addWidget(self.save_as_button)
         row.addWidget(self.save_changes_button)
+        reserve(self.save_changes_button)
         row.addStretch(1)
         column.addLayout(row)
         # Save as template's name, asked here rather than in a dialog.
