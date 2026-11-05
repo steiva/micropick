@@ -1351,3 +1351,141 @@ def test_an_aspirate_is_answered_in_a_sentence(app, page, session):
     _wait(app, page)
     assert _said(page) == ("Aspirated 10 µl at 50 µl/s, here.", "answer")
     assert len(page.jog.position_lines) == 1
+
+
+# -- the plate's heights on the picture (#95) -------------------------------
+#
+# The drawing's 96 well plate: the top of its wells 3.55 + 10.67 = 14.22 over
+# the slot, their bottom 3.55. `_measured_plate`'s: 13.22 and 4.22, in slot 5.
+
+
+def _camera_over(app, page, session, slot):
+    """The crosshair over `slot`'s center."""
+    _aim_at(app, page, session, *slot_center(slot))
+
+
+def _calibrated_on_screen(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+
+
+def test_the_height_line_gives_an_unmeasured_plate_from_its_drawing(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    session.load_labware(resolve_definition(PLATE), 5)
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line == \
+        "Slot 5 · top 14.22 · bottom 3.55 · drawing"
+
+
+def test_the_height_line_stands_the_plate_on_its_module(app, page, session):
+    _calibrated_on_screen(app, page, session)
+    session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
+    session.load_labware(resolve_definition(PLATE), 5)
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line == \
+        "Slot 5 · top 78.42 · bottom 67.75 · drawing"
+
+
+def test_the_height_line_gives_a_confirmed_plate_as_measured(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    _measured_plate(app, page, session)
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line == \
+        "Slot 5 · top 13.22 · bottom 4.22 · measured"
+
+
+def test_the_height_line_says_drawing_for_a_measurement_not_confirmed(
+        app, page, session):
+    """As In a well goes: above the drawing's bottom until it is confirmed."""
+    _calibrated_on_screen(app, page, session)
+    _measured_plate(app, page, session)
+    session.new_run()                        # measured, not said so here
+    session.load_labware(resolve_definition(PLATE), 5)
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line == \
+        "Slot 5 · top 14.22 · bottom 3.55 · drawing"
+
+
+def test_the_height_line_turns_measured_as_the_plate_is_confirmed(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    session.load_labware(resolve_definition(PLATE), 5)
+    _camera_over(app, page, session, 5)
+    session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
+    app.processEvents()
+    assert page.view.height_line == \
+        "Slot 5 · top 13.22 · bottom 4.22 · measured"
+
+
+def test_the_height_line_follows_the_camera_and_an_empty_slot_has_none(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    session.load_labware(resolve_definition(PLATE), 5)
+    session.load_labware(resolve_definition("corning_24_wellplate_3.4ml_flat"),
+                         6)
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line.startswith("Slot 5 · top 14.22 ")
+    _camera_over(app, page, session, 6)
+    assert page.view.height_line.startswith("Slot 6 · top ")
+    assert "14.22" not in page.view.height_line
+    _camera_over(app, page, session, 2)
+    assert page.view.height_line == ""
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line.startswith("Slot 5 · top 14.22 ")
+
+
+def test_the_height_line_is_the_cameras_slot_not_the_tips(app, page, session):
+    """The tip 60 mm from the camera: a slot away. Before a tip calibration
+    the distance is Settings' start."""
+    _calibrate(session)
+    session.profile.calibration.pipette_offset.dx = 60.0
+    session.load_labware(resolve_definition(PLATE), 5)
+    x, y = slot_center(5)
+    session.robot.move_to_coordinates((x - 60.0, y + 5.0, 90.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    assert page.view.height_line.startswith("Slot 5 ")
+    session.profile.calibration.pipette_offset = None
+    dx, dy = session.settings.tip_cal_start_offset
+    session.robot.move_to_coordinates((x - dx, y - dy, 90.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    assert page.view.height_line.startswith("Slot 5 ")
+
+
+def test_the_height_line_gives_the_source_dish_its_bottom_once_confirmed(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    session.profile.positions["observe"] = [186.0, 229.0, 90.0]
+    session.profile.picking.dish_bottom = 66.0
+    _camera_over(app, page, session, 8)
+    assert page.view.height_line == ""
+    session.confirm("dish_bottom")
+    app.processEvents()
+    assert page.view.height_line == "Slot 8 · bottom 66.00 · measured"
+    _camera_over(app, page, session, 9)
+    assert page.view.height_line == ""
+
+
+def test_the_height_line_stands_during_a_move_and_goes_with_the_robot(
+        app, page, session):
+    import threading
+    _calibrated_on_screen(app, page, session)
+    session.load_labware(resolve_definition(PLATE), 5)
+    _camera_over(app, page, session, 5)
+    shown = page.view.height_line
+    assert shown
+    go_on = threading.Event()
+    assert page.jog.run_job(lambda _log: go_on.wait(5) and None)
+    app.processEvents()
+    assert page.jog.pose is None
+    assert page.view.height_line == shown
+    go_on.set()
+    _wait(app, page)
+    session.disconnect_robot()
+    app.processEvents()
+    assert page.view.height_line == ""

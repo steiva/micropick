@@ -101,8 +101,9 @@ camera with a map; the page that has one hands the directions over.
 Quiet chrome (REDESIGN §3)
 --------------------------
 Over the picture only what is used there: the robot's X, Y and Z
-(`set_position`, in a fixed font) with nothing under them, the jog pad's
-step in a chip beside them (`set_step_chip`), what the page
+(`set_position`, in a fixed font) with nothing under them but Manual pick
+Run's heights of the slot under the crosshair (`set_height_line`), the jog
+pad's step in a chip beside them (`set_step_chip`), what the page
 shows (`set_status`: found counts, the marker seen) along the top edge
 beside its own buttons, and one quiet row of what the mouse does
 (`set_mouse_help`) in the bottom-left corner. No camera name, slot,
@@ -247,6 +248,7 @@ class CameraView(QWidget):
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
         self._step_chip: tuple | None = None    # owner, text, color
+        self._height_line: str | None = None    # None: no row for it
         self._status: list[str] = []
         self._mouse_help: list[str] = list(MOUSE_HELP)
         self._click_line: str | None = None       # see set_click_to_move
@@ -805,6 +807,19 @@ class CameraView(QWidget):
         """The chip shown, (text, color), or None."""
         return None if self._step_chip is None else self._step_chip[1:]
 
+    def set_height_line(self, text: str | None) -> None:
+        """The one line under X, Y and Z: the heights of the slot under
+        Manual pick Run's crosshair (#95), and never a message. "" keeps
+        its row, empty, so the axes under it stay put as the line comes and
+        goes; None, as it starts, has no row: no other page has one."""
+        self._height_line = None if text is None else str(text)
+        self.update()
+
+    @property
+    def height_line(self) -> str:
+        """The line under X, Y and Z, "" with none."""
+        return self._height_line or ""
+
     def set_mouse_help(self, lines) -> None:
         """What the mouse does on this picture, one row in the bottom-left
         corner: "gesture   what it does" per item. Empty removes it."""
@@ -1160,7 +1175,7 @@ class CameraView(QWidget):
     def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> int:
         """Boxes of lines down the top-left corner; the robot's position
         (`set_position`) in a fixed font, as numbers that change in place,
-        the step's chip on its row."""
+        the step's chip on its row, the height line under them."""
         font = QFont(self.font().family(), 10)
         mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         mono.setPointSize(10)
@@ -1187,6 +1202,12 @@ class CameraView(QWidget):
             bottom = self._draw_step_chip(painter, chip_left, chip_top,
                                           chip_height)
             top = max(top, bottom + CAPTION_GAP)
+        if self._height_line is not None:
+            painter.setFont(font)
+            bottom = (self._draw_box(painter, top, [self._height_line])
+                      if self._height_line else
+                      top + painter.fontMetrics().height() + 2 * CAPTION_PAD)
+            top = bottom + CAPTION_GAP
         return top
 
     def _draw_step_chip(self, painter: QPainter, left: int, top: int,

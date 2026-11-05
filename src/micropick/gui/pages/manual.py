@@ -34,6 +34,16 @@ counts it (`Session.in_tip`, from aspirates and dispenses, emptied when the
 tip changes), with the robot's X, Y and Z under it. It is the answer to
 Aspirate: there is no "Aspirated 15 µl" besides.
 
+Under X, Y and Z, and on no other page, is the **height line** (#95): the
+slot the camera is over (`camera_moves.camera_slot`, so before a tip
+calibration too), "Slot 8 · top 85.10 · bottom 67.77 · measured", for the
+operator choosing a Z. Measured is what this page itself goes by: a plate
+measured and confirmed in this robot session, as In a well and By hand; any
+other plate is its drawing, a measurement not confirmed included, since a
+line saying measured over a height no aspirate uses would mislead. No plate,
+no line; the source dish has only a bottom, once confirmed, and in the
+dish's slot it goes before a drawing, as `_slot_bottom`.
+
 Memo points
 -----------
 A right click on the picture marks a point where the tip would go down
@@ -201,7 +211,8 @@ from ...workflows import well_center
 from ...workflows.jog import Reached
 from .. import keys
 from ..auto_camera import CameraOpener
-from ..camera_moves import NO_TIP_CALIBRATION, OUTSIDE_THE_MAP, pose_slot
+from ..camera_moves import (NO_TIP_CALIBRATION, OUTSIDE_THE_MAP, camera_slot,
+                            pose_slot)
 from ..detector import wanted_model
 from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
@@ -418,6 +429,7 @@ class ManualPage(QWidget):
         # is showing, and go quiet with it.
         self.jog = JogPanel(session, shortcut_host=self, parent=self)
         self.jog.show_position_on(self.view)
+        self.view.set_height_line("")
         self.view.set_mouse_help(MOUSE_HELP)
         self.view.set_click_to_move(CLICK_HELP, self._click_reaches)
         self.jog.moved.connect(self._forget_targets)
@@ -776,6 +788,7 @@ class ManualPage(QWidget):
         one, and the default as it comes to; the line, as the slot or a
         plate's bottom may have changed. During a move there is no pose,
         and what was shown stands: passing through it changes no choice."""
+        self._show_heights()
         if self.jog.pose is None and self._bottom is not None:
             self._show_settings_line()
             return
@@ -802,25 +815,71 @@ class ManualPage(QWidget):
         None. Whatever the source chosen."""
         session = self.session
         slot = nearest_slot(spot[0], spot[1])
-        deck = session.profile.deck
-        for held, entry, definition in session.plates():
-            if (held == str(slot) and session.plate_bottom_confirmed(
-                    held, definition.load_name)):
-                center = self._well_center(held, definition.load_name)
-                shift = entry.offset or (0.0, 0.0, 0.0)
-                return SlotBottom(
-                    slot, well_center.measured_bottom(
-                        center, definition, deck.module_height(held)),
-                    lambda at: well_center.in_a_well(
-                        definition, held, well_center.xy(center), at,
-                        labware_offset=shift))
+        plate = self._plate_in(slot)
+        if plate is not None and self._plate_confirmed(plate):
+            held, entry, definition = plate
+            center = self._well_center(held, definition.load_name)
+            shift = entry.offset or (0.0, 0.0, 0.0)
+            return SlotBottom(
+                slot, well_center.measured_bottom(
+                    center, definition,
+                    session.profile.deck.module_height(held)),
+                lambda at: well_center.in_a_well(
+                    definition, held, well_center.xy(center), at,
+                    labware_offset=shift))
+        dish = self._dish_bottom_in(slot)
+        return None if dish is None else SlotBottom(slot, dish,
+                                                    lambda _at: True)
+
+    def _plate_in(self, slot) -> tuple | None:
+        """The session's (slot, entry, definition) of the plate in `slot`."""
+        for plate in self.session.plates():
+            if plate[0] == str(slot):
+                return plate
+        return None
+
+    def _plate_confirmed(self, plate) -> bool:
+        held, _entry, definition = plate
+        return self.session.plate_bottom_confirmed(held, definition.load_name)
+
+    def _dish_bottom_in(self, slot) -> float | None:
+        """The source dish's bottom, if the dish is in `slot` and its bottom
+        is confirmed."""
+        session = self.session
         observe = session.profile.positions.get(DISH_POSITION)
         if (session.is_confirmed("dish_bottom") and observe is not None
                 and pose_slot(session, DISH_POSITION, observe[:2]) == slot):
-            return SlotBottom(slot,
-                              float(session.profile.picking.dish_bottom),
-                              lambda _at: True)
+            return float(session.profile.picking.dish_bottom)
         return None
+
+    def _show_heights(self) -> None:
+        """The height line, for where the camera is. During a move there is
+        no pose and what was shown stands; without a robot there is none."""
+        if self.jog.pose is not None:
+            self.view.set_height_line(self._heights_here())
+        elif self.session.robot is None:
+            self.view.set_height_line("")
+
+    def _heights_here(self) -> str:
+        """The height line for the slot under the camera, "" for none."""
+        session = self.session
+        if session.profile is None:
+            return ""
+        slot = camera_slot(session, self.jog.pose[:2])
+        plate = self._plate_in(slot)
+        measured = plate is not None and self._plate_confirmed(plate)
+        dish = self._dish_bottom_in(slot)
+        if dish is not None and not measured:
+            return f"Slot {slot} · bottom {dish:.2f} · measured"
+        if plate is None:
+            return ""
+        held, _entry, definition = plate
+        center = (self._well_center(held, definition.load_name)
+                  if measured else None)
+        top, bottom = well_center.plate_heights(
+            center, definition, session.profile.deck.module_height(held))
+        return (f"Slot {slot} · top {top:.2f} · bottom {bottom:.2f} · "
+                f"{'measured' if measured else 'drawing'}")
 
     def _source_changed(self) -> None:
         """From's own controls under it; the points drawn or not."""
@@ -1757,6 +1816,7 @@ class ManualPage(QWidget):
     def _robot_changed(self, _state: str) -> None:
         self._reload_plates()
         self._show_deck()
+        self._show_heights()
 
     # -- the camera -------------------------------------------------------------------
 

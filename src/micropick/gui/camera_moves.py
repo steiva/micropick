@@ -44,7 +44,7 @@ from ..workflows.manual import camera_target, tip_target
 from .position_marks import CAMERA_POSITIONS
 
 __all__ = ["NO_TIP_CALIBRATION", "OUTSIDE_THE_MAP", "camera_offset",
-           "move_over_slot", "move_tip_to_pixel", "move_to_pixel",
+           "camera_slot", "move_over_slot", "move_tip_to_pixel", "move_to_pixel",
            "out_of_reach", "pose_slot"]
 
 log = logging.getLogger(__name__)
@@ -66,9 +66,14 @@ def camera_offset(session) -> np.ndarray:
 def pose_slot(session, name: str, xy) -> int:
     """The slot the stored pose `name` at `xy` is in, in words an operator
     knows: the camera's for a camera position, else the tip's."""
-    x, y = float(xy[0]), float(xy[1])
     if name in CAMERA_POSITIONS:
-        x, y = np.array([x, y]) + camera_offset(session)
+        return camera_slot(session, xy)
+    return nearest_slot(float(xy[0]), float(xy[1]))
+
+
+def camera_slot(session, xy) -> int:
+    """The slot the camera is over with the gantry at `xy`."""
+    x, y = np.array([float(xy[0]), float(xy[1])]) + camera_offset(session)
     return nearest_slot(x, y)
 
 

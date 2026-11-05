@@ -282,6 +282,63 @@ def test_a_pages_lines_stand_on_the_top_edge_never_under_the_position(app):
     view.deleteLater()
 
 
+LINE = "Slot 8 · top 85.10 · bottom 67.77 · measured"
+
+
+def _with_axes(app):
+    view = _view(app, _Camera("over"))
+    view.resize(800, 600)
+    view.set_position(["X 1.00  Y 2.00  Z 3.00"])
+    view.set_axes({"X": (1.0, 0.0), "Y": (0.0, -1.0)})
+    app.processEvents()
+    return view
+
+
+def test_the_height_line_is_painted_under_the_position(app):
+    view = _with_axes(app)
+    view.set_height_line("")
+    app.processEvents()
+    without = _pixels(view)
+    view.set_height_line(LINE)
+    app.processEvents()
+    assert view.height_line == LINE
+    rows, columns = np.nonzero((_pixels(view) != without).any(axis=2))
+    # One line, at the left edge, under the position's box.
+    assert rows.size and columns.min() < 30
+    assert 30 < rows.min() and rows.max() < rows.min() + 40
+    view.hide()
+    view.deleteLater()
+
+
+def test_the_height_lines_row_keeps_the_axes_where_they_are(app):
+    """Over a slot with no plate the line is gone, and nothing moves."""
+    view = _with_axes(app)
+    view.set_height_line(LINE)
+    app.processEvents()
+    with_line = _pixels(view)
+    view.set_height_line("")
+    app.processEvents()
+    rows = np.nonzero((_pixels(view) != with_line).any(axis=2))[0]
+    # Only the line's own box changed: what is under it did not.
+    assert rows.size and rows.max() < rows.min() + 40
+    view.hide()
+    view.deleteLater()
+
+
+def test_a_view_has_no_height_row_unless_its_page_asks(app):
+    view = _with_axes(app)
+    plain = _pixels(view)
+    view.set_height_line("")
+    app.processEvents()
+    moved = _pixels(view)
+    assert (plain != moved).any()       # the axes went down a row for it
+    view.set_height_line(None)
+    app.processEvents()
+    assert np.array_equal(_pixels(view), plain)
+    view.hide()
+    view.deleteLater()
+
+
 def test_a_pages_lines_end_where_its_buttons_begin(app):
     view = CameraView()
     view.resize(800, 600)
