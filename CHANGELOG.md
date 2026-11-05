@@ -14,7 +14,8 @@ the third for fixes.
   is gray while the tip is empty: no card opens by itself.
 - Manual pick: Aspirate and Dispense each say how the tip leaves: Retract
   automatically, Don't retract, Retract after delay. In a well, At a point
-  and Dispense now rise by default.
+  and Dispense now rise by default. Retract slowly takes the tip out of the
+  liquid at 0.5 mm/s for the first 2 mm.
 - Manual pick has a Source step: pick from the source dish or from a plate
   on the deck. From a plate there is no Dish bottom step; the plate's Well
   center is measured or taken with Use it, and Run waits for that.

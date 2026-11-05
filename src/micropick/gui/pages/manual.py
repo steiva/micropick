@@ -185,7 +185,7 @@ How the tip leaves
 ------------------
 Each card has its own, on its line (#102, `_RetractRows`): up at once, not
 at all, or after a delay, to the travel height where the tip stands
-(`moves.retract`). Only By hand then brings the camera back to where it
+(`moves.retract`), slowly at first if asked (#103). Only By hand then brings the camera back to where it
 aimed from, since only there did the camera choose the spot. The delay is
 part of the job, so it holds the lease and every button that moves stays
 gray; a stop ends it with the tip down.
@@ -236,6 +236,7 @@ from ...viz import overlays
 from ...workflows import manual as moves
 from ...workflows import well_center
 from ...workflows.jog import Reached
+from ...workflows.motion import SLOW_RISE_MM, SLOW_RISE_MM_S
 from .. import keys
 from ..auto_camera import CameraOpener
 from ..camera_moves import (NO_TIP_CALIBRATION, OUTSIDE_THE_MAP, camera_slot,
@@ -372,8 +373,9 @@ def _settings_line(parent: QWidget, body) -> tuple[QLabel, QWidget, QWidget]:
 
 
 class _RetractRows:
-    """How the tip leaves, as rows of a card's settings box: the choice, and
-    the delay, gray unless asked for so that the rows stand still."""
+    """How the tip leaves, as rows of a card's settings box: the choice, the
+    delay and Retract slowly, gray where they say nothing so that the rows
+    stand still."""
 
     def __init__(self, parent: QWidget, box: QWidget, changed):
         self.choice = select(parent)
@@ -382,27 +384,40 @@ class _RetractRows:
                                  " s", 1, 0.5)
         _row(box, "Retract", self.choice)
         _row(box, "Delay", self.delay)
+        self.slowly = Switch("Retract slowly", parent=box)
+        self.slowly.setToolTip(
+            f"First {SLOW_RISE_MM:g} mm at {SLOW_RISE_MM_S:g} mm/s.")
+        box.layout().addWidget(self.slowly)
+        self.slowly.toggled.connect(lambda _on: changed())
         self.choice.currentIndexChanged.connect(lambda _i: self._chosen())
         self.choice.currentIndexChanged.connect(lambda _i: changed())
         self.delay.valueChanged.connect(lambda _v: changed())
         self._chosen()
+
+    def _rises(self) -> bool:
+        return self.choice.currentText() != "Don't retract"
 
     def _delayed(self) -> bool:
         return self.choice.currentText() == "Retract after delay"
 
     def _chosen(self) -> None:
         self.delay.setEnabled(self._delayed())
+        self.slowly.setEnabled(self._rises())
 
     def how(self) -> moves.Retract:
         return moves.Retract(
-            rises=self.choice.currentText() != "Don't retract",
-            delay_s=float(self.delay.value()) if self._delayed() else 0.0)
+            rises=self._rises(),
+            delay_s=float(self.delay.value()) if self._delayed() else 0.0,
+            slowly=self.slowly.isChecked())
 
     def words(self) -> str:
         """As said on the settings line."""
+        if not self._rises():
+            return "don't retract"
+        how = "retract slowly" if self.slowly.isChecked() else "retract"
         if self._delayed():
-            return f"retract after {self.delay.value():g} s"
-        return self.choice.currentText().lower()
+            return f"{how} after {self.delay.value():g} s"
+        return how if self.slowly.isChecked() else f"{how} automatically"
 
 
 class _WellPicker(QWidget):

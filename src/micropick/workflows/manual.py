@@ -51,9 +51,11 @@ UNDER_DRAWN_BOTTOM_MM = 2.0
 
 
 class Retract(NamedTuple):
-    """How the tip leaves: whether it goes up, and after how long."""
+    """How the tip leaves: whether it goes up, after how long, and whether
+    slowly at first."""
     rises: bool = True
     delay_s: float = 0.0
+    slowly: bool = False
 
 
 def retract(motion: Motion, how: Retract, stopped: threading.Event, *,
@@ -67,7 +69,7 @@ def retract(motion: Motion, how: Retract, stopped: threading.Event, *,
             log(f"waiting {how.delay_s:g} s before going up")
         if stopped.wait(how.delay_s):
             return False
-    motion.rise(log=log)
+    motion.rise(slowly=how.slowly, log=log)
     return True
 
 

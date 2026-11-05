@@ -2360,3 +2360,17 @@ On a full HD window, the page in two columns.
   Delay 60 s, Aspirate, and Esc while the tip is down: the toast says
   "Stopped: the tip stays down.", the tip has not moved and the buttons
   come back at once.
+
+## Manual pick: Retract slowly (#103)
+
+- [ ] **The OT-2 moves evenly at 0.5 mm/s.**
+  Change in Aspirate, Retract slowly on; the line says "retract slowly". The
+  tip in water, Aspirate: it rises 2 mm in about 4 s, evenly, with no jerk and
+  no pause, then goes up as usual. If it does not move evenly, Retract slowly
+  has to be made of small steps instead (#93), in Liquid too.
+- [ ] **Gray with Don't retract.**
+  Retract: Don't retract. Retract slowly grays and the line says "don't
+  retract". Retract after delay: the delay comes first, then the slow rise.
+- [ ] **Close under the travel height.**
+  A point 1 mm under the travel height, Aspirate there with Retract slowly
+  on: it only goes up, no slow move.

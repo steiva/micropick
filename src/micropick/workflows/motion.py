@@ -68,6 +68,7 @@ from .jog import AXES, Limits
 __all__ = ["Motion", "NoRobot", "WELL_LEVELS", "PARK_XY", "APPROACH_MM",
            "descend",
            "TRAVEL_BELOW_TOP_MM", "Z_NOZZLE_TOP_MM", "JOG_BELOW_TOP_MM",
+           "SLOW_RISE_MM", "SLOW_RISE_MM_S",
            "UNKNOWN_TIP_LENGTH_MM", "MODULE_MARGIN_MM", "envelope_for",
            "refusal"]
 
@@ -88,6 +89,10 @@ TRAVEL_BELOW_TOP_MM = 1.0
 # The reported Z wanders by hundredths; a tip that far under the travel
 # height is still at it.
 READ_TOL_MM = 0.05
+
+# Retract slowly: how far the tip rises out of the liquid, and how fast.
+SLOW_RISE_MM = 2.0
+SLOW_RISE_MM_S = 0.5
 
 # The top of Z for the bare nozzle: what the robot reads retracted with no
 # tip (bench, 2026-10-12). A hard ceiling - a pipette driven above its
@@ -288,11 +293,14 @@ class Motion:
             pose[2] = min(float(pose[2]), _travel(top))
         return pose
 
-    def rise(self, *, log=None) -> np.ndarray:
+    def rise(self, *, slowly: bool = False, log=None) -> np.ndarray:
         """The tip straight up where it stands, to the travel height: to the
         top, measuring it, while that is not known. Above the travel height
-        it stays. Returns the pose reached."""
+        it stays. `slowly`: first `SLOW_RISE_MM` at `SLOW_RISE_MM_S`, one
+        move, if there is that much way up. Returns the pose reached."""
         robot = self._need_robot()
+        if slowly:
+            self._rise_slowly(log)
         top = self.top
         if top is None:
             self.retract(log=log)
@@ -363,6 +371,22 @@ class Motion:
                 prepare=prepare, log=log)
 
     # -- inside ---------------------------------------------------------------
+
+    def _rise_slowly(self, log) -> None:
+        """Measured or not, the top is not gone to for this: a retract would
+        leave the liquid at full speed. Not measured, the jog envelope's
+        top says how much way up there is."""
+        robot = self._need_robot()
+        x, y, z = xyz(robot)
+        ceiling = self.travel_z
+        if ceiling is None:
+            ceiling = self.envelope.bounds("z")[1]
+        if ceiling - z < SLOW_RISE_MM:
+            return
+        if log is not None:
+            log(f"tip up {SLOW_RISE_MM:g} mm at {SLOW_RISE_MM_S:g} mm/s")
+        move_to(robot, (x, y, z + SLOW_RISE_MM), min_z_height=1.0,
+                force_direct=True, speed=SLOW_RISE_MM_S)
 
     def _forget_top(self) -> None:
         with self._lock:

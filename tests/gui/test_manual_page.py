@@ -2027,3 +2027,42 @@ def test_by_hand_after_the_delay_brings_the_camera_back(app, page, session):
     page.aspirate_button.click()
     _wait(app, page)
     assert _pose(session) == pytest.approx(before, abs=0.05)
+
+
+# -- Retract slowly (#103) -------------------------------------------------------
+
+
+def test_retract_slowly_sends_one_slow_move_then_rises(app, page, session):
+    _at_a_point(app, page, session)
+    page.aspirate_retract.slowly.setChecked(True)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert [c for c in session.robot.calls if c[0] == "move_with_speed"] == [
+        ("move_with_speed", pytest.approx((170.0, 140.0, 72.0), abs=0.05),
+         0.5)]
+    assert _pose(session) == pytest.approx(
+        (170.0, 140.0, _travel_z(session)), abs=0.05)
+
+
+def test_retract_slowly_is_off_at_start_and_gray_with_dont_retract(page):
+    for rows in (page.aspirate_retract, page.dispense_retract):
+        box = rows.slowly.parentWidget()     # Dispense's card is gray itself
+        assert not rows.slowly.isChecked()
+        assert rows.slowly.isEnabledTo(box)
+        rows.slowly.setChecked(True)
+        rows.choice.setCurrentText("Don't retract")
+        assert not rows.slowly.isEnabledTo(box)
+        assert not rows.how().rises
+        rows.choice.setCurrentText("Retract automatically")
+        assert rows.slowly.isEnabledTo(box)
+        assert rows.how().slowly
+
+
+def test_the_line_says_retract_slowly(page):
+    rows = page.dispense_retract
+    rows.slowly.setChecked(True)
+    assert page.dispense_line.text() == "50 µl/s · retract slowly"
+    rows.choice.setCurrentText("Retract after delay")
+    assert page.dispense_line.text() == "50 µl/s · retract slowly after 5 s"
+    rows.choice.setCurrentText("Don't retract")
+    assert page.dispense_line.text() == "50 µl/s · don't retract"

@@ -48,3 +48,10 @@ def test_a_stop_during_the_delay_leaves_the_tip_down(motion):
     stopped.set()
     assert retract(motion, Retract(delay_s=60.0), stopped) is False
     assert _z(motion) == pytest.approx(30.0)
+
+
+def test_slowly_is_passed_on(motion):
+    seen = []
+    motion.rise = lambda **kwargs: seen.append(kwargs["slowly"])
+    retract(motion, Retract(slowly=True), threading.Event())
+    assert seen == [True]

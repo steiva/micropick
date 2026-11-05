@@ -60,6 +60,7 @@ class Robot(Protocol):
     def move_to_coordinates(self, coordinates: Sequence[float],
                             min_z_height: float | None = None,
                             force_direct: bool = False,
+                            speed: float | None = None,
                             verbose: bool = True) -> Any:
         ...
 
@@ -182,15 +183,18 @@ def _error_text(error) -> str:
 
 
 def move_to(robot: Robot, coordinates, *, min_z_height: float | None = None,
-            force_direct: bool = False, tolerance_mm: float = 0.1,
-            verbose: bool = False):
-    """Absolute move, verified. Returns the pose actually reached."""
+            force_direct: bool = False, speed: float | None = None,
+            tolerance_mm: float = 0.1, verbose: bool = False):
+    """Absolute move, verified, at `speed` mm/s if given. Returns the pose
+    actually reached."""
     target = np.asarray(coordinates, dtype=float)
     kwargs = {"verbose": verbose}
     if min_z_height is not None:
         kwargs["min_z_height"] = min_z_height
     if force_direct:
         kwargs["force_direct"] = force_direct
+    if speed is not None:
+        kwargs["speed"] = speed
     response = robot.move_to_coordinates(tuple(target), **kwargs)
 
     status, error = _command_status(response)

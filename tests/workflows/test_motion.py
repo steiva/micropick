@@ -187,3 +187,36 @@ def test_rise_with_the_top_not_measured_retracts():
     assert motion.top == pytest.approx(TOP)
     assert len(_retracts(robot)) == 1
     assert xyz(robot)[:2] == pytest.approx((100.0, 100.0))
+
+
+def _speeds(robot):
+    return [c for c in robot.calls if c[0] == "move_with_speed"]
+
+
+def test_rise_slowly_is_one_move_with_the_speed_then_the_rise():
+    robot = _robot()
+    motion = Motion(robot)
+    motion.tip_to((200.0, 150.0), 30.0)
+    reached = motion.rise(slowly=True)
+    assert _speeds(robot) == [("move_with_speed", (200.0, 150.0, 32.0), 0.5)]
+    assert robot.log[-2:] == [pytest.approx((200.0, 150.0, 32.0)),
+                              pytest.approx((200.0, 150.0, TOP - 1.0))]
+    assert tuple(reached) == pytest.approx((200.0, 150.0, TOP - 1.0))
+
+
+def test_rise_slowly_with_less_than_the_way_up_left_only_goes_there():
+    robot = _robot()
+    motion = Motion(robot)
+    motion.tip_to((200.0, 150.0), TOP - 2.5)
+    motion.rise(slowly=True)
+    assert _speeds(robot) == []
+    assert xyz(robot)[2] == pytest.approx(TOP - 1.0)
+
+
+def test_rise_slowly_with_the_top_not_measured_goes_slowly_first():
+    robot = _robot()
+    motion = Motion(robot, tip=_tip())
+    motion.rise(slowly=True)
+    assert _speeds(robot) == [("move_with_speed", (100.0, 100.0, 52.0), 0.5)]
+    assert len(_retracts(robot)) == 1
+    assert motion.top == pytest.approx(TOP)

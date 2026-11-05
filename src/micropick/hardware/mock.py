@@ -192,6 +192,9 @@ class MockRobot:
             self.calls.append(("refused", "move_to_coordinates",
                                tuple(float(v) for v in target)))
             return _Declined("Destination out of bounds in the Z-axis")
+        if speed is not None:
+            self.calls.append(("move_with_speed",
+                               tuple(float(v) for v in target), float(speed)))
         step = target - self._pos
         if self.speed:
             time.sleep(float(np.linalg.norm(step)) / self.speed)

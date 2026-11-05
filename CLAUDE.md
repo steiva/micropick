@@ -405,7 +405,11 @@ Retract automatically (at the start), Don't retract, Retract after delay
 straight up where it stands to the travel height (`Motion.rise`), and only
 By hand then brings the camera back; left down, the camera stays too. The
 delay holds the lease, the buttons gray; Esc ends it, the tip down, "Stopped:
-the tip stays down." in a toast. Aspirate,
+the tip stays down." in a toast. Retract slowly (#103, a Switch, off at the
+start, gray with Don't retract; "retract slowly after 5 s"): after any delay
+the tip goes straight up `motion.SLOW_RISE_MM` at `SLOW_RISE_MM_S` in one
+force_direct move with `speed`, then up to the travel height; with less than
+that way up it only goes there. Aspirate,
 Dispense and Points never fold and no card opens by itself (#105); Dispense
 is gray while the tip is empty: Part | All (#99: Part chosen at
 start, its volume `picking.vol`), under it its settings as one line with
