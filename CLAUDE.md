@@ -43,9 +43,9 @@ and, in a build, its commit.
 
 ### Picking: analysis is live, a run holds its decision frame
 
-- On the Picking page, *Analyze the dish* draws its contours over the
+- On the Picking page, *Detect cuboids* draws its contours over the
   **live** feed. If the dish moves afterwards, the contours visibly stop
-  matching, which is the cue to analyse again. There is no "back to live".
+  matching, which is the cue to detect again. There is no "back to live".
 - During a **run**, the view follows `PickView` from `workflows/picking`:
   live while the session waits for the operator, otherwise the **frame the
   decision was made from is held**, unchanged, with the overlays measured on
@@ -547,7 +547,7 @@ is `Group.empty_after`. A step with no wells rides on a stand-in plate that
 never reaches the screen. Start blows the tip out over the trash before the
 first step, automatically and only with nothing done (`PlanState.fresh`);
 Continue does not. Washing is a two-step plan (measured bottom, an aside shift,
-Retract slowly, auto empty, pause after the first well), not a page of its own.
+Lift slowly, auto empty, pause after the first well), not a page of its own.
 
 Run (`pages.liquid`, LIQUID.md §6) runs that plan through a jog panel never
 shown (`JogPanel.run_job`, lease `run=True`: STOP, the pill "Liquid · step 2 of
@@ -754,12 +754,12 @@ The Picking step (`pages.picking`, REDESIGN §6.5): the dish picture with
 "N cuboids found" and Camera to dish center over its top right (during a
 run only while paused or waiting, under the run's lease lent to the jog
 panel, the tip empty; else "Pause to move the camera"); beside it, with
-no panel scroll, Analyze the dish and Shake the dish ("Lights go off
-while analyzing.": the lights off for its frame, back as they were
+no panel scroll, Detect cuboids and Shake the dish ("Lights go off
+while detecting.": the lights off for its frame, back as they were
 after), then two cards side by side, neither folding
 (`FoldCard(fold=False)`) - Cuboid sizes (the histogram whose window is
 dragged and saved like the settings' Save, the pickup line, More
-settings - a sheet over the page, `PickingSettingsSheet`, "Analyze
+settings - a sheet over the page, `PickingSettingsSheet`, "Detect
 again." after a change - All measures: `widgets.cuboid_stats`) and
 Plate · slot N (mini `PlateGrid`: the planned wells, Filled / Planned
 once something is filled, the current well ringed during a run) - under

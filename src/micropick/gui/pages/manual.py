@@ -206,7 +206,7 @@ Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
 detections are dropped: they were measured from where the camera was.
 
-After Analyze the dish, the cuboids' sizes against the profile's size
+After Detect cuboids, the cuboids' sizes against the profile's size
 window are in a folded Sizes section: the Picking page's histogram
 (`widgets.size_histogram`), the same drawing, so the two pages cannot
 disagree about what a run would accept.
@@ -608,11 +608,11 @@ class ManualPage(QWidget):
         return self.click_mode.current() == CLICK_MOVES.index("Tip")
 
     def _tools_card(self) -> QWidget:
-        """Analyze the dish and Show past picks, where Picking has Analyze
+        """Detect cuboids and Show past picks, where Picking has Detect
         and Shake; Look at under them."""
         box = card(self)
         row = QHBoxLayout()
-        self.cuboid_button = primary_button("Analyze the dish", self)
+        self.cuboid_button = primary_button("Detect cuboids", self)
         self.cuboid_button.clicked.connect(self._detect_cuboids)
         self.past_picks_button = secondary_button("Show past picks", self)
         self.past_picks_button.setCheckable(True)

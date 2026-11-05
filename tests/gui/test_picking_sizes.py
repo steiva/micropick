@@ -200,7 +200,7 @@ def test_more_settings_is_a_sheet_and_asks_to_analyze_again(app, page,
     profile = page.session.profile
     assert profile.picking.vol == 12.5
     assert "12.5" in (profile.path / "picking.json").read_text()
-    assert page.again_line.text() == "Analyze again."
+    assert page.again_line.text() == "Detect again."
     assert not page.again_line.isHidden()
     page.hide()
 
@@ -291,5 +291,5 @@ def test_lights_left_off_stay_off(app, page, monkeypatch):
 
 
 def test_the_analyze_button_says_the_lights_go_off(page):
-    assert page.lights_line.text() == "Lights go off while analyzing."
+    assert page.lights_line.text() == "Lights go off while detecting."
     assert page.lights_line.isVisibleTo(page)

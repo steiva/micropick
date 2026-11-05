@@ -8,8 +8,8 @@ and reads "Pause to move the camera" until then.
 
 On the right, top to bottom and with no scrolling:
 
-1. **Analyze the dish** and **Shake the dish**, side by side, and under
-   them "Lights go off while analyzing.": the rail lights put highlights
+1. **Detect cuboids** and **Shake the dish**, side by side, and under
+   them "Lights go off while detecting.": the rail lights put highlights
    on the dish, so the analysis switches them off for its frame and back
    on after if they were on, as a run does (#51), a failed one included.
 2. Side by side, card **Cuboid sizes** (its summary the size window,
@@ -17,7 +17,7 @@ On the right, top to bottom and with no scrolling:
    the histogram whose white lines are dragged to change what is picked,
    the pickup height and volume ("0.5 mm above the bottom · 15 µl"),
    **More settings** (the picking settings, a sheet over the page; after
-   a change, "Analyze again." under Analyze while cuboids found under the
+   a change, "Detect again." under Detect while cuboids found under the
    old settings are shown) and **All measures** (the cuboids' figures in
    a window of their own, `widgets.cuboid_stats`) - and card **Plate ·
    slot N** ("12 of 24 wells"): the whole plate as a mini map, the
@@ -211,8 +211,8 @@ CONFIRM_START = (
     "Dish and plate in place, lids off, picking settings checked.\n\n"
     "The robot starts moving on Start.")
 
-LIGHTS_OFF = "Lights go off while analyzing."
-ANALYZE_AGAIN = "Analyze again."
+LIGHTS_OFF = "Lights go off while detecting."
+ANALYZE_AGAIN = "Detect again."
 
 CENTER = "Camera to dish center"
 CENTER_WAIT = "Pause to move the camera"
@@ -302,7 +302,7 @@ class PickingPage(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
         row = QHBoxLayout()
-        self.analyse_button = primary_button("Analyze the dish", panel)
+        self.analyse_button = primary_button("Detect cuboids", panel)
         self.analyse_button.clicked.connect(self._analyse)
         self.shake_button = secondary_button(SHAKE, panel)
         self.shake_button.clicked.connect(self._shake)
@@ -725,7 +725,7 @@ class PickingPage(QWidget):
                 if robot is not None:
                     session.refresh_lights()
 
-        self._run(Worker(job, what="analyzing the dish"), self._analysed)
+        self._run(Worker(job, what="detecting the cuboids"), self._analysed)
 
     def _analysed(self, payload) -> None:
         frame, detection = payload

@@ -648,7 +648,7 @@ static until the session owns them.
   panel's positions like any other pose.
 
 - [ ] **The analysis counts what a run would pick.**
-  With the real weights loaded, Analyze the dish: the overlay is the picking
+  With the real weights loaded, Detect cuboids: the overlay is the picking
   window's own - red for every detection, yellow for pickable, green for
   isolated - and the histogram shows the population against the size
   window. Compare the "N of M inside" figure with what the first batch of a
@@ -687,8 +687,8 @@ static until the session owns them.
   live.
 
 - [ ] **Analysis is drawn over the live feed.**
-  Analyze the dish, then nudge the dish by hand: the contours stay where
-  they were and the cuboids move out from under them. Analyse again and they
+  Detect cuboids, then nudge the dish by hand: the contours stay where
+  they were and the cuboids move out from under them. Detect again and they
   line up. Switching camera removes them.
 
 - [ ] **The routine is named above Start.**
@@ -995,7 +995,7 @@ Kept for the record of what washing needs when it returns as a program.
 - [ ] **A wash.**
   Group of the wells with cuboids, Pause after the first well on, tip 200 µl:
   Aspirate 100 µl @ each well, bottom (measured) +2.5 mm, X -2 mm, 10 µl/s,
-  Retract slowly; Dispense, Auto empty @ one fixed well
+  Lift slowly; Dispense, Auto empty @ one fixed well
   (waste), top +5 mm, 200 µl/s. Start: the first well is drawn beside the
   cuboid, the tip rises 2 mm slowly in one move, and the run pauses to look at
   it - the cuboid is still in its well. Continue: the waste is visited after
@@ -1021,7 +1021,7 @@ Kept for the record of what washing needs when it returns as a program.
   once. Choosing another plate greys Set well center.
 
 - [ ] **American spelling.**
-  Center, color, analyze on every page (Picking's "Analyze the dish",
+  Center, color, analyze on every page (Picking's "Detect cuboids",
   Liquid handling's "Set well center", Camera calibration's "Center it
   under the crosshair").
 
@@ -1576,8 +1576,8 @@ tip box and a 384 plate at hand.
 
 - [ ] **Layout.**
   Auto pick › Picking at 1920×1080: the dish picture on the left with
-  "N cuboids found" after Analyze the dish; on the right, without a
-  scroll bar, Analyze the dish and Shake the dish side by side, then
+  "N cuboids found" after Detect cuboids; on the right, without a
+  scroll bar, Detect cuboids and Shake the dish side by side, then
   Cuboid sizes (open) and Plate · slot N (folded). Opening one folds the
   other. No camera name, no step numbers, no checklist on the page.
 
@@ -1680,8 +1680,8 @@ tip box and a 384 plate at hand.
   Drop the tip: 0 µl. Show past picks (filled while on): a violet ring at
   each spot aspirated from, the last bright, the older faint; off hides them.
 
-- [ ] **Analyze the dish and Look at.**
-  Analyze the dish draws the contours and "N cuboids found" on the
+- [ ] **Detect cuboids and Look at.**
+  Detect cuboids draws the contours and "N cuboids found" on the
   picture; a click on a cuboid only moves the camera there, the tip
   stays up. Look at: the dropdown shows the whole deck with what is on it;
   a slot chosen sends the camera over its center (check slot 8 by eye).
@@ -2110,7 +2110,7 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   On a plate measured on Well center, not skipped. A tip of 200 µl and the trash
   a well of the waste, Top, +5 mm. Step 1: Move liquid from the wells with
   cuboids to the Trash, 100 µl, Take speed 10, Put speed 200, Take it at Bottom
-  +2.5 mm, Aside X −2 mm, Retract slowly on; the drawing says "Bottom measured
+  +2.5 mm, Aside X −2 mm, Lift slowly on; the drawing says "Bottom measured
   in Well center". Step 2: Move
   liquid from the reservoir to the same wells, 100 µl, Pause after the first
   well on. Start: each well is drawn beside the cuboid, 2 mm to the side of the

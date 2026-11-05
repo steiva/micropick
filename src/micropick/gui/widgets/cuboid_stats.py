@@ -100,12 +100,12 @@ class CuboidStats(QWidget):
         self.setWindowTitle("Cuboid statistics")
         self.resize(1280, 820)
 
-        self.counts = QLabel("Analyze the dish to fill this window.")
+        self.counts = QLabel("Detect cuboids to fill this window.")
         self.counts.setWordWrap(True)
         self.counts.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
 
-        self.sizes = SizeHistogram("Not analyzed yet.", self)
+        self.sizes = SizeHistogram("Not detected yet.", self)
         self.sizes.plot.setTitle(
             "Diameter", color=COLORS["text-2"],
             size="10pt")
@@ -151,7 +151,7 @@ class CuboidStats(QWidget):
         window = tuple(cfg.cuboid_size_threshold) if cfg is not None else None
         self.sizes.show_detection(detection, window)
         if detection is None or cfg is None:
-            self.counts.setText("Analyze the dish to fill this window.")
+            self.counts.setText("Detect cuboids to fill this window.")
             for plot in self.plots.values():
                 plot.clear()
             self.table.clearContents()

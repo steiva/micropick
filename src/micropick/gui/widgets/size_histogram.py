@@ -7,7 +7,7 @@ histogram is every detection's diameter with that window drawn over it, and
 the count inside it stated in words: an operator who sees the population
 sitting to the left of the window knows what to change and by how much.
 
-A widget because two pages draw it - Picking, after Analyse the dish, and
+A widget because two pages draw it - Picking, after Detect cuboids, and
 Manual control, after Detect cuboids - and one drawing is the only way the
 two cannot disagree about what is inside the window.
 

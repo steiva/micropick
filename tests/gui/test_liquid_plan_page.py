@@ -639,7 +639,7 @@ def test_a_wash_is_built_on_the_page_and_compiles_to_the_bench_wash(app,
     assert page.section == "extras"
     extras = page.extras_form
     extras.slow_lift.click()
-    assert page.card.rows[3].value.text() == "retract slowly"
+    assert page.card.rows[3].value.text() == "lift slowly"
     page.next_button.click()                       # Done
 
     page.add_step("move_liquid")
