@@ -143,6 +143,18 @@ def test_the_envelope_reads_the_modules_when_asked():
 def test_a_z_above_the_top_is_not_a_reason_but_x_y_and_the_floor_are():
     motion = Motion(tip=_tip())
     assert motion.refused((100.0, 100.0, 199.0)) == ""
-    assert "x 400.0 is past" in motion.refused((400.0, 100.0, 50.0))
-    assert "y -1.0 is below" in motion.refused((100.0, -1.0, 50.0))
-    assert "z 0.0 is below" in motion.refused((100.0, 100.0, 0.0))
+    assert "X 400 is past" in motion.refused((400.0, 100.0, 50.0))
+    assert "Y -1 is below" in motion.refused((100.0, -1.0, 50.0))
+    assert "Z 0 is below" in motion.refused((100.0, 100.0, 0.0))
+
+
+def test_a_refusal_is_said_in_the_operators_words():
+    module = SimpleNamespace(slots=["8"], name="Platform", height_mm=64.0)
+    motion = Motion(modules=lambda: [module])
+    x, y = slot_center("8")
+    assert motion.refused((x, y, 50.0)) == (
+        "Z 50 is below the platform in slot 8")
+    assert motion.refused((x, y, 49.996)) == (
+        "Z 50 is below the platform in slot 8")
+    assert motion.refused((x, y, 49.5)) == (
+        "Z 49.5 is below the platform in slot 8")

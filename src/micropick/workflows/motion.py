@@ -128,7 +128,7 @@ def envelope_for(tip, modules) -> Limits:
             cx, cy = slot_center(slot)
             half_x = SLOT_WIDTH / 2 + MODULE_MARGIN_MM
             half_y = SLOT_HEIGHT / 2 + MODULE_MARGIN_MM
-            name = f"{module.name or 'module'} in slot {slot}"
+            name = f"{(module.name or 'module').lower()} in slot {slot}"
             floors.append((cx - half_x, cy - half_y, cx + half_x,
                            cy + half_y, float(module.height_mm), name))
     if tip is not None and tip.attached is False:
@@ -143,7 +143,9 @@ def envelope_for(tip, modules) -> Limits:
 
 
 def refusal(limits: Limits, position) -> str:
-    """Why a target is outside `limits`, or "" if it is not.
+    """Why a target is outside `limits`, or "" if it is not: the words of
+    a sentence, "Z 50 is below the platform in slot 8", for the caller to
+    finish.
 
     A Z above the top is not a reason: every move these targets are for
     goes no higher than the travel height (`Motion.reachable`), and the Z
@@ -153,14 +155,14 @@ def refusal(limits: Limits, position) -> str:
     reasons = []
     for axis, value in zip(AXES, position):
         lo, hi = limits.bounds(axis)
+        said = f"{axis.upper()} {round(value, 2):g}"
         if value < lo - limits.tol:
-            reasons.append(f"{axis} {value:.1f} is below the limit {lo:g}")
+            reasons.append(f"{said} is below the limit {lo:g}")
         elif axis != "z" and value > hi + limits.tol:
-            reasons.append(f"{axis} {value:.1f} is past the limit {hi:g}")
+            reasons.append(f"{said} is past the limit {hi:g}")
     floor, what = limits.floor(position[0], position[1])
     if what and position[2] < floor - limits.tol:
-        reasons.append(f"z {position[2]:.1f} is below the top of the {what} "
-                       f"({floor:g})")
+        reasons.append(f"Z {round(position[2], 2):g} is below the {what}")
     return "; ".join(reasons)
 
 

@@ -152,10 +152,10 @@ class JogController:
         if axis == "z" and floor > lo:
             lo = floor
             if lo - tol > target and current >= lo - tol:
-                return ((lo - current, f"clamped over the {what}")
+                return ((lo - current, f"Stopped over the {what}.")
                         if self.clamp and lo < current else
-                        (0.0, f"the {what} is below: the tip is as low as "
-                              f"it may go here"))
+                        (0.0, f"The {what} is below: the tip is as low as "
+                              f"it may go here."))
         elif axis in "xy":
             # Sideways into a raised floor, below its top: into the side of
             # the module.
@@ -163,9 +163,9 @@ class JogController:
             moved[i] = target
             ahead, what_ahead = self.limits.floor(moved[0], moved[1])
             if ahead > floor and pos[2] < ahead - tol:
-                return 0.0, (f"the {what_ahead} is in the way at this "
+                return 0.0, (f"The {what_ahead} is in the way at this "
                              f"height: raise the tip above {ahead:g} mm "
-                             f"first")
+                             f"first.")
 
         if lo - tol <= target <= hi + tol:
             return delta, ""
@@ -174,20 +174,22 @@ class JogController:
             if current > hi + tol:
                 if target < current:
                     return delta, ""             # coming back down
-                return 0.0, (f"{axis} is already {current - hi:.2f} mm above "
-                             f"the limit {hi:g}, only moves back are allowed")
-            return ((hi - current, f"clamped at {axis} limit {hi:g}")
+                return 0.0, (f"{axis.upper()} is already {current - hi:.2f} mm "
+                             f"above the limit {hi:g}: only moves back are "
+                             f"allowed.")
+            return ((hi - current, f"Stopped at the {axis.upper()} limit {hi:g}.")
                     if self.clamp and hi > current else
-                    (0.0, f"{axis} limit {hi:g} reached"))
+                    (0.0, f"{axis.upper()} limit {hi:g} reached."))
 
         if current < lo - tol:
             if target > current:
                 return delta, ""                 # coming back up
-            return 0.0, (f"{axis} is already {lo - current:.2f} mm below "
-                         f"the limit {lo:g}, only moves back are allowed")
-        return ((lo - current, f"clamped at {axis} limit {lo:g}")
+            return 0.0, (f"{axis.upper()} is already {lo - current:.2f} mm "
+                         f"below the limit {lo:g}: only moves back are "
+                         f"allowed.")
+        return ((lo - current, f"Stopped at the {axis.upper()} limit {lo:g}.")
                 if self.clamp and lo < current else
-                (0.0, f"{axis} limit {lo:g} reached"))
+                (0.0, f"{axis.upper()} limit {lo:g} reached."))
 
     # -- moving -------------------------------------------------------------
 
@@ -196,7 +198,7 @@ class JogController:
         if axis not in AXES:
             raise ValueError(f"axis must be one of {AXES}, got {axis!r}")
         if self._busy:
-            return MoveResult(False, axis, 0.0, reason="a move is already running")
+            return MoveResult(False, axis, 0.0, reason="A move is already running.")
 
         # One read before the move and one after: each is a robot command
         # waited for, and a step waits on every one of them (#36).
@@ -250,7 +252,7 @@ class JogController:
         if record:
             self._history.append((axis, performed))
         return MoveResult(True, axis, requested, performed,
-                          f"from the top of Z: z {top:.1f} mm", self.position)
+                          f"From the top of Z: Z {top:.1f} mm.", self.position)
 
     def move_to(self, position) -> MoveResult:
         """Absolute move, subject to the same rule on every axis."""
@@ -277,7 +279,7 @@ class JogController:
                 continue
             # record=False, otherwise undo becomes its own next undo target
             return self.move(axis, 1, -delta, record=False)
-        return MoveResult(False, "", 0.0, reason="nothing to undo")
+        return MoveResult(False, "", 0.0, reason="Nothing to undo.")
 
     # -- step ---------------------------------------------------------------
 
@@ -301,7 +303,7 @@ class JogController:
     def goto(self, name: str) -> MoveResult:
         if name not in self.saved:
             return MoveResult(False, "", 0.0,
-                              reason=f"no saved position {name!r}; "
+                              reason=f"No saved position {name!r}; "
                                      f"have {sorted(self.saved) or 'none'}")
         return self.move_to(self.saved[name])
 
