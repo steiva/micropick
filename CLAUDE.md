@@ -110,7 +110,8 @@ row, and a choice showing other controls, which is as tall as what it shows, no
 room kept for a choice not made (From and Where on Manual pick's Run, Change's
 height rows, Liquid in tip's From). Show and hide those inside
 `theme.factory.laid_out_at_once`, so nothing is painted at the old height. Manual
-pick's Run then scrolls on a full HD window only with At a point chosen.
+pick's Run scrolls on a full HD window until the Run frame ticket places In
+place (#107).
 
 A status line or a warning moves nothing: a message is the toast, and what comes
 and goes by itself has its place kept, `theme.factory.reserve` for a line or a
@@ -385,12 +386,17 @@ filled disc; on Work only while a section of Points is open or "At a point" is
 chosen in Aspirate or Dispense (`PositionMarks.show_memo`;
 a right click only adds a point: it opens nothing), and both kinds
 listed under "At a point"
-(`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
-settings as one line with Change (height above a well's bottom, or By
-hand's; volume; speed), From In a well / At a point / By hand / Here (#104: where the tip is, no
-height; here and in Dispense labeled with the key as bound, "Here (A)", "Here
-(D)", and a key does what the button does with Here chosen, the retract
-choices included), enabled once a source is chosen, the TipGauge its answer. By hand (#60)
+(`widgets.memo_points.MemoTable`). **In place** (#111, `ManualPage._in_place_card`, first of the
+cards for now), always shown: Aspirate in place and Dispense in place, their
+keys drawn as bound, A and D doing the same and nothing while a field has the
+keyboard, with an amount and speed of their own (starting as Aspirate's fields,
+then in the page's memory): where the tip is, no move and no lift whatever the
+cards say. Dispense in place is gray while the tip is empty, and above what it
+holds refused, "Only 5 µl in the tip.". Its fields take the keyboard by a click
+only: the first the window finds would have it as the page opens. Aspirate
+(REDESIGN §6.6): the settings as one line with Change (height above a well's
+bottom, or By hand's; volume; speed), From In a well / At a point / By hand,
+enabled once a source is chosen, the TipGauge its answer. By hand (#60)
 takes from under the camera's crosshair (the picture's center through
 the pixel map, plus the measured tip offset); no spot is clicked: a
 click moves the camera, with Snap to found cuboids onto a cuboid's
@@ -436,11 +442,11 @@ Dispense and Points never fold and no card opens by itself (#105); Dispense
 is gray while the tip is empty: Part | All (#99: Part chosen at
 start, its volume `picking.vol`), under it its settings as one line with
 Change, as Aspirate's (#97, `manual._settings_line`: its own speed, from
-`picking.flow_rate` at start, in the page's memory, the D key's too), In a
+`picking.flow_rate` at start, in the page's memory), In a
 well (a mini map
 of the plan's plate; a well's bottom, as Aspirate's, plus the deposit
-offset, from its well center) / At a point / Here, its button saying what it does ("Go
-to A7 and dispense", "Dispense here"), gray while the tip is empty. What
+offset, from its well center) / At a point, its button saying what it does ("Go
+to A7 and dispense"), gray while the tip is empty. What
 is in the tip is the session's count (`Session.in_tip`,
 `Session.aspirate`, `Session.dispense`: all or a part no larger than it;
 another tip holds nothing). A new point takes New point Z, the

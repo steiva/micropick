@@ -1745,7 +1745,7 @@ tip box and a 384 plate at hand.
 
 - [ ] **Dispense.**
   Empty tip: Dispense folded, its button gray. After an aspirate it opens
-  by itself, on Part with the picking volume. Here: "Dispense here"; Part 6 µl of 15: the gauge reads 9 µl;
+  by itself, on Part with the picking volume. Part 6 µl of 15: the gauge reads 9 µl;
   All: 0 µl and the button grays. In a well: with a plate plan made, the
   mini map shows Filled / Planned; a click on a well chooses it and the
   button reads "Go to A7 and dispense"; the tip goes into that well at
@@ -2350,7 +2350,7 @@ On a full HD window, the page in two columns.
   A tip on, the camera over a plate. Aspirate By hand: the tip goes down,
   aspirates, rises and the camera comes back. In a well and At a point: it
   rises where it is, and stays there, the camera not coming back. Dispense
-  Here, In a well, At a point: the same, it rises where it is.
+  In a well, At a point: the same, it rises where it is.
 - [ ] **Don't retract.**
   Change in Aspirate, Retract: Don't retract. The line says "don't retract".
   By hand: the tip stays down in the liquid, the camera does not come back.
@@ -2378,27 +2378,25 @@ On a full HD window, the page in two columns.
   A point 1 mm under the travel height, Aspirate there with Retract slowly
   on: it only goes up, no slow move.
 
-## Manual pick: Here, and the A and D keys (#104)
+## Manual pick: In place, and the A and D keys (#111)
 
-- [ ] **Aspirate Here.**
-  A tip on, jogged down into liquid. From Here (A): no height in the line or
-  under Change. Aspirate takes where the tip is, nothing moves on the way
-  down, then it leaves as the card says.
-- [ ] **The labels follow the keys.**
-  Settings, Keys: bind aspirate to Q and dispense to W, Save. The cards read
-  "Here (Q)" and "Here (W)", Q and W do it, A and D no longer.
-- [ ] **A key is the button.**
-  Don't retract in Aspirate: A leaves the tip down. Retract after delay in
-  Dispense: D gives back and rises after the delay, Esc in it leaves the tip
-  down.
+- [ ] **In place neither moves nor lifts.**
+  A tip on, jogged down into liquid. Aspirate in place: nothing moves, the tip
+  stays down whatever the cards say, "Aspirated 10 µl here." Dispense in place
+  the same, "Dispensed 10 µl here.", and gray with the tip empty. Above what
+  the tip holds: "Only 5 µl in the tip." in red, nothing moved.
+- [ ] **The keys follow Settings.**
+  Opening the page, the arrows and A work at once, no click needed. Settings,
+  Keys: bind aspirate to Q and dispense to W, Save. The buttons carry Q and W,
+  Q and W do it, A and D no longer. In the Amount field the keys type or do
+  nothing, the robot stays.
 
 
 - [ ] **Nothing shifts.**
   Manual pick's Run: click through From and Where, with Change open and closed:
   the picture, the width of every card and the other column stay, the card
-  clicked keeps its top and is only as tall as what it shows, no flicker. Here in
-  both: no scrolling on a full HD window, Dispense's button in sight. Part and
-  All move nothing. Opening the page: nothing jumps as the camera opens. Liquid
+  clicked keeps its top and is only as tall as what it shows, no flicker. Part
+  and All move nothing. Opening the page: nothing jumps as the camera opens. Liquid
   in tip's From: only what is under it moves. Tip step: Take tip and Drop in trash, the Calibrate card stays. A
   liquid run: Pause and Continue, the plates keep their size. Home: the same
   with the robot switched off and on. Plan: A template and New plan, what is

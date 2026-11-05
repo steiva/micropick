@@ -148,10 +148,10 @@ def test_manual_status_gaining_a_line_moves_nothing(manual, stands_still):
 def test_a_choice_is_laid_out_before_anything_is_painted(app, manual):
     """Measured at once, or the column is painted once at the old height."""
     _opened(app, manual)
-    column = manual.aspirate_card.parentWidget()
-    _choose(manual.source, FROM.index("At a point"))
+    column = manual.dispense_card.parentWidget()
+    _choose(manual.target, WHERE.index("At a point"))
     tall = column.minimumHeight()
-    _choose(manual.source, FROM.index("Here"))
+    _choose(manual.target, WHERE.index("In a well"))
     short = column.minimumHeight()
     assert short < tall
     _opened(app, manual)
@@ -159,20 +159,18 @@ def test_a_choice_is_laid_out_before_anything_is_painted(app, manual):
 
 
 def test_a_card_is_as_tall_as_what_its_choice_shows(app, manual):
-    """No room kept for a choice not made: with Here on both the panel fits a
-    full HD window, the Dispense button in sight."""
+    """No room kept for a choice not made."""
     _choose(manual.source, FROM.index("At a point"))
     _choose(manual.target, WHERE.index("At a point"))
     _opened(app, manual)
     tall = manual.aspirate_card.height(), manual.dispense_card.height()
     assert _column_height(manual) > manual.height()
 
-    _choose(manual.source, FROM.index("Here"))
-    _choose(manual.target, WHERE.index("Here"))
+    _choose(manual.source, FROM.index("By hand"))
+    _choose(manual.target, WHERE.index("In a well"))
     _opened(app, manual)
-    assert manual.aspirate_card.height() < tall[0] - 150
-    assert manual.dispense_card.height() < tall[1] - 150
-    assert _column_height(manual) <= manual.height()
+    assert manual.aspirate_card.height() < tall[0] - 100
+    assert manual.dispense_card.height() < tall[1] - 100
 
 
 @pytest.mark.parametrize("make, name", [

@@ -121,7 +121,6 @@ else the drawing's, and the line says which (#89). From:
 
 * **In a well** - a plate the robot session holds and its well.
 * **At a point** - a memo or saved point, at its own Z.
-* **Here** - where the tip is, no height asked.
 * **By hand** - the spot under the camera's crosshair (#60): the
   picture's center through the pixel map, plus the measured tip offset.
   The operator aims with the picture: a click moves the camera, and with
@@ -175,13 +174,19 @@ settings' flow rate and kept by the page, never in the profile. Then where:
   well's bottom (as Aspirate's, measured or the drawing's) plus the
   picking settings' deposit offset, from the plate's well center.
 * **At a point** - a memo or saved point.
-* **Here** - where the tip is.
 
-Its button says what it does - "Go to A7 and dispense", "Dispense here" -
-and is gray while the tip is empty. A and D aspirate and dispense where
-the tip is, each with its own card's settings, as its button does with Here
-chosen: volume or amount, speed and how the tip leaves. So Here, in both
-cards, is labeled with the key as bound (#104): "Here (A)", "Here (D)".
+Its button says what it does - "Go to A7 and dispense" - and is gray while
+the tip is empty.
+
+In place
+--------
+The card that aspirates or dispenses where the tip is (#111): no move and
+no lift, whatever Aspirate's and Dispense's cards say; the tip is raised with
+Retract in the top bar. Its amount and speed start as Aspirate's fields do and
+then stay in the page's memory, apart from the cards. A and D do what its
+buttons do, the keys drawn on them as bound, and nothing while a field has
+the keyboard. A dispense above what the tip holds is refused: the plunger
+would push out air.
 
 How the tip leaves
 ------------------
@@ -227,7 +232,7 @@ import cv2
 import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QVBoxLayout,
+from PySide6.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QVBoxLayout,
                                QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
@@ -248,7 +253,7 @@ from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (Section, card, combo_box, compact,
+from ..theme.factory import (Section, card, combo_box, compact, heading,
                              double_spin_box, laid_out_at_once, muted_label,
                              primary_button, reserve, reserve_lines,
                              scroll_column, secondary_button, select,
@@ -259,6 +264,7 @@ from ..widgets.controls import Segmented, Switch
 from ..widgets.feed_row import FeedRow
 from ..widgets.fold_card import FoldCard
 from ..position_marks import PositionMarks
+from ..widgets.jog_pad import KeycapButton
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
 from ..widgets.plate_grid import PlateGrid
@@ -289,13 +295,13 @@ ABOVE_BOTTOM_RANGE = (0.0, 30.0)
 
 # (action in `gui.keys`, what it does, handler name). One list, so the
 # jog pad's key list cannot offer a key that is not bound.
-KEYS = (("aspirate", "aspirate here", "_aspirate_here"),
-        ("dispense", "dispense here", "_dispense_here"))
+KEYS = (("aspirate", "aspirate in place", "_aspirate_in_place"),
+        ("dispense", "dispense in place", "_dispense_in_place"))
 
 # Aspirate from, Dispense how much and where: the segmented choices.
-FROM = ("In a well", "At a point", "By hand", "Here")
+FROM = ("In a well", "At a point", "By hand")
 AMOUNT = ("Part", "All")
-WHERE = ("In a well", "At a point", "Here")
+WHERE = ("In a well", "At a point")
 
 # By hand's height: a Z, or above the bottom of the spot's slot.
 HEIGHT = ("Z", "Above the bottom")
@@ -351,6 +357,16 @@ def _row(box, label: str, widget) -> QWidget:
     layout.addStretch(1)
     box.layout().addWidget(row)
     return row
+
+
+def _in_place_button(text: str, color: str, parent: QWidget) -> KeycapButton:
+    """A button of In place's, in its color while it can be pressed."""
+    button = KeycapButton(text, parent)
+    button.setObjectName("secondary")
+    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    button.setStyleSheet(f"QPushButton:enabled {{ color: {COLORS[color]}; "
+                         f"border: 1px solid {COLORS[color]}; }}")
+    return button
 
 
 def _settings_line(parent: QWidget, body) -> tuple[QLabel, QWidget, QWidget]:
@@ -561,7 +577,8 @@ class ManualPage(QWidget):
         self.jog.set_page_help(self._page_help())
 
         self.marks = PositionMarks.on(session, self.view)
-        panel = CardColumns([self._tools_card(), self._sizes_card(),
+        panel = CardColumns([self._in_place_card(), self._tools_card(),
+                             self._sizes_card(),
                              self._aspirate_card(), self._dispense_card(),
                              self._points_card(), self.jog], self)
 
@@ -635,6 +652,37 @@ class ManualPage(QWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse)
         # Two: a camera still opening is a line beside the calibration's.
         box.layout().addWidget(reserve_lines(self.state, 2))
+        return box
+
+    def _in_place_card(self) -> QWidget:
+        """Amount and speed of its own, and the two buttons; see "In
+        place"."""
+        box = card(self)
+        box.layout().addWidget(heading("In place", 3))
+        self.in_place_amount = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1,
+                                           1.0)
+        self.in_place_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1,
+                                         1.0)
+        fields = QGridLayout()
+        for column, (label, field) in enumerate(
+                (("Amount", self.in_place_amount),
+                 ("Speed", self.in_place_rate))):
+            # By a click only: the first field the window finds would have
+            # the keyboard as the page opens, and the robot's keys with it.
+            field.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+            fields.addWidget(QLabel(label, self), 0, column)
+            fields.addWidget(field, 1, column)
+        box.layout().addLayout(fields)
+        self.aspirate_in_place = _in_place_button(
+            "Aspirate in place", "tips", self)
+        self.aspirate_in_place.clicked.connect(self._aspirate_in_place)
+        self.dispense_in_place = _in_place_button(
+            "Dispense in place", "plate", self)
+        self.dispense_in_place.clicked.connect(self._dispense_in_place)
+        row = QHBoxLayout()
+        row.addWidget(self.aspirate_in_place, 1)
+        row.addWidget(self.dispense_in_place, 1)
+        box.layout().addLayout(row)
         return box
 
     def _aspirate_card(self) -> QWidget:
@@ -753,7 +801,7 @@ class ManualPage(QWidget):
         self.target_points.chosen.connect(lambda _name: self._refresh())
         body.addWidget(self.target_points)
 
-        self.dispense_button = primary_button("Dispense here", self)
+        self.dispense_button = primary_button("Dispense", self)
         self.dispense_button.clicked.connect(self._dispense_to_target)
         body.addWidget(self.dispense_button)
         self._show_dispense_line()
@@ -857,9 +905,16 @@ class ManualPage(QWidget):
             for sequence in keys.sequences(bindings, action):
                 shortcut = QShortcut(sequence, self)
                 shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-                shortcut.activated.connect(getattr(self, handler))
+                shortcut.activated.connect(
+                    lambda h=getattr(self, handler): self._key(h))
                 shortcut.setEnabled(self.isVisible())
                 self._shortcuts.append(shortcut)
+
+    def _key(self, handler) -> None:
+        """A or D, unless a field has the keyboard: a key rebound to one a
+        field does not edit with would reach here."""
+        if not self.jog.typing:
+            handler()
 
     def _page_help(self) -> list[str]:
         bindings = self.session.settings.keys
@@ -878,12 +933,10 @@ class ManualPage(QWidget):
         self._name_keys()
 
     def _name_keys(self) -> None:
-        """Here, in both cards, says the key that does it."""
+        """In place's buttons carry the keys that do them."""
         bindings = self.session.settings.keys
-        self.source.set_text(FROM.index("Here"),
-                             f"Here ({keys.key_text(bindings, 'aspirate')})")
-        self.target.set_text(WHERE.index("Here"),
-                             f"Here ({keys.key_text(bindings, 'dispense')})")
+        self.aspirate_in_place.set_keycap(keys.key_text(bindings, "aspirate"))
+        self.dispense_in_place.set_keycap(keys.key_text(bindings, "dispense"))
 
     # -- liquid ------------------------------------------------------------------
 
@@ -891,12 +944,10 @@ class ManualPage(QWidget):
         height = (f"Z {self.hand_z.value():g} mm" if self._hand_z_chosen()
                   else f"{self.above_bottom.value():g} mm above "
                        f"{self._bottom_words()}")
-        words = [f"{self.volume.value():g} µl",
-                 f"{self.flow_rate.value():g} µl/s",
-                 self.aspirate_retract.words()]
-        if not self._here():
-            words.insert(0, height)
-        self.settings_line.setText(" · ".join(words))
+        self.settings_line.setText(" · ".join((
+            height, f"{self.volume.value():g} µl",
+            f"{self.flow_rate.value():g} µl/s",
+            self.aspirate_retract.words())))
 
     def _show_dispense_line(self) -> None:
         self.dispense_line.setText(f"{self.dispense_rate.value():g} µl/s · "
@@ -1055,8 +1106,7 @@ class ManualPage(QWidget):
             self.hand_box.setVisible(chosen == "By hand")
             self.height_row.setVisible(chosen == "By hand")
             self.hand_z_row.setVisible(self._hand_z_chosen())
-            self.above_row.setVisible(not self._hand_z_chosen()
-                                      and not self._here())
+            self.above_row.setVisible(not self._hand_z_chosen())
         self._show_settings_line()
         self._points_toggled()
         self._refresh()
@@ -1074,18 +1124,14 @@ class ManualPage(QWidget):
         self._points_toggled()
         self._refresh()
 
-    def _here(self) -> bool:
-        """Aspirate takes where the tip is: no height of its own."""
-        return FROM[self.source.current()] == "Here"
-
     def _by_hand(self) -> bool:
         """Aspirate takes from under the crosshair."""
         return FROM[self.source.current()] == "By hand"
 
     def _source(self):
         """("well", (slot, labware id, definition, well)), ("point",
-        MemoPoint), ("hand", None), under the crosshair, or ("here", None):
-        what Aspirate takes from; None while nothing is chosen."""
+        MemoPoint) or ("hand", None), under the crosshair: what Aspirate
+        takes from; None while nothing is chosen."""
         chosen = FROM[self.source.current()]
         if chosen == "In a well":
             well = self.source_wells.chosen()
@@ -1093,20 +1139,17 @@ class ManualPage(QWidget):
         if chosen == "At a point":
             point = self.session.point(self.source_points.chosen_name or "")
             return None if point is None else ("point", point)
-        return ("here", None) if self._here() else ("hand", None)
+        return ("hand", None)
 
     def _target(self):
-        """("well", ...), ("point", MemoPoint) or ("here", None): where
-        Dispense gives back; None while nothing is chosen."""
+        """("well", ...) or ("point", MemoPoint): where Dispense gives
+        back; None while nothing is chosen."""
         chosen = WHERE[self.target.current()]
         if chosen == "In a well":
             well = self.target_wells.chosen()
             return None if well is None else ("well", well)
-        if chosen == "At a point":
-            point = self.session.point(
-                self.target_points.chosen_name or "")
-            return None if point is None else ("point", point)
-        return ("here", None)
+        point = self.session.point(self.target_points.chosen_name or "")
+        return None if point is None else ("point", point)
 
     def _dispense_text(self, target) -> str:
         if target is None:
@@ -1114,11 +1157,7 @@ class ManualPage(QWidget):
                     if WHERE[self.target.current()] == "In a well"
                     else "Go to the point and dispense")
         kind, what = target
-        if kind == "well":
-            return f"Go to {what[3]} and dispense"
-        if kind == "point":
-            return f"Go to {what.name} and dispense"
-        return "Dispense here"
+        return f"Go to {what[3] if kind == 'well' else what.name} and dispense"
 
     def _well_offset(self, slot, definition, z: float):
         """(x, y, z) from a well's bottom: the plate's well center and the
@@ -1144,7 +1183,7 @@ class ManualPage(QWidget):
     def _go_to(self, target, z: float | None, *, prepare: bool = False):
         """The move to `target` - a well (`z` above its measured bottom,
         else the drawing's), a point (its own Z) - as a job's first part,
-        and what to call it; (None, "here") for no move. `prepare`: for an
+        and what to call it. `prepare`: for an
         aspirate, as the measured bottom asks (`motion.descend`). Raises
         ValueError with the reason when it is out of reach."""
         kind, what = target
@@ -1162,23 +1201,21 @@ class ManualPage(QWidget):
                         labware_id, well, offset[:2], *measured, offset[2],
                         prepare=prepare, log=log)
             return go, f"{well} of slot {slot}"
-        if kind == "point":
-            point = what
-            xy = np.array([point.x, point.y])
-            pose = self.jog.pose
-            check_z = point.z if point.z is not None else (
-                pose[2] if pose is not None else 0.0)
-            why = (motion.refused((point.x, point.y, check_z))
-                   or self._under_the_bottom(point.x, point.y, point.z))
-            if why:
-                raise ValueError(f"Not reachable: {why}.")
-            # No Z: as high as a move may go, which is the travel height.
-            to_z = float("inf") if point.z is None else point.z
+        point = what
+        xy = np.array([point.x, point.y])
+        pose = self.jog.pose
+        check_z = point.z if point.z is not None else (
+            pose[2] if pose is not None else 0.0)
+        why = (motion.refused((point.x, point.y, check_z))
+               or self._under_the_bottom(point.x, point.y, point.z))
+        if why:
+            raise ValueError(f"Not reachable: {why}.")
+        # No Z: as high as a move may go, which is the travel height.
+        to_z = float("inf") if point.z is None else point.z
 
-            def go(log):
-                motion.tip_to(xy, to_z, log=log)
-            return go, point.name
-        return None, "here"
+        def go(log):
+            motion.tip_to(xy, to_z, log=log)
+        return go, point.name
 
     def _aspirate_from_source(self) -> None:
         """Aspirate: to the source, then aspirate there."""
@@ -1190,8 +1227,29 @@ class ManualPage(QWidget):
         else:
             self._aspirate(source, float(self.above_bottom.value()))
 
-    def _aspirate_here(self) -> None:
-        self._aspirate(("here", None), None)
+    def _aspirate_in_place(self) -> None:
+        """In place's amount where the tip is, the tip left there; the
+        spot is a past pick."""
+        problem = self._tip_problem("aspirate")
+        if problem:
+            self.jog.refuse(problem)
+            return
+        session, robot = self.session, self.session.robot
+        volume = float(self.in_place_amount.value())
+        rate = float(self.in_place_rate.value())
+
+        def job(log):
+            log(f"aspirate {volume:g} µl at {rate:g} µl/s")
+            session.aspirate(volume, rate)
+            return xyz(robot)[:2]
+
+        def then(at):
+            self.record_pick(at)
+            return f"Aspirated {volume:g} µl here."
+
+        # The gantry stays: what is detected on the picture stands.
+        if not self.jog.run_job(job, moves=False, then=then):
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _aspirate(self, source, z) -> None:
         """Aspirate's volume and speed at `source` (see `_go_to`); the
@@ -1211,8 +1269,7 @@ class ManualPage(QWidget):
 
         def job(log):
             self._stop.clear()
-            if go is not None:
-                go(log)
+            go(log)
             log(f"aspirate {volume:g} µl at {rate:g} µl/s")
             session.aspirate(volume, rate)
             at = xyz(robot)[:2]
@@ -1225,9 +1282,7 @@ class ManualPage(QWidget):
                 return STOPPED_DOWN
             return f"Aspirated {volume:g} µl at {rate:g} µl/s, {where}."
 
-        # In place the gantry stays, the tip rising or not: what is detected
-        # on the picture stands.
-        if not self.jog.run_job(job, moves=go is not None, then=then):
+        if not self.jog.run_job(job, then=then):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _leave(self, how: moves.Retract, log) -> bool:
@@ -1328,8 +1383,28 @@ class ManualPage(QWidget):
         if target is not None:
             self._dispense(target)
 
-    def _dispense_here(self) -> None:
-        self._dispense(("here", None))
+    def _dispense_in_place(self) -> None:
+        """In place's amount where the tip is, the tip left there. Above
+        what it holds is refused, nothing moved."""
+        problem = self._tip_problem("dispense")
+        held = self.session.in_tip
+        volume = float(self.in_place_amount.value())
+        if not problem and held <= 0:
+            problem = "Nothing is in the tip."
+        elif not problem and volume > held + 1e-6:
+            problem = f"Only {held:g} µl in the tip."
+        if problem:
+            self.jog.refuse(problem)
+            return
+        session = self.session
+        rate = float(self.in_place_rate.value())
+
+        def job(log):
+            amount = session.dispense(rate, volume)
+            return f"Dispensed {amount:g} µl here."
+
+        if not self.jog.run_job(job, moves=False):
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _dispense(self, target) -> None:
         """Part or All at `target` (see `_go_to`); a well is given into at
@@ -1358,14 +1433,13 @@ class ManualPage(QWidget):
 
         def job(log):
             self._stop.clear()
-            if go is not None:
-                go(log)
+            go(log)
             amount = session.dispense(rate, volume)
             if not self._leave(how, log) and how.rises:
                 return STOPPED_DOWN
             return f"Dispensed {amount:g} µl at {rate:g} µl/s, {where}."
 
-        if not self.jog.run_job(job, moves=go is not None):
+        if not self.jog.run_job(job):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
@@ -1955,13 +2029,16 @@ class ManualPage(QWidget):
         has_robot = self.session.robot is not None
         free = not self.session.robot_lease.busy
         source = self._source()
-        if source is not None and source[0] in ("hand", "here"):
+        if source is not None and source[0] == "hand":
             # Nothing to choose: a tip on and the robot free is enough.
             self.aspirate_button.setEnabled(
                 has_robot and self.session.tip.attached is True and free)
         else:
             self.aspirate_button.setEnabled(has_robot and source is not None
                                             and free)
+        ready = has_robot and self.session.tip.attached is True and free
+        self.aspirate_in_place.setEnabled(ready)
+        self.dispense_in_place.setEnabled(ready and self.session.in_tip > 0)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
         self.dispense_card.setEnabled(self.session.in_tip > 0)
@@ -1996,6 +2073,8 @@ class ManualPage(QWidget):
                 self.hand_z.setValue(profile.picking.pickup_height)
                 self.volume.setValue(profile.picking.vol)
                 self.flow_rate.setValue(profile.picking.flow_rate)
+                self.in_place_amount.setValue(profile.picking.vol)
+                self.in_place_rate.setValue(profile.picking.flow_rate)
                 self.dispense_rate.setValue(profile.picking.flow_rate)
                 self.part.setValue(profile.picking.vol)
             self._forget_targets()

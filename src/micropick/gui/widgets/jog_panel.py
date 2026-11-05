@@ -471,6 +471,11 @@ class JogPanel(QWidget):
         return self._busy()
 
     @property
+    def typing(self) -> bool:
+        """A field on the page has the keyboard."""
+        return self._typing
+
+    @property
     def job_pending(self) -> bool:
         """A job of this panel's has run and its end is still to be
         delivered (or it still runs): its lease may be let go already."""

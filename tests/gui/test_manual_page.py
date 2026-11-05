@@ -313,17 +313,17 @@ def _tip_on(app, page, session):
 
 def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
     _tip_on(app, page, session)
-    page.volume.setValue(15.0)
-    page._aspirate_here()
+    page.in_place_amount.setValue(15.0)
+    page._aspirate_in_place()
     _wait(app, page)
     assert page.gauge.volume.text() == "15 µl"
     session.read_tip()                       # the same tip, read again
     assert page.gauge.volume.text() == "15 µl"
     page.amount.buttons[1].click()                       # All
-    page._dispense_here()
+    page._dispense_in_place()
     _wait(app, page)
     assert page.gauge.volume.text() == "0 µl"
-    page._aspirate_here()
+    page._aspirate_in_place()
     _wait(app, page)
     session.drop_tip_in_trash()
     app.processEvents()
@@ -373,6 +373,13 @@ def _aspirated_at(session):
 def _pose(session):
     pos = session.robot.get_position(verbose=False)[0]
     return pos["x"], pos["y"], pos["z"]
+
+
+def _dispense_at_a_point(page, session, x, y, z):
+    """Dispense's At a point, on a new point at (x, y, z)."""
+    point = session.add_memo_point(x, y, z)
+    page.target.buttons[1].click()
+    page.target_points.choose(point.name)
 
 
 def test_by_hand_aspirate_is_enabled_with_a_tip_on_and_no_click(
@@ -479,12 +486,12 @@ def test_dispense_is_gray_until_the_tip_holds_and_gives_back_part_then_all(
     assert page.dispense_card.is_open()                  # #105: always
     assert not page.dispense_card.isEnabled()            # the tip is empty
     assert not page.dispense_button.isEnabled()
-    page.volume.setValue(15.0)
-    page._aspirate_here()
+    page.in_place_amount.setValue(15.0)
+    page._aspirate_in_place()
     _wait(app, page)
     assert page.dispense_card.isEnabled()
-    page.target.buttons[2].click()                       # Here
-    assert page.dispense_button.text() == "Dispense here"
+    _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
+    assert page.dispense_button.text() == "Go to M1 and dispense"
     assert page.dispense_button.isEnabled()
     page.part.setValue(6.0)                              # Part, from the start
     page.dispense_button.click()
@@ -519,7 +526,7 @@ def test_liquid_in_the_tip_and_a_right_click_move_no_card(app, page, session):
         return [c.geometry() for c in (page.aspirate_card, page.dispense_card)]
 
     before = where()
-    page._aspirate_here()
+    page._aspirate_in_place()
     _wait(app, page)
     assert session.in_tip > 0
     assert where() == before
@@ -534,7 +541,7 @@ def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
     plate = session.load_labware(
         resolve_definition("corning_96_wellplate_360ul_flat"), 5)
     _tip_on(app, page, session)
-    page._aspirate_here()
+    page._aspirate_in_place()
     _wait(app, page)
     page.target.buttons[0].click()                       # In a well
     page.target_wells.well.setCurrentText("A7")
@@ -1003,7 +1010,7 @@ def test_dispense_in_a_confirmed_plate_reaches_the_deposit_height(
         app, page, session):
     _measured_plate(app, page, session)
     session.profile.picking.deposit_offset_z = 1.5
-    page._aspirate_here()
+    page._aspirate_in_place()
     _wait(app, page)
     page.dispense_retract.choice.setCurrentText("Don't retract")
     page.target.buttons[0].click()                       # In a well
@@ -1372,7 +1379,7 @@ def test_a_robot_held_is_refused_in_red(app, page, session):
     _tip_on(app, page, session)
     lease = session.robot_lease.claim("picking run", run=True)
     try:
-        page._aspirate(("here", None), None)
+        page._aspirate_in_place()
     finally:
         lease.release()
     assert _said(page) == (session.robot_lease.refusal, "refusal")
@@ -1380,11 +1387,10 @@ def test_a_robot_held_is_refused_in_red(app, page, session):
 
 def test_an_aspirate_is_answered_in_a_sentence(app, page, session):
     _tip_on(app, page, session)
-    page.volume.setValue(10.0)
-    page.flow_rate.setValue(50.0)
-    page._aspirate(("here", None), None)
+    page.in_place_amount.setValue(10.0)
+    page._aspirate_in_place()
     _wait(app, page)
-    assert _said(page) == ("Aspirated 10 µl at 50 µl/s, here.", "answer")
+    assert _said(page) == ("Aspirated 10 µl here.", "answer")
     assert len(page.jog.position_lines) == 1
 
 
@@ -1534,19 +1540,21 @@ def _liquid_calls(session):
             if c[0] in ("aspirate_in_place", "dispense_in_place")]
 
 
-def test_a_and_d_each_use_their_own_cards_speed(app, page, session):
+def test_in_place_uses_its_own_values_not_the_cards(app, page, session):
     _tip_on(app, page, session)
+    page.in_place_amount.setValue(6.0)
+    page.in_place_rate.setValue(12.0)
     page.volume.setValue(15.0)
     page.flow_rate.setValue(40.0)
     page.dispense_rate.setValue(7.0)
-    page.part.setValue(6.0)
-    page._aspirate_here()                                # A
+    page.part.setValue(2.0)
+    page._aspirate_in_place()                                # A
     _wait(app, page)
-    page._dispense_here()                                # D
+    page._dispense_in_place()                                # D
     _wait(app, page)
-    assert _liquid_calls(session) == [("aspirate_in_place", 15.0, 40.0),
-                                      ("dispense_in_place", 6.0, 7.0)]
-    assert _said(page) == ("Dispensed 6 µl at 7 µl/s, here.", "answer")
+    assert _liquid_calls(session) == [("aspirate_in_place", 6.0, 12.0),
+                                      ("dispense_in_place", 6.0, 12.0)]
+    assert _said(page) == ("Dispensed 6 µl here.", "answer")
 
 
 def test_dispense_starts_at_the_profiles_flow_rate(app, session):
@@ -1573,9 +1581,9 @@ def test_the_dispense_button_uses_dispenses_speed(app, page, session):
     _tip_on(app, page, session)
     page.flow_rate.setValue(40.0)
     page.dispense_rate.setValue(7.0)
-    page._aspirate_here()
+    page._aspirate_in_place()
     _wait(app, page)
-    page.target.buttons[2].click()                       # Here
+    _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
     page.dispense_button.click()
     _wait(app, page)
     assert _liquid_calls(session)[-1][0] == "dispense_in_place"
@@ -1771,8 +1779,8 @@ def test_aspirate_at_a_point_within_the_limit_goes(app, page, session):
 
 
 def _liquid_in_the_tip(app, page, session):
-    page.volume.setValue(15.0)
-    page._aspirate_here()
+    page.in_place_amount.setValue(15.0)
+    page._aspirate_in_place()
     _wait(app, page)
     page.target.buttons[1].click()                       # At a point
     page.amount.buttons[1].click()                       # All
@@ -1930,11 +1938,11 @@ def _pour(app, page, session):
     session.motion.tip_to((150.0, 150.0), 70.0)
     page.jog.refresh_position()
     _wait(app, page)
-    page.target.buttons[2].click()                       # Here
+    _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
     page.amount.buttons[1].click()                       # All
 
 
-def test_dispense_here_rises_by_default(
+def test_dispense_rises_by_default(
         app, page, session):
     _pour(app, page, session)
     page.dispense_button.click()
@@ -2076,84 +2084,139 @@ def _rebind(session, action, key):
     session.settings_changed.emit(session.settings)
 
 
-def test_here_is_labeled_with_the_key_as_bound(page, session):
+def test_from_and_where_have_no_here(page):
     assert [b.text() for b in page.source.buttons] == [
-        "In a well", "At a point", "By hand", "Here (A)"]
-    assert page.target.buttons[2].text() == "Here (D)"
+        "In a well", "At a point", "By hand"]
+    assert [b.text() for b in page.target.buttons] == [
+        "In a well", "At a point"]
+
+
+def test_in_place_draws_the_keys_as_bound(page, session):
+    assert page.aspirate_in_place.text() == "Aspirate in place"
+    assert page.dispense_in_place.text() == "Dispense in place"
+    assert page.aspirate_in_place.keycap == "A"
+    assert page.dispense_in_place.keycap == "D"
     _rebind(session, "aspirate", "Q")
     _rebind(session, "dispense", "W")
-    assert page.source.buttons[3].text() == "Here (Q)"
-    assert page.target.buttons[2].text() == "Here (W)"
+    assert page.aspirate_in_place.keycap == "Q"
+    assert page.dispense_in_place.keycap == "W"
 
 
-def test_aspirate_here_takes_where_the_tip_is(app, page, session):
+def test_the_pads_list_says_what_a_and_d_do(page):
+    lines = page.jog._pad_help()
+    assert "A   aspirate in place" in lines
+    assert "D   dispense in place" in lines
+
+
+def test_in_place_starts_as_aspirate_then_stays_its_own(page, session):
+    picking = session.profile.picking
+    assert page.in_place_amount.value() == pytest.approx(picking.vol)
+    assert page.in_place_rate.value() == pytest.approx(picking.flow_rate)
+    page.in_place_amount.setValue(3.0)
+    page.in_place_rate.setValue(7.0)
+    page.volume.setValue(25.0)
+    page.flow_rate.setValue(90.0)
+    page.dispense_rate.setValue(60.0)
+    assert page.in_place_amount.value() == 3.0
+    assert page.in_place_rate.value() == 7.0
+    assert page.volume.value() == 25.0
+    assert page.flow_rate.value() == 90.0
+
+
+def _low(app, page, session):
     _ready_by_hand(app, page, session)
     session.motion.tip_to((180.0, 120.0), 70.0)
     page.jog.refresh_position()
     _wait(app, page)
+
+
+def _stayed(session):
+    assert _pose(session) == pytest.approx((180.0, 120.0, 70.0), abs=0.05)
+
+
+def test_aspirate_in_place_neither_lifts_nor_moves(app, page, session):
+    _low(app, page, session)
     at = _aspirated_at(session)
-    page.source.buttons[3].click()                       # Here
-    assert page.aspirate_button.isEnabled()
-    page.aspirate_retract.choice.setCurrentText("Don't retract")
-    page.aspirate_button.click()
+    page.in_place_amount.setValue(12.0)
+    page.in_place_rate.setValue(30.0)
+    page.aspirate_in_place.click()
     _wait(app, page)
     assert at == [pytest.approx((180.0, 120.0, 70.0), abs=0.05)]
-    assert session.in_tip == pytest.approx(15.0)
-    assert _pose(session) == pytest.approx((180.0, 120.0, 70.0), abs=0.05)
+    assert session.in_tip == pytest.approx(12.0)
+    assert _liquid_calls(session)[-1][2] == 30.0
+    _stayed(session)
+    assert toast_of(page).text() == "Aspirated 12 µl here."
 
 
-def test_aspirate_here_is_gray_without_a_tip(page):
-    page.source.buttons[3].click()
-    assert not page.aspirate_button.isEnabled()
-
-
-def test_here_asks_no_height(page):
-    page.volume.setValue(15.0)
-    page.source.buttons[3].click()
-    page.change_button.setChecked(True)
-    assert page.settings_line.text() == (
-        "15 µl · 50 µl/s · retract automatically")
-    assert not page.height_row.isVisibleTo(page.settings_box)
-    assert not page.hand_z_row.isVisibleTo(page.settings_box)
-    assert not page.above_row.isVisibleTo(page.settings_box)
-
-
-def test_the_a_key_follows_aspirates_retract(app, page, session):
-    _ready_by_hand(app, page, session)
-    session.motion.tip_to((180.0, 120.0), 70.0)
-    page.jog.refresh_position()
+def test_dispense_in_place_neither_lifts_nor_moves(app, page, session):
+    _low(app, page, session)
+    session.aspirate(15.0, 50.0)
     _wait(app, page)
-    page._aspirate_here()
+    page.in_place_amount.setValue(10.0)
+    page.in_place_rate.setValue(20.0)
+    page.dispense_in_place.click()
     _wait(app, page)
-    assert _pose(session) == pytest.approx(
-        (180.0, 120.0, _travel_z(session)), abs=0.05)
-    session.motion.tip_to((180.0, 120.0), 70.0)
-    page.jog.refresh_position()
-    _wait(app, page)
-    page.aspirate_retract.choice.setCurrentText("Don't retract")
-    page._aspirate_here()
-    _wait(app, page)
-    assert _pose(session) == pytest.approx((180.0, 120.0, 70.0), abs=0.05)
+    assert session.in_tip == pytest.approx(5.0)
+    assert _liquid_calls(session)[-1][2] == 20.0
+    _stayed(session)
+    assert toast_of(page).text() == "Dispensed 10 µl here."
 
 
-def test_the_d_key_follows_dispenses_retract(app, page, session):
-    _pour(app, page, session)
-    page.dispense_retract.choice.setCurrentText("Don't retract")
-    page._dispense_here()
+def test_the_keys_do_what_the_buttons_do(app, page, session):
+    _low(app, page, session)
+    page.in_place_amount.setValue(10.0)
+    page._key(page._aspirate_in_place)
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(10.0)
+    page._key(page._dispense_in_place)
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(0.0)
+    _stayed(session)
+
+
+def test_a_and_d_do_nothing_while_a_field_has_the_keyboard(
+        app, page, session, monkeypatch):
+    _low(app, page, session)
+    monkeypatch.setattr(page.jog, "_typing", True)
+    page._key(page._aspirate_in_place)
     _wait(app, page)
     assert session.in_tip == 0.0
-    assert _pose(session) == pytest.approx((150.0, 150.0, 70.0), abs=0.05)
 
 
-def test_rising_in_place_keeps_what_was_found_on_the_picture(
+def test_dispense_in_place_is_gray_while_the_tip_is_empty(app, page, session):
+    _tip_on(app, page, session)
+    assert page.aspirate_in_place.isEnabled()
+    assert not page.dispense_in_place.isEnabled()
+    session.aspirate(5.0, 50.0)
+    app.processEvents()
+    assert page.dispense_in_place.isEnabled()
+
+
+def test_in_place_is_gray_without_a_tip(page):
+    assert not page.aspirate_in_place.isEnabled()
+    assert not page.dispense_in_place.isEnabled()
+
+
+def test_dispense_in_place_above_what_the_tip_holds_is_refused(
         app, page, session):
-    """The camera does not go up with the tip: the gantry has not moved."""
-    _ready_by_hand(app, page, session)
-    session.motion.tip_to((150.0, 150.0), 70.0)
-    page.jog.refresh_position()
+    _low(app, page, session)
+    session.aspirate(5.0, 50.0)
     _wait(app, page)
+    page.in_place_amount.setValue(10.0)
+    calls = len(_liquid_calls(session))
+    page.dispense_in_place.click()
+    _wait(app, page)
+    assert toast_of(page).text() == "Only 5 µl in the tip."
+    assert toast_of(page).property("tone") == "refusal"
+    assert session.in_tip == pytest.approx(5.0)
+    assert len(_liquid_calls(session)) == calls
+    _stayed(session)
+
+
+def test_in_place_keeps_what_was_found_on_the_picture(app, page, session):
+    """The gantry has not moved: what is detected stands."""
+    _low(app, page, session)
     _cuboid_at(page, W / 2 + 100, H / 2)
-    page._aspirate_here()
+    page._aspirate_in_place()
     _wait(app, page)
-    assert _pose(session)[2] == pytest.approx(_travel_z(session), abs=0.05)
     assert page._cuboids is not None
