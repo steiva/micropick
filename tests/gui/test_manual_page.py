@@ -319,6 +319,7 @@ def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
     assert page.gauge.volume.text() == "15 µl"
     session.read_tip()                       # the same tip, read again
     assert page.gauge.volume.text() == "15 µl"
+    page.amount.buttons[1].click()                       # All
     page._dispense_here()
     _wait(app, page)
     assert page.gauge.volume.text() == "0 µl"
@@ -460,6 +461,17 @@ def test_by_hand_aspirate_as_soon_as_i_click(app, page, session):
     assert _xy(session) == pytest.approx(aimed, abs=0.05)
 
 
+def test_part_is_chosen_when_the_page_opens(app, session):
+    """#99: the run's volume, not all of the tip, unless All is chosen."""
+    session.profile.picking.vol = 7.0
+    page = ManualPage(session)
+    assert [b.text() for b in page.amount.buttons] == ["Part", "All"]
+    assert page.amount.buttons[0].isChecked()
+    assert not page.part.isHidden()
+    assert page.part.value() == pytest.approx(7.0)
+    page.deleteLater()
+
+
 def test_dispense_opens_by_itself_and_gives_back_part_then_all(
         app, page, session):
     _tip_on(app, page, session)
@@ -472,12 +484,11 @@ def test_dispense_opens_by_itself_and_gives_back_part_then_all(
     page.target.buttons[2].click()                       # Here
     assert page.dispense_button.text() == "Dispense here"
     assert page.dispense_button.isEnabled()
-    page.amount.buttons[1].click()                       # Part
-    page.part.setValue(6.0)
+    page.part.setValue(6.0)                              # Part, from the start
     page.dispense_button.click()
     _wait(app, page)
     assert session.in_tip == pytest.approx(9.0)
-    page.amount.buttons[0].click()                       # All
+    page.amount.buttons[1].click()                       # All
     page.dispense_button.click()
     _wait(app, page)
     assert session.in_tip == 0.0
@@ -1284,7 +1295,6 @@ def test_nothing_in_the_tip_is_refused_in_a_sentence(app, page, session):
 def test_more_than_the_tip_holds_is_refused_in_a_sentence(app, page, session):
     _tip_on(app, page, session)
     session.aspirate(5.0, 50.0)
-    page.amount.buttons[1].click()                       # Part
     page.part.setValue(8.0)
     page._dispense(("here", None))
     assert _said(page) == ("The tip holds 5 µl.", "refusal")

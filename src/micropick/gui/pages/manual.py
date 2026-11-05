@@ -139,7 +139,8 @@ unless the robot reports a tip on.
 Dispense
 --------
 Under Aspirate, opening by itself when the tip comes to hold something:
-All or Part (µl, no more than is in the tip: `Session.dispense`), where:
+Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
+the run's volume) or All, where:
 
 * **In a well** - the plate and well, and a mini map of the plate plan's
   plate (filled and still planned wells; a click chooses that well), so
@@ -250,7 +251,7 @@ KEYS = (("aspirate", "aspirate here", "_aspirate_here"),
 
 # Aspirate from, Dispense how much and where: the segmented choices.
 FROM = ("In a well", "At a point", "By hand")
-AMOUNT = ("All", "Part")
+AMOUNT = ("Part", "All")
 WHERE = ("In a well", "At a point", "Here")
 
 # By hand's height: a Z, or above the bottom of the spot's slot.
@@ -1080,7 +1081,7 @@ class ManualPage(QWidget):
         self._dispense(("here", None))
 
     def _dispense(self, target) -> None:
-        """All or Part at `target` (see `_go_to`); a well is given into at
+        """Part or All at `target` (see `_go_to`); a well is given into at
         the deposit's height above its bottom."""
         problem = self._tip_problem("dispense")
         held = self.session.in_tip
