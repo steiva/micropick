@@ -223,6 +223,24 @@ def test_measured_with_the_tip(app, session, page):
                   and not page.jog.busy)
 
 
+def test_lowering_goes_past_the_bottom_with_nothing_refused(
+        app, session, page):
+    """A target's check (#101) is not this page's: it lowers to a touch,
+    and the stored bottom may be too high."""
+    _calibrated(session)
+    session.set_dish_bottom(66.0)
+    page.refresh()
+    page.move_button.click()
+    assert _until(app, lambda: page.up_button.isEnabled())
+    robot = session.robot
+    while float(xyz(robot)[2]) > 63.5:
+        z = float(xyz(robot)[2])
+        page.down_button.click()
+        assert _until(app, lambda: float(xyz(robot)[2]) < z - 0.5
+                      and page.up_button.isEnabled())
+    assert toast_of(page).property("tone") != "refusal"
+
+
 def test_a_big_change_is_asked_about_first(app, session, page, monkeypatch):
     _calibrated(session)
     page.refresh()

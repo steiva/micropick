@@ -134,7 +134,7 @@ else the drawing's, and the line says which (#89). From:
   tip to. It is the default where there is one, and the line names the
   slot. Over a plate a spot not in a well is refused
   (`well_center.in_a_well`), and so is a click aiming where there is no
-  bottom; a Z is the operator's and is not checked. Aspirate remembers the
+  bottom; a Z is the operator's, in a well or not. Aspirate remembers the
   camera's pose, takes the tip to the spot at the travel height
   (`Motion.tip_to`), lowers it, aspirates, and brings the camera back -
   one job, so nothing comes between. With Aspirate as soon as I click, a
@@ -145,6 +145,20 @@ there it is enabled whenever a tip is on and the robot is free. It goes
 there (through the jog panel's `run_job`, after the jog envelope's check)
 and aspirates (`Session.aspirate`); the spot is a past pick. Refused
 unless the robot reports a tip on.
+
+How far down
+------------
+A Z given for a target - Tip to, At a point in Aspirate and Dispense, By
+hand's Z - is checked against the bottom of the target's slot, the one the
+height line gives (`_heights_in`): more than 1 mm under a measured bottom
+or 2 mm under a drawing's is refused, nothing moved
+(`moves.under_the_bottom`, #101). So a mistyped Z is stopped where no module
+would stop it, and pressing lightly on the bottom stays possible. A slot
+with no bottom known has nothing to go by. In a well and Above the bottom
+are heights above a bottom, never under it. The check is on the move, not
+on a point's Z as typed: `Session.memo_problem` stays the jog envelope's. It
+is no part of the jog envelope either, since a jog step, and Dish bottom's
+lowering, go down to a touch.
 
 Dispense
 --------
@@ -423,6 +437,15 @@ class SlotBottom(NamedTuple):
     slot: int
     z: float
     in_a_well: Callable
+
+
+class SlotHeights(NamedTuple):
+    """What the page knows of a slot's heights. `top` None for the source
+    dish, which has only a bottom; `measured` False for a drawing's."""
+
+    top: float | None
+    bottom: float
+    measured: bool
 
 
 class ManualPage(QWidget):
@@ -889,20 +912,47 @@ class ManualPage(QWidget):
         if session.profile is None:
             return ""
         slot = camera_slot(session, self.jog.pose[:2])
+        heights = self._heights_in(slot)
+        if heights is None:
+            return ""
+        if heights.top is None:
+            return f"Slot {slot} · bottom {heights.bottom:.2f} · measured"
+        return (f"Slot {slot} · top {heights.top:.2f} · "
+                f"bottom {heights.bottom:.2f} · "
+                f"{'measured' if heights.measured else 'drawing'}")
+
+    def _heights_in(self, slot) -> SlotHeights | None:
+        """The heights known in `slot`, None for none: a plate confirmed in
+        this robot session, else the source dish's bottom when confirmed,
+        else a plate's drawing."""
+        session = self.session
+        if session.profile is None:
+            return None
         plate = self._plate_in(slot)
         measured = plate is not None and self._plate_confirmed(plate)
         dish = self._dish_bottom_in(slot)
         if dish is not None and not measured:
-            return f"Slot {slot} · bottom {dish:.2f} · measured"
+            return SlotHeights(None, dish, True)
         if plate is None:
-            return ""
+            return None
         held, _entry, definition = plate
         center = (self._well_center(held, definition.load_name)
                   if measured else None)
         top, bottom = well_center.plate_heights(
             center, definition, session.profile.deck.module_height(held))
-        return (f"Slot {slot} · top {top:.2f} · bottom {bottom:.2f} · "
-                f"{'measured' if measured else 'drawing'}")
+        return SlotHeights(top, bottom, measured)
+
+    def _under_the_bottom(self, x: float, y: float, z) -> str:
+        """Why a target at (x, y, z) is too far under the bottom of its
+        slot, or "": the words of a sentence, as `Motion.refused`. A slot
+        with no bottom known has nothing to go by, and no Z is the travel
+        height, over everything."""
+        slot = nearest_slot(x, y)
+        heights = self._heights_in(slot)
+        if z is None or heights is None:
+            return ""
+        return moves.under_the_bottom(z, heights.bottom, slot,
+                                      measured=heights.measured)
 
     def _source_changed(self) -> None:
         """From's own controls under it; the points drawn or not."""
@@ -1020,7 +1070,8 @@ class ManualPage(QWidget):
             pose = self.jog.pose
             check_z = point.z if point.z is not None else (
                 pose[2] if pose is not None else 0.0)
-            why = motion.refused((point.x, point.y, check_z))
+            why = (motion.refused((point.x, point.y, check_z))
+                   or self._under_the_bottom(point.x, point.y, point.z))
             if why:
                 raise ValueError(f"Not reachable: {why}.")
             # No Z: as high as a move may go, which is the travel height.
@@ -1106,7 +1157,8 @@ class ManualPage(QWidget):
             self.jog.refuse(str(exc))
             return
         what = f"tip to ({spot[0]:.2f}, {spot[1]:.2f}) at z {z:g}"
-        why = motion.refused((spot[0], spot[1], z))
+        why = (motion.refused((spot[0], spot[1], z))
+               or self._under_the_bottom(spot[0], spot[1], z))
         if why:
             self.jog.refuse(f"Not reachable: {why}.")
             return
@@ -1606,7 +1658,8 @@ class ManualPage(QWidget):
             pose[2] if pose is not None else 0.0)
         what = (f"tip to {point.name} ({point.x:.2f}, {point.y:.2f}) "
                 f"at z {_memo_z_text(point.z)}")
-        why = self.session.motion.refused((point.x, point.y, check_z))
+        why = (self.session.motion.refused((point.x, point.y, check_z))
+               or self._under_the_bottom(point.x, point.y, point.z))
         if why:
             self.jog.refuse(f"Not reachable: {why}.")
             return

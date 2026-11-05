@@ -1582,3 +1582,242 @@ def test_the_dispense_line_stands_under_amount_and_over_where(app, page):
 
     assert (top(page.amount) < top(page.dispense_line)
             < top(page.dispense_box) < top(page.target))
+
+
+# -- a Z checked against the bottom of its slot (#101) ------------------------
+
+DRAWN_BOTTOM = 3.55        # PLATE's drawing, on the deck of slot 5
+MEASURED_BOTTOM = 4.22     # `_measured_plate`: the rim 13.22, 9 mm deep
+
+
+def _point_in_slot(app, page, session, slot, z):
+    """A point over `slot` at `z`, chosen."""
+    x, y = slot_center(slot)
+    point = session.add_memo_point(x, y, z)
+    for table in (page.memo_table, page.source_points, page.target_points):
+        table.refresh()
+    page.memo_table.choose(point.name)
+    app.processEvents()
+    return point
+
+
+def _drawn_plate(app, page, session):
+    """A plate not measured in slot 5, a tip on, the tip up over the deck."""
+    session.load_labware(resolve_definition(PLATE), 5)
+    _tip_on(app, page, session)
+    _over_the_deck(app, page, session)
+
+
+def _tip_to_refused(app, page, session, said):
+    before = _pose(session)
+    page.tip_to_button.click()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx(before)
+    assert _said(page) == (f"Not reachable: {said}.", "refusal")
+
+
+def _tip_to_goes(app, page, session, z):
+    page.tip_to_button.click()
+    _wait(app, page)
+    assert _pose(session)[2] == pytest.approx(z, abs=0.05)
+    assert _said(page)[1] == "answer"
+
+
+def test_tip_to_past_2_mm_under_a_drawings_bottom_is_refused(
+        app, page, session):
+    _drawn_plate(app, page, session)
+    _point_in_slot(app, page, session, 5, DRAWN_BOTTOM - 2.05)
+    _tip_to_refused(app, page, session,
+                    "Z 1.5 is below the drawing's bottom in slot 5")
+
+
+def test_tip_to_within_2_mm_under_a_drawings_bottom_goes(app, page, session):
+    _drawn_plate(app, page, session)
+    _point_in_slot(app, page, session, 5, DRAWN_BOTTOM - 1.95)
+    _tip_to_goes(app, page, session, DRAWN_BOTTOM - 1.95)
+
+
+def test_tip_to_past_1_mm_under_a_measured_bottom_is_refused(
+        app, page, session):
+    _measured_plate(app, page, session)
+    _over_the_deck(app, page, session)
+    _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 1.02)
+    _tip_to_refused(app, page, session,
+                    "Z 3.2 is below the measured bottom in slot 5")
+
+
+def test_tip_to_within_1_mm_under_a_measured_bottom_goes(app, page, session):
+    _measured_plate(app, page, session)
+    _over_the_deck(app, page, session)
+    _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 0.95)
+    _tip_to_goes(app, page, session, MEASURED_BOTTOM - 0.95)
+
+
+def test_a_measurement_not_confirmed_is_checked_as_the_drawing(
+        app, page, session):
+    _measured_plate(app, page, session)
+    session.new_run()                        # measured, not said so here
+    session.load_labware(resolve_definition(PLATE), 5)
+    _over_the_deck(app, page, session)
+    _point_in_slot(app, page, session, 5, DRAWN_BOTTOM - 1.95)
+    _tip_to_goes(app, page, session, DRAWN_BOTTOM - 1.95)
+
+
+def test_the_bottom_stands_on_the_slots_module(app, page, session):
+    session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
+    _drawn_plate(app, page, session)
+    # Over the module's top, so the jog envelope has nothing against it.
+    _point_in_slot(app, page, session, 5, 65.0)
+    _tip_to_refused(app, page, session,
+                    "Z 65 is below the drawing's bottom in slot 5")
+
+
+def test_the_bottom_is_the_targets_slot_not_the_cameras(app, page, session):
+    _drawn_plate(app, page, session)
+    _camera_over(app, page, session, 5)
+    _point_in_slot(app, page, session, 6, 1.0)
+    _tip_to_goes(app, page, session, 1.0)
+
+
+def test_a_slot_with_no_bottom_known_is_not_checked(app, page, session):
+    _tip_on(app, page, session)
+    _over_the_deck(app, page, session)
+    _point_in_slot(app, page, session, 5, 1.0)
+    _tip_to_goes(app, page, session, 1.0)
+
+
+def test_a_point_with_no_z_goes_to_the_travel_height_over_a_plate(
+        app, page, session):
+    _drawn_plate(app, page, session)
+    _point_in_slot(app, page, session, 5, None)
+    page.tip_to_button.click()
+    _wait(app, page)
+    assert _pose(session)[:2] == pytest.approx(slot_center(5), abs=0.05)
+    assert _said(page)[1] == "answer"
+
+
+def test_the_source_dish_is_checked_once_its_bottom_is_confirmed(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    _tip_on(app, page, session)
+    point = _point_in_slot(app, page, session, 8, 64.9)
+    session.profile.positions["observe"] = [186.0, 229.0, 90.0]
+    session.profile.picking.dish_bottom = 66.0
+    _tip_to_goes(app, page, session, 64.9)          # not confirmed yet
+    _over_the_deck(app, page, session)
+    _dish_in_slot_8(session)
+    _tip_to_refused(app, page, session,
+                    "Z 64.9 is below the measured bottom in slot 8")
+    session.change_point(point.name, z=65.1)
+    _tip_to_goes(app, page, session, 65.1)
+
+
+def test_aspirate_at_a_point_past_the_limit_moves_nothing(app, page, session):
+    _drawn_plate(app, page, session)
+    point = _point_in_slot(app, page, session, 5, DRAWN_BOTTOM - 2.05)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose(point.name)
+    at, before = _aspirated_at(session), _pose(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at == [] and session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(before)
+    assert _said(page) == ("Not reachable: Z 1.5 is below the drawing's "
+                           "bottom in slot 5.", "refusal")
+
+
+def test_aspirate_at_a_point_within_the_limit_goes(app, page, session):
+    _drawn_plate(app, page, session)
+    point = _point_in_slot(app, page, session, 5, DRAWN_BOTTOM - 1.95)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose(point.name)
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at[0][2] == pytest.approx(DRAWN_BOTTOM - 1.95, abs=0.05)
+
+
+def _liquid_in_the_tip(app, page, session):
+    page.volume.setValue(15.0)
+    page._aspirate_here()
+    _wait(app, page)
+    page.target.buttons[1].click()                       # At a point
+    page.amount.buttons[1].click()                       # All
+
+
+def test_dispense_at_a_point_past_the_limit_moves_nothing(app, page, session):
+    _measured_plate(app, page, session)
+    _over_the_deck(app, page, session)
+    _liquid_in_the_tip(app, page, session)
+    point = _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 1.02)
+    page.target_points.choose(point.name)
+    before = _pose(session)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(15.0)
+    assert _pose(session) == pytest.approx(before)
+    assert _said(page) == ("Not reachable: Z 3.2 is below the measured "
+                           "bottom in slot 5.", "refusal")
+
+
+def test_dispense_at_a_point_within_the_limit_goes(app, page, session):
+    _measured_plate(app, page, session)
+    _over_the_deck(app, page, session)
+    _liquid_in_the_tip(app, page, session)
+    point = _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 0.95)
+    page.target_points.choose(point.name)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert _pose(session)[2] == pytest.approx(MEASURED_BOTTOM - 0.95, abs=0.05)
+
+
+def test_by_hand_z_past_the_limit_moves_nothing(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(3.2)
+    at, before = _aspirated_at(session), _pose(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at == [] and session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(before)
+    assert _said(page) == ("Not reachable: Z 3.2 is below the measured "
+                           "bottom in slot 5.", "refusal")
+
+
+def test_by_hand_z_within_the_limit_goes(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(3.3)
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at[0][2] == pytest.approx(3.3, abs=0.05)
+
+
+def test_by_hand_z_past_the_limit_as_soon_as_i_click_moves_nothing(
+        app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    page.snap.setChecked(False)
+    page.aspirate_on_click.setChecked(True)
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(3.2)
+    before = _pose(session)
+    _left_click(app, page, W / 2, H / 2)
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(before)
+    assert _said(page)[1] == "refusal"
+
+
+def test_a_jog_step_is_not_checked_against_the_bottom(app, page, session):
+    _drawn_plate(app, page, session)
+    x, y = slot_center(5)
+    session.robot.move_to_coordinates((x, y, 4.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page.jog.set_step(1.0)
+    for _ in range(3):
+        page.jog.step("z", -1)
+        _wait(app, page)
+    assert _pose(session)[2] == pytest.approx(1.0, abs=0.05)
+    assert _said(page)[1] != "refusal"
