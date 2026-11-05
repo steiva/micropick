@@ -724,6 +724,90 @@ def test_place_memo_at_crosshair_marks_the_spot_under_it_with_no_z(
     assert page.memo_table.chosen_name == point.name
 
 
+def test_tip_to_crosshair_lands_under_it_at_the_travel_height(
+        app, page, session):
+    """#99: the tip where By hand aims, and it stays there."""
+    _calibrate(session)
+    session.profile_changed.emit(session.profile)
+    _tip_on(app, page, session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    assert page.tip_crosshair_button.isEnabled()
+    page.tip_crosshair_button.click()
+    _wait(app, page)
+    pos = session.robot.get_position(verbose=False)[0]
+    # The crosshair is the reference pixel: the gantry plus the tip offset.
+    assert (pos["x"], pos["y"]) == pytest.approx((160.0, 145.0), abs=0.05)
+    assert pos["z"] == pytest.approx(session.motion.travel_z, abs=0.05)
+    assert toast_of(page).property("tone") == "answer"
+
+
+def test_tip_to_crosshair_is_checked_at_the_height_it_moves_at(
+        app, page, session):
+    """A tip low beside a platform can go over it: the move is at the
+    travel height, not where the tip is now."""
+    from micropick.config.schema import PipetteOffset
+    _calibrate(session)
+    session.profile.calibration.pipette_offset = PipetteOffset(dx=100.0,
+                                                               dy=0.0)
+    session.set_deck_modules(
+        [DeckModule(slots=[8], offset=[0, 0, 64.0], name="Platform")])
+    _tip_on(app, page, session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    x, y = slot_center(8)[:2]
+    session.robot.move_to_coordinates((x - 100.0, y, 30.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page.tip_crosshair_button.click()
+    _wait(app, page)
+    assert _xy(session) == pytest.approx((x, y), abs=0.05)
+
+
+def test_tip_to_crosshair_is_gray_without_a_tip_or_a_pixel_map(
+        app, page, session):
+    button = page.tip_crosshair_button
+    _tip_on(app, page, session)
+    assert not button.isEnabled()
+    assert button.toolTip() == "Calibrate the camera first."
+    _calibrate(session)
+    session.profile_changed.emit(session.profile)
+    assert button.isEnabled()
+    session.drop_tip_in_place()
+    _wait(app, page)
+    assert not button.isEnabled()
+    assert button.toolTip() == "Put a tip on first."
+
+
+def test_tip_to_crosshair_is_gray_while_the_robot_is_busy(app, page, session):
+    _calibrate(session)
+    session.profile_changed.emit(session.profile)
+    _tip_on(app, page, session)
+    lease = session.robot_lease.claim("Picking", run=True)
+    app.processEvents()
+    assert not page.tip_crosshair_button.isEnabled()
+    assert page.tip_crosshair_button.toolTip() == "Robot busy: Picking."
+    lease.release()
+
+
+def test_tip_to_crosshair_says_why_a_spot_cannot_be_reached(
+        app, page, session):
+    _calibrate(session)
+    session.profile_changed.emit(session.profile)
+    _tip_on(app, page, session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    session.robot.move_to_coordinates((375.0, 150.0, 90.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page.tip_crosshair_button.click()
+    _wait(app, page)
+    assert _xy(session) == pytest.approx((375.0, 150.0), abs=0.05)
+    assert toast_of(page).text().startswith("Not reachable: X 385")
+    assert toast_of(page).property("tone") == "refusal"
+
+
 def test_save_names_a_memo_point_and_refuses_a_used_name(
         app, page, session, monkeypatch):
     from PySide6.QtWidgets import QInputDialog

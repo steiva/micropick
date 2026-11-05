@@ -39,7 +39,9 @@ Memo points
 A right click on the picture marks a point where the tip would go down
 there (`Session.memo_points`, named with the lowest free number, M1, M2
 ...); so does Place memo at crosshair, at the spot under the picture's
-center where By hand aims, with no Z (gray without a pixel map). They are
+center where By hand aims, with no Z (gray without a pixel map); beside it
+Tip to crosshair sends the tip there at the travel height, no memo point
+needed, and leaves it there (gray without a tip or a pixel map). They are
 listed in the Points card, which never folds, in its section Memo, where X,
 Y and Z are edited and the × deletes one (`Session.delete_memo_point`), and
 last until the program closes. Save in a row keeps it in the profile
@@ -658,7 +660,12 @@ class ManualPage(QWidget):
         self.place_memo_button = secondary_button("Place memo at crosshair",
                                                   self)
         self.place_memo_button.clicked.connect(self._place_memo)
-        memo.layout().addWidget(self.place_memo_button)
+        self.tip_crosshair_button = secondary_button("Tip to crosshair", self)
+        self.tip_crosshair_button.clicked.connect(self._tip_to_crosshair)
+        row = QHBoxLayout()
+        row.addWidget(self.place_memo_button)
+        row.addWidget(self.tip_crosshair_button)
+        memo.layout().addLayout(row)
         self.new_z = _number_box(self, 0.0, (0.0, Z_TOP_MM), " mm")
         self.new_z.setSpecialValueText(TRAVEL_TEXT)
         self.new_z.setToolTip("Z of a new point: the last Z set.")
@@ -1369,6 +1376,31 @@ class ManualPage(QWidget):
             return
         self._add_memo(self._crosshair_spot(self.jog.pose[:2]), None)
 
+    def _tip_to_crosshair(self) -> None:
+        """Tip to crosshair: the tip at the spot under the picture's center,
+        where By hand aims, at the travel height. It stays there: the
+        camera's way back is By hand's, not this."""
+        problem = self._tip_problem("move") or self._crosshair_problem()
+        if problem:
+            self.jog.refuse(problem)
+            return
+        motion = self.session.motion
+        spot = self._crosshair_spot(self.jog.pose[:2])
+        travel = motion.travel_z
+        why = motion.refused((spot[0], spot[1], motion.envelope.z[1]
+                              if travel is None else travel))
+        if why:
+            self.jog.refuse(f"Not reachable: {why}.")
+            return
+
+        def job(log_):
+            # No Z: as high as a move may go, which is the travel height.
+            return Reached(motion.tip_to(spot, float("inf"), log=log_),
+                           f"Tip at ({spot[0]:.2f}, {spot[1]:.2f}).")
+
+        if not self.jog.run_job(job):
+            self.jog.refuse(self.session.robot_lease.refusal)
+
     def _add_memo(self, xy, z) -> None:
         """A new memo point, chosen. It opens nothing: the operator's
         folding stays."""
@@ -1427,6 +1459,13 @@ class ManualPage(QWidget):
         self.place_memo_button.setToolTip(
             "Mark the spot under the crosshair." if pixel_map
             else "Calibrate the camera first.")
+        lease = self.session.robot_lease
+        self.tip_crosshair_button.setEnabled(pixel_map and free and tip)
+        self.tip_crosshair_button.setToolTip(
+            "Calibrate the camera first." if not pixel_map
+            else "Put a tip on first." if not tip
+            else f"Robot busy: {lease.holder}." if lease.busy
+            else "Move the tip to the spot under the crosshair.")
 
     def _memo_z_from_tip(self) -> None:
         name, pose = self.chosen_point(), self.jog.pose
