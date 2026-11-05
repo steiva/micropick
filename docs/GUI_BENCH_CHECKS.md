@@ -185,7 +185,7 @@ static until the session owns them.
   what carries it here.
 
 - [ ] **A soft limit reads as text, and the robot can come back.**
-  Jog into the X limit: the panel says refused or clamped, no dialog appears,
+  Jog into the X limit: a toast says so, no dialog appears,
   and the next step in the opposite direction works. Expected failure: every
   direction refused once outside the box, which is the trap DESIGN section 4
   describes and `JogController.allowed` avoids.
@@ -703,8 +703,8 @@ static until the session owns them.
 
 - [ ] **Where the gantry is shows on the picture.**
   On Manual control, the calibration tabs and Picking the jog panel
-  has no Position card; the coordinates and the step are in a box under the
-  resolution, and a refused or clamped step adds a second line there. With
+  has no Position card; the coordinates are in a box on the picture, and a
+  refused or clamped step is a toast, never a second line there. With
   no camera the box is still shown over the placeholder.
 
 - [ ] **Profiles are made and removed on the Profile page.**
@@ -749,15 +749,15 @@ static until the session owns them.
 
 - [ ] **The camera goes where you clicked.**
   Click a feature near the middle of the upper camera's picture: it ends up
-  under the crosshair. Near the frame's edge the box under the position
-  says "approximate: outside the calibrated area", and the feature lands
+  under the crosshair. Near the frame's edge a toast says "Approximate:
+  outside the calibrated area.", and the feature lands
   near the crosshair rather than on it. Expected failure: a consistent miss
   in one direction everywhere, which is the map's reference pixel not being
   the crosshair.
 
-- [ ] **Unreachable targets are refused on the picture.**
-  Drive near a corner of the deck and click beyond it: "UNREACHABLE: ... x
-  402.1 is past the limit 380" under the position, and nothing moves.
+- [ ] **Unreachable targets are refused.**
+  Drive near a corner of the deck and click beyond it: a red toast "Not
+  reachable: X 402.1 is past the limit 380.", and nothing moves.
 
 - [ ] **The check from the old Check tab, here.**
   Detect crosshairs on the disc, click one: the tip is lowered over it at
@@ -781,12 +781,12 @@ static until the session owns them.
 
 - [ ] **Aspirate and dispense in place, from the page and from A and D.**
   Tip on, tip in liquid: set Volume and Flow rate, press A - the log and
-  the box under the position say "aspirated 10 µl at 50 µl/s" and the
-  liquid rises in the tip; D puts it back. With no tip the command is
-  refused on the picture and nothing is sent. On any other page A and D do
+  a toast say "Aspirated 10 µl at 50 µl/s, here." and the
+  liquid rises in the tip; D puts it back. With no tip a red toast "Put a
+  tip on first." and nothing is sent. On any other page A and D do
   nothing. Expected failure: the robot declines the aspirate (a dispense of
-  more than is in the tip, or no prior pick-up) - the refusal appears under
-  the position rather than nothing happening.
+  more than is in the tip, or no prior pick-up) - the refusal is a red
+  toast rather than nothing happening.
 
 - [ ] **The keys are on the picture.**
   Bottom-right of the picture: the jog keys, A and D, and the mouse. H hides
@@ -799,7 +799,7 @@ static until the session owns them.
   retracts, then the gantry travels diagonally in one move at 1 mm under
   the retracted Z (the position box shows it). Further clicks go without a
   retract. After a tip move has lowered the tip, the next click retracts
-  again. Expected failure: "asked for ..., ended at ..." under the position,
+  again. Expected failure: a red toast "asked for ..., ended at ...",
   which would mean the robot refuses moveToCoordinates at the travel height
   too and TRAVEL_BELOW_TOP_MM needs to be larger.
 
@@ -1631,8 +1631,8 @@ tip box and a 384 plate at hand.
 - [ ] **A left click moves the camera.**
   One click and the clicked spot comes under the crosshair, once (a
   double click moves nothing); the tip stays at the travel height. A
-  click near the deck's edge that would leave the envelope: "UNREACHABLE:
-  …" under the position and nothing moves. While another page's job has
+  click near the deck's edge that would leave the envelope: a red toast
+  "Not reachable: …." and nothing moves. While another page's job has
   the robot: a click says "Robot busy." and nothing moves.
 
 - [ ] **Points.**
@@ -1647,7 +1647,7 @@ tip box and a 384 plate at hand.
   lists, and none is drawn on the picture (no "observe"). Save M1, name it
   "trough": the row leaves Memo points for Saved points, reading trough
   with "Saved", a cyan ring with a filled disc on the picture. Save another as "trough" or
-  "shake": refused, said under the position, the memo point stays.
+  "shake": refused in a red toast, the memo point stays.
   Double-click trough's name, type "bench", Enter: renamed. × on bench
   asks "Delete point bench?"; Keep keeps it. Restart: bench is listed
   again, the memo points are gone.
@@ -2172,3 +2172,34 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   "Wash". The file is in `Outputs/templates/liquid-plans/`. A program saved
   there before plans is listed gray, "Made with an older version", and does not
   open.
+
+## Messages: the toast (#94)
+
+Everything a page says now goes to one place. A failure here is on screen
+only: `widgets.toast`, or a page still telling `JogPanel.tell` a refusal.
+
+- [ ] **Nothing under X Y Z.**
+  Manual pick's Run, Picking, the Tip step's picture, a Robot setup sheet:
+  jog into a limit, click off the deck, press Save with the robot busy.
+  Under the coordinates there is never a line, only the arrows of the
+  axes. Well center and Dish bottom have no line under their tip height
+  either. "N cuboids found" and MARKER FOUND stand on the picture's top
+  edge, left of its buttons, and stay.
+
+- [ ] **Bottom left, on every screen, moving nothing.**
+  Say something on Home (Park), a task's step, Robot setup, a sheet over
+  the page and during a run: the toast is at the window's bottom left, over
+  the Footer, over the run's status while it shows. No card moves. A long
+  sentence wraps upward over the page and stays clear of Back and Next.
+  Back and Next take a click through it.
+
+- [ ] **Green 3 s, red 6 s.**
+  Save something: green for 3 s. Click off the deck: red for 6 s. Click
+  off the deck, then at once Save: the green replaces the red, for its own
+  3 s. The StatusPill does not change for either.
+
+- [ ] **A refusal is a sentence.**
+  Platform in slot 8, a memo point there with Z 50, Tip to: "Not reachable:
+  Z 50 is below the platform in slot 8.", nothing moves, and the point's Z
+  is red in the card and on the picture, with the same reason as its
+  tooltip. Dispense with nothing in the tip: "Nothing is in the tip."

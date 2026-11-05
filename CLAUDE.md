@@ -61,12 +61,23 @@ and, in a build, its commit.
 ### Camera view chrome
 
 Over the picture is only what is used there (REDESIGN §3): the robot's X,
-Y and Z (fixed font, and what a step ran into), the page's own lines
-(`set_status`: found counts, a run's state), the page's buttons and one
-quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture   what
-it does" per item). Never the camera name, slot, resolution, crop, zoom,
-fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
+Y and Z (fixed font, nothing else under them, on any page), the page's
+own lines (`set_status`: found counts, the marker seen, what holds while
+it is true) on the top edge left of the page's buttons, the page's buttons
+and one quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture
+what it does" per item). Never the camera name, slot, resolution, crop,
+zoom, fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
 semi-transparent boxes, never into the frame and never as a separate panel.
+
+A message is never on the picture or a line of a page's own under X Y Z:
+it is the toast (`widgets.toast`; `JogPanel.tell`, `MainWindow.say`,
+`show_toast`), at the window's bottom left on every screen, over the
+Footer and a run's status, moving nothing and taking no click. An answer
+is green for 3 s; a refusal (`JogPanel.refuse`, `MainWindow.refuse`,
+`refusal=True`) red for 6 s. A new one replaces the one showing. A refusal
+is a sentence in the operator's words ("Not reachable: Z 50 is below the
+platform in slot 8.", `motion.refusal`), no REFUSED, no pose. The
+StatusPill carries no message.
 A press on a widget floating over the picture (the jog pad's card, the
 TipGauge, a page's button) is that widget's, even beside its buttons:
 never a click on the picture. A page whose click moves the robot names

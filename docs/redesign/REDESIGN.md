@@ -182,8 +182,8 @@ everywhere it appears. Prototype names are in parentheses.
   word "Next" only). Next is enabled when the step is done or optional. There
   is no message text in the footer. On Picking the footer carries the run
   status (§6.5).
-- **Toast.** Green, bottom centre, about 3 s, one sentence: the response to an
-  action.
+- **Toast.** Bottom left of the window, over the Footer, one sentence: the
+  response to an action, green for 3 s; a refusal, red for 6 s (#94).
 - **Card / FoldCard.** A FoldCard is a header row with a chevron that folds
   its body. In a group of FoldCards one is open at a time, by default the one
   needed next.
