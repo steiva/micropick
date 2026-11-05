@@ -139,6 +139,16 @@ def test_the_measured_bottom_of_a_record_with_no_well_is_at_the_first():
         pytest.approx(5.0)
 
 
+def test_a_plates_heights_on_the_drawing_are_its_first_well_on_the_module():
+    # The first well: 64.2 + 1.0 + 3.0 + 10.0 = 78.2; 10 deep.
+    assert well_center.plate_heights(None, _drawing(), 64.2) ==         pytest.approx((78.2, 68.2))
+
+
+def test_a_plates_measured_heights_are_the_rim_and_the_rim_less_the_depth():
+    # As above: the rim 1.5 under the drawing's 79.42, the bottom 10.9 under.
+    assert well_center.plate_heights(_center(), _drawing(), 64.2) ==         pytest.approx((77.92, 67.02))
+
+
 # -- whether a spot is in a well (#90) ---------------------------------------
 # On slot 5, whose corner is (132.5, 90.5). Corning's 96: A1 at (14.37, 74.24)
 # on the plate, 6.858 across, 9 mm apart. Its 384: A1 at (12.12, 76.48),

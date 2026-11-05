@@ -24,7 +24,7 @@ from .motion import Motion
 
 __all__ = ["go_to_top", "Nominal", "Measurement", "xy", "deposit_offset",
            "plan_plate", "for_plan", "definition_depth", "measured_bottom",
-           "in_a_well", "run_using",
+           "plate_heights", "in_a_well", "run_using",
            "TIP_RADIUS_MM", "AT_TOP", "FORGET_TIP", "in_use_tip"]
 
 # What the pages say, the same on both: the tip is at the robot's well top,
@@ -114,15 +114,27 @@ def definition_depth(definition, well: str) -> float | None:
 
 def measured_bottom(center, definition, module_height: float) -> float:
     """The Z of the plate's measured bottom in the robot's frame, with no
+    robot to ask."""
+    return plate_heights(center, definition, module_height)[1]
+
+
+def plate_heights(center, definition,
+                  module_height: float) -> tuple[float, float]:
+    """(top, bottom) of the plate's wells in the robot's frame, with no
     robot to ask: the drawing's top of the well measured on (the first, for
-    a record with none), on the module, plus the measured rim's offset, less
-    the plate's depth, else the drawing's."""
+    a record with none), on the module, plus the measured rim's offset, and
+    that less the plate's depth, else the drawing's. `center` None is the
+    drawing's alone, at its first well."""
     wells = definition.data["wells"]
-    well = wells.get(center.well) or wells[definition.ordering[0][0]]
+    first = wells[definition.ordering[0][0]]
+    well = first if center is None else wells.get(center.well) or first
     corner = definition.data["cornerOffsetFromSlot"]["z"]
     top = float(module_height) + corner + well["z"] + well["depth"]
+    if center is None:
+        return top, top - well["depth"]
+    rim = top + float(center.offset[2])
     depth = well["depth"] if center.depth_mm is None else center.depth_mm
-    return top + float(center.offset[2]) - depth
+    return rim, rim - depth
 
 
 def in_a_well(definition, slot, center_xy, spot, *,
