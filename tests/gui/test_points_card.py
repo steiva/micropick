@@ -1,4 +1,4 @@
-"""Manual pick's one Points card (#96): the Memo and Saved sections, and
+"""Manual pick's one Points card (#96): its list (`test_point_list`), and
 Undo and Redo of the last 3 moves, on a mock session."""
 
 import os
@@ -9,12 +9,13 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt                               # noqa: E402
+from PySide6.QtTest import QTest                            # noqa: E402
 from PySide6.QtWidgets import QApplication, QInputDialog    # noqa: E402
 
 from micropick.gui.app import Options                       # noqa: E402
 from micropick.gui.pages.manual import ManualPage           # noqa: E402
 from micropick.gui.session import Session, SessionError     # noqa: E402
-from micropick.gui.widgets.memo_points import _VALUE, Z_COLUMN  # noqa: E402
 from micropick.gui.widgets.overlays import ConfirmDialog    # noqa: E402
 
 
@@ -39,45 +40,21 @@ def page(app, session):
     p.deleteLater()
 
 
-def _names(table):
-    return [table.item(r, 0).text() for r in range(table.rowCount())]
-
-
 # -- the card -----------------------------------------------------------------
 
-def test_one_card_holds_both_sections_and_the_moves_to_the_chosen_point(page):
+def test_the_card_never_folds_and_holds_the_moves_to_the_chosen_point(
+        page, session):
     card = page.points_card
     assert card.title.text() == "Points"
     assert card.is_open()
     card.set_open(False)
     assert card.is_open()                               # never folds
-    assert page.memo_section.toggle.text() == "Memo"
-    assert page.saved_section.toggle.text() == "Saved"
-    for section, table in ((page.memo_section, page.memo_table),
-                           (page.saved_section, page.saved_table)):
-        assert card.isAncestorOf(section)
-        assert section.isAncestorOf(table)
-    for widget in (page.camera_to_button, page.tip_to_button, page.memo_z,
-                   page.undo_button, page.redo_button):
-        assert card.isAncestorOf(widget)
-        assert not page.memo_section.isAncestorOf(widget)
-        assert not page.saved_section.isAncestorOf(widget)
-
-
-def test_the_moves_stay_when_both_sections_are_folded(page):
-    page.memo_section.set_collapsed(True)
-    page.saved_section.set_collapsed(True)
-    for button in (page.camera_to_button, page.undo_button):
-        assert not button.isHidden()
-
-
-def test_each_section_keeps_its_table_as_it_was(page, session):
     session.add_memo_point(100.0, 100.0, 12.0)
-    session.remember("trough", (150.0, 150.0, 30.0))
-    assert page.memo_table.save_button("M1") is not None
-    assert page.memo_table.delete_button("M1") is not None
-    assert page.saved_table.is_saved("trough")
-    assert page.saved_table.delete_button("trough") is not None
+    page.points_list.choose("M1")
+    for widget in (page.camera_to_button, page.tip_to_button, page.memo_z,
+                   page.delete_point_button, page.undo_button,
+                   page.redo_button):
+        assert card.isAncestorOf(widget)
 
 
 # -- Undo and Redo ------------------------------------------------------------
@@ -91,45 +68,63 @@ def _add(page, session):
 
 
 def _delete_memo(page, session):
-    page.memo_table.delete_button("M1").click()
+    page.points_list.choose("M1")
+    page.delete_point_button.click()
 
 
 def _delete_saved(page, session):
-    page.saved_table.delete_button("trough").click()
+    page.points_list.choose("trough")
+    page.delete_point_button.click()
+
+
+def _type_in(page, name, key, text):
+    row = page.points_list.row(name)
+    row.edit(key)
+    box = row.editor
+    if key == "name":
+        box.setText(text)
+    else:
+        box.setValue(float(text))
+    QTest.keyClick(box, Qt.Key.Key_Return)
 
 
 def _type_memo_z(page, session):
-    page.memo_table.item(0, Z_COLUMN).setData(_VALUE, 7.5)
+    _type_in(page, "M1", "z", "7.5")
 
 
 def _type_saved_z(page, session):
-    page.saved_table.item(0, Z_COLUMN).setData(_VALUE, 7.5)
+    _type_in(page, "trough", "z", "7.5")
 
 
 def _z_from_memo_tip(page, session):
-    page.memo_table.choose("M1")
+    page.points_list.choose("M1")
     page.jog.pose = (1.0, 2.0, 44.5)
     page._refresh_memo_buttons()
     page.memo_z.click()
 
 
 def _z_from_saved_tip(page, session):
-    page.saved_table.choose("trough")
+    page.points_list.choose("trough")
     page.jog.pose = (1.0, 2.0, 44.5)
     page._refresh_memo_buttons()
     page.memo_z.click()
 
 
 def _rename(page, session):
-    page.saved_table.item(0, 0).setText("bench")
+    _type_in(page, "trough", "name", "bench")
 
 
 def _save(page, session):
-    page.memo_table.save_button("M1").click()
+    page.points_list.row("M1").star.click()
+
+
+def _take_the_star_off(page, session):
+    page.points_list.row("trough").star.click()
 
 
 MOVES = [_add, _delete_memo, _delete_saved, _type_memo_z, _type_saved_z,
-         _z_from_memo_tip, _z_from_saved_tip, _rename, _save]
+         _z_from_memo_tip, _z_from_saved_tip, _rename, _save,
+         _take_the_star_off]
 
 
 @pytest.fixture
@@ -198,7 +193,8 @@ def test_undoing_the_delete_of_a_saved_point_puts_it_back_in_the_profile(
     session.remember("observe", (1.0, 2.0, 80.0))
     session.memo_points_changed.emit()
     order = list(session.saved_points())
-    page.saved_table.delete_button("trough").click()
+    page.points_list.choose("trough")
+    page.delete_point_button.click()
     assert "trough" not in session.profile.positions
     page.undo_button.click()
     assert list(session.saved_points()) == order        # back in its place
@@ -209,13 +205,13 @@ def test_undoing_the_delete_of_a_saved_point_puts_it_back_in_the_profile(
 
 def test_undoing_a_save_takes_it_out_of_the_profile_and_redo_stores_it(
         page, session, two_points):
-    page.memo_table.save_button("M1").click()
+    page.points_list.row("M1").star.click()
     page.undo_button.click()
-    assert _names(page.memo_table) == ["M1"]
-    assert _names(page.saved_table) == ["trough"]
+    assert page.points_list.names == ["M1", "trough"]
+    assert page.points_list.row("M1").star.text() == "☆"
     assert "kept" not in session.profile.positions
     page.redo_button.click()
-    assert _names(page.memo_table) == []
+    assert page.points_list.names == ["trough", "kept"]
     session.load_profile("mock")
     assert session.saved_points()["kept"] == (100.0, 100.0, 12.0)
 
@@ -232,7 +228,7 @@ def test_a_refused_move_is_no_move(page, session, two_points):
     session.remember("sink", (10.0, 20.0, 3.0))
     session.memo_points_changed.emit()
     session.point_history.clear()
-    page.saved_table.item(0, 0).setText("sink")         # in use
+    _type_in(page, "trough", "name", "sink")            # in use
     with pytest.raises(SessionError):
         session.save_memo_point("M1", "shake")
     with pytest.raises(SessionError):
@@ -245,12 +241,12 @@ def test_a_refused_move_is_no_move(page, session, two_points):
 
 def test_undo_reaches_at_a_point_and_the_chosen_point_stays(page, session,
                                                             two_points):
-    page.memo_table.choose("M1")
+    page.points_list.choose("M1")
     session.add_memo_point(30.0, 40.0, 5.0)
-    assert _names(page.source_points) == ["M1", "M2", "trough"]
+    assert page.source_points.names == ["M1", "M2", "trough"]
     page.undo_button.click()
-    assert _names(page.source_points) == ["M1", "trough"]
-    assert _names(page.target_points) == ["M1", "trough"]
+    assert page.source_points.names == ["M1", "trough"]
+    assert page.target_points.names == ["M1", "trough"]
     assert page.chosen_point() == "M1"
 
 

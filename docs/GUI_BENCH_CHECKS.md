@@ -1648,22 +1648,34 @@ tip box and a 384 plate at hand.
   the robot: a click says "Robot busy." and nothing moves.
 
 - [ ] **Points.**
-  One card, Points, that does not fold, with Memo and Saved open under its
-  title and Camera to, Tip to and Z from tip under both. A right click
-  marks M1 where the tip would go down and draws it in cyan (red with "!"
-  when below a platform's top). Fold Memo and Saved: the point leaves the
-  picture; a right click adds M2, a green toast, and opens nothing, and
-  the cards do not move; open one: both back. × on a row deletes that
+  One card, Points, that does not fold: one list, ☆ for a memo point and ★
+  for a saved one, Point at crosshair, Tip to crosshair and New points get Z
+  under it. A right click marks M1 where the tip would go down, draws it in
+  cyan with a ring round it (red with "!" when below a platform's top),
+  chooses it in the list, says "M1 added." and the cards do not move. Turn
+  the Points chip off: the points leave the picture, a right click adds M2
+  to the list only; on again: both back. Delete on a chosen row takes that
   point from the list and the picture; the next right click takes its
   number. Nothing moves when marking.
 
+- [ ] **The star (#112).**
+  ☆ asks a name, the point's own in the field; "M1 kept for later." and it
+  is ★. ★ asks "Remove M1 from saved points?", Keep the primary button;
+  Remove makes it ☆ with its name and Z, and one Undo brings ★ back. On
+  Liquid's Plan ★ cannot be clicked.
+
+- [ ] **A double click never moves the robot (#112).**
+  Tip on. Choose the top row, then double-click a cell of the row under it,
+  fast and slowly: the box opens or nothing happens, never Tip to or Camera
+  to. Esc in the box puts the value back and stops nothing.
+
 - [ ] **Undo and Redo of the points (#96).**
   Undo and Redo are on Points' title row, gray with nothing to undo or
-  redo. Do each, and Undo and Redo it: add a point, × on it, type its Z,
-  Z from tip, Save it, rename a saved point, × on a saved point (Delete).
+  redo. Do each, and Undo and Redo it: add a point, Delete it, type its Z,
+  Z from tip, ☆ on it, ★ on it, rename a saved point, Delete a saved point.
   Each comes back in the list and on the picture, for both kinds. Make
   four moves: Undo goes back three, then is gray. A new move after an Undo
-  grays Redo. × on a saved point, Undo, close the program and start it
+  grays Redo. Delete a saved point, Undo, close the program and start it
   again: it is listed, with its Z. Ctrl+Z does nothing here. Memo point
   made on Liquid's Plan: Undo on Manual pick takes it off.
 
@@ -1677,11 +1689,11 @@ tip box and a 384 plate at hand.
   asks "Delete point bench?"; Keep keeps it. Restart: bench is listed
   again, the memo points are gone.
 
-- [ ] **Camera to, Tip to, Place memo at crosshair (#66).**
-  Place memo at crosshair: a memo point under the crosshair, z "travel
-  height"; Save it: its Z in Saved is the travel height then.
-  Choose a point in Memo, then one in Saved: the first is
-  no longer chosen. Camera to: the point comes under the crosshair, the
+- [ ] **Camera to, Tip to, Point at crosshair (#66).**
+  Point at crosshair: a memo point under the crosshair, Z "travel"; ☆ on
+  it: its Z is the travel height then.
+  Click a row: Camera to, Tip to, Z from tip and Delete unfold under it;
+  click another: they go there; click it again: they fold. Camera to: the point comes under the crosshair, the
   tip stays at the travel height. Without a tip Tip to is gray ("Put a
   tip on first."); with one, Tip to takes the tip down to the point's Z.
   A double click on a row edits it and moves nothing.
@@ -2352,8 +2364,8 @@ On a full HD window, the page in two columns.
   is cut in its Select.
 
 - [ ] **Nothing cut on a full HD window.**
-  Every button's text is whole, Place memo at crosshair and Tip to
-  crosshair one under the other. Narrow the window: the columns stay equal,
+  Every button's text is whole, Point at crosshair and Tip to crosshair
+  side by side, and a chosen row's four actions. Narrow the window: the columns stay equal,
   then the cards go to one column.
 
 ## Manual pick: how the tip leaves (#102)

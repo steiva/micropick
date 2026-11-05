@@ -85,8 +85,8 @@ from PySide6.QtGui import QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QGridLayout,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit,
                                QListWidget, QListWidgetItem, QMenu, QPushButton,
-                               QScrollArea, QStackedWidget, QToolButton,
-                               QVBoxLayout, QWidget, QWidgetAction)
+                               QScrollArea, QStackedWidget, QVBoxLayout,
+                               QWidget, QWidgetAction)
 
 from ... import paths
 from ...config import templates
@@ -116,6 +116,7 @@ from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
 from ..widgets.plan_forms import (AmountForm, ExtrasForm, HowForm, MessageForm,
                                   WaitForm, uses_height)
 from ..widgets.plate_grid import PlateGrid
+from ..widgets.point_list import PointButton
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
 from ..workers import describe_error
@@ -385,27 +386,6 @@ class _OpenCard(QWidget):
         column.addLayout(buttons)
 
 
-class _PointButton(QWidget):
-    """A point: its star and its name, which uses it. ★ is kept in the
-    profile; a click on ☆ keeps it."""
-
-    def __init__(self, name: str, saved: bool, parent: QWidget):
-        super().__init__(parent)
-        self.setObjectName("plain")
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(2)
-        self.star = QToolButton(self)
-        self.star.setText("★" if saved else "☆")
-        self.star.setEnabled(not saved)
-        self.star.setToolTip("" if saved else "Keep this point.")
-        self.star.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        row.addWidget(self.star)
-        self.use = secondary_button(name, self)
-        self.use.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        row.addWidget(self.use)
-
-
 class _KindItem(QWidget):
     """A line of the Add a step menu: a kind over its help line."""
 
@@ -445,7 +425,7 @@ class LiquidPlanPage(QWidget):
         self._accepted: set[tuple[str, str]] = set()   # Use anyway
         self._locked = False
         self._typing: str | None = None          # the field of the last undo
-        self.point_buttons: dict[str, _PointButton] = {}
+        self.point_buttons: dict[str, PointButton] = {}
         self._points_shown: list | None = None
         self._looking = False                    # the camera section is up
         self._camera_failed = False
@@ -1548,7 +1528,7 @@ class LiquidPlanPage(QWidget):
             holder = self.point_area.widget()
             saved_first = sorted(points, key=lambda point: not point[1])
             for at, (name, saved) in enumerate(saved_first):
-                button = _PointButton(name, saved, holder)
+                button = PointButton(name, saved, holder)
                 button.use.clicked.connect(
                     lambda _c=False, n=name: self._use_point(n))
                 button.star.clicked.connect(

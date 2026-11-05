@@ -357,7 +357,7 @@ pickup clips switch); there is no Camera / Tip back to center (Picking
 keeps Camera to dish center). A double click moves nothing. A **right** click (`CameraView.right_clicked`) marks a
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
-never in the profile), as does Place memo at crosshair
+never in the profile), as does Point at crosshair
 (the picture's center through the pixel map, as By hand's aim,
 no Z; gray without a pixel map, "Calibrate the camera first."). Under it
 **Tip to crosshair** (#99) sends the tip to that spot at the travel height
@@ -365,27 +365,38 @@ no Z; gray without a pixel map, "Calibrate the camera first."). Under it
 needed; gray without a tip or a pixel map or while the robot is busy,
 checked against the jog envelope at the travel height. A point is
 one kind - a place on the deck, no purpose stored (#66). One card, **Points**
-(#96), which never folds, its two folding sections (`Section(flat=True)`)
-open from the start: **Memo** (× deletes, `Session.delete_memo_point`; Save asks a name and
-moves it into the profile as a **saved point**, `Session.save_memo_point`,
-#62, refused for a name in use or a setup position's,
-`Session.point_name_refusal`; never gray: a point at the travel height
-is stored at that height then, `Motion.travel_z` or else the jog
-envelope's top), and under it **Saved** (`Session.saved_points`:
-the profile's positions less `tasks.SETUP_POSITIONS`, which are never
-listed or drawn as points, #61; marked Saved, a Z always; the name
-renamed by double click, `rename_saved_point`; × asking "Delete point
-<name>?" first). Under both one row for the one point chosen across them
-(choosing in one clears the other): **Camera to** (`Motion.camera_to`,
+(#96, #112), which never folds, is one list of rows of our own
+(`widgets.point_list.PointList`, a fixed height, more rows scrolling; no
+`QTableWidget`): the memo points then the **saved points**
+(`Session.saved_points`: the profile's positions less
+`tasks.SETUP_POSITIONS`, which are never listed or drawn as points, #61), a
+row being its star, name, X, Y and Z ("travel" for no Z). ☆ asks a name, the
+point's own by default, and moves it into the profile
+(`Session.save_memo_point`, #62, refused for a name in use or a setup
+position's, `Session.point_name_refusal`; never gray: a point at the travel
+height is stored at that height then, `Motion.travel_z` or else the jog
+envelope's top); ★ asks "Remove <name> from saved points?", Keep primary, and
+makes it a memo point with its name and Z (`Session.unkeep_position`, one
+Undo step). `StarButton` and `PointButton` are Liquid's too, and only Manual
+takes a star off. A double click edits X, Y, Z and a saved point's name
+(`rename_saved_point`), in a box over the cell: Enter or leaving keeps it,
+Esc puts it back and is no Stop. A click chooses a row (again: lets it go),
+and the chosen row unfolds under the point **Camera to** (`Motion.camera_to`,
 the point less the tip offset, its Z unused), **Tip to** (`Motion.tip_to`
 to its Z, no higher than the travel height; gray while no tip is on, "Put
-a tip on first.") and Z from tip, each checked against the jog envelope,
-through `JogPanel.run_job`. **Undo** and **Redo** on the card's title row
+a tip on first."), Z from tip, each checked against the jog envelope,
+through `JogPanel.run_job`, and Delete (a memo point at once,
+`Session.delete_memo_point`; a saved one asks "Delete point <name>?"). A click
+chooses at once but unfolds only after the double click's interval, and the
+actions take no click for one interval more: a fold lifts the rows under it,
+and the second press of a double click came down on Tip to. Under the list
+Point at crosshair, Tip to crosshair and **New points get Z**, a Select of
+Travel height, Z of the tip now and Last Z given (at start). **Undo** and **Redo** on the card's title row
 (`theme.factory.tool_button`, as Liquid Plan's; no Ctrl+Z) go over the last 3
 moves (`Session.undo_points`, `gui.point_history`: in memory, ended by loading
 a profile). A move is any change of a point, wherever it was made, so Liquid's
 right click is one too: added, deleted, X, Y or Z changed (Z from tip
-included), renamed, Saved; every change goes through `Session._points_moved`. A
+included), renamed, starred or not; every change goes through `Session._points_moved`. A
 move keeps every point as it was, and a saved point brought back is written to
 the profile again, in its place. There is no Go to, no Click to move and no
 Mark points; a double click only edits or renames, never moves. A point below
@@ -393,11 +404,10 @@ a deck module's top is flagged (`Session.memo_problem`, the jog
 envelope's floors, `Motion.envelope`: the profile's modules over the deck
 definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Both kinds drawn in cyan
 on the "points" layer (`position_marks.memo_items`), a saved point with a
-filled disc; on Work only while a section of Points is open or "At a point" is
-chosen in Aspirate or Dispense (`PositionMarks.show_memo`;
-a right click only adds a point: it opens nothing), and both kinds
-listed under "At a point"
-(`widgets.memo_points.MemoTable`). **In place** (#111, `ManualPage._in_place_card`, first of the
+filled disc, the chosen one ringed; on Work the Points chip alone says whether
+they are drawn, on at start (`CameraView.marks_default`) and never turned on by
+a new point, which is chosen in the list. Both kinds are listed under "At a
+point" too (`PointList` with no actions). **In place** (#111, `ManualPage._in_place_card`, first of the
 cards for now), always shown: Aspirate in place and Dispense in place, their
 keys drawn as bound, A and D doing the same and nothing while a field has the
 keyboard, with an amount and speed of their own (starting as Aspirate's fields,
@@ -460,9 +470,9 @@ offset, from its well center) / At a point, its button saying what it does ("Go
 to A7 and dispense"), gray while the tip is empty. What
 is in the tip is the session's count (`Session.in_tip`,
 `Session.aspirate`, `Session.dispense`: all or a part no larger than it;
-another tip holds nothing). A new point takes New point Z, the
-last Z given (typed into a point, or Z from tip); "travel height" (no Z)
-until one is given, so a first click never sends the tip down. Over the
+another tip holds nothing). The last Z given is typed into a point or
+Z from tip; no Z until one is given, so a first click never sends the tip
+down. Over the
 picture's top left is the `TipGauge` (`CameraView.add_top_left_widget`,
 X, Y, Z under it), the tip's volume counted from the page's aspirates and
 dispenses; Show past picks draws where it aspirated, the last bright

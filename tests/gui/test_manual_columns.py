@@ -91,7 +91,7 @@ def _actions(page, session):
     def long_named_point():
         session.add_memo_point(120.0, 90.0, 70.0)
         session.save_memo_point("M1", "the point over the far corner")
-        page.saved_table.selectRow(0)
+        page.points_list.choose("the point over the far corner")
 
     yield "the plate", lambda: session.load_labware(plate, 5)
     yield "the tip", lambda: (session.load_labware(rack, 10),
@@ -113,10 +113,6 @@ def _actions(page, session):
     yield "Change closed", lambda: page.change_button.setChecked(False)
     yield "Sizes opened", lambda: page.sizes.toggle.setChecked(True)
     yield "a saved point", long_named_point
-    yield "Memo folded", lambda: page.memo_section.set_collapsed(True)
-    yield "Saved folded", lambda: page.saved_section.set_collapsed(True)
-    yield "Memo opened", lambda: page.memo_section.set_collapsed(False)
-    yield "Saved opened", lambda: page.saved_section.set_collapsed(False)
     yield "a long state", lambda: page.state.setText("word " * 60)
     yield "the pad's keys", lambda: page.jog.pad.keys.click()
     yield "the pad folded", lambda: page.jog.pad.set_folded(True)
@@ -137,7 +133,7 @@ def test_no_action_changes_the_columns(app, page, session, size):
 
 
 def test_the_scroll_bar_does_not_narrow_the_columns(app, page):
-    panel = _shown(app, page, (2560, 1120))
+    panel = _shown(app, page, (2560, 960))
     area = next(a for a in page.findChildren(QScrollArea)
                 if a.widget() is panel)
     first = _where(panel)

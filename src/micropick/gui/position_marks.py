@@ -12,10 +12,9 @@ inverted (`PixelMap.to_pixel`).
 
 Each is a ring with a cross in it, in cyan, named with its Z when it has
 one; a saved point has a filled disc in the middle too (#66). The one
-chosen in Manual control's lists is drawn thicker, and one the tip cannot
-go to (`Session.memo_problem`: below a deck module's top, say) in red with
-a "!". A page may hide them (`PositionMarks.show_memo`): Manual Work draws
-them only while the points are shown there.
+chosen in Manual control's lists is drawn thicker, with a ring round it, and
+one the tip cannot go to (`Session.memo_problem`: below a deck module's top,
+say) in red with a "!". The Points chip alone says whether they are drawn.
 
 And the past picks a page hands over (`PositionMarks.set_picks`): where the
 tip took something, a violet ring each, the last bright and the older ones
@@ -60,6 +59,8 @@ MEMO_BAD = (0, 0, 255)
 PICK = (250, 155, 169)
 PICK_OLD = (120, 75, 80)
 RADIUS_PX = 22
+# The ring round the chosen point.
+CHOSEN_RADIUS_PX = 34
 LABEL_SCALE = 1.4
 
 
@@ -91,6 +92,10 @@ def memo_items(points, pmap: PixelMap, pipette_offset, gantry_xy,
         arm = RADIUS_PX // 2
         out.append(overlays.Circle(center=(cx, cy), radius=RADIUS_PX,
                                    color=colour, thickness=thick))
+        if point.name == chosen:
+            out.append(overlays.Circle(center=(cx, cy),
+                                       radius=CHOSEN_RADIUS_PX, color=colour,
+                                       thickness=2))
         for dx, dy in ((arm, 0), (0, arm)):
             out.append(overlays.Polyline(
                 points=np.array([(cx - dx, cy - dy), (cx + dx, cy + dy)],
@@ -147,7 +152,6 @@ class PositionMarks(QObject):
         self.view = view
         self.pose = None
         self.memo_chosen: str | None = None      # drawn thicker
-        self.memo_shown = True
         self.picks: list = []                    # see set_picks
         session.profile_changed.connect(lambda _p: self.update())
         session.memo_points_changed.connect(self.update)
@@ -163,10 +167,6 @@ class PositionMarks(QObject):
 
     def choose_memo(self, name: str | None) -> None:
         self.memo_chosen = name
-        self.update()
-
-    def show_memo(self, shown: bool) -> None:
-        self.memo_shown = bool(shown)
         self.update()
 
     def set_picks(self, picks) -> None:
@@ -206,10 +206,9 @@ class PositionMarks(QObject):
         pmap, offset = found
         size = pmap.config.image_size
         items = pick_items(self.picks, pmap, offset, pose[:2], size)
-        if self.memo_shown:
-            points = self.session.points
-            items += memo_items(points, pmap, offset, pose[:2], size,
-                                self.memo_chosen,
-                                {p.name for p in points
-                                 if self.session.memo_problem(p)})
+        points = self.session.points
+        items += memo_items(points, pmap, offset, pose[:2], size,
+                            self.memo_chosen,
+                            {p.name for p in points
+                             if self.session.memo_problem(p)})
         self.view.set_marks(items)
