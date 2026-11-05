@@ -415,14 +415,17 @@ class Section(QFrame):
     it - there is nothing else in the row to click by mistake.
 
     Contents go into `body`, which has a vertical layout already spaced
-    like a card's.
+    like a card's. `flat` is for a section inside a card (Manual pick's
+    Memo and Saved): no card of its own, so its contents keep the card's
+    width.
     """
 
     def __init__(self, title: str, *, collapsed: bool = False,
-                 parent: QWidget | None = None):
+                 flat: bool = False, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setObjectName("card")
-        self.setFrameShape(QFrame.Shape.Panel)
+        self.setObjectName("plain" if flat else "card")
+        self.setFrameShape(QFrame.Shape.NoFrame if flat
+                           else QFrame.Shape.Panel)
         policy = self.sizePolicy()
         policy.setHeightForWidth(True)
         self.setSizePolicy(policy)
@@ -443,12 +446,17 @@ class Section(QFrame):
         self.toggle.toggled.connect(self._toggled)
 
         self.body = QWidget(self)
+        self.body.setObjectName("plain")
         body_layout = QVBoxLayout(self.body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(SPACING)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(SPACING * 2, SPACING, SPACING * 2, SPACING * 2)
+        if flat:
+            outer.setContentsMargins(0, 0, 0, 0)
+        else:
+            outer.setContentsMargins(SPACING * 2, SPACING, SPACING * 2,
+                                     SPACING * 2)
         outer.setSpacing(SPACING)
         outer.addWidget(self.toggle)
         outer.addWidget(self.body)

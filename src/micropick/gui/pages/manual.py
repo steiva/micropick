@@ -40,16 +40,17 @@ A right click on the picture marks a point where the tip would go down
 there (`Session.memo_points`, named with the lowest free number, M1, M2
 ...); so does Place memo at crosshair, at the spot under the picture's
 center where By hand aims, with no Z (gray without a pixel map). They are
-listed in the Memo points card, where X, Y and Z are edited and the ×
-deletes one (`Session.delete_memo_point`), and last until the program
-closes. Save in a row keeps it in the profile (`Session.save_memo_point`,
-#62), a point at the travel height with that height as its Z, and moves the
-row to the Saved points card under it, where the name is renamed by a
-double click and the × asks first (#66). Robot setup's positions are not
-points (#61). Marking moves nothing, and a double click only edits.
+listed in the Points card, which never folds, in its section Memo, where X,
+Y and Z are edited and the × deletes one (`Session.delete_memo_point`), and
+last until the program closes. Save in a row keeps it in the profile
+(`Session.save_memo_point`, #62), a point at the travel height with that
+height as its Z, and moves the row to the section Saved under it, where the
+name is renamed by a double click and the × asks first (#66). Robot setup's
+positions are not points (#61). Marking moves nothing and opens nothing, and
+a double click only edits.
 
 A point is a place on the deck, the tip's, with no purpose of its own.
-Under both cards, for the one point chosen in either: Camera to (the camera
+Under both sections, for the one point chosen in either: Camera to (the camera
 over it at the travel height, its Z unused) and Tip to (the tip down to its
 Z, no higher than the travel height; gray while no tip is on), each
 checked against the jog envelope and through `JogPanel.run_job`. Aspirate's
@@ -57,8 +58,9 @@ and Dispense's "At a point" list both kinds and go to one by aspirating or
 dispensing there.
 
 They are drawn on the picture, a saved point with a filled disc, only while
-a points card is open or "At a point" is chosen in an open Aspirate or
-Dispense card; marking one opens Memo points when nothing shows them.
+a section of Points is open or "At a point" is chosen in an open Aspirate
+or Dispense card. Both sections start open: folded, a new point is listed
+and drawn only once one is opened.
 
 A point the tip cannot go to is said where it is made and shown in red,
 on the picture and in its Z (`Session.memo_problem`): the jog envelope's
@@ -281,6 +283,7 @@ def _memo_z_text(z) -> str:
 def _row(box, label: str, widget) -> QWidget:
     """A labeled row added to `box`; returned, to be hidden as one."""
     row = QWidget(box)
+    row.setObjectName("plain")
     layout = QHBoxLayout(row)
     layout.setContentsMargins(0, 0, 0, 0)
     name = QLabel(label, row)
@@ -420,7 +423,7 @@ class ManualPage(QWidget):
         self.marks = PositionMarks.on(session, self.view)
         panel = CardColumns([self._tools_card(), self._sizes_card(),
                              self._aspirate_card(), self._dispense_card(),
-                             self._points_cards(), self.jog], self)
+                             self._points_card(), self.jog], self)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
@@ -621,36 +624,43 @@ class ManualPage(QWidget):
         table.said.connect(self.jog.refuse)
         return table
 
-    def _points_cards(self) -> QWidget:
-        """Memo points over Saved points, and under both the moves to the
-        chosen one; see "Memo points"."""
-        block = QWidget(self)
-        layout = QVBoxLayout(block)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(SPACING)
+    def _section_table(self, kind: str) -> MemoTable:
+        """No taller than its least: two in a card, and Camera to under
+        them. More rows scroll."""
+        table = self._points_table(kind)
+        table.setMaximumHeight(table.minimumHeight())
+        return table
 
-        self.memo_card = FoldCard("Memo points", parent=self)
-        self.memo_card.toggled.connect(lambda _open: self._points_toggled())
-        body = self.memo_card.body.layout()
-        self.memo_table = self._points_table("memo")
-        body.addWidget(self.memo_table)
-        body.addWidget(muted_label("Right-click the picture to add a point.",
-                                   self))
+    def _points_card(self) -> QWidget:
+        """The one Points card: the Memo section over the Saved section,
+        and under both the moves to the chosen point; see "Memo points"."""
+        self.points_card = FoldCard("Points", fold=False, parent=self)
+        layout = self.points_card.body.layout()
+
+        self.memo_section = Section("Memo", flat=True, parent=self)
+        self.memo_section.toggle.toggled.connect(
+            lambda _open: self._points_toggled())
+        memo = self.memo_section.body
+        self.memo_table = self._section_table("memo")
+        memo.layout().addWidget(self.memo_table)
+        memo.layout().addWidget(muted_label(
+            "Right-click the picture to add a point.", self))
         self.place_memo_button = secondary_button("Place memo at crosshair",
                                                   self)
         self.place_memo_button.clicked.connect(self._place_memo)
-        body.addWidget(self.place_memo_button)
+        memo.layout().addWidget(self.place_memo_button)
         self.new_z = _number_box(self, 0.0, (0.0, Z_TOP_MM), " mm")
         self.new_z.setSpecialValueText(TRAVEL_TEXT)
         self.new_z.setToolTip("Z of a new point: the last Z set.")
-        _row(self.memo_card.body, "New point Z", self.new_z)
-        layout.addWidget(self.memo_card)
+        _row(memo, "New point Z", self.new_z)
+        layout.addWidget(self.memo_section)
 
-        self.saved_card = FoldCard("Saved points", parent=self)
-        self.saved_card.toggled.connect(lambda _open: self._points_toggled())
-        self.saved_table = self._points_table("saved")
-        self.saved_card.body.layout().addWidget(self.saved_table)
-        layout.addWidget(self.saved_card)
+        self.saved_section = Section("Saved", flat=True, parent=self)
+        self.saved_section.toggle.toggled.connect(
+            lambda _open: self._points_toggled())
+        self.saved_table = self._section_table("saved")
+        self.saved_section.body.layout().addWidget(self.saved_table)
+        layout.addWidget(self.saved_section)
 
         # One point chosen across the two lists.
         for table, other in ((self.memo_table, self.saved_table),
@@ -674,7 +684,7 @@ class ManualPage(QWidget):
         layout.addLayout(row)
         self.session.memo_points_changed.connect(self._refresh_memo_buttons)
         self.jog.pose_changed.connect(lambda _p: self._refresh_memo_buttons())
-        return block
+        return self.points_card
 
     def _sizes_card(self) -> QWidget:
         """Folded: the sizes are a second look at a detection, not the
@@ -1303,17 +1313,18 @@ class ManualPage(QWidget):
 
     @property
     def points_shown(self) -> bool:
-        """A points card open, or "At a point" chosen in an open Aspirate
-        or Dispense card."""
-        return (self.memo_card.is_open() or self.saved_card.is_open()
+        """A section of the Points card open, or "At a point" chosen in an
+        open Aspirate or Dispense card."""
+        return (not self.memo_section.collapsed
+                or not self.saved_section.collapsed
                 or (self.aspirate_card.is_open()
                     and FROM[self.source.current()] == "At a point")
                 or (self.dispense_card.is_open()
                     and WHERE[self.target.current()] == "At a point"))
 
     def _points_toggled(self) -> None:
-        # Built in turn: a card's toggle can come before the next exists.
-        if hasattr(self, "saved_card") and hasattr(self, "dispense_card"):
+        # Built in turn: a toggle can come before the next card exists.
+        if hasattr(self, "saved_section") and hasattr(self, "dispense_card"):
             self.marks.show_memo(self.points_shown)
 
     def _mark(self, u: float, v: float) -> None:
@@ -1349,11 +1360,9 @@ class ManualPage(QWidget):
         self._add_memo(self._crosshair_spot(self.jog.pose[:2]), None)
 
     def _add_memo(self, xy, z) -> None:
-        """A new memo point, chosen and shown: Memo points opens unless the
-        points are shown already."""
+        """A new memo point, chosen. It opens nothing: the operator's
+        folding stays."""
         point = self.session.add_memo_point(xy[0], xy[1], z)
-        if not self.points_shown:
-            self.memo_card.set_open(True)
         self.memo_table.choose(point.name)
         if self.view.marks_box.isVisible():
             self.view.marks_box.setChecked(True)
@@ -1385,7 +1394,7 @@ class ManualPage(QWidget):
         self._refresh()
 
     def chosen_point(self) -> str | None:
-        """The point chosen in Memo points or Saved points: one at most."""
+        """The point chosen in Memo or Saved: one at most."""
         return self.memo_table.chosen_name or self.saved_table.chosen_name
 
     def _refresh_memo_buttons(self) -> None:

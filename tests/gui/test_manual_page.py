@@ -245,17 +245,32 @@ def test_a_right_click_marks_a_point_drawn_only_while_points_are_shown(
     _wait(app, page)
     assert [p.name for p in session.memo_points] == ["M1"]
     assert _xy(session) == pytest.approx(before)        # marking moves nothing
-    # Marked to be seen: the Memo points card opens, the point chosen.
     assert page.points_shown
-    assert page.memo_card.is_open()
     assert page.memo_table.chosen_name == "M1"
     assert len(_points_drawn(page)) == 1
-    page.memo_card.set_open(False)
+    page.memo_section.set_collapsed(True)
+    assert len(_points_drawn(page)) == 1               # Saved is still open
+    page.saved_section.set_collapsed(True)
     page.source.buttons[0].click()                     # In a well
     assert _points_drawn(page) == []
     page.target.buttons[1].click()                     # Dispense: At a point
     page.dispense_card.set_open(True)
     assert len(_points_drawn(page)) == 1
+
+
+def test_a_right_click_only_adds_a_point_it_opens_nothing(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page.memo_section.set_collapsed(True)
+    page.saved_section.set_collapsed(True)
+    page.view.right_clicked.emit(W / 2 + 100, H / 2)
+    _wait(app, page)
+    assert [p.name for p in session.memo_points] == ["M1"]
+    assert page.memo_section.collapsed
+    assert page.saved_section.collapsed
+    assert _points_drawn(page) == []
 
 
 def test_a_point_is_deleted_by_its_cross(app, page, session):
@@ -634,7 +649,6 @@ def test_a_saved_point_is_drawn_cyan_with_a_filled_mark(app, page, session):
     _open_upper(app, page, session)
     _wait(app, page)
     _over_the_deck(app, page, session)
-    page.saved_card.set_open(True)
     filled = [i for i in page.view._marks if isinstance(i, overlays.Circle)
               and i.color == MEMO and i.fill]
     assert len(filled) == 1

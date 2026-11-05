@@ -2,7 +2,7 @@
 
 The points are the session's (`Session.points`): the memo points, then the
 saved points (#62), the profile's positions less Robot setup's - or only
-one kind (`kind`: the Memo points and the Saved points cards, #66). This
+one kind (`kind`: the Points card's sections Memo and Saved, #96). This
 shows them and writes an edit back, and the "points" layer of the picture
 follows the same list. A cell is edited by a double click, in a number box
 that takes Enter; a memo point's Z box goes down to "travel height", which
