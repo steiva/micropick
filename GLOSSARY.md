@@ -11,7 +11,12 @@ _Avoid_: mover, travel, drive
 
 **Retract**:
 Driving the Z axis all the way up, to the top of its travel with the tip that is on.
+On screen, a Retract choice after Aspirate or Dispense takes the tip up to the travel height.
 _Avoid_: home (homing is all axes, to their switches)
+
+**Retract slowly**:
+The tip first rises a little, very slowly, so the liquid leaving with it does not pull a cuboid along; then it goes up as usual.
+_Avoid_: slow lift, lift out slowly
 
 **Measured top**:
 The Z the robot reports right after a retract. It depends only on the tip that is on, so it holds until the tip or the robot connection changes.
