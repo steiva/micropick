@@ -9,7 +9,7 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication                     # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel             # noqa: E402
 
 from micropick.config.labware import resolve_definition        # noqa: E402
 from micropick.config.schema import WellCenter                 # noqa: E402
@@ -45,6 +45,15 @@ def window(app, tmp_path, monkeypatch):
     w.hide()
     w.session.shutdown()
     w.deleteLater()
+
+
+def test_the_heading_asks_where_from(app, window):
+    window.open_task("manual")
+    window.show_step("source")
+    app.processEvents()
+    page = window.current_page()
+    assert "Where do you pick from?" in [
+        label.text() for label in page.findChildren(QLabel)]
 
 
 def _titles(window):

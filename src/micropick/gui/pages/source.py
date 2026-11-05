@@ -40,7 +40,7 @@ class SourcePage(QWidget):
         layout = QVBoxLayout(self)
         layout.setSpacing(SPACING * 3)
         layout.addStretch(1)
-        layout.addWidget(heading("What do you pick from?", 1, self), 0,
+        layout.addWidget(heading("Where do you pick from?", 1, self), 0,
                          Qt.AlignmentFlag.AlignHCenter)
         self.grid = QGridLayout()
         self.grid.setSpacing(SPACING * 2)
