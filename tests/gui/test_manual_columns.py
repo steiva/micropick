@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QPushButton,        # noqa: E402
 from micropick.config.labware import (LabwareDefinition,         # noqa: E402
                                       resolve_definition)
 from micropick.gui.app import Options                            # noqa: E402
-from micropick.gui.pages.manual import ManualPage                # noqa: E402
+from micropick.gui.pages.manual import FROM, ManualPage          # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.theme import SPACING                          # noqa: E402
 from micropick.gui.widgets.card_columns import CardColumns       # noqa: E402
@@ -108,8 +108,8 @@ def _actions(page, session):
     yield "Dispense's Change closed", lambda: page.dispense_change.setChecked(
         False)
     yield "Change opened", lambda: page.change_button.setChecked(True)
-    for index, name in enumerate(("In a well", "At a point", "By hand")):
-        yield name, lambda i=index: page.source.buttons[i].click()
+    for name in ("In a well", "At a point", "Here", "By hand"):
+        yield name, lambda i=FROM.index(name): page.source.buttons[i].click()
     yield "Above the bottom", lambda: page.height_mode.buttons[1].click()
     yield "Change closed", lambda: page.change_button.setChecked(False)
     yield "Sizes opened", lambda: page.sizes.toggle.setChecked(True)

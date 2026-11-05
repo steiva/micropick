@@ -2066,3 +2066,80 @@ def test_the_line_says_retract_slowly(page):
     assert page.dispense_line.text() == "50 µl/s · retract slowly after 5 s"
     rows.choice.setCurrentText("Don't retract")
     assert page.dispense_line.text() == "50 µl/s · don't retract"
+
+
+# -- Here, and the keys that do it (#104) ----------------------------------------
+
+
+def _rebind(session, action, key):
+    session.settings.keys = {**session.settings.keys, action: key}
+    session.settings_changed.emit(session.settings)
+
+
+def test_here_is_labeled_with_the_key_as_bound(page, session):
+    assert [b.text() for b in page.source.buttons] == [
+        "In a well", "At a point", "By hand", "Here (A)"]
+    assert page.target.buttons[2].text() == "Here (D)"
+    _rebind(session, "aspirate", "Q")
+    _rebind(session, "dispense", "W")
+    assert page.source.buttons[3].text() == "Here (Q)"
+    assert page.target.buttons[2].text() == "Here (W)"
+
+
+def test_aspirate_here_takes_where_the_tip_is(app, page, session):
+    _ready_by_hand(app, page, session)
+    session.motion.tip_to((180.0, 120.0), 70.0)
+    page.jog.refresh_position()
+    _wait(app, page)
+    at = _aspirated_at(session)
+    page.source.buttons[3].click()                       # Here
+    assert page.aspirate_button.isEnabled()
+    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at == [pytest.approx((180.0, 120.0, 70.0), abs=0.05)]
+    assert session.in_tip == pytest.approx(15.0)
+    assert _pose(session) == pytest.approx((180.0, 120.0, 70.0), abs=0.05)
+
+
+def test_aspirate_here_is_gray_without_a_tip(page):
+    page.source.buttons[3].click()
+    assert not page.aspirate_button.isEnabled()
+
+
+def test_here_asks_no_height(page):
+    page.volume.setValue(15.0)
+    page.source.buttons[3].click()
+    page.change_button.setChecked(True)
+    assert page.settings_line.text() == (
+        "15 µl · 50 µl/s · retract automatically")
+    assert not page.height_row.isVisibleTo(page.settings_box)
+    assert not page.hand_z_row.isVisibleTo(page.settings_box)
+    assert not page.above_row.isVisibleTo(page.settings_box)
+
+
+def test_the_a_key_follows_aspirates_retract(app, page, session):
+    _ready_by_hand(app, page, session)
+    session.motion.tip_to((180.0, 120.0), 70.0)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page._aspirate_here()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx(
+        (180.0, 120.0, _travel_z(session)), abs=0.05)
+    session.motion.tip_to((180.0, 120.0), 70.0)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    page._aspirate_here()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx((180.0, 120.0, 70.0), abs=0.05)
+
+
+def test_the_d_key_follows_dispenses_retract(app, page, session):
+    _pour(app, page, session)
+    page.dispense_retract.choice.setCurrentText("Don't retract")
+    page._dispense_here()
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx((150.0, 150.0, 70.0), abs=0.05)

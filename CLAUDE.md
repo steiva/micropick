@@ -367,8 +367,10 @@ a right click only adds a point: it opens nothing), and both kinds
 listed under "At a point"
 (`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
 settings as one line with Change (height above a well's bottom, or By
-hand's; volume; speed), From In a well / At a point / By hand,
-enabled once a source is chosen, the TipGauge its answer. By hand (#60)
+hand's; volume; speed), From In a well / At a point / By hand / Here (#104: where the tip is, no
+height; here and in Dispense labeled with the key as bound, "Here (A)", "Here
+(D)", and a key does what the button does with Here chosen, the retract
+choices included), enabled once a source is chosen, the TipGauge its answer. By hand (#60)
 takes from under the camera's crosshair (the picture's center through
 the pixel map, plus the measured tip offset); no spot is clicked: a
 click moves the camera, with Snap to found cuboids onto a cuboid's

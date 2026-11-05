@@ -2374,3 +2374,17 @@ On a full HD window, the page in two columns.
 - [ ] **Close under the travel height.**
   A point 1 mm under the travel height, Aspirate there with Retract slowly
   on: it only goes up, no slow move.
+
+## Manual pick: Here, and the A and D keys (#104)
+
+- [ ] **Aspirate Here.**
+  A tip on, jogged down into liquid. From Here (A): no height in the line or
+  under Change. Aspirate takes where the tip is, nothing moves on the way
+  down, then it leaves as the card says.
+- [ ] **The labels follow the keys.**
+  Settings, Keys: bind aspirate to Q and dispense to W, Save. The cards read
+  "Here (Q)" and "Here (W)", Q and W do it, A and D no longer.
+- [ ] **A key is the button.**
+  Don't retract in Aspirate: A leaves the tip down. Retract after delay in
+  Dispense: D gives back and rises after the delay, Esc in it leaves the tip
+  down.

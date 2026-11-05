@@ -121,6 +121,7 @@ else the drawing's, and the line says which (#89). From:
 
 * **In a well** - a plate the robot session holds and its well.
 * **At a point** - a memo or saved point, at its own Z.
+* **Here** - where the tip is, no height asked.
 * **By hand** - the spot under the camera's crosshair (#60): the
   picture's center through the pixel map, plus the measured tip offset.
   The operator aims with the picture: a click moves the camera, and with
@@ -178,8 +179,9 @@ settings' flow rate and kept by the page, never in the profile. Then where:
 
 Its button says what it does - "Go to A7 and dispense", "Dispense here" -
 and is gray while the tip is empty. A and D aspirate and dispense where
-the tip is, each with its own card's settings: Aspirate's volume and speed,
-Dispense's amount and speed.
+the tip is, each with its own card's settings, as its button does with Here
+chosen: volume or amount, speed and how the tip leaves. So Here, in both
+cards, is labeled with the key as bound (#104): "Here (A)", "Here (D)".
 
 How the tip leaves
 ------------------
@@ -290,7 +292,7 @@ KEYS = (("aspirate", "aspirate here", "_aspirate_here"),
         ("dispense", "dispense here", "_dispense_here"))
 
 # Aspirate from, Dispense how much and where: the segmented choices.
-FROM = ("In a well", "At a point", "By hand")
+FROM = ("In a well", "At a point", "By hand", "Here")
 AMOUNT = ("Part", "All")
 WHERE = ("In a well", "At a point", "Here")
 
@@ -588,6 +590,7 @@ class ManualPage(QWidget):
         session.confirmations_changed.connect(self._bottom_changed)
         self._shortcuts = []
         self._install_shortcuts()
+        self._name_keys()
         session.settings_changed.connect(lambda _s: self._rebind())
         self._reload_plates()
         self._on_profile_changed()
@@ -869,6 +872,15 @@ class ManualPage(QWidget):
         self._shortcuts = []
         self._install_shortcuts()
         self.jog.set_page_help(self._page_help())
+        self._name_keys()
+
+    def _name_keys(self) -> None:
+        """Here, in both cards, says the key that does it."""
+        bindings = self.session.settings.keys
+        self.source.set_text(FROM.index("Here"),
+                             f"Here ({keys.key_text(bindings, 'aspirate')})")
+        self.target.set_text(WHERE.index("Here"),
+                             f"Here ({keys.key_text(bindings, 'dispense')})")
 
     # -- liquid ------------------------------------------------------------------
 
@@ -876,10 +888,12 @@ class ManualPage(QWidget):
         height = (f"Z {self.hand_z.value():g} mm" if self._hand_z_chosen()
                   else f"{self.above_bottom.value():g} mm above "
                        f"{self._bottom_words()}")
-        self.settings_line.setText(
-            f"{height} · {self.volume.value():g} µl · "
-            f"{self.flow_rate.value():g} µl/s · "
-            f"{self.aspirate_retract.words()}")
+        words = [f"{self.volume.value():g} µl",
+                 f"{self.flow_rate.value():g} µl/s",
+                 self.aspirate_retract.words()]
+        if not self._here():
+            words.insert(0, height)
+        self.settings_line.setText(" · ".join(words))
 
     def _show_dispense_line(self) -> None:
         self.dispense_line.setText(f"{self.dispense_rate.value():g} µl/s · "
@@ -1037,7 +1051,8 @@ class ManualPage(QWidget):
         self.hand_box.setVisible(chosen == "By hand")
         self.height_row.setVisible(chosen == "By hand")
         self.hand_z_row.setVisible(self._hand_z_chosen())
-        self.above_row.setVisible(not self._hand_z_chosen())
+        self.above_row.setVisible(not self._hand_z_chosen()
+                                  and not self._here())
         self._show_settings_line()
         self._points_toggled()
         self._refresh()
@@ -1054,14 +1069,18 @@ class ManualPage(QWidget):
         self._points_toggled()
         self._refresh()
 
+    def _here(self) -> bool:
+        """Aspirate takes where the tip is: no height of its own."""
+        return FROM[self.source.current()] == "Here"
+
     def _by_hand(self) -> bool:
         """Aspirate takes from under the crosshair."""
         return FROM[self.source.current()] == "By hand"
 
     def _source(self):
         """("well", (slot, labware id, definition, well)), ("point",
-        MemoPoint) or ("hand", None), under the crosshair: what Aspirate
-        takes from; None while nothing is chosen."""
+        MemoPoint), ("hand", None), under the crosshair, or ("here", None):
+        what Aspirate takes from; None while nothing is chosen."""
         chosen = FROM[self.source.current()]
         if chosen == "In a well":
             well = self.source_wells.chosen()
@@ -1069,7 +1088,7 @@ class ManualPage(QWidget):
         if chosen == "At a point":
             point = self.session.point(self.source_points.chosen_name or "")
             return None if point is None else ("point", point)
-        return ("hand", None)
+        return ("here", None) if self._here() else ("hand", None)
 
     def _target(self):
         """("well", ...), ("point", MemoPoint) or ("here", None): where
@@ -1931,8 +1950,8 @@ class ManualPage(QWidget):
         has_robot = self.session.robot is not None
         free = not self.session.robot_lease.busy
         source = self._source()
-        if source is not None and source[0] == "hand":
-            # Under the crosshair: a tip on and the robot free is enough.
+        if source is not None and source[0] in ("hand", "here"):
+            # Nothing to choose: a tip on and the robot free is enough.
             self.aspirate_button.setEnabled(
                 has_robot and self.session.tip.attached is True and free)
         else:
