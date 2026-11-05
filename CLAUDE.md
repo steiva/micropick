@@ -61,13 +61,14 @@ and, in a build, its commit.
 ### Camera view chrome
 
 Over the picture is only what is used there (REDESIGN §3): the robot's X,
-Y and Z (fixed font, nothing else under them, on any page), beside them
+Y and Z (fixed font, nothing else under them on any page but Manual pick
+Run's height line, `CameraView.set_height_line`), beside them
 the pad's step as a chip (`CameraView.set_step_chip`), the page's
 own lines (`set_status`: found counts, the marker seen, what holds while
 it is true) on the top edge left of the page's buttons, the page's buttons
 and one quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture
-what it does" per item). Never the camera name, slot, resolution, crop,
-zoom, fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
+what it does" per item). Never the camera name, slot (but in that height
+line), resolution, crop, zoom, fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
 semi-transparent boxes, never into the frame and never as a separate panel.
 
 A message is never on the picture or a line of a page's own under X Y Z:
@@ -396,6 +397,18 @@ X, Y, Z under it), the tip's volume counted from the page's aspirates and
 dispenses; Show past picks draws where it aspirated, the last bright
 (`PositionMarks.set_picks`); Look at (a `MiniDeckDropdown`) sends the
 camera over a slot. Work shows the upper camera only.
+
+Under X, Y, Z on this page only, the one exception to nothing under them, is
+the height line (#95, `ManualPage._heights_here`), for the slot the camera
+is over (`camera_moves.camera_slot`: no pixel map or tip calibration needed),
+following it: "Slot 8 · top 85.10 · bottom 67.77 · measured"
+(`well_center.plate_heights`). Measured is a plate confirmed in this robot
+session (`Session.plate_bottom_confirmed`), what In a well and By hand go by;
+any other plate reads "drawing", a measurement not confirmed included. A slot
+with no plate has no line, its row kept (`set_height_line("")`) so the axes
+under it do not move. The source dish's slot says only "Slot 8 · bottom 66.00
+· measured", once `dish_bottom` is confirmed; before a plate's drawing there,
+as `_slot_bottom`. During a move the line stands; a message never goes there.
 
 The robot reports Z at the tip's end with a tip on and at the nozzle
 without one. There are two tops, kept apart in `workflows.motion`: the

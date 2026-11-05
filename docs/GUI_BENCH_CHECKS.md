@@ -2195,8 +2195,10 @@ only: `widgets.toast`, or a page still telling `JogPanel.tell` a refusal.
 - [ ] **Nothing under X Y Z.**
   Manual pick's Run, Picking, the Tip step's picture, a Robot setup sheet:
   jog into a limit, click off the deck, press Save with the robot busy.
-  Under the coordinates there is never a line, only the arrows of the
-  axes. Well center and Dish bottom have no line under their tip height
+  Under the coordinates there is never a message, only the arrows of the
+  axes (and on Manual pick's Run the height line, #95, which says no more
+  than a slot's heights). Well center and Dish bottom have no line under
+  their tip height
   either. "N cuboids found" and MARKER FOUND stand on the picture's top
   edge, left of its buttons, and stay.
 
@@ -2247,3 +2249,33 @@ on screen only.
 
 - [ ] **Source's heading.**
   Manual pick's Source step reads "Where do you pick from?".
+
+## Manual pick: the plate's heights on the picture (#95)
+
+A wrong number here is the one to look for: read the line, then touch. The
+top is the wells' rim, on the platform if there is one; a bottom that does
+not match the plate on the deck is its labware definition or the slot's
+platform height, or a Well center measured badly.
+
+- [ ] **The line follows the camera.**
+  Manual pick's Run, a plate on a platform in slot 8, another in slot 5,
+  slot 2 empty. Look at slot 8: under X Y Z "Slot 8 · top 85.10 · bottom
+  67.77 · drawing", the numbers the plate's. Look at slot 5: its own. Jog
+  across a slot's edge: the slot changes with the crosshair, not with the
+  tip. It stands while the robot moves. Look at slot 2: no line, and the
+  arrows of the axes stay where they were.
+
+- [ ] **Measured or drawing.**
+  Measure the plate in slot 8 on Well center, back to Run: the line ends
+  "measured", and the Z of the tip at the rim is its top. Start a new robot
+  session, the plate loaded again: "drawing", the drawing's numbers, until
+  Use it on Well center; Aspirate In a well goes by the same.
+
+- [ ] **The source dish.**
+  Look at the source dish's slot with no plate there, Dish bottom not done:
+  no line. Save the dish bottom (or Use it), back to Run: "Slot 9 · bottom
+  66.42 · measured", no top.
+
+- [ ] **Only here.**
+  Picking, the Tip step's picture, a Robot setup sheet, Liquid's Plan: no
+  line under X Y Z.
