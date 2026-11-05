@@ -382,7 +382,14 @@ is gray and Z is used; the default where there is one, the line naming it
 spot not in a well is refused, "The spot is not in a well.", nothing moved,
 with Aspirate as soon as I click too (`well_center.in_a_well`: the
 definition's outline at the measured center, less `TIP_RADIUS_MM`), and so
-is a click aiming into a slot with no bottom; Z is not checked. Aspirate is enabled whenever a tip is on and the robot is
+is a click aiming into a slot with no bottom; Z may be on a well's wall.
+A target's Z (Tip to, At a point, By hand's Z) more than 1 mm under the
+bottom of its slot when measured, or 2 mm under a drawing's, is refused in a
+red toast, nothing moved (#101, `manual.under_the_bottom`, its limits
+constants; `ManualPage._heights_in`, what the height line reads, nothing
+to check without one). It is on the move, not in `Session.memo_problem`,
+and no part of the jog envelope: a jog step and Dish bottom's lowering go
+down to a touch. Aspirate is enabled whenever a tip is on and the robot is
 free: one job remembers the camera's pose, the tip to the spot at the
 travel height (`Motion.tip_to`), down, aspirate, the camera back to that
 pose; with Aspirate as soon as I click, a click aims and does it. In a well

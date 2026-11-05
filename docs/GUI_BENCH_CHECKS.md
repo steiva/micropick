@@ -2288,6 +2288,43 @@ platform height, or a Well center measured badly.
   Picking, the Tip step's picture, a Robot setup sheet, Liquid's Plan: no
   line under X Y Z.
 
+## Manual pick: a Z checked against the plate's bottom (#101)
+
+Keep the tip high for these: a target past the limit must not move at all.
+The limits are 1 mm under a measured bottom and 2 mm under a drawing's, and
+the bottom is the one the height line gives. A Z refused that should go, or
+the other way round, is first of all a height line to read.
+
+- [ ] **A Z past the limit moves nothing.**
+  Manual pick's Run, a plate in slot 5 not measured, a tip on, the tip up.
+  The height line over slot 5 says "bottom 3.55 · drawing" (your plate's
+  number). A memo point in the plate, Z 2.5 under that bottom: Tip to does
+  not move, and bottom left in red "Not reachable: Z 1.05 is below the
+  drawing's bottom in slot 5.", for 6 s. Aspirate At a point there and
+  Dispense At a point there (something in the tip): the same, the gauge as
+  it was. By hand at the same Z, the crosshair over the plate: the same,
+  and with Aspirate as soon as I click the camera stays where it was.
+
+- [ ] **A light press stays possible.**
+  Empty dry well only. Measure the plate on Well center, so the line says
+  "measured". A point 0.5 mm over the bottom: Tip to goes. Then points
+  nearer, down to 0.5 mm under the bottom: each goes. 1.5 mm under: refused,
+  "measured bottom". A new robot session, the plate loaded again and not
+  confirmed: the line says "drawing", and the limit is the drawing's.
+
+- [ ] **The source dish.**
+  Dish bottom saved, Z 66.42: a point in the dish's slot at 66 goes, at
+  65 it is refused. Dish bottom not done in this robot session and no
+  plate there: nothing is checked.
+
+- [ ] **No bottom, no check.**
+  An empty slot: a point at a low Z over it is not refused for a bottom (a
+  platform's top still is). A point at the travel height over a plate goes.
+
+- [ ] **Jog and Dish bottom are not stopped.**
+  Over the plate, the pad's Down past the limit: it steps as it always did.
+  Dish bottom's Coarse Down goes on under the bottom saved last.
+
 ## Manual pick: equal columns (#100)
 
 On a full HD window, the page in two columns.
