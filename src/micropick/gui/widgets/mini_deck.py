@@ -87,7 +87,11 @@ class _Tile(QPushButton):
 
 class _Popover(QFrame):
     def __init__(self, owner: MiniDeckDropdown):
-        super().__init__(owner, Qt.WindowType.Popup)
+        # The window's child, not the button's: a stylesheet on the button
+        # (`CameraView.add_top_row_widget`, a height for a button over the
+        # picture) would reach the tiles, which are buttons too, and the deck
+        # is to look the same wherever it is opened.
+        super().__init__(owner.window(), Qt.WindowType.Popup)
         self.setObjectName("raisedCard")
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 12, 12, 12)
@@ -119,6 +123,7 @@ class MiniDeckDropdown(QPushButton):
         self.tiles: dict[int, DeckTile] = {}
         self.slot: int | None = None
         self.placeholder = placeholder
+        self._popover: _Popover | None = None
         row = QHBoxLayout(self)
         row.setContentsMargins(14, 0, 12, 0)
         row.setSpacing(8)
@@ -180,6 +185,8 @@ class MiniDeckDropdown(QPushButton):
         return QSize(width, 40)
 
     def open_popover(self) -> None:
+        if self._popover is not None:
+            self._popover.deleteLater()     # the window's, it would stay
         popover = _Popover(self)
         popover.adjustSize()
         popover.move(self.mapToGlobal(QPoint(0, self.height() + 4)))
@@ -187,8 +194,7 @@ class MiniDeckDropdown(QPushButton):
         self._popover = popover
 
     def _chosen(self, slot: int) -> None:
-        if getattr(self, "_popover", None) is not None:
+        if self._popover is not None:
             self._popover.close()
-            self._popover = None
         self.set_slot(slot)
         self.slot_chosen.emit(slot)

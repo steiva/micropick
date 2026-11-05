@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication, QWidget                     # noqa: 
 
 from micropick.gui import theme                                         # noqa: E402
 from micropick.gui.widgets.banner import Banner                         # noqa: E402
+from micropick.gui.widgets.camera_view import CameraView                # noqa: E402
 from micropick.gui.widgets.controls import Segmented, Switch            # noqa: E402
 from micropick.gui.widgets.fold_card import FoldCard, FoldGroup         # noqa: E402
 from micropick.gui.widgets.footer import Footer                         # noqa: E402
@@ -275,6 +276,23 @@ def test_mini_deck_lights_only_valid_slots(app):
     assert not tiles[1].isEnabled()
     tiles[5].click()
     assert chosen == [5]
+
+
+def test_the_deck_looks_the_same_opened_from_the_picture(app):
+    """A button over the picture is restyled, and its height was the tiles'."""
+    plain = MiniDeckDropdown()
+    plain.open_popover()
+    tile = plain._popover.findChildren(_Tile)[0]
+    view = CameraView()
+    over = MiniDeckDropdown()
+    view.add_top_row_widget(over)
+    over.open_popover()
+    tiles = over._popover.findChildren(_Tile)
+    assert {t.size() for t in tiles} == {tile.size()}
+    assert tile.height() == 74
+    plain._popover.close()
+    over._popover.close()
+    view.deleteLater()
 
 
 def test_sheet_done_and_cancel(app):
