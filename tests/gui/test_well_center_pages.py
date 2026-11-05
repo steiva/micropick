@@ -72,7 +72,7 @@ def _step(app, session):
     page = step_page.WellCenterPage(session)
     _settle(app, page.jog)
     page.select_plate(5, PLATE)
-    page.well_choice.setCurrentText("B2")
+    page.wells.map.well_clicked.emit("B2")
     return page
 
 
@@ -136,9 +136,36 @@ def test_the_steps_go_in_order(app, session):
     page.level_button.click()
     assert page.save_button.isEnabled()
     # Another well: the tip is not over it.
-    page.well_choice.setCurrentText("C3")
+    page.wells.map.well_clicked.emit("C3")
     assert not page.save_button.isEnabled()
     assert not page.centered_button.isEnabled()
+    page.deleteLater()
+
+
+def test_the_well_is_chosen_on_the_plates_map(app, session):
+    page = _step(app, session)
+    definition = resolve_definition(PLATE)
+    assert page.wells.map._columns == definition.ordering
+    assert page._well() == "B2"
+    assert page.wells.well_label.text() == "B2"
+    assert not page.wells.plate.isVisibleTo(page.wells)
+    page.deleteLater()
+
+
+def test_the_map_opens_on_the_well_last_measured(app, session):
+    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "C3", depth_mm=10.0)
+    page = step_page.WellCenterPage(session)
+    _settle(app, page.jog)
+    page.select_plate(5, PLATE)
+    assert page._well() == "C3"
+    page.deleteLater()
+
+
+def test_a_click_on_the_well_in_hand_keeps_the_step(app, session):
+    page = _step(app, session)
+    _go_to_top(app, page)
+    page.wells.map.well_clicked.emit("B2")
+    assert page.centered_button.isEnabled()
     page.deleteLater()
 
 
@@ -261,7 +288,7 @@ def test_measuring_again_keeps_the_depth_set_for_the_plate(app, session):
     _measure(app, session, page, (0.4, -0.3, -1.5))
     session.set_well_depth(5, PLATE, 9.5)
     page.select_plate(5, PLATE)
-    page.well_choice.setCurrentText("B2")
+    page.wells.map.well_clicked.emit("B2")
     _measure(app, session, page, (0.1, 0.2, -1.0))
     center = session.profile.deck.well_center(5, PLATE)
     assert center.offset == pytest.approx([0.1, 0.2, -1.0], abs=0.05)

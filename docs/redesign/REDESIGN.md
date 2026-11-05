@@ -566,7 +566,7 @@ bottom (needed when aspirating near the bottom).
   - "Not measured: using the drawing" (✓ with yellow text);
   - "Not measured yet" (empty ring).
 - **Steps for the selected plate:**
-  1. **Tip to a well:** well Select → Move the tip.
+  1. **Tip to a well:** a well on the plate's map → Move the tip.
   2. **Center the tip:** arrows until the tip is in the middle → It is
      centered.
   3. **Lower to the top of the well:** until the tip end is level with the top
