@@ -2340,3 +2340,23 @@ On a full HD window, the page in two columns.
   Every button's text is whole, Place memo at crosshair and Tip to
   crosshair one under the other. Narrow the window: the columns stay equal,
   then the cards go to one column.
+
+## Manual pick: how the tip leaves (#102)
+
+- [ ] **Retract automatically, on each source.**
+  A tip on, the camera over a plate. Aspirate By hand: the tip goes down,
+  aspirates, rises and the camera comes back. In a well and At a point: it
+  rises where it is, and stays there, the camera not coming back. Dispense
+  Here, In a well, At a point: the same, it rises where it is.
+- [ ] **Don't retract.**
+  Change in Aspirate, Retract: Don't retract. The line says "don't retract".
+  By hand: the tip stays down in the liquid, the camera does not come back.
+  Dispense's choice is its own and is still Retract automatically.
+- [ ] **Retract after delay.**
+  Change, Retract after delay, Delay 5 s (gray until then). The line says
+  "retract after 5 s". Aspirate: the tip stays down for 5 s, Aspirate and
+  Dispense gray and the jog pad grayed, then it rises.
+- [ ] **Esc in the delay.**
+  Delay 60 s, Aspirate, and Esc while the tip is down: the toast says
+  "Stopped: the tip stays down.", the tip has not moved and the buttons
+  come back at once.

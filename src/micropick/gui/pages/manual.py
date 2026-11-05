@@ -181,6 +181,15 @@ and is gray while the tip is empty. A and D aspirate and dispense where
 the tip is, each with its own card's settings: Aspirate's volume and speed,
 Dispense's amount and speed.
 
+How the tip leaves
+------------------
+Each card has its own, on its line (#102, `_RetractRows`): up at once, not
+at all, or after a delay, to the travel height where the tip stands
+(`moves.retract`). Only By hand then brings the camera back to where it
+aimed from, since only there did the camera choose the spot. The delay is
+part of the job, so it holds the lease and every button that moves stays
+gray; a stop ends it with the tip down.
+
 The well center
 ---------------
 Dispense into a well goes from the plate's measured well center where
@@ -207,6 +216,7 @@ Keys toggle); what the mouse does is the picture's mouse row.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from typing import NamedTuple
@@ -237,7 +247,8 @@ from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (Section, card, combo_box, compact,
                              double_spin_box, muted_label, primary_button,
-                             scroll_column, secondary_button, tool_button)
+                             scroll_column, secondary_button, select,
+                             tool_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.controls import Segmented, Switch
@@ -284,6 +295,14 @@ WHERE = ("In a well", "At a point", "Here")
 
 # By hand's height: a Z, or above the bottom of the spot's slot.
 HEIGHT = ("Z", "Above the bottom")
+
+# How the tip leaves, each card its own; the delay's bounds and start.
+RETRACT = ("Retract automatically", "Don't retract", "Retract after delay")
+RETRACT_DELAY_RANGE = (0.5, 60.0)
+RETRACT_DELAY_S = 5.0
+
+# Said when a stop ended the delay.
+STOPPED_DOWN = "Stopped: the tip stays down."
 
 # What the mouse does on the picture, its row along the bottom (§3).
 MOUSE_HELP = ("Right click   mark a point", "Wheel   zoom",
@@ -350,6 +369,40 @@ def _settings_line(parent: QWidget, body) -> tuple[QLabel, QWidget, QWidget]:
     box.setVisible(False)
     body.addWidget(box)
     return line, change, box
+
+
+class _RetractRows:
+    """How the tip leaves, as rows of a card's settings box: the choice, and
+    the delay, gray unless asked for so that the rows stand still."""
+
+    def __init__(self, parent: QWidget, box: QWidget, changed):
+        self.choice = select(parent)
+        self.choice.addItems(RETRACT)
+        self.delay = _number_box(parent, RETRACT_DELAY_S, RETRACT_DELAY_RANGE,
+                                 " s", 1, 0.5)
+        _row(box, "Retract", self.choice)
+        _row(box, "Delay", self.delay)
+        self.choice.currentIndexChanged.connect(lambda _i: self._chosen())
+        self.choice.currentIndexChanged.connect(lambda _i: changed())
+        self.delay.valueChanged.connect(lambda _v: changed())
+        self._chosen()
+
+    def _delayed(self) -> bool:
+        return self.choice.currentText() == "Retract after delay"
+
+    def _chosen(self) -> None:
+        self.delay.setEnabled(self._delayed())
+
+    def how(self) -> moves.Retract:
+        return moves.Retract(
+            rises=self.choice.currentText() != "Don't retract",
+            delay_s=float(self.delay.value()) if self._delayed() else 0.0)
+
+    def words(self) -> str:
+        """As said on the settings line."""
+        if self._delayed():
+            return f"retract after {self.delay.value():g} s"
+        return self.choice.currentText().lower()
 
 
 class _WellPicker(QWidget):
@@ -458,6 +511,8 @@ class ManualPage(QWidget):
         self._bottom: SlotBottom | None = None
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
+        # Set by a stop: ends a job's wait before the tip goes up.
+        self._stop = threading.Event()
         self._forget_targets(redraw=False)
 
         self.opener = CameraOpener(session, self)
@@ -502,6 +557,7 @@ class ManualPage(QWidget):
         layout.setSpacing(SPACING)
         layout.addLayout(body, 1)
 
+        session.stop_requested.connect(self._stop.set)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         session.in_tip_changed.connect(self._in_tip_changed)
@@ -586,6 +642,8 @@ class ManualPage(QWidget):
                            ("Speed", self.flow_rate)):
             rows[label] = _row(self.settings_box, label, box)
             box.valueChanged.connect(lambda _v: self._show_settings_line())
+        self.aspirate_retract = _RetractRows(self, self.settings_box,
+                                             self._show_settings_line)
         self.hand_z_row = rows["Z"]
         self.above_row = rows["Above bottom"]
 
@@ -645,6 +703,8 @@ class ManualPage(QWidget):
         self.dispense_rate.valueChanged.connect(
             lambda _v: self._show_dispense_line())
         _row(self.dispense_box, "Speed", self.dispense_rate)
+        self.dispense_retract = _RetractRows(self, self.dispense_box,
+                                             self._show_dispense_line)
 
         self.target = Segmented(list(WHERE), parent=self)
         self.target.changed.connect(lambda _i: self._target_changed())
@@ -803,10 +863,12 @@ class ManualPage(QWidget):
                        f"{self._bottom_words()}")
         self.settings_line.setText(
             f"{height} · {self.volume.value():g} µl · "
-            f"{self.flow_rate.value():g} µl/s")
+            f"{self.flow_rate.value():g} µl/s · "
+            f"{self.aspirate_retract.words()}")
 
     def _show_dispense_line(self) -> None:
-        self.dispense_line.setText(f"{self.dispense_rate.value():g} µl/s")
+        self.dispense_line.setText(f"{self.dispense_rate.value():g} µl/s · "
+                                   f"{self.dispense_retract.words()}")
 
     def _bottom_words(self) -> str:
         """Which bottom Aspirate's height is above: in a well, the one it
@@ -1106,21 +1168,32 @@ class ManualPage(QWidget):
             return
         session, robot = self.session, self.session.robot
         volume, rate = self._liquid_amount()
+        how = self.aspirate_retract.how()
 
         def job(log):
+            self._stop.clear()
             if go is not None:
                 go(log)
             log(f"aspirate {volume:g} µl at {rate:g} µl/s")
             session.aspirate(volume, rate)
-            return xyz(robot)[:2]
+            at = xyz(robot)[:2]
+            return at, self._leave(how, log)
 
-        def then(at):
+        def then(result):
+            at, rose = result
             self.record_pick(at)
+            if how.rises and not rose:
+                return STOPPED_DOWN
             return f"Aspirated {volume:g} µl at {rate:g} µl/s, {where}."
 
         # In place nothing moves: what is detected on the picture stands.
-        if not self.jog.run_job(job, moves=go is not None, then=then):
+        if not self.jog.run_job(job, moves=go is not None or how.rises,
+                                then=then):
             self.jog.refuse(self.session.robot_lease.refusal)
+
+    def _leave(self, how: moves.Retract, log) -> bool:
+        """The tip up as the card says, at a job's end; True if it went."""
+        return moves.retract(self.session.motion, how, self._stop, log=log)
 
     def _hand_z(self, spot) -> float:
         """By hand's height at `spot`: the Z, or above the bottom of its
@@ -1139,7 +1212,8 @@ class ManualPage(QWidget):
     def _aspirate_by_hand(self, aim=None) -> None:
         """By hand: the camera to `aim` first if given (gantry xy); then,
         from the camera's pose, the tip to the spot under the crosshair,
-        down, aspirate, and the camera back to that pose. One job."""
+        down, aspirate, up as the card says and, once up, the camera back to
+        that pose. One job."""
         problem = self._tip_problem("aspirate") or self._crosshair_problem()
         if problem:
             self.jog.refuse(problem)
@@ -1161,9 +1235,11 @@ class ManualPage(QWidget):
             return
         session, robot = self.session, self.session.robot
         volume, rate = self._liquid_amount()
+        how = self.aspirate_retract.how()
         log.info("aspirate by hand: %s", what)
 
         def job(log_):
+            self._stop.clear()
             if aim is not None:
                 motion.camera_to(aim, log=log_)
             camera = np.array(xyz(robot), dtype=float)
@@ -1171,11 +1247,16 @@ class ManualPage(QWidget):
             log_(f"aspirate {volume:g} µl at {rate:g} µl/s")
             session.aspirate(volume, rate)
             at = xyz(robot)[:2]
-            motion.tip_to(camera[:2], camera[2], log=log_)
-            return at
+            rose = self._leave(how, log_)
+            if rose:
+                motion.tip_to(camera[:2], camera[2], log=log_)
+            return at, rose
 
-        def then(at):
+        def then(result):
+            at, rose = result
             self.record_pick(at)
+            if how.rises and not rose:
+                return STOPPED_DOWN
             return (f"Aspirated {volume:g} µl at {rate:g} µl/s, "
                     f"({spot[0]:.2f}, {spot[1]:.2f}).")
 
@@ -1234,14 +1315,18 @@ class ManualPage(QWidget):
             return
         session = self.session
         rate = float(self.dispense_rate.value())
+        how = self.dispense_retract.how()
 
         def job(log):
+            self._stop.clear()
             if go is not None:
                 go(log)
             amount = session.dispense(rate, volume)
+            if not self._leave(how, log) and how.rises:
+                return STOPPED_DOWN
             return f"Dispensed {amount:g} µl at {rate:g} µl/s, {where}."
 
-        if not self.jog.run_job(job, moves=go is not None):
+        if not self.jog.run_job(job, moves=go is not None or how.rises):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
@@ -1829,19 +1914,20 @@ class ManualPage(QWidget):
         self.cuboid_button.setEnabled(not busy and not problems)
         self._refresh_memo_buttons()
         has_robot = self.session.robot is not None
+        free = not self.session.robot_lease.busy
         source = self._source()
         if source is not None and source[0] == "hand":
             # Under the crosshair: a tip on and the robot free is enough.
             self.aspirate_button.setEnabled(
-                has_robot and self.session.tip.attached is True
-                and not self.session.robot_lease.busy)
+                has_robot and self.session.tip.attached is True and free)
         else:
-            self.aspirate_button.setEnabled(has_robot and source is not None)
+            self.aspirate_button.setEnabled(has_robot and source is not None
+                                            and free)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
         self.dispense_card.setEnabled(self.session.in_tip > 0)
         self.dispense_button.setEnabled(has_robot and target is not None
-                                        and self.session.in_tip > 0)
+                                        and self.session.in_tip > 0 and free)
         # The found count is on the picture, as on Picking.
         self.view.set_status(
             [f"{len(self._cuboids.df)} cuboids found"]

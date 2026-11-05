@@ -288,6 +288,22 @@ class Motion:
             pose[2] = min(float(pose[2]), _travel(top))
         return pose
 
+    def rise(self, *, log=None) -> np.ndarray:
+        """The tip straight up where it stands, to the travel height: to the
+        top, measuring it, while that is not known. Above the travel height
+        it stays. Returns the pose reached."""
+        robot = self._need_robot()
+        top = self.top
+        if top is None:
+            self.retract(log=log)
+            return np.array(xyz(robot))
+        x, y, z = xyz(robot)
+        if z >= _travel(top) - READ_TOL_MM:
+            return np.array((x, y, z))
+        if log is not None:
+            log(f"tip up to z {_travel(top):g}")
+        return _straight(robot, (x, y), _travel(top))
+
     def camera_to(self, xy, *, log=None) -> np.ndarray:
         """The tip up, then the gantry to `xy` at the travel height.
         Returns the pose reached."""

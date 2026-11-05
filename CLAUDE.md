@@ -397,7 +397,15 @@ the height is above the plate's measured bottom (rim less depth, reached as
 the liquid engine reaches it, `Motion.to_measured_bottom`) once it is
 confirmed in this robot session (`Session.plate_bottom_confirmed`), else
 above the drawing's; x and y are the measured center either way. The
-settings line says which ("0.5 mm above the measured bottom"). Aspirate,
+settings line says which ("0.5 mm above the measured bottom"). Aspirate and
+Dispense each say how the tip leaves, on their own, in the page's memory and
+on their line (#102, `manual._RetractRows`, `workflows.manual.retract`):
+Retract automatically (at the start), Don't retract, Retract after delay
+(0.5-60 s, 5 at the start; "50 µl/s · retract after 5 s"). The tip goes
+straight up where it stands to the travel height (`Motion.rise`), and only
+By hand then brings the camera back; left down, the camera stays too. The
+delay holds the lease, the buttons gray; Esc ends it, the tip down, "Stopped:
+the tip stays down." in a toast. Aspirate,
 Dispense and Points never fold and no card opens by itself (#105); Dispense
 is gray while the tip is empty: Part | All (#99: Part chosen at
 start, its volume `picking.vol`), under it its settings as one line with

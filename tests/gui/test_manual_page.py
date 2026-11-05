@@ -336,10 +336,11 @@ def test_the_aspirate_settings_are_one_line_and_change_unfolds_them(page):
     page.flow_rate.setValue(50.0)
     page.hand_z.setValue(70.0)
     # By hand without a dish bottom in this robot session: a Z.
-    assert page.settings_line.text() == "Z 70 mm · 15 µl · 50 µl/s"
+    assert page.settings_line.text() == (
+        "Z 70 mm · 15 µl · 50 µl/s · retract automatically")
     page.source.buttons[0].click()                       # In a well
     assert page.settings_line.text() == (
-        "0.5 mm above the bottom · 15 µl · 50 µl/s")
+        "0.5 mm above the bottom · 15 µl · 50 µl/s · retract automatically")
     assert not page.settings_box.isVisibleTo(page)
     page.change_button.click()
     assert page.settings_box.isVisibleTo(page)
@@ -1004,6 +1005,7 @@ def test_dispense_in_a_confirmed_plate_reaches_the_deposit_height(
     session.profile.picking.deposit_offset_z = 1.5
     page._aspirate_here()
     _wait(app, page)
+    page.dispense_retract.choice.setCurrentText("Don't retract")
     page.target.buttons[0].click()                       # In a well
     page.target_wells.well.setCurrentText("A7")
     _wait(app, page)
@@ -1551,7 +1553,7 @@ def test_dispense_starts_at_the_profiles_flow_rate(app, session):
     session.profile.picking.flow_rate = 33.0
     page = ManualPage(session)
     assert page.dispense_rate.value() == 33.0
-    assert page.dispense_line.text() == "33 µl/s"
+    assert page.dispense_line.text() == "33 µl/s · retract automatically"
     page.deleteLater()
 
 
@@ -1582,13 +1584,13 @@ def test_the_dispense_button_uses_dispenses_speed(app, page, session):
 
 def test_the_dispense_line_says_the_speed_and_change_edits_it(page):
     page.dispense_rate.setValue(25.0)
-    assert page.dispense_line.text() == "25 µl/s"
+    assert page.dispense_line.text() == "25 µl/s · retract automatically"
     assert not page.dispense_box.isVisibleTo(page)
     page.dispense_change.setChecked(True)
     assert page.dispense_box.isVisibleTo(page)
     assert page.dispense_box.isAncestorOf(page.dispense_rate)
     page.dispense_rate.setValue(12.5)
-    assert page.dispense_line.text() == "12.5 µl/s"
+    assert page.dispense_line.text() == "12.5 µl/s · retract automatically"
     page.dispense_change.setChecked(False)
     assert not page.dispense_box.isVisibleTo(page)
 
@@ -1598,9 +1600,9 @@ def test_aspirates_line_does_not_follow_dispenses_speed(page):
     before = page.settings_line.text()
     page.dispense_rate.setValue(7.0)
     assert page.settings_line.text() == before
-    assert page.dispense_line.text() == "7 µl/s"
+    assert page.dispense_line.text() == "7 µl/s · retract automatically"
     page.flow_rate.setValue(41.0)
-    assert page.dispense_line.text() == "7 µl/s"
+    assert page.dispense_line.text() == "7 µl/s · retract automatically"
 
 
 def test_the_dispense_line_stands_under_amount_and_over_where(app, page):
@@ -1796,6 +1798,7 @@ def test_dispense_at_a_point_within_the_limit_goes(app, page, session):
     _over_the_deck(app, page, session)
     _liquid_in_the_tip(app, page, session)
     point = _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 0.95)
+    page.dispense_retract.choice.setCurrentText("Don't retract")
     page.target_points.choose(point.name)
     page.dispense_button.click()
     _wait(app, page)
@@ -1852,3 +1855,175 @@ def test_a_jog_step_is_not_checked_against_the_bottom(app, page, session):
         _wait(app, page)
     assert _pose(session)[2] == pytest.approx(1.0, abs=0.05)
     assert _said(page)[1] != "refusal"
+
+
+# -- how the tip leaves (#102) --------------------------------------------------
+
+
+def _at_a_point(app, page, session):
+    """Ready to aspirate at a point, the tip at the travel height."""
+    _ready_by_hand(app, page, session)
+    session.add_memo_point(170.0, 140.0, 70.0)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose("M1")
+    assert page.aspirate_button.isEnabled()
+
+
+def _travel_z(session):
+    return session.motion.travel_z
+
+
+def test_aspirate_at_a_point_rises_there_by_default(app, page, session):
+    _at_a_point(app, page, session)
+    at = _aspirated_at(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert at == [pytest.approx((170.0, 140.0, 70.0), abs=0.05)]
+    assert _pose(session) == pytest.approx(
+        (170.0, 140.0, _travel_z(session)), abs=0.05)
+
+
+def test_aspirate_in_a_well_rises_there_by_default(app, page, session):
+    _ready_by_hand(app, page, session)
+    session.load_labware(
+        resolve_definition("corning_96_wellplate_360ul_flat"), 5)
+    page.source.buttons[0].click()                       # In a well
+    page.source_wells.well.setCurrentText("A1")
+    x, y = _pose(session)[:2]
+    robot, to_well = session.robot, session.robot.move_to_well
+
+    def down_in_the_well(*args, **kwargs):               # the mock stays
+        result = to_well(*args, **kwargs)
+        robot.move_to_coordinates((x, y, 70.0), verbose=False)
+        return result
+    robot.move_to_well = down_in_the_well
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert session.in_tip == pytest.approx(15.0)
+    assert _pose(session) == pytest.approx((x, y, _travel_z(session)),
+                                           abs=0.05)
+
+
+def test_dont_retract_leaves_the_tip_down_at_a_point(app, page, session):
+    _at_a_point(app, page, session)
+    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx((170.0, 140.0, 70.0), abs=0.05)
+
+
+def test_by_hand_dont_retract_leaves_the_tip_down_and_the_camera_where_it_is(
+        app, page, session):
+    _ready_by_hand(app, page, session)
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(70.0)
+    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx((160.0, 145.0, 70.0), abs=0.05)
+
+
+def _pour(app, page, session):
+    """Something in the tip, the tip at (150, 150) over the deck."""
+    _ready_by_hand(app, page, session)
+    session.aspirate(15.0, 50.0)
+    session.motion.tip_to((150.0, 150.0), 70.0)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page.target.buttons[2].click()                       # Here
+    page.amount.buttons[1].click()                       # All
+
+
+def test_dispense_here_rises_by_default_and_each_key_follows_its_card(
+        app, page, session):
+    _pour(app, page, session)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx(
+        (150.0, 150.0, _travel_z(session)), abs=0.05)
+
+
+def test_dispense_dont_retract_stays_down(app, page, session):
+    _pour(app, page, session)
+    page.dispense_retract.choice.setCurrentText("Don't retract")
+    page.dispense_button.click()
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert _pose(session) == pytest.approx((150.0, 150.0, 70.0), abs=0.05)
+
+
+def test_each_card_has_its_own_retract_on_its_line(page):
+    page.dispense_retract.choice.setCurrentText("Retract after delay")
+    assert page.dispense_line.text() == "50 µl/s · retract after 5 s"
+    page.dispense_retract.delay.setValue(7.5)
+    assert page.dispense_line.text() == "50 µl/s · retract after 7.5 s"
+    assert "retract automatically" in page.settings_line.text()
+    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    assert page.settings_line.text().endswith("don't retract")
+    assert page.dispense_line.text() == "50 µl/s · retract after 7.5 s"
+
+
+def test_the_delay_is_asked_only_for_retract_after_delay(page):
+    rows = page.aspirate_retract
+    assert not rows.delay.isEnabled()
+    rows.choice.setCurrentText("Retract after delay")
+    assert rows.delay.isEnabled()
+    assert (rows.delay.minimum(), rows.delay.maximum()) == (0.5, 60.0)
+    assert rows.delay.singleStep() == 0.5
+    assert rows.delay.value() == 5.0
+
+
+def _waiting(app, page, session):
+    """Until the tip is down, in the delay: the liquid has been taken."""
+    import time
+    end = time.monotonic() + 5
+    while session.in_tip == 0 and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    app.processEvents()
+
+
+def test_esc_in_the_delay_leaves_the_tip_down_and_says_so(app, page, session):
+    _at_a_point(app, page, session)
+    rows = page.aspirate_retract
+    rows.choice.setCurrentText("Retract after delay")
+    rows.delay.setValue(60.0)
+    page.aspirate_button.click()
+    _waiting(app, page, session)
+    assert session.robot_lease.busy                      # the delay holds it
+    assert not page.aspirate_button.isEnabled()
+    assert not page.dispense_button.isEnabled()
+    session.request_stop()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx((170.0, 140.0, 70.0), abs=0.05)
+    assert toast_of(page).text() == "Stopped: the tip stays down."
+    assert page.aspirate_button.isEnabled()
+
+
+def test_by_hand_esc_in_the_delay_does_not_bring_the_camera_back(
+        app, page, session):
+    _ready_by_hand(app, page, session)
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(70.0)
+    rows = page.aspirate_retract
+    rows.choice.setCurrentText("Retract after delay")
+    rows.delay.setValue(60.0)
+    page.aspirate_button.click()
+    _waiting(app, page, session)
+    session.request_stop()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx((160.0, 145.0, 70.0), abs=0.05)
+
+
+def test_by_hand_after_the_delay_brings_the_camera_back(app, page, session):
+    _ready_by_hand(app, page, session)
+    before = _pose(session)
+    page.height_mode.buttons[0].click()                  # Z
+    page.hand_z.setValue(70.0)
+    rows = page.aspirate_retract
+    rows.choice.setCurrentText("Retract after delay")
+    rows.delay.setValue(0.5)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx(before, abs=0.05)

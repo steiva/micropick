@@ -158,3 +158,32 @@ def test_a_refusal_is_said_in_the_operators_words():
         "Z 50 is below the platform in slot 8")
     assert motion.refused((x, y, 49.5)) == (
         "Z 49.5 is below the platform in slot 8")
+
+
+def test_rise_goes_straight_up_to_the_travel_height():
+    robot = _robot()
+    motion = Motion(robot)
+    motion.tip_to((200.0, 150.0), 30.0)
+    retracts = len(_retracts(robot))
+    reached = motion.rise()
+    assert tuple(reached) == pytest.approx((200.0, 150.0, TOP - 1.0))
+    assert xyz(robot) == pytest.approx((200.0, 150.0, TOP - 1.0))
+    assert len(_retracts(robot)) == retracts            # no retract needed
+
+
+def test_rise_at_the_travel_height_does_not_move():
+    robot = _robot()
+    motion = Motion(robot)
+    motion.camera_to((200.0, 150.0))
+    moves = len(robot.log)
+    motion.rise()
+    assert len(robot.log) == moves
+
+
+def test_rise_with_the_top_not_measured_retracts():
+    robot = _robot()
+    motion = Motion(robot)
+    motion.rise()
+    assert motion.top == pytest.approx(TOP)
+    assert len(_retracts(robot)) == 1
+    assert xyz(robot)[:2] == pytest.approx((100.0, 100.0))
