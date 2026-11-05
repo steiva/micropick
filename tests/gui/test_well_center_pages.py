@@ -20,6 +20,7 @@ from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 from micropick.workflows import well_center                      # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
@@ -155,6 +156,20 @@ def test_the_step_lists_the_plates_with_their_state(app, session):
     # On to the plate still to do.
     assert page._selected == ("5", PLATE)
     page.deleteLater()
+
+
+def test_a_robot_held_is_a_refusal_and_nothing_is_said_under_the_tip(
+        app, session):
+    page = _step(app, session)
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        page._go_to_well_top()
+    finally:
+        lease.release()
+    said = toast_of(page)
+    assert said.text() == session.robot_lease.refusal
+    assert said.property("tone") == "refusal"
+    assert not hasattr(page, "said")
 
 
 def test_the_step_shows_the_tip_and_the_pad_and_no_camera(app, session):

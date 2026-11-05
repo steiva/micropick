@@ -88,7 +88,7 @@ class SourcePage(QWidget):
         try:
             self.session.choose_source(key)
         except SessionError as exc:
-            show_toast(self, describe_error(exc))
+            show_toast(self, describe_error(exc), refusal=True)
             self.refresh()
 
     def _chosen(self) -> str | None:

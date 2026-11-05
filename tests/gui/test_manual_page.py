@@ -17,10 +17,13 @@ from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.config.schema import DeckModule                   # noqa: E402
+from micropick.core.deck import slot_center                      # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.detector import Detection                     # noqa: E402
 from micropick.gui.pages.manual import ManualPage                # noqa: E402
 from micropick.gui.session import SOURCE_DISH, Session           # noqa: E402
+from micropick.gui.widgets.memo_points import BAD, Z_COLUMN       # noqa: E402
+from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -203,7 +206,11 @@ def test_a_click_outside_the_jog_envelope_moves_nothing(app, page, session):
     # Far to the left and up of the deck's corner: past the soft limits.
     _left_click(app, page, 110.0, 110.0)
     assert _xy(session) == pytest.approx(before)
-    assert "UNREACHABLE" in page.jog.position_lines[-1]
+    said = toast_of(page)
+    assert said.text().startswith("Not reachable: ")
+    assert said.text().endswith(".")
+    assert said.property("tone") == "refusal"
+    assert len(page.jog.position_lines) == 1
 
 
 def test_a_click_while_the_robot_is_busy_elsewhere_moves_nothing(
@@ -1059,7 +1066,7 @@ def test_by_hand_a_spot_on_the_wall_is_refused_and_nothing_moves(
     before, calls = _pose(session), len(session.robot.calls)
     page.aspirate_button.click()
     _wait(app, page)
-    assert "The spot is not in a well." in page.jog._message
+    assert toast_of(page).text() == "The spot is not in a well."
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
     assert not [c for c in session.robot.calls[calls:]
@@ -1074,7 +1081,7 @@ def test_by_hand_a_click_on_the_wall_is_refused_as_soon_as_i_click(
     before = _pose(session)
     # 4.5 mm to the right of the crosshair: the wall between A1 and A2.
     _left_click(app, page, W / 2 + 4.5 / K, H / 2)
-    assert "The spot is not in a well." in page.jog._message
+    assert toast_of(page).text() == "The spot is not in a well."
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
 
@@ -1088,8 +1095,7 @@ def test_by_hand_a_click_into_a_slot_without_a_bottom_is_refused(
     page.aspirate_on_click.setChecked(True)
     before = _pose(session)
     _left_click(app, page, W / 2 - 20.0 / K, H / 2)      # over slot 4
-    assert "no bottom" in page.jog._message
-    assert "slot 4" in page.jog._message
+    assert toast_of(page).text() == "No bottom is confirmed in slot 4."
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
 
@@ -1103,3 +1109,137 @@ def test_by_hand_z_is_not_refused_on_the_wall(app, page, session):
     page.aspirate_button.click()
     _wait(app, page)
     assert at[0] == pytest.approx((A1[0] + 4.5, A1[1], 20.0), abs=0.05)
+
+
+# -- what the page says: the toast, in sentences (#94) -----------------------
+
+BELOW = "Z 50 is below the platform in slot 8"
+
+
+def _said(page):
+    toast = toast_of(page)
+    return toast.text(), toast.property("tone")
+
+
+def _point_below_the_platform(app, page, session):
+    """M1 over slot 8's platform, 14 mm under its top, chosen."""
+    session.set_deck_modules(
+        [DeckModule(slots=[8], offset=[0, 0, 64.0], name="Platform")])
+    x, y = slot_center(8)
+    point = session.add_memo_point(x, y, 50.0)
+    page.memo_table.refresh()
+    page.memo_table.choose(point.name)
+    app.processEvents()
+    return point
+
+
+def test_a_point_below_a_platform_is_refused_in_a_sentence(app, page, session):
+    _calibrate(session)
+    _tip_on(app, page, session)
+    _point_below_the_platform(app, page, session)
+    before = _pose(session)
+    page.tip_to_button.click()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx(before)
+    assert _said(page) == (f"Not reachable: {BELOW}.", "refusal")
+    assert len(page.jog.position_lines) == 1
+
+
+def test_a_point_marked_below_a_platform_says_so_and_its_z_stays_red(
+        app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    session.set_deck_modules(
+        [DeckModule(slots=[8], offset=[0, 0, 64.0], name="Platform")])
+    x, y = slot_center(8)
+    session.robot.move_to_coordinates((x, y, 90.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    page.new_z.setValue(50.0)
+    page._mark(W / 2, H / 2)
+    point = session.memo_points[-1]
+    assert _said(page) == (f"{point.name} is not reachable: {BELOW}.",
+                           "refusal")
+    z_item = page.memo_table.item(0, Z_COLUMN)
+    assert z_item.foreground().color().name() == BAD
+    assert z_item.toolTip() == BELOW
+
+
+def test_a_memo_point_that_can_be_reached_is_an_answer(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page._mark(W / 2, H / 2)
+    text, tone = _said(page)
+    assert text.startswith("M1 at (") and text.endswith(".")
+    assert tone == "answer"
+
+
+def test_nothing_in_the_tip_is_refused_in_a_sentence(app, page, session):
+    _tip_on(app, page, session)
+    page._dispense(("here", None))
+    assert _said(page) == ("Nothing is in the tip.", "refusal")
+
+
+def test_more_than_the_tip_holds_is_refused_in_a_sentence(app, page, session):
+    _tip_on(app, page, session)
+    session.aspirate(5.0, 50.0)
+    page.amount.buttons[1].click()                       # Part
+    page.part.setValue(8.0)
+    page._dispense(("here", None))
+    assert _said(page) == ("The tip holds 5 µl.", "refusal")
+
+
+def test_no_tip_is_refused_in_a_sentence(app, page, session):
+    page._aspirate(("here", None), None)
+    assert _said(page) == ("Put a tip on first.", "refusal")
+
+
+def test_no_tip_calibration_is_refused_in_a_sentence(app, page, session):
+    _calibrate(session)
+    session.profile.calibration.pipette_offset = None
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page._mark(W / 2, H / 2)
+    assert _said(page) == ("Calibrate the tip first.", "refusal")
+
+
+def test_a_right_click_outside_the_map_is_refused_in_a_sentence(
+        app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page._mark(-5000.0, -5000.0)
+    assert _said(page) == ("That spot is outside the calibrated area.",
+                           "refusal")
+
+
+def test_a_click_without_a_map_is_refused_in_the_maps_own_words(page, session):
+    page._clicked(100.0, 100.0)
+    text, tone = _said(page)
+    assert tone == "refusal"
+    assert not text.startswith("Click")
+
+
+def test_a_robot_held_is_refused_in_red(app, page, session):
+    _tip_on(app, page, session)
+    lease = session.robot_lease.claim("picking run", run=True)
+    try:
+        page._aspirate(("here", None), None)
+    finally:
+        lease.release()
+    assert _said(page) == (session.robot_lease.refusal, "refusal")
+
+
+def test_an_aspirate_is_answered_in_a_sentence(app, page, session):
+    _tip_on(app, page, session)
+    page.volume.setValue(10.0)
+    page.flow_rate.setValue(50.0)
+    page._aspirate(("here", None), None)
+    _wait(app, page)
+    assert _said(page) == ("Aspirated 10 µl at 50 µl/s, here.", "answer")
+    assert len(page.jog.position_lines) == 1

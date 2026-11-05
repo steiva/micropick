@@ -19,15 +19,16 @@ from PySide6.QtCore import Qt                                    # noqa: E402
 from PySide6.QtTest import QTest                                 # noqa: E402
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
-from micropick.config.schema import PipetteOffset                # noqa: E402
+from micropick.config.schema import DeckModule, PipetteOffset    # noqa: E402
 from micropick.config.schema import PixelMap as PixelMapConfig   # noqa: E402
-from micropick.core.deck import slot_center                      # noqa: E402
+from micropick.core.deck import nearest_slot, slot_center        # noqa: E402
 from micropick.gui.widgets.jog_pad import keycap               # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import dish_bottom as page_module       # noqa: E402
 from micropick.gui.pages.dish_bottom import DishBottomPage, ago  # noqa: E402
 from micropick.gui.readiness import DISH_POSITION                # noqa: E402
 from micropick.gui.session import Session, SessionError          # noqa: E402
+from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 from micropick.hardware.protocols import xyz                     # noqa: E402
 
 W, H, K = 2592, 1944, 0.026
@@ -251,6 +252,23 @@ def test_nothing_moves_while_the_robot_is_busy_elsewhere(app, session, page):
         lease.release()
     # Let go, the pose is read again (#56), then Up is back.
     assert _until(app, lambda: page.up_button.isEnabled())
+
+
+def test_a_refusal_is_a_toast_and_nothing_is_said_under_the_height(
+        app, session, page):
+    _calibrated(session)
+    page.refresh()
+    assert _until(app, lambda: not page.jog.busy)
+    slot = nearest_slot(*page_module.dish_center(session.profile)[0])
+    session.set_deck_modules(
+        [DeckModule(slots=[slot], offset=[0, 0, 200.0], name="Platform")])
+    page.move_button.click()
+    app.processEvents()
+    said = toast_of(page)
+    assert said.text().startswith("Not possible: Z ")
+    assert said.text().endswith(f"is below the platform in slot {slot}.")
+    assert said.property("tone") == "refusal"
+    assert not hasattr(page, "said")
 
 
 def _press(app, page, key):

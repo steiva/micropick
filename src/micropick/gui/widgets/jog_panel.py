@@ -74,12 +74,17 @@ key is released — and this neither repeats that guard nor works around it.
 
 Where the gantry is goes on the picture
 ---------------------------------------
-The panel has no readout of its own. It says where the gantry is, and what a
-refused or clamped step was, through `position_changed`, and the page hands
-that to its `CameraView`, which draws it in a box in the top-left corner:
-the robot's X, Y and Z, and what a step ran into - the step itself is on
-the pad. The operator jogging is watching the picture; a readout at the
-other side of the window was one more place to look.
+The panel has no readout of its own. It says where the gantry is through
+`position_changed`, and the page hands that to its `CameraView`, which draws
+it in a box in the top-left corner: the robot's X, Y and Z and nothing else
+- the step itself is on the pad. The operator jogging is watching the
+picture; a readout at the other side of the window was one more place to
+look.
+
+Anything else the panel says is a toast (`tell`, an answer; `refuse`, in
+red): what a step ran into, what a job answered, why it did not start. A
+modal box for it would be in the way several times a minute, and a line on
+the picture was missed.
 
 Arrows as on the picture, when the picture is turned
 ---------------------------------------------------
@@ -143,6 +148,7 @@ from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import card, heading, secondary_button
 from .jog_pad import JogPad
+from .toast import show_toast
 
 # What the picture says while there is no robot to ask.
 NO_ROBOT = "robot not connected"
@@ -177,10 +183,8 @@ HOME_TITLE = "Home the robot?"
 HOME_DETAIL = ("All axes go home. The tip calibration has to be done "
                "again.")
 
-# The pose at the head of `JogController.status()`, "(x, y, z) ...", and
-# its "x OUT by 0.30" for each axis out of the envelope.
+# The pose at the head of `JogController.status()`, "(x, y, z) ...".
 POSE = re.compile(r"^\(\s*(-?[\d.]+),\s*(-?[\d.]+),\s*(-?[\d.]+)\)")
-OUT = re.compile(r"\b([xyz]) OUT by ([\d.]+)")
 
 
 def _stepped(controller, result) -> tuple:
@@ -275,9 +279,9 @@ def view_move(axes, axis: str, direction: int) -> tuple[str, int]:
 
 
 class JogPanel(QWidget):
-    # Where the gantry is, and what the last step ran into, as lines for
-    # `CameraView.set_position`. Emitted on every change; `position_lines`
-    # holds the latest for a view connected later.
+    # Where the gantry is, as lines for `CameraView.set_position`. Emitted
+    # on every change and at every job's end, so a page's buttons can follow
+    # it; `position_lines` holds the latest for a view connected later.
     position_changed = Signal(list)
     # A job that may have moved the gantry has finished. A page with
     # detections drawn on the picture drops them: they were measured from
@@ -310,7 +314,6 @@ class JogPanel(QWidget):
         self._all_shortcuts: list[QShortcut] = []
         self._movers: list[QWidget] = []
         self._status = NO_ROBOT
-        self._message = ""
         self._job_moves = True
         self._view_axes = check_view_axes(view_axes)
         self._xy_only = bool(xy_only)
@@ -547,8 +550,8 @@ class JogPanel(QWidget):
         aspirate from the page and a jog key can then never overlap, and the
         controls grey out for all of them. It claims the robot's lease
         (`Session.robot_lease`), so it cannot overlap work on another page
-        either. `fn` may return a MoveResult, None, or a sentence to show
-        under the position, or a `Reached`. Returns False, and runs nothing, while the panel
+        either. `fn` may return a MoveResult, None, a sentence to answer
+        with, or a `Reached`. Returns False, and runs nothing, while the panel
         is busy, the robot is busy elsewhere, or there is no robot.
 
         `then(result)`, if given, is called on the GUI thread with what `fn`
@@ -596,9 +599,14 @@ class JogPanel(QWidget):
         self._set_enabled(self._worker is None)
 
     def tell(self, text: str) -> None:
-        """A line under the position on the picture, as it is given."""
-        self._message = text
-        self._emit_position()
+        """An answer, as a toast; no text says nothing."""
+        if text:
+            show_toast(self, text)
+
+    def refuse(self, text: str) -> None:
+        """Why nothing was done, as a red toast; no text says nothing."""
+        if text:
+            show_toast(self, text, refusal=True)
 
     def step(self, axis: str, direction: int) -> None:
         """One step, as the pad's button for it: from a face of a page's
@@ -628,16 +636,13 @@ class JogPanel(QWidget):
             lease = self.session.robot_lease.claim(what, run=run,
                                                    plates=plates)
             if lease is None:
-                self.tell(self.session.robot_lease.refusal)
+                self.refuse(self.session.robot_lease.refusal)
                 return False
             worker.lease = lease
         self._worker = worker
         worker.what = worker.what or ("moving the robot" if moves
                                       else "talking to the robot")
         self._job_moves = moves
-        # A read says nothing of its own: what the last job said - why a
-        # move failed - stays under the pose it reads.
-        self._job_reads = not robot_work
         # Bound methods, not lambdas: Qt takes a connection's thread from the
         # receiver, and a lambda has none, so it would touch these widgets from
         # the worker's thread.
@@ -676,15 +681,11 @@ class JogPanel(QWidget):
             result = then(result)
         if isinstance(result, str):
             self.tell(result)
-        elif result is None:
-            if not self._job_reads:
-                self._say("")
-        elif not result.ok:
-            self._say(result.reason or "refused", firm=True)
-        elif result.clamped or result.reason:
-            self._say(result.reason, firm=False)
-        else:
-            self._say("")
+        elif result is not None and not result.ok:
+            self.refuse(result.reason or "Refused.")
+        elif result is not None:
+            self.tell(result.reason)
+        self._emit_position()
         self._set_enabled(True)
         if self._job_moves:
             self.moved.emit()
@@ -693,7 +694,8 @@ class JogPanel(QWidget):
         if not self._claim():
             return
         self._then = None
-        self._say(reason, firm=True)
+        self.refuse(reason)
+        self._emit_position()
         self._set_enabled(True)
         # A failed move may still have gone part of the way.
         if self._job_moves:
@@ -708,7 +710,7 @@ class JogPanel(QWidget):
 
     @property
     def position_lines(self) -> list[str]:
-        return [self._status] + ([self._message] if self._message else [])
+        return [self._status]
 
     def show_position_on(self, view) -> None:
         """Keep `view` (a CameraView) showing where the gantry is, with the
@@ -845,8 +847,8 @@ class JogPanel(QWidget):
         self.position_changed.emit(self.position_lines)
 
     def _set_status(self, status: str) -> None:
-        """The robot's X, Y and Z from `controller.status()`, and how far
-        out of the envelope it is if it is; its step is the pad's."""
+        """The robot's X, Y and Z from `controller.status()`; its step is
+        the pad's."""
         found = POSE.match(status.strip())
         if found is None:
             self._status = status.strip()
@@ -854,9 +856,7 @@ class JogPanel(QWidget):
             return
         pose = tuple(float(v) for v in found.groups())
         self._status = "  ".join(
-            [f"{axis} {value:.2f}" for axis, value in zip("XYZ", pose)]
-            + [f"{axis.upper()} out by {by}"
-               for axis, by in OUT.findall(status)])
+            f"{axis} {value:.2f}" for axis, value in zip("XYZ", pose))
         self._emit_position()
         self._set_pose(pose)
 
@@ -864,15 +864,6 @@ class JogPanel(QWidget):
         if pose != self.pose:
             self.pose = pose
             self.pose_changed.emit(pose)
-
-    def _say(self, text: str, firm: bool = False) -> None:
-        """Words rather than colour. Running into a soft limit is ordinary, and
-        the difference between refused and clamped is what the sentence says.
-        Shown on the picture under the position rather than in a dialog: a
-        modal box for it would be in the way several times a minute."""
-        self._message = (("REFUSED: " if firm else "Clamped: ") + text
-                         if text else "")
-        self._emit_position()
 
     def _pad_step(self, mm: float) -> None:
         if self.controller is not None:
@@ -898,7 +889,7 @@ class JogPanel(QWidget):
             self.controller = None
             self._set_pose(None)
             self._status = NO_ROBOT
-            self._say("")
+            self._emit_position()
             self._set_enabled(False)
             return
 

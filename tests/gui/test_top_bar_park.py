@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox          # noqa: E402
 
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
+from micropick.gui.theme import SIZES                            # noqa: E402
 
 YES, NO = QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.No
 
@@ -50,6 +51,21 @@ def _connect(app, window):
     window.session.new_run()
     _settle(app, window)
     assert window.top.park.isEnabled()
+
+
+def test_the_toast_is_at_the_windows_bottom_left(app, window):
+    window.resize(1200, 800)
+    window.say("Parked.")
+    place = window.toast.geometry()
+    assert place.left() < 40
+    assert window.height() - SIZES["footer"] <= place.top()
+    assert place.bottom() < window.height()
+    assert window.toast.property("tone") == "answer"
+
+
+def test_the_status_pill_says_no_message(app, window):
+    window.refuse("Robot busy.")
+    assert not window.top.status.isVisibleTo(window.top)
 
 
 def test_off_until_connected(app, window):
@@ -93,6 +109,7 @@ def test_refused_while_a_jog_panel_is_busy(app, window, monkeypatch):
         window._park()
         assert robot.calls == before
         assert "busy" in window.toast.text()
+        assert window.toast.property("tone") == "refusal"
         assert not window.top.park.isEnabled()
     finally:
         lease.release()

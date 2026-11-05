@@ -28,7 +28,7 @@ others.
 
 A target the gantry cannot reach at the height it crosses the deck at (or
 where it is, while that is not measured) is not moved to; the panel says
-why under the position.
+why in a toast.
 """
 
 from __future__ import annotations
@@ -43,10 +43,14 @@ from ..workflows.jog import Reached
 from ..workflows.manual import camera_target, tip_target
 from .position_marks import CAMERA_POSITIONS
 
-__all__ = ["camera_offset", "move_over_slot", "move_tip_to_pixel",
-           "move_to_pixel", "out_of_reach", "pose_slot"]
+__all__ = ["NO_TIP_CALIBRATION", "OUTSIDE_THE_MAP", "camera_offset",
+           "move_over_slot", "move_tip_to_pixel", "move_to_pixel",
+           "out_of_reach", "pose_slot"]
 
 log = logging.getLogger(__name__)
+
+NO_TIP_CALIBRATION = "Calibrate the tip first."
+OUTSIDE_THE_MAP = "That spot is outside the calibrated area."
 
 
 def camera_offset(session) -> np.ndarray:
@@ -69,14 +73,14 @@ def pose_slot(session, name: str, xy) -> int:
 
 
 def out_of_reach(session, jog, xy, what: str) -> bool:
-    """Said under the position, and True, when the gantry cannot go to
-    `xy` at the height it crosses the deck at."""
+    """Refused, and True, when the gantry cannot go to `xy` at the height
+    it crosses the deck at."""
     motion, pose = session.motion, jog.pose
     z = motion.travel_z if motion.travel_z is not None else (
         pose[2] if pose is not None else None)
     why = motion.refused((xy[0], xy[1], z)) if z is not None else ""
     if why:
-        jog.tell(f"{what} is out of reach: {why}")
+        jog.refuse(f"{what} is out of reach: {why}.")
     return bool(why)
 
 
@@ -103,7 +107,7 @@ def move_to_pixel(session, jog, u: float, v: float, *,
     without one, `no_map` is said and nothing moves."""
     profile, robot = session.profile, session.robot
     if profile is None or profile.pixel_map is None:
-        jog.tell(no_map)
+        jog.refuse(no_map)
         return False
     if robot is None:
         return False
@@ -130,17 +134,17 @@ def tip_at_pixel(session, jog, u: float, v: float, *, no_map: str):
     calibration, said, and None."""
     profile, robot = session.profile, session.robot
     if profile is None or profile.pixel_map is None:
-        jog.tell(no_map)
+        jog.refuse(no_map)
         return None
     offset = profile.calibration.pipette_offset
     if offset is None:
-        jog.tell("Refused: no tip calibration.")
+        jog.refuse(NO_TIP_CALIBRATION)
         return None
     if robot is None:
         return None
     pmap = PixelMap.from_config(profile.pixel_map)
     if not pmap.covers(u, v):
-        jog.tell("Refused: outside the calibrated area.")
+        jog.refuse(OUTSIDE_THE_MAP)
         return None
     gantry = jog.pose                    # not a read: see move_to_pixel
     if gantry is None:

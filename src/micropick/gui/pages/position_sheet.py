@@ -454,7 +454,7 @@ class PositionSheet(SheetWindow):
             self._refresh()
             return said
 
-        # Refused, run_job says why on the picture.
+        # Refused, run_job says why in a toast.
         self.jog.run_job(job, moves=False, then=loaded,
                          what=f"loading {name} into slot {slot}")
 

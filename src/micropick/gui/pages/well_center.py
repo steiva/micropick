@@ -191,7 +191,9 @@ class WellCenterPage(QWidget):
                             machine_controls=False, parent=self)
         self.jog.hide()
         self.jog.pose_changed.connect(self._show_pose)
-        self.jog.position_changed.connect(self._show_said)
+        # Every job's end: the buttons follow it (the robot's lease is
+        # given back before).
+        self.jog.position_changed.connect(lambda _lines: self.refresh())
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
@@ -230,11 +232,6 @@ class WellCenterPage(QWidget):
         self.pad = self.jog.pad
         lines.addWidget(self.pad, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        # What the robot answered: a step refused, a move not possible.
-        self.said = muted_label("", column)
-        self.said.setWordWrap(True)
-        self.said.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lines.addWidget(self.said)
         lines.addStretch(1)
         return column
 
@@ -466,7 +463,7 @@ class WellCenterPage(QWidget):
 
         log.info("well center: to the top of %s in slot %s", well, slot)
         if not self.jog.run_job(job, what="tip to a well", then=reached):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _definition_depth(self) -> float | None:
         definition = self._definition()
@@ -494,7 +491,7 @@ class WellCenterPage(QWidget):
             self.session.set_well_depth(nominal.slot, nominal.load_name,
                                         depth)
         except SessionError as exc:
-            self.jog.tell(describe_error(exc))
+            self.jog.refuse(describe_error(exc))
             return
         self._measurement.forget()
         self._at = TO_WELL
@@ -509,7 +506,7 @@ class WellCenterPage(QWidget):
         try:
             self.session.skip_plate(*self._selected)
         except SessionError as exc:
-            self.jog.tell(describe_error(exc))
+            self.jog.refuse(describe_error(exc))
             return
         show_toast(self, "Using the drawing.")
         self.select_plate(*self._first_to_do())
@@ -520,7 +517,7 @@ class WellCenterPage(QWidget):
         try:
             self.session.use_plate_bottom(*self._selected)
         except SessionError as exc:
-            self.jog.tell(describe_error(exc))
+            self.jog.refuse(describe_error(exc))
             return
         show_toast(self, "Using the last measurement.")
 
@@ -546,12 +543,6 @@ class WellCenterPage(QWidget):
         elif self.session.robot is None:
             self.xy_readout.setText("X —   Y —")
             self.z_readout.setText("Z —")
-        self.refresh()
-
-    def _show_said(self, lines) -> None:
-        """Every answer of the panel's, a job's end included: the buttons
-        follow it (the robot's lease is given back before)."""
-        self.said.setText("\n".join(lines[1:]))
         self.refresh()
 
     def showEvent(self, event) -> None:

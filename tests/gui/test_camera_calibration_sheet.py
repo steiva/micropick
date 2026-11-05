@@ -149,7 +149,9 @@ def test_a_slot_out_of_reach_is_not_moved_to(app, window):
     # Slot 1's center less the start offset is behind the deck.
     sheet.slots.button(1).click()
     app.processEvents()
-    assert "out of reach" in sheet.jog.position_lines[-1]
+    assert "out of reach" in window.toast.text()
+    assert window.toast.property("tone") == "refusal"
+    assert len(sheet.jog.position_lines) == 1
     assert xyz(window.session.robot) == before
     assert sheet.step == "slot"
     assert sheet.slots.marked is None
@@ -174,7 +176,7 @@ def test_without_a_pixel_map_a_click_moves_nothing(app, window):
     sheet.view.clicked.emit(100.0, 100.0)
     app.processEvents()
     assert xyz(window.session.robot) == before
-    assert "arrows" in sheet.jog.position_lines[-1]
+    assert "arrows" in window.toast.text()
 
 
 @pytest.fixture

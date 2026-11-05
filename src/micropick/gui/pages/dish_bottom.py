@@ -174,7 +174,9 @@ class DishBottomPage(QWidget):
         self.jog = JogPanel(session, machine_controls=False, parent=self)
         self.jog.hide()
         self.jog.pose_changed.connect(self._show_pose)
-        self.jog.position_changed.connect(self._show_said)
+        # Every job's end: the buttons follow it (the robot's lease is
+        # given back before).
+        self.jog.position_changed.connect(lambda _lines: self.refresh())
         self._shortcuts: list[QShortcut] = []
 
         layout = QHBoxLayout(self)
@@ -243,12 +245,6 @@ class DishBottomPage(QWidget):
         self.keys_list.hide()
         lines.addWidget(self.keys_list, 0, Qt.AlignmentFlag.AlignHCenter)
 
-        # What the robot answered: a step refused, a move not possible.
-        self.said = muted_label("", column)
-        self.said.setWordWrap(True)
-        self.said.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lines.addSpacing(SPACING)
-        lines.addWidget(self.said)
         lines.addStretch(1)
         return column
 
@@ -331,12 +327,6 @@ class DishBottomPage(QWidget):
             self.z_readout.setText(f"Z {pose[2]:.2f}")
         elif self.session.robot is None:
             self.z_readout.setText("Z —")
-
-    def _show_said(self, lines) -> None:
-        """Every answer of the panel's, a job's end included: the buttons
-        follow it (the robot's lease is given back before)."""
-        self.said.setText("\n".join(lines[1:]))
-        self.refresh()
 
     # -- keys ----------------------------------------------------------------
 
@@ -494,7 +484,7 @@ class DishBottomPage(QWidget):
         motion = self.session.motion
         refused = motion.refused((*xy, z))
         if refused:
-            self.jog.tell(f"Not possible: {refused}.")
+            self.jog.refuse(f"Not possible: {refused}.")
             return
 
         def job(log):
@@ -509,7 +499,7 @@ class DishBottomPage(QWidget):
 
         if not self.jog.run_job(job, what="tip over the dish center",
                                 then=then):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
         self.refresh()
 
     def _touches(self) -> None:
@@ -531,7 +521,7 @@ class DishBottomPage(QWidget):
         if not self.jog.run_job(
                 lambda _log: controller.move("z", +1, distance=step),
                 what="raising the tip a step", then=then):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
         self.refresh()
 
     def _redo(self) -> None:
@@ -547,7 +537,7 @@ class DishBottomPage(QWidget):
         if not self.jog.run_job(lambda _log: float(xyz(robot)[2]),
                                 moves=False, what="reading Z",
                                 then=self._saved):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
         self.refresh()
 
     def _saved(self, z: float) -> str:
@@ -584,7 +574,7 @@ class DishBottomPage(QWidget):
         try:
             self.session.use_last_dish_bottom()
         except SessionError as exc:
-            self.jog.tell(describe_error(exc))
+            self.jog.refuse(describe_error(exc))
             return
         self._at = DONE
         show_toast(self, "Using the last dish bottom.")

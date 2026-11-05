@@ -622,14 +622,14 @@ class PickingPage(QWidget):
 
         def job(log):
             motion.tip_to(where[:2], where[2], log=log)
-            return f"at {DISH_POSITION!r}"
+            return "Camera over the dish center."
 
         if self._running():
             self.jog.lend(self._run_worker.lease)
             self._centering = True
         if not self.jog.run_job(job):
             self._end_centering()
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
         self._refresh()
 
     def _end_centering(self) -> None:
@@ -662,12 +662,12 @@ class PickingPage(QWidget):
             stir(robot)
             if back is None:
                 motion.raise_tip(log=log)
-                return "shaken"
+                return "Dish shaken."
             motion.tip_to(back[:2], back[2], log=log)
-            return f"shaken; back at {DISH_POSITION!r}"
+            return "Dish shaken."
 
         if not self.jog.run_job(job):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _can_shake_in_run(self) -> bool:
         """A run paused or waiting, with no shake of it outstanding."""

@@ -1399,7 +1399,7 @@ def test_a_memo_point_not_named_is_not_the_trash(app, window, page,
 def toasts(page, monkeypatch):
     said = []
     monkeypatch.setattr(page_module, "show_toast",
-                        lambda _host, text: said.append(text))
+                        lambda _host, text, **_kind: said.append(text))
     return said
 
 

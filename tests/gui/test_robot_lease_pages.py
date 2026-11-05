@@ -25,6 +25,7 @@ from micropick.gui.pages.picking import PickingPage              # noqa: E402
 from micropick.gui.pages.home import HomePage                    # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.jog_panel import JogPanel             # noqa: E402
+from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
 RACK = "opentrons_96_tiprack_300ul"
@@ -161,7 +162,7 @@ def test_after_a_failed_move_the_pose_is_read_without_taking_the_robot(
     assert _until(app, lambda: panel.pose is not None and not panel.busy)
     # The move's claim and its release, and nothing for the read after it.
     assert holders == ["moving the robot", None]
-    assert any("out of bounds" in line for line in panel.position_lines)
+    assert "out of bounds" in toast_of(panel).text()
     panel.deleteLater()
 
 

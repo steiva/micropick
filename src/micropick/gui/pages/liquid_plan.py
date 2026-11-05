@@ -1138,10 +1138,10 @@ class LiquidPlanPage(QWidget):
             plan = None if template.old else LiquidPlan.load(path)
         except (ProgramError, OSError, ValueError) as exc:
             log.warning("liquid plan: %s not opened: %s", path, exc)
-            show_toast(self, NOT_A_PLAN)
+            show_toast(self, NOT_A_PLAN, refusal=True)
             return
         if plan is None:
-            show_toast(self, OLD_FILE)
+            show_toast(self, OLD_FILE, refusal=True)
             return
         plan.name = template.name
         self.template, self._template_plan = template, plan
@@ -1160,7 +1160,7 @@ class LiquidPlanPage(QWidget):
             template = self.session.save_liquid_template(
                 self.plan, self.name_field.text())
         except (SessionError, OSError) as exc:
-            show_toast(self, str(exc))
+            show_toast(self, str(exc), refusal=True)
             return
         self.name_row.hide()
         plan = self.plan.model_copy(update={"name": template.name})
@@ -1178,7 +1178,7 @@ class LiquidPlanPage(QWidget):
             self.template = self.session.save_liquid_template_changes(
                 template, self.plan)
         except OSError as exc:
-            show_toast(self, str(exc))
+            show_toast(self, str(exc), refusal=True)
             return
         self._template_plan = self.plan
         self._show_saves()
@@ -1197,7 +1197,7 @@ class LiquidPlanPage(QWidget):
         refusal = (said[0][:1].upper() + said[0][1:] if said
                    else session.liquid_try_refusal(index))
         if refusal:
-            show_toast(self, refusal)
+            show_toast(self, refusal, refusal=True)
             return
         motion, stop, plan = session.motion, self._stop_try, self._edit()
         plates, positions = session.liquid_plates(), session.liquid_positions()
@@ -1222,7 +1222,7 @@ class LiquidPlanPage(QWidget):
             show_toast(self, f"{said} {holds}")
 
         if not self.jog.run_job(job, what="try once", then=tried):
-            show_toast(self, session.robot_lease.refusal)
+            show_toast(self, session.robot_lease.refusal, refusal=True)
             return
         show_toast(self, f"Step {index + 1}: trying on the first well.")
 
@@ -1502,7 +1502,7 @@ class LiquidPlanPage(QWidget):
         try:
             self.session.save_memo_point(name, new_name)
         except SessionError as exc:
-            show_toast(self, str(exc))
+            show_toast(self, str(exc), refusal=True)
             return None
         plan = self._edit()
         kept = Place(kind="point", point=new_name.strip())

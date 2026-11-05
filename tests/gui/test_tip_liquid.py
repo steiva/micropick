@@ -24,6 +24,7 @@ from micropick.config.schema import PixelMap as PixelMapConfig   # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages.dish_bottom import dish_center          # noqa: E402
 from micropick.gui.widgets.jog_panel import JogPanel             # noqa: E402
+from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 from micropick.gui.widgets.tip_liquid import (RunHold,            # noqa: E402
                                               TipLiquidBox)
 from micropick.gui.readiness import DISH_POSITION                # noqa: E402
@@ -132,6 +133,16 @@ def test_dish_center_aspirates_over_the_center_above_the_bottom(
     assert page.holds.text() == "The tip holds 20 µl."
     # Raised to the travel height afterwards.
     assert float(xyz(session.robot)[2]) > 66.4 + 10
+
+
+def test_the_answer_is_a_toast_in_a_sentence(app, session, page):
+    page.aspirate_button.click()
+    assert _until(app, lambda: session.in_tip > 0 and not page.jog.busy)
+    said = toast_of(page)
+    assert said.text().startswith("Aspirated 20 µl from ")
+    assert said.text().endswith(".")
+    assert said.property("tone") == "answer"
+    assert not hasattr(page, "said")
 
 
 def test_aspirating_again_adds_to_what_is_in_the_tip(app, session, page):

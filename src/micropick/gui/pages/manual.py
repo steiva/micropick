@@ -192,7 +192,7 @@ from ...workflows import well_center
 from ...workflows.jog import Reached
 from .. import keys
 from ..auto_camera import CameraOpener
-from ..camera_moves import pose_slot
+from ..camera_moves import NO_TIP_CALIBRATION, OUTSIDE_THE_MAP, pose_slot
 from ..detector import wanted_model
 from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
@@ -618,7 +618,7 @@ class ManualPage(QWidget):
         table.setToolTip(POINTS_TIP)
         table.chosen.connect(self._marks_choose)
         table.z_typed.connect(lambda z: self._memo_z_typed(table, z))
-        table.said.connect(self.jog.tell)
+        table.said.connect(self.jog.refuse)
         return table
 
     def _points_cards(self) -> QWidget:
@@ -912,7 +912,7 @@ class ManualPage(QWidget):
                 pose[2] if pose is not None else 0.0)
             why = motion.refused((point.x, point.y, check_z))
             if why:
-                raise ValueError(f"UNREACHABLE: tip to {point.name} - {why}")
+                raise ValueError(f"Not reachable: {why}.")
             # No Z: as high as a move may go, which is the travel height.
             to_z = float("inf") if point.z is None else point.z
 
@@ -939,12 +939,12 @@ class ManualPage(QWidget):
         spot is a past pick."""
         problem = self._tip_problem("aspirate")
         if problem:
-            self.jog.tell(problem)
+            self.jog.refuse(problem)
             return
         try:
             go, where = self._go_to(source, z, prepare=True)
         except ValueError as exc:
-            self.jog.tell(str(exc))
+            self.jog.refuse(str(exc))
             return
         session, robot = self.session, self.session.robot
         volume, rate = self._liquid_amount()
@@ -958,11 +958,11 @@ class ManualPage(QWidget):
 
         def then(at):
             self.record_pick(at)
-            return f"aspirated {volume:g} µl at {rate:g} µl/s, {where}"
+            return f"Aspirated {volume:g} µl at {rate:g} µl/s, {where}."
 
         # In place nothing moves: what is detected on the picture stands.
         if not self.jog.run_job(job, moves=go is not None, then=then):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _hand_z(self, spot) -> float:
         """By hand's height at `spot`: the Z, or above the bottom of its
@@ -973,7 +973,7 @@ class ManualPage(QWidget):
         bottom = self._slot_bottom(spot)
         if bottom is None:
             slot = nearest_slot(spot[0], spot[1])
-            raise ValueError(f"Refused: no bottom confirmed in slot {slot}.")
+            raise ValueError(f"No bottom is confirmed in slot {slot}.")
         if not bottom.in_a_well(spot):
             raise ValueError("The spot is not in a well.")
         return bottom.z + float(self.above_bottom.value())
@@ -984,7 +984,7 @@ class ManualPage(QWidget):
         down, aspirate, and the camera back to that pose. One job."""
         problem = self._tip_problem("aspirate") or self._crosshair_problem()
         if problem:
-            self.jog.tell(problem)
+            self.jog.refuse(problem)
             return
         motion = self.session.motion
         gantry = np.asarray(self.jog.pose[:2] if aim is None else aim,
@@ -993,12 +993,12 @@ class ManualPage(QWidget):
         try:
             z = self._hand_z(spot)
         except ValueError as exc:
-            self.jog.tell(str(exc))
+            self.jog.refuse(str(exc))
             return
         what = f"tip to ({spot[0]:.2f}, {spot[1]:.2f}) at z {z:g}"
         why = motion.refused((spot[0], spot[1], z))
         if why:
-            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            self.jog.refuse(f"Not reachable: {why}.")
             return
         session, robot = self.session, self.session.robot
         volume, rate = self._liquid_amount()
@@ -1017,11 +1017,11 @@ class ManualPage(QWidget):
 
         def then(at):
             self.record_pick(at)
-            return (f"aspirated {volume:g} µl at {rate:g} µl/s, "
-                    f"({spot[0]:.2f}, {spot[1]:.2f})")
+            return (f"Aspirated {volume:g} µl at {rate:g} µl/s, "
+                    f"({spot[0]:.2f}, {spot[1]:.2f}).")
 
         if not self.jog.run_job(job, then=then):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _crosshair_problem(self) -> str:
         """Why the spot under the crosshair cannot be known now, or ""."""
@@ -1029,7 +1029,7 @@ class ManualPage(QWidget):
         if problems:
             return problems[0]
         if self.session.profile.calibration.pipette_offset is None:
-            return "Refused: no tip calibration."
+            return NO_TIP_CALIBRATION
         if self.jog.pose is None:
             return "Robot busy."
         return ""
@@ -1060,18 +1060,18 @@ class ManualPage(QWidget):
         volume = (None if AMOUNT[self.amount.current()] == "All"
                   else float(self.part.value()))
         if not problem and held <= 0:
-            problem = "REFUSED: nothing is in the tip."
+            problem = "Nothing is in the tip."
         elif not problem and volume is not None and volume > held + 1e-6:
-            problem = f"REFUSED: the tip holds {held:g} µl."
+            problem = f"The tip holds {held:g} µl."
         if problem:
-            self.jog.tell(problem)
+            self.jog.refuse(problem)
             return
         z = (self.session.profile.picking.deposit_offset_z
              if target[0] == "well" else None)
         try:
             go, where = self._go_to(target, z)
         except ValueError as exc:
-            self.jog.tell(str(exc))
+            self.jog.refuse(str(exc))
             return
         session = self.session
         rate = float(self.flow_rate.value())
@@ -1080,21 +1080,18 @@ class ManualPage(QWidget):
             if go is not None:
                 go(log)
             amount = session.dispense(rate, volume)
-            return f"dispensed {amount:g} µl at {rate:g} µl/s, {where}"
+            return f"Dispensed {amount:g} µl at {rate:g} µl/s, {where}."
 
         if not self.jog.run_job(job, moves=go is not None):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
         """Why `what` (aspirate, dispense) cannot happen now, or ""."""
         session = self.session
         if session.robot is None:
-            return f"REFUSED: no robot to {what} with."
+            return "Robot not connected."
         if session.tip.attached is not True:
-            state = ("none" if session.tip.attached is False
-                     else "that it cannot tell")
-            return (f"REFUSED: {what} needs a tip on the pipette, and the "
-                    f"robot reports {state}.")
+            return "Put a tip on first."
         return ""
 
     def _liquid_amount(self) -> tuple[float, float]:
@@ -1245,7 +1242,7 @@ class ManualPage(QWidget):
         Snap, and the aspirate after it with Aspirate as soon as I click."""
         problems = self._map_problems()
         if problems:
-            self.jog.tell("Click: " + problems[0])
+            self.jog.refuse(problems[0])
             return
         # The pose the panel shows, not one read here: a read is a robot
         # command, and the window - the picture with it - would wait on it
@@ -1271,23 +1268,23 @@ class ManualPage(QWidget):
             # camera a few hundred microns off is imprecise where a tip there
             # is in the wrong thing.
             if not pmap.covers(u, v):
-                self.jog.tell("Refused: outside the calibrated area.")
+                self.jog.refuse(OUTSIDE_THE_MAP)
                 return
             offset = profile.calibration.pipette_offset
             if offset is None:
-                self.jog.tell("Refused: no tip calibration.")
+                self.jog.refuse(NO_TIP_CALIBRATION)
                 return
             xy = moves.tip_target(pmap, u, v, gantry, offset)
             what = f"tip over ({xy[0]:.2f}, {xy[1]:.2f}) at the travel height"
         else:
             xy = moves.camera_target(pmap, u, v, gantry)
             if not pmap.covers(u, v):
-                notes.append("approximate: outside the calibrated area")
+                notes.append("Approximate: outside the calibrated area.")
             what = f"camera to ({xy[0]:.2f}, {xy[1]:.2f})"
 
         why = motion.refused((xy[0], xy[1], pose[2]))
         if why:
-            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            self.jog.refuse(f"Not reachable: {why}.")
             return
         if hand and self.aspirate_on_click.isChecked():
             self._aspirate_by_hand(aim=xy)
@@ -1300,7 +1297,7 @@ class ManualPage(QWidget):
             return Reached(motion.camera_to(xy, log=log_), "; ".join(notes))
 
         if not self.jog.run_job(job):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     # -- memo points -------------------------------------------------------------
 
@@ -1324,20 +1321,20 @@ class ManualPage(QWidget):
         down at this pixel. Moves nothing."""
         problems = self._map_problems()
         if problems:
-            self.jog.tell("Click: " + problems[0])
+            self.jog.refuse(problems[0])
             return
         profile = self.session.profile
         offset = profile.calibration.pipette_offset
         if offset is None:
-            self.jog.tell("Refused: no tip calibration.")
+            self.jog.refuse(NO_TIP_CALIBRATION)
             return
         pose = self.jog.pose
         if pose is None:
-            self.jog.tell("Robot busy.")
+            self.jog.refuse("Robot busy.")
             return
         pmap = PixelMap.from_config(profile.pixel_map)
         if not pmap.covers(u, v):
-            self.jog.tell("Refused: outside the calibrated area.")
+            self.jog.refuse(OUTSIDE_THE_MAP)
             return
         xy = moves.tip_target(pmap, u, v, np.asarray(pose[:2]), offset)
         self._add_memo(xy, self._new_z())
@@ -1347,7 +1344,7 @@ class ManualPage(QWidget):
         where By hand aims, at the travel height. Moves nothing."""
         problem = self._crosshair_problem()
         if problem:
-            self.jog.tell(problem)
+            self.jog.refuse(problem)
             return
         self._add_memo(self._crosshair_spot(self.jog.pose[:2]), None)
 
@@ -1360,10 +1357,9 @@ class ManualPage(QWidget):
         self.memo_table.choose(point.name)
         if self.view.marks_box.isVisible():
             self.view.marks_box.setChecked(True)
-        problem = self.session.memo_problem(point)
         self.jog.tell(f"{point.name} at ({point.x:.2f}, {point.y:.2f}), "
-                      f"z {_memo_z_text(point.z)}"
-                      + (f" - NOT REACHABLE: {problem}" if problem else ""))
+                      f"Z {_memo_z_text(point.z)}.")
+        self._say_memo_problem(point.name)
 
     def _new_z(self) -> float | None:
         value = float(self.new_z.value())
@@ -1381,7 +1377,7 @@ class ManualPage(QWidget):
         point = self.session.point(name or "")
         problem = self.session.memo_problem(point) if point else ""
         if problem:
-            self.jog.tell(f"{point.name} NOT REACHABLE: {problem}")
+            self.jog.refuse(f"{point.name} is not reachable: {problem}.")
 
     def _marks_choose(self, name) -> None:
         if name is not None:
@@ -1418,7 +1414,7 @@ class ManualPage(QWidget):
         z = round(float(pose[2]), 2)
         self.session.change_point(name, z=z)
         self._set_new_z(z)
-        self.jog.tell(f"{name}: z {z:g}")
+        self.jog.tell(f"{name}: Z {z:g}.")
         self._say_memo_problem(name)
 
     def _camera_to_point(self) -> None:
@@ -1430,22 +1426,22 @@ class ManualPage(QWidget):
             return
         offset = self.session.profile.calibration.pipette_offset
         if offset is None:
-            self.jog.tell("Refused: no tip calibration.")
+            self.jog.refuse(NO_TIP_CALIBRATION)
             return
         xy = np.array([point.x - offset.dx, point.y - offset.dy])
         what = f"camera over {point.name} ({xy[0]:.2f}, {xy[1]:.2f})"
         why = self.session.motion.refused((xy[0], xy[1], pose[2]))
         if why:
-            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            self.jog.refuse(f"Not reachable: {why}.")
             return
         log.info("%s", what)
 
         def job(log_):
             return Reached(self.session.motion.camera_to(xy, log=log_),
-                           f"camera over {point.name}")
+                           f"Camera over {point.name}.")
 
         if not self.jog.run_job(job):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_to_point(self) -> None:
         """Tip to: the tip to the chosen point, at its Z."""
@@ -1453,7 +1449,7 @@ class ManualPage(QWidget):
         if point is None:
             return
         if self.session.tip.attached is not True:
-            self.jog.tell("Put a tip on first.")
+            self.jog.refuse("Put a tip on first.")
             return
         self._drive_to_memo(point)
 
@@ -1469,7 +1465,7 @@ class ManualPage(QWidget):
                 f"at z {_memo_z_text(point.z)}")
         why = self.session.motion.refused((point.x, point.y, check_z))
         if why:
-            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            self.jog.refuse(f"Not reachable: {why}.")
             return
         log.info("%s", what)
         # No Z: as high as a move may go, which is the travel height.
@@ -1477,10 +1473,10 @@ class ManualPage(QWidget):
 
         def job(log_):
             return Reached(self.session.motion.tip_to(xy, z, log=log_),
-                           f"at {point.name}")
+                           f"Tip at {point.name}.")
 
         if not self.jog.run_job(job):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _target_at(self, u: float, v: float):
         """(index, deck xy) of the detected cuboid the click is on, or None.
@@ -1519,23 +1515,23 @@ class ManualPage(QWidget):
         offset = (profile.calibration.pipette_offset
                   if profile is not None else None)
         if offset is None:
-            self.jog.tell("Refused: no tip calibration.")
+            self.jog.refuse(NO_TIP_CALIBRATION)
             return
         xy = (np.asarray(slot_center(slot), dtype=float)
               - np.array([offset.dx, offset.dy]))
         what = f"camera over slot {slot} ({xy[0]:.1f}, {xy[1]:.1f})"
         why = self.session.motion.refused((xy[0], xy[1], pose[2]))
         if why:
-            self.jog.tell(f"UNREACHABLE: {what} - {why}")
+            self.jog.refuse(f"Not reachable: {why}.")
             return
         log.info("%s", what)
 
         def job(log_):
             return Reached(self.session.motion.camera_to(xy, log=log_),
-                           f"over slot {slot}")
+                           f"Camera over slot {slot}.")
 
         if not self.jog.run_job(job):
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
 
     def _show_deck(self) -> None:
         """Look at's tiles: every slot, with what the run holds there."""

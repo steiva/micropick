@@ -37,7 +37,6 @@ from __future__ import annotations
 import logging
 from typing import Callable
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ...workflows import well_center
@@ -95,7 +94,9 @@ class TipLiquidBox(QWidget):
         self._plate = None
         self._well: str | None = None
         self._plates: dict = {}
-        jog.position_changed.connect(self._show_said)
+        # Every job's end: the buttons follow it (the robot's lease is
+        # given back before).
+        jog.position_changed.connect(lambda _lines: self.refresh())
         self._build()
 
         session.robot_state_changed.connect(lambda _s: self._reload_plates())
@@ -184,10 +185,6 @@ class TipLiquidBox(QWidget):
         body.addLayout(buttons)
 
         # What the robot answered: a move not possible, a job refused.
-        self.said = muted_label("", self)
-        self.said.setWordWrap(True)
-        self.said.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        body.addWidget(self.said)
 
     # -- the settings --------------------------------------------------------
 
@@ -302,12 +299,6 @@ class TipLiquidBox(QWidget):
 
     # -- what the card shows -------------------------------------------------
 
-    def _show_said(self, lines) -> None:
-        """Every answer of the panel's, a job's end included: the buttons
-        follow it (the robot's lease is given back before)."""
-        self.said.setText("\n".join(lines[1:]))
-        self.refresh()
-
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.refresh()
@@ -378,7 +369,7 @@ class TipLiquidBox(QWidget):
                 picking.tip_liquid_above_bottom)
             refused = motion.refused((*xy, z))
             if refused:
-                self.jog.tell(f"Not possible: {refused}.")
+                self.jog.refuse(f"Not possible: {refused}.")
                 return None
 
             def go(log_):
@@ -412,14 +403,14 @@ class TipLiquidBox(QWidget):
             return said
 
         def then(said):
-            return f"{said} {where}"
+            return f"{said} {where}."
 
         if self.run_hold is not None and self.run_hold.why() == "":
             self.run_hold.borrow()
         if not self.jog.run_job(job, what=what, then=then):
             if self.run_hold is not None:
                 self.run_hold.give_back()
-            self.jog.tell(self.session.robot_lease.refusal)
+            self.jog.refuse(self.session.robot_lease.refusal)
         self.refresh()
 
     def _aspirate(self) -> None:
@@ -430,7 +421,7 @@ class TipLiquidBox(QWidget):
         def act(log_):
             log_(f"aspirate {volume:g} µl at {rate:g} µl/s")
             session.aspirate(volume, rate)
-            return f"aspirated {volume:g} µl from"
+            return f"Aspirated {volume:g} µl from"
 
         self._run(act, "tip liquid")
 
@@ -443,6 +434,6 @@ class TipLiquidBox(QWidget):
         def act(log_):
             log_(f"dispense all at {rate:g} µl/s")
             volume = session.dispense(rate)
-            return f"dispensed {volume:g} µl into"
+            return f"Dispensed {volume:g} µl into"
 
         self._run(act, "tip liquid")
