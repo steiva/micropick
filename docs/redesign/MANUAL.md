@@ -212,7 +212,8 @@ picture.
   (`profile.positions`) are shown as **one list**. A star marks a saved
   point:
   - ★ filled `warn` means saved in the profile;
-  - ☆ empty means a memo point.
+  - ☆ a gray outline means a memo point.
+  - A thin line stands between the memo points and the saved points.
 - Clicking ☆ saves the point to the profile (§7.1); clicking ★ makes it a
   memo point again, after a ConfirmDialog "Remove *name* from saved
   points?" with **Keep** as the primary button.
@@ -381,14 +382,14 @@ folded away.
 - **The list (§2.5, §2.7):** one row per point:
   - ★ or ☆ (a button);
   - the name (ellipsized);
-  - X, Y and Z in mono 13 px. Z with no value reads "travel" in `muted`.
+  - X, Y and Z in mono 13 px. Z with no value reads "travel" in `muted`;
+  - × at the end: deletes the point, a saved one after asking.
   - The list scrolls inside the card.
 - **Click a row to select it.** A selected row unfolds an action row under
-  the point (four equal buttons):
+  the point at once (three equal buttons):
   - **Camera to**;
   - **Tip to**;
   - **Z from tip**;
-  - **Delete** (`danger-text`).
 
   The actions are attached to the point they act on.
 - **Bottom of the card,** above a 1 px divider:
@@ -576,7 +577,7 @@ Explanatory sentences from the mockup are not copied onto the screen.
     `memo_problem` flag.
 12. **§7.1:** `Session.save_memo_point` already is `keep_memo_point`. Only
     `Session.unkeep_position` is new: it keeps the name and the Z, and is one
-    Undo step. ☆ asks a name, the point's own by default. Delete of a saved
+    Undo step. ☆ asks a name, the point's own by default. × on a saved
     point still asks "Delete point <name>?".
 13. **New points get Z:** a Select of Travel height, Z of the tip now and Last
     Z given, Last Z given chosen at start (it is travel until a Z is given, as

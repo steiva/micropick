@@ -57,8 +57,8 @@ list (`widgets.point_list`, #112): X, Y and Z are edited by a double click,
 and a memo point lasts until the program closes. ☆ keeps it in the profile
 (`Session.save_memo_point`, #62), a point at the travel height with that
 height as its Z; a saved point's name is renamed by a double click, ★ makes
-it a memo point again and Delete asks first (#66). The chosen row unfolds
-Camera to, Tip to, Z from tip and Delete. Robot setup's positions are not
+it a memo point again and its × asks first (#66). The chosen row unfolds
+Camera to, Tip to and Z from tip. Robot setup's positions are not
 points (#61). Marking moves nothing, it chooses the new point, and a double
 click only edits. The Points chip alone says whether they are drawn: on at
 start, and never turned on by a new point.
@@ -848,7 +848,6 @@ class ManualPage(QWidget):
         self.memo_z = self.points_list.z_from_tip
         self.memo_z.setToolTip("Set the chosen point's Z to the tip's Z now.")
         self.memo_z.clicked.connect(self._memo_z_from_tip)
-        self.delete_point_button = self.points_list.delete
 
         divider = QFrame(self)
         divider.setFixedHeight(1)

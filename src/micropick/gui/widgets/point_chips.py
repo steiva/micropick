@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (QFrame, QLayout, QPushButton, QScrollArea,
 
 from ..session import Session
 from ..theme.factory import laid_out_at_once
+from ..theme.icons import size
+from .point_list import STAR_PX, star_icon
 
 __all__ = ["PointChips"]
 
@@ -134,7 +136,10 @@ class PointChips(QWidget):
         chip.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         name = chip.fontMetrics().elidedText(
             point.name, Qt.TextElideMode.ElideRight, TEXT_PX)
-        chip.setText(f"{'★' if point.saved else '☆'} {name}")
+        chip.setText(name)
+        chip.setIcon(star_icon(point.saved))
+        chip.setIconSize(size(STAR_PX))
+        chip.setProperty("saved", point.saved)
         problem = self.session.memo_problem(point)
         chip.setProperty("problem", bool(problem))
         chip.setToolTip(f"{point.name}: {problem}." if problem else point.name)

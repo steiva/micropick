@@ -375,8 +375,10 @@ one kind - a place on the deck, no purpose stored (#66). One card, **Points**
 `QTableWidget`): the memo points then the **saved points**
 (`Session.saved_points`: the profile's positions less
 `tasks.SETUP_POSITIONS`, which are never listed or drawn as points, #61), a
-row being its star, name, X, Y and Z ("travel" for no Z). ☆ asks a name, the
-point's own by default, and moves it into the profile
+thin line between the two kinds, a row being its star (`point_list.star_icon`:
+filled in `warn`, an outline in gray, in the list and on the chips alike), name,
+X, Y, Z ("travel" for no Z) and × (a memo point at once, a saved one asks
+"Delete point <name>?"). ☆ asks a name, the point's own by default, and moves it into the profile
 (`Session.save_memo_point`, #62, refused for a name in use or a setup
 position's, `Session.point_name_refusal`; never gray: a point at the travel
 height is stored at that height then, `Motion.travel_z` or else the jog
@@ -389,12 +391,12 @@ Esc puts it back and is no Stop. A click chooses a row (again: lets it go),
 and the chosen row unfolds under the point **Camera to** (`Motion.camera_to`,
 the point less the tip offset, its Z unused), **Tip to** (`Motion.tip_to`
 to its Z, no higher than the travel height; gray while no tip is on, "Put
-a tip on first."), Z from tip, each checked against the jog envelope,
-through `JogPanel.run_job`, and Delete (a memo point at once,
-`Session.delete_memo_point`; a saved one asks "Delete point <name>?"). A click
-chooses at once but unfolds only after the double click's interval, and the
-actions take no click for one interval more: a fold lifts the rows under it,
-and the second press of a double click came down on Tip to. Under the list
+a tip on first.") and Z from tip, each checked against the jog envelope,
+through `JogPanel.run_job`. A click chooses and unfolds at once; when that
+folds a row above, the one clicked lifts and the pointer is on its actions, so
+they take no click for two double click intervals, and a double click there is
+the row's (the second press came down on Tip to). A click on the chosen row lets
+it go after one interval: a double click keeps it. Under the list
 Point at crosshair, Tip to crosshair and **New points get Z**, a Select of
 Travel height, Z of the tip now and Last Z given (at start). **Undo** and **Redo** on the card's title row
 (`theme.factory.tool_button`, as Liquid Plan's; no Ctrl+Z) go over the last 3

@@ -3,8 +3,9 @@
 The points are the session's (`Session.points`): the memo points, then the
 saved points (#62), the profile's positions less Robot setup's. This shows
 them and writes an edit back, and the "points" layer of the picture follows
-the same list. A row is its star, its name, X, Y and Z. ☆ asks a name, the
-point's own by default, and keeps it in the profile
+the same list, a thin line between the two kinds. A row is its star, its name,
+X, Y, Z and its ×. ☆ asks a name, the point's own by default, and keeps it in
+the profile
 (`Session.save_memo_point`, a point at the travel height with that height as
 its Z); ★ asks, and makes it a memo point again
 (`Session.unkeep_position`). `StarButton` and `PointButton` are Liquid's too,
@@ -19,16 +20,19 @@ is refused, said through `said`. A Z the tip cannot go to - below the top of
 a deck module there, say (`Session.memo_problem`) - is red, with the reason
 under the pointer.
 
-A click chooses a row, a click on the chosen one lets it go. With `actions`
-the chosen row unfolds Camera to, Tip to, Z from tip and Delete under the
-point: the page connects the first three, Delete is the list's (a memo point
-at once, a saved one once asked).
+The × deletes the point: a memo point at once, a saved one once asked.
 
-Unfolding lifts every row under the one it folds away from, so the second
-press of a double click would come down on Tip to, and a double click never
-moves the robot. A click therefore chooses at once and unfolds only after the
-double click's interval, and the actions take no click for one interval more,
-for a double click slower than that.
+A click chooses a row, a click on the chosen one lets it go. With `actions`
+the chosen row unfolds Camera to, Tip to and Z from tip under the point, for
+the page to connect.
+
+A click unfolds at once. Folding the row above lifts the one clicked, and the
+pointer is then on its actions: the second press of a double click would come
+down on Tip to, and a double click never moves the robot. After a lift the
+actions therefore take no click for two double click intervals, one for a
+double click slower than the interval, and a double click there is the row's,
+its cell read from the x alone. A click on the chosen row lets it go only after
+the interval, since a double click keeps it.
 
 Nothing here takes the keyboard: the arrows and PageUp/PageDown are the robot's
 keys on this page, and a list with the keyboard would scroll on them instead.
@@ -39,6 +43,7 @@ field has the keys"), and gives it back to no other field.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QFrame,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit,
                                QScrollArea, QSizePolicy, QToolButton,
@@ -46,13 +51,14 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QFrame,
 
 from ..session import Session, SessionError
 from ..theme import COLORS, mono_font
-from ..theme.factory import (danger_text_button, double_spin_box,
-                             laid_out_at_once, secondary_button)
+from ..theme.factory import (close_button, double_spin_box, laid_out_at_once,
+                             secondary_button)
+from ..theme.icons import icon, size
 from .controls import CutLabel
 from .overlays import ConfirmDialog
 
 __all__ = ["BAD", "PointButton", "PointList", "PointRow", "StarButton",
-           "TRAVEL_TEXT", "Z_TOP_MM"]
+           "STAR_PX", "TRAVEL_TEXT", "Z_TOP_MM", "star_icon"]
 
 # What a point with no Z shows, and the bottom of Z's box that means it.
 TRAVEL_TEXT = "travel"
@@ -68,24 +74,39 @@ BAD = "#ff5c5c"
 # The row, px (ManualPick.dc.html).
 ROW_HEIGHT = 44
 STAR_WIDTH = 34
-CELL_WIDTHS = {"x": 62, "y": 62, "z": 66}
+STAR_PX = 16
+CELL_WIDTHS = {"x": 56, "y": 56, "z": 56}
 CELL_GAP = 6
+DELETE_WIDTH = 24
+ROW_END = 4
+# A number's box has a padding the cell has not: it reaches over the gap.
+BOX_REACH = 12
+
+
+def star_icon(saved: bool) -> QIcon:
+    """A filled star in the warning's ink, an outline in gray: the ★ and ☆ of
+    a font hardly differ at this size. The same when disabled: Liquid's ★
+    takes no click and still says the point is kept."""
+    ink = COLORS["warn"] if saved else COLORS["text-2"]
+    return icon("star", ink, STAR_PX, fill=saved, disabled=ink)
 
 
 class StarButton(QToolButton):
-    """★ kept in the profile, ☆ not. `removable`: ★ can be clicked too."""
+    """★ kept in the profile, ☆ not, as its text; `star_icon` is what is seen.
+    `removable`: ★ can be clicked too."""
 
     def __init__(self, saved: bool, parent: QWidget, *,
                  removable: bool = False):
         super().__init__(parent)
         self.setText("★" if saved else "☆")
+        self.setIcon(star_icon(saved))
+        self.setIconSize(size(STAR_PX))
         self.setEnabled(removable or not saved)
         self.setToolTip("Remove from saved points." if saved and removable
                         else "" if saved else "Keep this point.")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setStyleSheet(f"QToolButton {{ border: none; background:"
-                           f" transparent; color: {COLORS['warn']};"
-                           f" font-size: 16px; }}")
+        self.setStyleSheet("QToolButton { border: none;"
+                           " background: transparent; }")
 
 
 class PointButton(QWidget):
@@ -159,7 +180,7 @@ class PointRow(QFrame):
         self.head.setObjectName("plain")
         self.head.setFixedHeight(ROW_HEIGHT)
         line = QHBoxLayout(self.head)
-        line.setContentsMargins(0, 0, 10, 0)
+        line.setContentsMargins(0, 0, ROW_END, 0)
         line.setSpacing(0)
         self.star = StarButton(point.saved, self.head, removable=True)
         self.star.setFixedSize(STAR_WIDTH, ROW_HEIGHT)
@@ -171,6 +192,10 @@ class PointRow(QFrame):
         cells = QHBoxLayout()
         _grid(cells, self.cells)
         line.addLayout(cells, 1)
+        line.addSpacing(CELL_GAP)
+        self.delete = close_button("Delete this point.", self.head)
+        self.delete.setFixedSize(DELETE_WIDTH, DELETE_WIDTH)
+        line.addWidget(self.delete)
         column.addWidget(self.head)
         self.show_point(point, problem)
         self.set_chosen(False)
@@ -210,13 +235,14 @@ class PointRow(QFrame):
             self.pressed.emit()
 
     def mouseDoubleClickEvent(self, event) -> None:
+        """The x alone: this press may be on the actions of a row that lifted
+        after the first, see the module's docstring."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        if not self._on_head(event):
-            return
-        under = self.childAt(event.position().toPoint())
+        x = event.position().toPoint().x()
         self.double_clicked.emit(next(
-            (key for key, cell in self.cells.items() if cell is under), None))
+            (key for key, cell in self.cells.items()
+             if cell.geometry().left() <= x <= cell.geometry().right()), None))
 
     # -- a cell's box --------------------------------------------------------
 
@@ -229,9 +255,8 @@ class PointRow(QFrame):
         else:
             box = self._number_box(key)
             self._before = box.value()
-        box.setGeometry(self.cells[key].geometry().translated(
-            self.cells[key].parentWidget().mapTo(self.head,
-                                                 self.head.rect().topLeft())))
+        reach = 0 if key == "name" else BOX_REACH
+        box.setGeometry(self.cells[key].geometry().adjusted(-reach, 0, 0, 0))
         box.installEventFilter(self)
         self.editor, self._key = box, key
         box.show()
@@ -357,6 +382,11 @@ class PointList(QWidget):
         self._lines.setContentsMargins(0, 0, 0, 0)
         self._lines.setSpacing(4)
         self._lines.addStretch(1)
+        # Between the memo points and the saved points.
+        self.divider = QFrame(self.inner)
+        self.divider.setFixedHeight(1)
+        self.divider.setStyleSheet(f"background: {COLORS['line']};")
+        self.divider.hide()
         self.area.setWidget(self.inner)
         column.addWidget(self.area, 1)
 
@@ -368,7 +398,8 @@ class PointList(QWidget):
 
     def _captions(self) -> QHBoxLayout:
         line = QHBoxLayout()
-        line.setContentsMargins(STAR_WIDTH + 1, 0, 11, 0)
+        line.setContentsMargins(STAR_WIDTH + 1, 0,
+                                ROW_END + 1 + DELETE_WIDTH + CELL_GAP, 0)
         cells = {}
         for key, text in (("name", "POINT"), ("x", "X"), ("y", "Y"),
                           ("z", "Z")):
@@ -386,11 +417,7 @@ class PointList(QWidget):
         self.camera_to = secondary_button("Camera to", bar)
         self.tip_to = secondary_button("Tip to", bar)
         self.z_from_tip = secondary_button("Z from tip", bar)
-        self.delete = danger_text_button("Delete", bar)
-        self.delete.setToolTip("Delete the chosen point.")
-        self.delete.clicked.connect(self._delete_chosen)
-        for button in (self.camera_to, self.tip_to, self.z_from_tip,
-                       self.delete):
+        for button in (self.camera_to, self.tip_to, self.z_from_tip):
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             button.setStyleSheet("padding: 0 2px;")
             button.setMinimumWidth(0)
@@ -431,6 +458,7 @@ class PointList(QWidget):
             self.rows = [self._make_row(point) for point in points]
             for at, row in enumerate(self.rows):
                 self._lines.insertWidget(at, row)
+            self._place_divider()
             if self.row(chosen) is None:
                 self.chosen_name = None
             self._show_chosen()
@@ -438,6 +466,12 @@ class PointList(QWidget):
         if chosen is not None and self.chosen_name is None:
             self._settle.stop()
             self.chosen.emit(None)
+
+    def _place_divider(self) -> None:
+        memo = sum(not row.point.saved for row in self.rows)
+        self._lines.removeWidget(self.divider)
+        self._lines.insertWidget(memo, self.divider)
+        self.divider.setVisible(0 < memo < len(self.rows))
 
     def _make_row(self, point) -> PointRow:
         row = PointRow(point, self.inner,
@@ -447,6 +481,7 @@ class PointList(QWidget):
         row.edited.connect(lambda key, value: self._edited(row.name, key,
                                                            value))
         row.star.clicked.connect(lambda: self._star(row.name))
+        row.delete.clicked.connect(lambda: self._delete(row.name))
         return row
 
     # -- choosing ------------------------------------------------------------
@@ -480,21 +515,36 @@ class PointList(QWidget):
             row.set_chosen(row.name == self.chosen_name)
 
     def _pressed(self, name: str) -> None:
-        """Chosen at once; what would move the rows waits, see the module's
-        docstring."""
-        self._letting_go = name == self.chosen_name
+        """Chosen and unfolded at once, but for the chosen row; see the
+        module's docstring."""
+        interval = QApplication.doubleClickInterval()
+        if name == self.chosen_name:
+            self._letting_go = True
+            self._settle.start(interval)
+            return
+        self._letting_go = False
+        self._settle.stop()
+        names = self.names
+        lifted = (self.chosen_name in names
+                  and names.index(self.chosen_name) < names.index(name))
         self._set_chosen(name)
-        self._settle.start(QApplication.doubleClickInterval())
+        with laid_out_at_once(self):
+            self._place_actions()
+        if self.actions is None:
+            return
+        self._take_clicks(not lifted)
+        if lifted:
+            self._inert.start(2 * interval)
+        else:
+            self._inert.stop()
 
     def _settled(self) -> None:
+        """No double click came: the chosen row clicked is let go."""
         if self._letting_go:
             self._letting_go = False
             self._set_chosen(None)
-        with laid_out_at_once(self):
-            self._place_actions()
-        if self.actions is not None and self.actions.isVisibleTo(self):
-            self._take_clicks(False)
-            self._inert.start(QApplication.doubleClickInterval())
+            with laid_out_at_once(self):
+                self._place_actions()
 
     def _take_clicks(self, on: bool) -> None:
         self.actions.setAttribute(
@@ -578,8 +628,8 @@ class PointList(QWidget):
                                  safe="Keep", destructive="Remove"):
             self.session.unkeep_position(name)
 
-    def _delete_chosen(self) -> None:
-        point = self.session.point(self.chosen_name or "")
+    def _delete(self, name: str) -> None:
+        point = self.session.point(name)
         if point is None:
             return
         if not point.saved:

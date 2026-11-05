@@ -55,7 +55,7 @@ def test_beside_the_work_the_card_never_folds_and_holds_the_moves(
     session.add_memo_point(100.0, 100.0, 12.0)
     page.points_list.choose("M1")
     for widget in (page.camera_to_button, page.tip_to_button, page.memo_z,
-                   page.delete_point_button, page.undo_button,
+                   page.points_list.row("M1").delete, page.undo_button,
                    page.redo_button):
         assert card.isAncestorOf(widget)
 
@@ -71,13 +71,11 @@ def _add(page, session):
 
 
 def _delete_memo(page, session):
-    page.points_list.choose("M1")
-    page.delete_point_button.click()
+    page.points_list.row("M1").delete.click()
 
 
 def _delete_saved(page, session):
-    page.points_list.choose("trough")
-    page.delete_point_button.click()
+    page.points_list.row("trough").delete.click()
 
 
 def _type_in(page, name, key, text):
@@ -196,8 +194,7 @@ def test_undoing_the_delete_of_a_saved_point_puts_it_back_in_the_profile(
     session.remember("observe", (1.0, 2.0, 80.0))
     session.memo_points_changed.emit()
     order = list(session.saved_points())
-    page.points_list.choose("trough")
-    page.delete_point_button.click()
+    page.points_list.row("trough").delete.click()
     assert "trough" not in session.profile.positions
     page.undo_button.click()
     assert list(session.saved_points()) == order        # back in its place

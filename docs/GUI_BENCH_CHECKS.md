@@ -1648,15 +1648,16 @@ tip box and a 384 plate at hand.
   the robot: a click says "Robot busy." and nothing moves.
 
 - [ ] **Points.**
-  One card, Points, that does not fold: one list, ☆ for a memo point and ★
-  for a saved one, Point at crosshair, Tip to crosshair and New points get Z
+  One card, Points, that does not fold: one list, a gray outline star for a
+  memo point and a filled one for a saved one, a thin line between the two
+  kinds, Point at crosshair, Tip to crosshair and New points get Z
   under it. A right click marks M1 where the tip would go down, draws it in
   cyan with a ring round it (red with "!" when below a platform's top),
   chooses it in the list, says "M1 added." and the cards do not move. Turn
   the Points chip off: the points leave the picture, a right click adds M2
-  to the list only; on again: both back. Delete on a chosen row takes that
-  point from the list and the picture; the next right click takes its
-  number. Nothing moves when marking.
+  to the list only; on again: both back. The × at a row's end takes that
+  point from the list and the picture at once; the next right click takes
+  its number. Nothing moves when marking.
 
 - [ ] **The star (#112).**
   ☆ asks a name, the point's own in the field; "M1 kept for later." and it
@@ -1666,8 +1667,8 @@ tip box and a 384 plate at hand.
 
 - [ ] **A double click never moves the robot (#112).**
   Tip on. Choose the top row, then double-click a cell of the row under it,
-  fast and slowly: the box opens or nothing happens, never Tip to or Camera
-  to. Esc in the box puts the value back and stops nothing.
+  fast and slowly: the row's buttons unfold at the first press, the box opens
+  or nothing happens, never Tip to or Camera to. Esc in the box puts the value back and stops nothing.
 
 - [ ] **Undo and Redo of the points (#96).**
   Undo and Redo are on Points' title row, gray with nothing to undo or
@@ -1692,8 +1693,8 @@ tip box and a 384 plate at hand.
 - [ ] **Camera to, Tip to, Point at crosshair (#66).**
   Point at crosshair: a memo point under the crosshair, Z "travel"; ☆ on
   it: its Z is the travel height then.
-  Click a row: Camera to, Tip to, Z from tip and Delete unfold under it;
-  click another: they go there; click it again: they fold. Camera to: the point comes under the crosshair, the
+  Click a row: Camera to, Tip to and Z from tip unfold under it at once;
+  click another: they go there at once; click it again: they fold. Camera to: the point comes under the crosshair, the
   tip stays at the travel height. Without a tip Tip to is gray ("Put a
   tip on first."); with one, Tip to takes the tip down to the point's Z.
   A double click on a row edits it and moves nothing.
