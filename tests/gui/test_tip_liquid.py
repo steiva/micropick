@@ -57,7 +57,7 @@ def session(app, tmp_path, monkeypatch):
 @pytest.fixture
 def page(app, session):
     host = QWidget()
-    jog = JogPanel(session, machine_controls=False, parent=host)
+    jog = JogPanel(session, parent=host)
     jog.hide()
     p = TipLiquidBox(session, jog, parent=host)
     host.show()

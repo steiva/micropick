@@ -573,7 +573,6 @@ class PickingPage(QWidget):
 
     def _jog_section(self) -> QWidget:
         self.jog = JogPanel(self.session, shortcut_host=self,
-                            machine_controls=False,
                             parent=self)
         self.jog.show_position_on(self.view)
         self.liquid = TipLiquidBox(self.session, self.jog,

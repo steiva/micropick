@@ -531,7 +531,7 @@ def test_the_two_cards_work_embedded_in_another_widget(app, tmp_path,
     session.new_run()
     host = QWidget()
     view = CameraView(host)
-    jog = JogPanel(session, shortcut_host=host, machine_controls=False,
+    jog = JogPanel(session, shortcut_host=host,
                    parent=host)
     calibration = tip_page.TipCalibrationBlock(
         session, jog, view, holder="shake tip calibration", parent=host)

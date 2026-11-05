@@ -11,8 +11,8 @@ click on it goes back to the task that runs. Beside it, a red **STOP**,
 shown only while a run has the robot (§12.3); it does what Esc does.
 
 Right, in this order: **Light** and **Lock** (toggles, filled while on),
-**Park** ("Parking…" on `accent-bg` until the move ends), a divider, and
-**Settings**.
+**Park** ("Parking…" on `accent-bg` until the move ends), **Retract**
+("Retracting…" the same way), a divider, and **Settings**.
 
 A widget only: it emits what was clicked and is told what to show. What a
 click does - the robot's lease, the session's Lock - is the shell's.
@@ -89,6 +89,7 @@ class TopBar(QFrame):
     light_toggled = Signal(bool)
     lock_toggled = Signal(bool)
     park_clicked = Signal()
+    retract_clicked = Signal()
     settings_clicked = Signal()
     stop_clicked = Signal()
     status_clicked = Signal()
@@ -130,18 +131,22 @@ class TopBar(QFrame):
         self.park = _bar_button("Park", "park", self)
         self.park.setMinimumWidth(104)
         self.park.clicked.connect(self.park_clicked)
+        self.retract = _bar_button("Retract", "retract", self)
+        self.retract.setMinimumWidth(128)
+        self.retract.clicked.connect(self.retract_clicked)
         self.settings = _bar_button("Settings", "settings", self)
         self.settings.clicked.connect(self.settings_clicked)
         divider = QFrame(self)
         divider.setObjectName("barDivider")
         divider.setFixedSize(1, 24)
-        for widget in (self.light, self.lock, self.park):
+        for widget in (self.light, self.lock, self.park, self.retract):
             row.addWidget(widget)
         row.addSpacing(4)
         row.addWidget(divider)
         row.addSpacing(4)
         row.addWidget(self.settings)
-        for button in (self.light, self.lock, self.park, self.settings):
+        for button in (self.light, self.lock, self.park, self.retract,
+                       self.settings):
             self._restyle_one(button)
         self.set_path([])
 
@@ -219,6 +224,16 @@ class TopBar(QFrame):
         self.park.setEnabled(enabled)
         self.park.setToolTip(reason if not enabled else
                              "Move the head to the back right corner")
+
+    def set_retracting(self, busy: bool) -> None:
+        self.retract.setText("Retracting…" if busy else "Retract")
+        self.retract.setProperty("busy", busy)
+        self._restyle_one(self.retract)
+
+    def set_retract_enabled(self, enabled: bool, reason: str = "") -> None:
+        self.retract.setEnabled(enabled)
+        self.retract.setToolTip(reason if not enabled else
+                                "Raise the tip to the travel height")
 
     # -- looks -----------------------------------------------------------
 

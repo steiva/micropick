@@ -190,8 +190,11 @@ static until the session owns them.
   direction refused once outside the box, which is the trap DESIGN section 4
   describes and `JogController.allowed` avoids.
 
-- [ ] **Home and Retract Z ask first, and the gantry does what was confirmed.**
-  Both are one confirmation away and neither is undoable. Watch the axis.
+- [ ] **Retract goes straight up and asks nothing (#108).**
+  Tip low over the dish, Retract in the top bar, on Home and on a step: the tip
+  rises where it stands to the travel height, "Retracting…" while it moves.
+  Again above it: nothing moves. Bind a key in Settings, Keys: it does the same
+  and the pad's Keys lists it. Home is in Settings, Advanced, and asks first.
 
 - [ ] **"Remember in profile" survives a restart.**
   Name a real deck landmark, close the application, reopen it, and check that

@@ -136,17 +136,15 @@ from dataclasses import replace
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,
-                               QHBoxLayout, QLineEdit,
-                               QMessageBox, QPlainTextEdit, QTextEdit,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QLineEdit,
+                               QPlainTextEdit, QTextEdit, QVBoxLayout,
+                               QWidget)
 
 from ...workflows.jog import DEFAULT_STEPS, LAYOUT, JogController, Reached
 from .. import keys
 from ..position_marks import PositionMarks
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import card, heading, secondary_button
 from .jog_pad import JogPad, step_chip_text, step_color
 from .toast import show_toast
 
@@ -177,8 +175,7 @@ log = logging.getLogger(__name__)
 
 PANEL_WIDTH = 400
 
-# Home, asked the same way from the panel's Machine card and from Settings,
-# Advanced (`Session.home`).
+# Home, asked from Settings, Advanced (`Session.home`).
 HOME_TITLE = "Home the robot?"
 HOME_DETAIL = ("All axes go home. The tip calibration has to be done "
                "again.")
@@ -293,7 +290,6 @@ class JogPanel(QWidget):
 
     def __init__(self, session: Session, *,
                  shortcut_host: QWidget | None = None,
-                 machine_controls: bool = True,
                  view_axes=None,
                  xy_only: bool = False,
                  parent: QWidget | None = None):
@@ -333,12 +329,6 @@ class JogPanel(QWidget):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(SPACING)
         column.addWidget(self._make_pad())
-        if machine_controls:
-            # Off during a calibration: homing halfway through centering the
-            # marker throws away the pose the whole sweep is planned around.
-            column.addWidget(self._machine_card())
-        else:
-            self.home_button = self.retract_button = None
         column.addStretch(1)
 
         self._host = shortcut_host or self
@@ -385,25 +375,6 @@ class JogPanel(QWidget):
                 hints[action] = (f"Robot {'+' if direction > 0 else '-'}"
                                  f"{axis.upper()}.")
         self.pad.set_hints(hints)
-
-    def _machine_card(self) -> QWidget:
-        """Home and retract, kept apart from the jogging controls.
-
-        Both move the gantry a long way from wherever it is, and neither is
-        undoable, so they do not sit beside a button that moves 0.05 mm."""
-        box = card(self)
-        box.layout().addWidget(heading("Machine", 3))
-        row = QHBoxLayout()
-        self.home_button = secondary_button("Home robot position", self)
-        self.home_button.clicked.connect(self._home)
-        self.retract_button = secondary_button("Retract Z", self)
-        self.retract_button.clicked.connect(self._retract)
-        row.addWidget(self.home_button)
-        row.addWidget(self.retract_button)
-        row.addStretch(1)
-        self._movers += [self.home_button, self.retract_button]
-        box.layout().addLayout(row)
-        return box
 
     # -- keys ----------------------------------------------------------------
 
@@ -490,43 +461,6 @@ class JogPanel(QWidget):
                                               controller.undo())))
         else:                                  # _check_layout rules this out
             raise RuntimeError(f"unhandled jog command {command!r}")
-
-    def _home(self) -> None:
-        if not self._confirm(HOME_TITLE, HOME_DETAIL):
-            return
-        session, controller = self.session, self.controller
-
-        def job():
-            # None, not the HTTP response: _job_done reads the first item as
-            # a MoveResult, and a home has no clamp or refusal to report.
-            session.home()
-            return None, controller.status()
-
-        self._run(Worker(job))
-
-    def _retract(self) -> None:
-        if not self._confirm(
-                "Retract the Z axis?",
-                "The left Z axis travels to the top of its range."):
-            return
-        robot, controller = self.session.robot, self.controller
-
-        def job():
-            robot.retract_axis("leftZ", verbose=False)
-            return None, controller.status()
-
-        self._run(Worker(job))
-
-    def _confirm(self, title: str, detail: str) -> bool:
-        if self.controller is None or self._busy():
-            return False
-        answer = QMessageBox.question(
-            self, title, detail,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No)
-        # `==`, not `is`: the answer can come back as a plain int (the profile
-        # page has the same note), and `is` never matches it.
-        return answer == QMessageBox.StandardButton.Yes
 
     # -- for the pages that host one -----------------------------------------
 
@@ -804,11 +738,14 @@ class JogPanel(QWidget):
         return self._key_lines(layout) + list(self._extra_help)
 
     def _pad_help(self) -> list[str]:
-        """The keys the pad has no keycap or step line for, then the
-        page's lines."""
+        """The keys the pad has no keycap or step line for, Retract's once
+        it has one, then the page's lines."""
         layout = tuple(key for key in _bound_layout() if key.move is None
                        and key.command not in ("step_up", "step_down"))
-        return self._key_lines(layout) + list(self._extra_help)
+        retract = keys.key_text(self.session.settings.keys, "retract")
+        return (self._key_lines(layout)
+                + ([f"{retract}   retract the tip"] if retract else [])
+                + list(self._extra_help))
 
     def _key_lines(self, layout) -> list[str]:
         """One line per kind of key, the keys named as bound now:

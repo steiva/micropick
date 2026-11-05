@@ -125,7 +125,7 @@ and the card's own top stay (`tests/gui/test_nothing_shifts.py`).
 
 There are no tabs, no status bar, no floating next step and no Profile
 page (removed in redesign phase 2; do not bring them back). The window is
-`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park, STOP
+`widgets.top_bar.TopBar` (breadcrumb `Home › <task>`, Light, Park, Retract, STOP
 and the StatusPill while a run has the robot, Settings) over
 one stack: Home (`pages.home`: the robot, the Robot setup, three task
 tiles) and the existing pages, reused as the content of a **task**'s
@@ -484,7 +484,12 @@ Park in the top bar (the head to the back right at the travel height,
 a home, which would lose the tip calibration) is reachable from every
 screen, without asking: it is refused while the robot's lease is
 held, and goes through the shown page's `JogPanel.run_job` when that page
-has one, else claims the lease for a worker of its own.
+has one, else claims the lease for a worker of its own. Retract beside it
+(#108, `MainWindow._retract`) takes the tip straight up to the travel height
+(`Motion.rise`, staying where it is above it), by the same path and refusals,
+"Retracting…" while it runs, nothing asked; its key (`retract` in `gui.keys`)
+has no default and is bound in Settings. There is no Machine card: Home is in
+Settings, Advanced.
 "The robot is busy" (`MainWindow._robot_busy`) is the robot's lease being
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.

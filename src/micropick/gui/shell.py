@@ -25,8 +25,8 @@ bottom by its own Save dish bottom and Use it.
 
 The window as before: Esc and STOP stop (two presses hold), closing waits
 for the robot to be free, Park moves the head to the back right at the
-travel height (no home: Home is in Settings, Advanced), Light switches the
-rail lights.
+travel height (no home: Home is in Settings, Advanced), Retract raises the
+tip straight up to it, Light switches the rail lights.
 
 A run is seen from every screen: while one has the robot, the top bar's
 pill says what it is doing (`RUNS`; "Paused" and "Waiting for you" from
@@ -49,7 +49,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
 from .. import _version as version
 from .. import paths
 from ..workflows.jog import Reached
-from . import log_bridge, tasks
+from . import keys, log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
                     dish_bottom, home, labware, liquid, liquid_plan, manual,
                     picking, platforms_sheet, position_sheet, robot_setup, routine,
@@ -284,6 +284,7 @@ class MainWindow(QMainWindow):
         self.top.settings_clicked.connect(self.open_settings)
         self.top.light_toggled.connect(self._toggle_lights)
         self.top.park_clicked.connect(self._park)
+        self.top.retract_clicked.connect(self._retract)
         self.top.stop_clicked.connect(self._stop)
         self.top.lock_toggled.connect(self._set_locked)
         self.top.status_clicked.connect(self.go_to_run)
@@ -305,6 +306,11 @@ class MainWindow(QMainWindow):
         session.lights_changed.connect(self.top.set_light)
         self._lights_worker: Worker | None = None
         self._park_worker: Worker | None = None
+        self._retract_worker: Worker | None = None
+        self._retracting = False
+        self._retract_keys: list[QShortcut] = []
+        self._bind_retract()
+        session.settings_changed.connect(lambda _s: self._bind_retract())
         self._timer = QTimer(self)
         self._timer.setInterval(REFRESH_EVERY_MS)
         self._timer.timeout.connect(self._refresh)
@@ -761,11 +767,15 @@ class MainWindow(QMainWindow):
         connected = self.session.robot is not None
         holder = self.session.robot_lease.holder
         locked = self.session.locked
-        self.top.set_park_enabled(
-            connected and holder is None and not locked,
-            "Robot not connected." if not connected else
-            "Robot locked." if locked else
-            f"Robot busy: {holder}." if holder is not None else "")
+        free = connected and holder is None and not locked
+        reason = ("Robot not connected." if not connected else
+                  "Robot locked." if locked else
+                  f"Robot busy: {holder}." if holder is not None else "")
+        self.top.set_park_enabled(free, reason)
+        self.top.set_retract_enabled(free, reason)
+        if self._retracting and holder is None:
+            self._retracting = False
+            self.top.set_retracting(False)
 
     def _show_lock_button(self) -> None:
         run = self.session.robot_lease.holding_run
@@ -832,10 +842,8 @@ class MainWindow(QMainWindow):
         if self._robot_busy():
             self.refuse("Robot busy.")
             return
-        panels = [panel for panel in
-                  self.current_page().findChildren(JogPanel)
-                  if panel.isVisible()]
-        if panels and panels[0].run_job(
+        panel = self._shown_panel()
+        if panel is not None and panel.run_job(
                 lambda log: Reached(motion.park(log=log))):
             return
         lease = self.session.robot_lease.claim("Park")
@@ -866,6 +874,74 @@ class MainWindow(QMainWindow):
         self._show_park()
         _log.error("park: %s", reason)
         self.refuse(f"Park failed: {reason}")
+
+    def _shown_panel(self) -> JogPanel | None:
+        """The shown page's jog panel on screen, if it has one."""
+        return next((panel for panel in
+                     self.current_page().findChildren(JogPanel)
+                     if panel.isVisible()), None)
+
+    def _bind_retract(self) -> None:
+        """Retract's key, window-wide, once one is chosen in Settings: it
+        has none by default (`gui.keys`). A field with the keyboard keeps
+        the characters it edits with, as for the jog keys."""
+        for shortcut in self._retract_keys:
+            shortcut.setEnabled(False)
+            shortcut.setParent(None)
+            shortcut.deleteLater()
+        self._retract_keys = []
+        for sequence in keys.sequences(self.session.settings.keys, "retract"):
+            shortcut = QShortcut(sequence, self)
+            shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+            shortcut.activated.connect(self._retract)
+            self._retract_keys.append(shortcut)
+
+    def _retract(self) -> None:
+        """Retract: the tip straight up where it stands to the travel height
+        (`Motion.rise`), nothing asked; above it, it stays. Reached and
+        refused as Park is. "Retracting…" stands until the robot is let go
+        (`_show_park`), whichever way it went and however it ended."""
+        session = self.session
+        if session.robot is None:
+            return
+        if self._robot_busy() or session.locked:
+            self.refuse(session.robot_lease.refusal)
+            return
+        motion = session.motion
+        panel = self._shown_panel()
+        if panel is not None and panel.run_job(
+                lambda log: Reached(motion.rise(log=log), "Retracted."),
+                what="retracting the tip"):
+            self._retracting = True
+            self.top.set_retracting(True)
+            return
+        lease = session.robot_lease.claim("Retract")
+        if lease is None:
+            self.refuse(session.robot_lease.refusal)
+            return
+        worker = Worker(motion.rise, what="retracting the tip", lease=lease)
+        self._retract_worker = worker
+        worker.finished.connect(self._retract_done)
+        worker.failed.connect(self._retract_failed)
+        _log.info("retracting from the top bar")
+        self._retracting = True
+        self.top.set_retracting(True)
+        worker.start()
+        self._show_park()
+
+    def _retract_done(self, _result=None) -> None:
+        self._retract_worker = None
+        self._show_park()
+        self.say("Retracted.")
+        # The panels on other pages still show the pose from before.
+        for panel in self.findChildren(JogPanel):
+            panel.refresh_position()
+
+    def _retract_failed(self, reason: str) -> None:
+        self._retract_worker = None
+        self._show_park()
+        _log.error("retract: %s", reason)
+        self.refuse(f"Retract failed: {reason}")
 
     # -- stop -----------------------------------------------------------------
 

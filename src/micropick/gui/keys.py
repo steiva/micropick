@@ -9,7 +9,8 @@ changed from the default are stored, so a default changed here reaches every
 computer that kept it.
 
 A default may have aliases - "+" and "=" are one key on most keyboards,
-Enter arrives as either - and a rebound action has the one key chosen.
+Enter arrives as either - and a rebound action has the one key chosen. An
+action may have no default (Retract): it has no key until one is chosen.
 Esc is not offered: it is Stop, window-wide (`shell.MainWindow._stop`).
 """
 
@@ -20,7 +21,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 
-__all__ = ["Action", "ACTIONS", "RESERVED", "action", "sequences",
+__all__ = ["Action", "ACTIONS", "RESERVED", "action", "sequences", "first",
            "key_text", "problems"]
 
 
@@ -45,6 +46,7 @@ ACTIONS = (
     Action("help", "Show or hide the key list", (Qt.Key.Key_H,)),
     Action("aspirate", "Aspirate (Manual control)", (Qt.Key.Key_A,)),
     Action("dispense", "Dispense (Manual control)", (Qt.Key.Key_D,)),
+    Action("retract", "Retract the tip", ()),
 )
 
 _BY_ID = {a.id: a for a in ACTIONS}
@@ -67,10 +69,15 @@ def sequences(bindings: dict, action_id: str) -> list[QKeySequence]:
     return [QKeySequence(key) for key in _BY_ID[action_id].defaults]
 
 
+def first(bindings: dict, action_id: str) -> QKeySequence:
+    """The key shown for `action_id`; empty for one with no key."""
+    return next(iter(sequences(bindings, action_id)), QKeySequence())
+
+
 def key_text(bindings: dict, action_id: str) -> str:
     """The key as shown in the key list: the first one, as the system
-    names it."""
-    return sequences(bindings, action_id)[0].toString(
+    names it; "" for an action with no key."""
+    return first(bindings, action_id).toString(
         QKeySequence.SequenceFormat.NativeText)
 
 

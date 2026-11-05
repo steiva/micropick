@@ -171,7 +171,7 @@ class DishBottomPage(QWidget):
         self._stage = 0
 
         # Its keys on itself, hidden: they never fire (the page's own do).
-        self.jog = JogPanel(session, machine_controls=False, parent=self)
+        self.jog = JogPanel(session, parent=self)
         self.jog.hide()
         self.jog.pose_changed.connect(self._show_pose)
         # Every job's end: the buttons follow it (the robot's lease is

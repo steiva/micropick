@@ -189,7 +189,7 @@ class WellCenterPage(QWidget):
         self._depth_for = None
 
         self.jog = JogPanel(session, shortcut_host=self,
-                            machine_controls=False, parent=self)
+                            parent=self)
         self.jog.hide()
         self.jog.pose_changed.connect(self._show_pose)
         # Every job's end: the buttons follow it (the robot's lease is

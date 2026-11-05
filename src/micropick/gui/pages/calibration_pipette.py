@@ -530,7 +530,6 @@ class TipCalibrationBlock(QObject):
         # XY only: a Z step here pushes the tip into the disc. Its pad is
         # over the picture; the panel itself shows nothing.
         self.touch_jog = JogPanel(self.session, shortcut_host=parent,
-                                  machine_controls=False,
                                   xy_only=True, parent=self.tune_box)
         self.touch_jog.show_position_on(self.view)
         self.touch_jog.hide()
@@ -987,7 +986,6 @@ class PipetteCalibration(QWidget):
 
         self.view = CameraView(self)
         self.jog = JogPanel(self.session, shortcut_host=self,
-                            machine_controls=False,
                             parent=self)
         self.jog.show_position_on(self.view)
         self.calibration = TipCalibrationBlock(session, self.jog, self.view,

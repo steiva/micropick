@@ -420,7 +420,7 @@ class SettingsPage(QWidget):
     def _show_keys(self, bindings: dict) -> None:
         for action_id, edit in self.key_edits.items():
             edit.blockSignals(True)
-            edit.setKeySequence(keys.sequences(bindings, action_id)[0])
+            edit.setKeySequence(keys.first(bindings, action_id))
             edit.blockSignals(False)
 
     def _keys_defaults(self) -> None:
@@ -433,7 +433,7 @@ class SettingsPage(QWidget):
         out = {}
         for action_id, edit in self.key_edits.items():
             typed = edit.keySequence()
-            default = keys.sequences({}, action_id)[0]
+            default = keys.first({}, action_id)
             if typed != default:
                 out[action_id] = typed.toString(
                     QKeySequence.SequenceFormat.PortableText)
