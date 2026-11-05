@@ -336,3 +336,19 @@ def _settle_reads(app, page, timeout_s=5.0):
         app.processEvents()
         time.sleep(0.01)
     app.processEvents()
+
+
+def test_a_step_of_another_task_is_gone_as_the_task_changes(app, window,
+                                                            monkeypatch):
+    """Finish by hand goes from Auto's Run to Manual's: "picking" is no step
+    of Manual, and a refresh during the change must not read it as one taken
+    away, which opened the task again and again."""
+    window.open_task_step("auto", "picking")
+    shown = []
+    show_step = window.show_step
+    monkeypatch.setattr(window, "show_step",
+                        lambda step: (shown.append(step), show_step(step)))
+    window.session.task_requested.emit("manual", "work")
+    app.processEvents()
+    assert shown == ["work"]
+    assert (window.task, window.step) == ("manual", "work")

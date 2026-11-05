@@ -168,8 +168,8 @@ def _input_field(widget) -> QWidget | None:
     return None
 from ..workers import Worker
 
-__all__ = ["JogPanel", "KEY_TO_QT", "UNBOUND", "HOME_TITLE",
-           "HOME_DETAIL", "view_move", "check_view_axes"]
+__all__ = ["JogPanel", "UNBOUND", "HOME_TITLE", "HOME_DETAIL", "view_move",
+           "check_view_axes"]
 
 log = logging.getLogger(__name__)
 

@@ -482,7 +482,11 @@ class MainWindow(QMainWindow):
         self._show("robot_setup", [robot_setup.TITLE], in_task=False)
 
     def _set_task(self, task: str) -> None:
+        """`task`, on no step until one is shown: the old step is not one of
+        this task, and a refresh while the pages are told (`show_step`) would
+        read it as a step taken away and open the task again, without end."""
         self.task = task
+        self.step = None
         self._list_steps()
 
     def _list_steps(self) -> None:
