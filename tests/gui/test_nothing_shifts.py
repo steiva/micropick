@@ -140,9 +140,9 @@ def test_manual_part_or_all_moves_nothing(manual, stands_still, chosen):
 
 
 def test_manual_status_gaining_a_line_moves_nothing(manual, stands_still):
-    stands_still(manual, lambda: manual.state.setText("• One.\n• Two."))
-    stands_still(manual, lambda: manual.state.setText("• One."))
-    stands_still(manual, lambda: manual.state.setText(""))
+    stands_still(manual, lambda: manual.view.set_status(["One.", "Two."]))
+    stands_still(manual, lambda: manual.view.set_status(["One."]))
+    stands_still(manual, lambda: manual.view.set_status([]))
 
 
 def test_a_choice_is_laid_out_before_anything_is_painted(app, manual):

@@ -586,3 +586,73 @@ def test_a_camera_switch_keeps_the_pictures_size_and_shape(app):
     assert abs(shown.width() / shown.height() - 1.0) < 0.01
     assert shown.height() == view.height()
     row.deleteLater()
+
+
+def _row_view(app):
+    view = _view(app, _Camera("over"))
+    view.resize(1000, 750)
+    view.set_marks_available(True)
+    look, detect = QPushButton("Look at"), QPushButton("Detect cuboids")
+    view.add_top_row_widget(look)
+    view.add_top_row_widget(detect)
+    look.show()
+    detect.show()
+    app.processEvents()
+    return view, look, detect
+
+
+def test_a_row_of_the_pages_own_stands_over_the_chips(app):
+    view, look, detect = _row_view(app)
+    assert look.y() == detect.y() == 8
+    assert look.geometry().right() < detect.x()
+    assert detect.geometry().right() == view.width() - 9
+    assert view.crosshair_box.y() > look.geometry().bottom()
+    assert view.snapshot_button.geometry().right() == view.width() - 9
+    assert {look.height(), detect.height()} == {36}
+    view.hide()
+
+
+def test_a_chip_of_the_pages_own_stands_after_points(app):
+    view = _view(app, _Camera("over"))
+    view.resize(1000, 750)
+    view.set_marks_available(True)
+    chip = view.add_chip("Past picks")
+    app.processEvents()
+    assert chip.isCheckable() and not chip.isChecked()
+    assert chip.styleSheet() == view.crosshair_box.styleSheet()
+    assert view.marks_box.x() < chip.x() < view.snapshot_button.x()
+    assert chip.y() == view.marks_box.y()
+    view.set_camera(None)
+    assert chip.isHidden()
+    view.hide()
+
+
+def test_a_chip_of_the_pages_own_waits_for_a_camera(app):
+    view = CameraView()
+    assert view.add_chip("Past picks").isHidden()
+    view.deleteLater()
+
+
+def test_with_a_row_of_its_own_a_pages_lines_stand_under_the_chips(app):
+    view, _look, _detect = _row_view(app)
+    without = _pixels(view)
+    view.set_status(["23 cuboids found · 9 in size"])
+    app.processEvents()
+    rows, columns = np.nonzero((_pixels(view) != without).any(axis=2))
+    assert rows.min() > view.crosshair_box.geometry().bottom()
+    assert columns.max() <= view.width() - 8
+    view.hide()
+
+
+def test_a_press_on_the_lines_under_the_chips_is_nobodys(app):
+    view, _look, _detect = _row_view(app)
+    view.set_status(["23 cuboids found"])
+    app.processEvents()
+    _pixels(view)                                  # painted: the box is known
+    y = view.crosshair_box.geometry().bottom() + 16
+    clicks = []
+    view.clicked.connect(lambda u, v: clicks.append((u, v)))
+    QTest.mouseClick(view, Qt.MouseButton.LeftButton,
+                     pos=QPoint(view.width() - 30, y))
+    assert clicks == []
+    view.hide()

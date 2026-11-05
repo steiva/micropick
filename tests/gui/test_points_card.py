@@ -42,8 +42,11 @@ def page(app, session):
 
 # -- the card -----------------------------------------------------------------
 
-def test_the_card_never_folds_and_holds_the_moves_to_the_chosen_point(
-        page, session):
+def test_beside_the_work_the_card_never_folds_and_holds_the_moves(
+        app, page, session):
+    page.resize(1920, 860)
+    page.show()
+    app.processEvents()
     card = page.points_card
     assert card.title.text() == "Points"
     assert card.is_open()

@@ -97,6 +97,18 @@ class FoldCard(QFrame):
         self.body.setVisible(open)
         self.toggled.emit(open)
 
+    def set_folds(self, fold: bool) -> None:
+        """Whether the card folds from now, folded if it does: Manual pick's
+        Points, a card under the work and a column of its own beside it."""
+        self._fold = fold
+        self.header.setVisible(fold)
+        self.title.setVisible(not fold)
+        if fold:
+            self.header.setCursor(Qt.CursorShape.PointingHandCursor)
+        # The opposite of what it becomes, so that set_open draws it.
+        self._open = fold
+        self.set_open(False)
+
     def set_summary(self, text: str) -> None:
         self.summary.setText(text)
 

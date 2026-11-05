@@ -104,7 +104,9 @@ font) and the jog pad's step (`set_step_line`), a line apart, with nothing
 under the plate but Manual pick Run's heights of the slot under the crosshair
 (`set_height_line`). At the top right the chips and the picture button, left
 of them the page's own buttons and what the page shows (`set_status`: found
-counts, the marker seen). One quiet row of what the mouse does
+counts, the marker seen). Manual pick's Run has a row of its own over the chips
+(`add_top_row_widget`: Look at, Detect cuboids), a chip of its own
+(`add_chip`: Past picks), and its lines under them. One quiet row of what the mouse does
 (`set_mouse_help`) in the bottom-left corner. No camera name, slot,
 resolution, crop, zoom or frame rate, and no messages: those are the
 window's toast. The keys are on the jog pad (`add_corner_widget`), not in
@@ -282,6 +284,8 @@ class CameraView(QWidget):
         self._stats_enabled = False               # see enable_stats_button
         self._corner: list[QWidget] = []          # see add_corner_widget
         self._top: list[QWidget] = []             # see add_top_widget
+        self._top_row: list[QWidget] = []         # see add_top_row_widget
+        self._page_chips: list[QPushButton] = []  # see add_chip
         self._top_left: QWidget | None = None     # see add_top_left_widget
         self._build_controls()
 
@@ -396,6 +400,8 @@ class CameraView(QWidget):
                                   and self._marks_available)
         self.sizes_box.setVisible(self._camera is not None
                                   and self._histogram is not None)
+        for chip in self._page_chips:
+            chip.setVisible(self._camera is not None)
 
         self._place_controls()
 
@@ -522,6 +528,26 @@ class CameraView(QWidget):
         self._top.append(widget)
         self._place_controls()
 
+    def add_top_row_widget(self, widget: QWidget) -> None:
+        """Float `widget` in a row of its own over the chips, right-aligned,
+        the page's lines going under the chips: Manual pick Run's Look at and
+        Detect cuboids. Other pages keep one row (`add_top_widget`)."""
+        widget.setParent(self)
+        widget.setStyleSheet(overlay_button(height=SIZES["overlay-action"]))
+        widget.setFixedHeight(SIZES["overlay-action"])
+        widget.installEventFilter(self)
+        self._top_row.append(widget)
+        self._place_controls()
+
+    def add_chip(self, text: str) -> QPushButton:
+        """A layer's toggle of the page's own, after Points, off and shown
+        with a camera as the others are: Manual pick Run's Past picks."""
+        chip = self._chip(text)
+        chip.setVisible(self._camera is not None)
+        self._page_chips.append(chip)
+        self._place_controls()
+        return chip
+
     def add_top_left_widget(self, widget: QWidget) -> None:
         """Float `widget` at the top of the status plate, which is drawn
         behind it, X, Y and Z under it: Manual Work's TipGauge. One per
@@ -535,7 +561,7 @@ class CameraView(QWidget):
         """A corner or top widget that changed its size or was shown is
         placed again."""
         if (watched in self._corner or watched in self._top
-                or watched is self._top_left) \
+                or watched in self._top_row or watched is self._top_left) \
                 and event.type() in (QEvent.Type.LayoutRequest,
                                      QEvent.Type.Show):
             self._place_controls()
@@ -549,18 +575,15 @@ class CameraView(QWidget):
 
     def _place_controls(self) -> None:
         margin = 8
+        top = margin
+        if any(not widget.isHidden() for widget in self._top_row):
+            self._place_row(reversed(self._top_row), top)
+            top += SIZES["overlay-action"] + margin
         # One row along the top edge, from the right: the picture button,
-        # the chips, the page's buttons; the hidden ones take no room.
-        right = self.width() - margin
-        for widget in (self.snapshot_button, self.sizes_box, self.marks_box,
-                       self.crosshair_box, *reversed(self._top)):
-            if widget.isHidden():
-                continue
-            size = widget.sizeHint().expandedTo(widget.minimumSize()) \
-                .boundedTo(widget.maximumSize())
-            right -= size.width()
-            widget.setGeometry(right, margin, size.width(), size.height())
-            right -= margin // 2
+        # the chips, the page's buttons.
+        self._place_row((self.snapshot_button, self.sizes_box,
+                         *reversed(self._page_chips), self.marks_box,
+                         self.crosshair_box, *reversed(self._top)), top)
         if self._top_left is not None:
             size = self._top_left.sizeHint()
             self._top_left.setGeometry(margin, margin, size.width(),
@@ -579,6 +602,20 @@ class CameraView(QWidget):
                                    hist.top() + 3)
             self.stats_button.show()
             self.stats_button.raise_()
+
+    def _place_row(self, widgets, top: int) -> None:
+        """`widgets` from the right edge leftward; the hidden ones take no
+        room."""
+        margin = 8
+        right = self.width() - margin
+        for widget in widgets:
+            if widget.isHidden():
+                continue
+            size = widget.sizeHint().expandedTo(widget.minimumSize()) \
+                .boundedTo(widget.maximumSize())
+            right -= size.width()
+            widget.setGeometry(right, top, size.width(), size.height())
+            right -= margin // 2
 
     # -- zoom ----------------------------------------------------------------
 
@@ -1234,7 +1271,7 @@ class CameraView(QWidget):
 
     def _draw_status(self, painter: QPainter) -> None:
         """The page's lines (`set_status`) on the top edge, ending where
-        its buttons begin."""
+        its buttons begin; under the chips on a page with a row of its own."""
         if not self._status:
             return
         painter.setFont(ui_font(13, 600))
@@ -1242,10 +1279,19 @@ class CameraView(QWidget):
         metrics = painter.fontMetrics()
         width = 2 * CAPTION_PAD + max(metrics.horizontalAdvance(line)
                                       for line in self._status)
-        right = min([self.width() - PLATE_MARGIN] + [
-            widget.x() for widget in (self.snapshot_button, self.sizes_box,
-                                      self.marks_box, self.crosshair_box,
-                                      *self._top) if not widget.isHidden()])
+        row = [widget for widget in (self.snapshot_button, self.sizes_box,
+                                     *self._page_chips, self.marks_box,
+                                     self.crosshair_box, *self._top)
+               if not widget.isHidden()]
+        if self._top_row:
+            bottoms = [widget.geometry().bottom() for widget in
+                       (*self._top_row, *row) if not widget.isHidden()]
+            top = max(bottoms, default=PLATE_MARGIN) + 1 + PLATE_MARGIN
+            self._draw_box(painter, top, self._status,
+                           left=self.width() - PLATE_MARGIN - width)
+            return
+        right = min([self.width() - PLATE_MARGIN]
+                    + [widget.x() for widget in row])
         self._draw_box(painter, PLATE_MARGIN, self._status,
                        left=right - CAPTION_GAP - width)
 

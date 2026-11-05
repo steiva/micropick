@@ -103,13 +103,14 @@ def overlay_box() -> str:
             f"border-radius: {SIZES['overlay-radius']}px;")
 
 
-def overlay_button(kind: str = "QPushButton", side_pad: int = 12) -> str:
+def overlay_button(kind: str = "QPushButton", side_pad: int = 12,
+                   height: int = SIZES["overlay-button"]) -> str:
     """A stylesheet for a button over a picture; checked, it is filled as a
     toggle of the top bar is."""
     return (f"{kind} {{ {overlay_box()} color: {COLORS['text']}; "
             f"font: 600 13px '{UI_FONT}'; padding: 0 {side_pad}px; "
-            f"min-height: {SIZES['overlay-button'] - 2}px; "
-            f"max-height: {SIZES['overlay-button'] - 2}px; }} "
+            f"min-height: {height - 2}px; "
+            f"max-height: {height - 2}px; }} "
             f"{kind}:checked {{ background: {COLORS['text']}; "
             f"color: {COLORS['bg']}; }} "
             f"{kind}:disabled {{ color: {COLORS['muted']}; }}")

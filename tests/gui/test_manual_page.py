@@ -56,15 +56,16 @@ def _detection(sizes):
                      {}, classified=True, standin=False)
 
 
-def test_detected_sizes_go_to_the_shared_histogram(page):
+def test_detected_sizes_go_to_the_picture(page):
     page.session.profile.picking.cuboid_size_threshold = (250, 500)
-    assert page.sizes.toggle.isChecked() is False          # folded
     page._cuboids = _detection([300, 320, 600])
     page._show_sizes()
-    assert page.histogram.state.text().startswith(
-        "2 of 3 cuboids are inside 250–500 µm")
+    page._refresh()
+    assert page.view._histogram.inside == 2
+    assert "3 cuboids found · 2 in size" in page.view._status
     page._forget_targets()
-    assert page.histogram.state.text() == "nothing measured yet"
+    assert page.view._histogram is None
+    assert not any("found" in line for line in page.view._status)
 
 
 W, H, K = 2592, 1944, 0.026

@@ -105,7 +105,7 @@ class MiniDeckDropdown(QPushButton):
     slot_chosen = Signal(int)
 
     def __init__(self, parent: QWidget | None = None, *,
-                 placeholder: str = "Choose a slot"):
+                 placeholder: str = "Choose a slot", prefix: str = ""):
         super().__init__(parent)
         self.setObjectName("secondary")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -116,6 +116,11 @@ class MiniDeckDropdown(QPushButton):
         row = QHBoxLayout(self)
         row.setContentsMargins(14, 0, 12, 0)
         row.setSpacing(8)
+        # What it is for, inside the button: on a picture it has no row of
+        # its own to be named in.
+        self.prefix = QLabel(prefix, self)
+        self.prefix.setStyleSheet(f"color: {COLORS['muted']};")
+        self.prefix.setVisible(bool(prefix))
         self._slot = QLabel(self)
         self._slot.setStyleSheet(f"color: {COLORS['accent']}; font-weight: 600;")
         self._name = QLabel(self)
@@ -125,7 +130,7 @@ class MiniDeckDropdown(QPushButton):
         arrow = QLabel(self)
         arrow.setPixmap(icon("chevron-down", COLORS["text-2"], 16)
                         .pixmap(16, 16))
-        for widget in (self._slot, self._name, self._facts):
+        for widget in (self.prefix, self._slot, self._name, self._facts):
             widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             row.addWidget(widget)
         row.addStretch(1)
@@ -157,7 +162,7 @@ class MiniDeckDropdown(QPushButton):
 
     def sizeHint(self) -> QSize:
         width = sum(label.sizeHint().width() for label in
-                    (self._slot, self._name, self._facts)) + 80
+                    (self.prefix, self._slot, self._name, self._facts)) + 80
         return QSize(width, 40)
 
     def open_popover(self) -> None:

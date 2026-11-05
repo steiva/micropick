@@ -80,6 +80,7 @@ SIZES: dict[str, int] = {
     "radius-card": 12,
     "overlay-radius": 9,    # a chip or button over a picture
     "overlay-button": 32,
+    "overlay-action": 36,   # a page's row of its own, over the chips
     "side-min": 400,
     "side-max": 520,
     "caption": 11,     # CAPS captions

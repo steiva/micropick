@@ -14,6 +14,9 @@ between cameras, the panel jumping with it. Another shape - the lower
 camera's square crop - is letterboxed inside by `CameraView`, black bars
 beside it, never stretched.
 
+A panel of fixed columns (`WorkColumns`) says its own width at the row's
+(`width_in`), and the view takes the rest of the row.
+
 Placed by hand in `resizeEvent` rather than by a layout: the split depends on
 the height, and no box layout asks its children for a width given a height.
 """
@@ -33,9 +36,10 @@ MAX_SIDE_FACTOR = 2.0
 
 class FeedRow(QWidget):
     def __init__(self, view: CameraView, side: QWidget,
-                 parent: QWidget | None = None):
+                 parent: QWidget | None = None, *, spacing: int = SPACING):
         super().__init__(parent)
         self.view, self.side = view, side
+        self._spacing = spacing
         view.setParent(self)
         side.setParent(self)
         # The width the panel was built for is its minimum here.
@@ -46,16 +50,19 @@ class FeedRow(QWidget):
         width, height = self.width(), self.height()
         if width <= 0 or height <= 0:
             return
-        wanted_view = int(round(height * DEFAULT_ASPECT))
-        side = width - SPACING - wanted_view
-        side = max(self._min_side, min(self._max_side, side))
-        view = max(0, width - SPACING - side)
+        if hasattr(self.side, "width_in"):
+            side = self.side.width_in(width)
+        else:
+            wanted_view = int(round(height * DEFAULT_ASPECT))
+            side = width - self._spacing - wanted_view
+            side = max(self._min_side, min(self._max_side, side))
+        view = max(0, width - self._spacing - side)
         if hasattr(self.side, "set_outer_width"):
             self.side.set_outer_width(side)
         else:
             self.side.setFixedWidth(side)
         self.view.setGeometry(0, 0, view, height)
-        self.side.setGeometry(view + SPACING, 0, side, height)
+        self.side.setGeometry(view + self._spacing, 0, side, height)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -67,7 +74,9 @@ class FeedRow(QWidget):
 
     def minimumSizeHint(self) -> QSize:
         view = self.view.minimumSize()
-        return QSize(view.width() + SPACING + self._min_side, view.height())
+        return QSize(view.width() + self._spacing + self._min_side,
+                     view.height())
 
     def sizeHint(self) -> QSize:
-        return QSize(int(700 * DEFAULT_ASPECT) + SPACING + self._min_side, 700)
+        return QSize(int(700 * DEFAULT_ASPECT) + self._spacing + self._min_side,
+                     700)

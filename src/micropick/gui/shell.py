@@ -99,6 +99,9 @@ STEP_PAGES = {
     "well_center": "well_center", "liquid_plan": "liquid_plan", "run": "liquid",
 }
 
+# The steps that end their task with Finish, which goes Home.
+FINISH_STEPS = {"work"}
+
 # The sheet each Robot setup item is set in (`SHEETS`).
 CAMERA_SHEET = "camera_sheet"
 CALIBRATION_SHEET = "calibration_sheet"
@@ -280,6 +283,7 @@ class MainWindow(QMainWindow):
         self.footer.back_clicked.connect(self._back)
         self.footer.next_clicked.connect(self._next)
         self.top.home_clicked.connect(self.open_home)
+        self.footer.finish_clicked.connect(self.open_home)
         self.top.crumb_clicked.connect(self._crumb)
         self.top.settings_clicked.connect(self.open_settings)
         self.top.light_toggled.connect(self._toggle_lights)
@@ -671,6 +675,7 @@ class MainWindow(QMainWindow):
             self.footer.clear_status()
         # Only on a change: it takes the buttons out and puts them back.
         navigation = dict(next=index < len(steps) - 1,
+                          finish=self.step in FINISH_STEPS,
                           next_enabled=state.done or state.optional)
         if navigation != self._navigation:
             self._navigation = navigation

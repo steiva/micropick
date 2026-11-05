@@ -66,8 +66,8 @@ every feed. The status plate at the top left: Manual's TipGauge
 (`add_top_left_widget`), the robot's X, Y and Z one per line (fixed font), the
 step (`CameraView.set_step_line`), dividers between; nothing under it but
 Manual pick Run's height line (`set_height_line`), its row kept. At the top
-right the chips (Crosshair, Points, Sizes where there is a histogram) and the
-picture button, left of them the page's buttons (`add_top_widget`, which
+right the chips (Crosshair, Points, Manual's Past picks, Sizes where there is a
+histogram) and the picture button, left of them the page's buttons (`add_top_widget`, which
 restyles them), then the page's lines (`set_status`: found counts, the marker
 seen, what holds while it is true). One quiet mouse row bottom-left
 (`CameraView.set_mouse_help`, "gesture what it does" per item). No native
@@ -98,31 +98,34 @@ letterboxed in it with black bars, so a switch of cameras resizes
 nothing; the panel gets the rest, within 1-2x its designed width. Pages carry no title;
 the TopBar's breadcrumb is the title.
 
-Manual pick's Run lays its cards out in `widgets.card_columns.CardColumns`
-(its only user): two columns from `2 * COLUMN_MIN + SPACING`, else one. The
-two are always the same width, half the panel each, and a card's width never
-follows what it shows: a column asks for no width of its own (a box layout's
-stretch yields to a minimum, so the widest row shown used to move the line
-between them), and long text wraps or is cut. A card stays in its column
-until the arrangement changes. A row of buttons in these cards has to fit a
-full HD window's column, or goes one under the other.
+Manual pick's Run (#113, MANUAL.md §1) is the picture, then
+`widgets.work_columns.WorkColumns`: from a window of about 1600 px two columns of
+400 px, the work (In place, Aspirate, Dispense) and Points at the full height, its
+list filling it; under that one column of 420 px, Points a card after Dispense,
+folded by default (`FoldCard.set_folds`). The widths are fixed, the picture takes
+the rest (`FeedRow`, `width_in`), so a card's width never follows what it shows,
+long text wraps or is cut, and no card is under 380 px. A row of buttons in these
+cards has to fit a column, or goes one under the other. Look at and Detect cuboids
+are a row over the chips (`CameraView.add_top_row_widget`), the Past picks chip
+among them (`add_chip`) and the page's lines under them, "23 cuboids found · 9 in
+size", on Manual only. Sizes are the picture's Sizes chip. The page has no status
+of its own: what holds is such a line, an answer a toast.
 
 ### Nothing shifts
 
 The frame never moves (#106): the camera view (`FeedRow`), the width of a card
-and of a column (`CardColumns`). Only what the operator clicks moves others, and
+and of a column (`WorkColumns`). Only what the operator clicks moves others, and
 only down the column it is in: a Section, Change, Keys, a Save as template's name
 row, and a choice showing other controls, which is as tall as what it shows, no
 room kept for a choice not made (From and Where on Manual pick's Run, Change's
 height rows, Liquid in tip's From). Show and hide those inside
 `theme.factory.laid_out_at_once`, so nothing is painted at the old height. Manual
-pick's Run scrolls on a full HD window until the Run frame ticket places In
-place (#107).
+pick's work column scrolls on a full HD window with its long settings open, until
+Aspirate and Dispense fold (#114).
 
 A status line or a warning moves nothing: a message is the toast, and what comes
 and goes by itself has its place kept, `theme.factory.reserve` for a line or a
-field, `reserve_lines` for a status of more than one line (Manual pick's), and
-`choice_stack` for what the robot or a run changes, one page at a time in the
+field, and `choice_stack` for what the robot or a run changes, one page at a time in the
 room of the tallest (the Tip step's rack or drop buttons, a liquid run's
 banners): a card must not leave from under the operator's hand. A test says it
 with `stands_still` (`tests/gui/conftest.py`), and for a choice that the frame
@@ -137,7 +140,8 @@ and the StatusPill while a run has the robot, Settings) over
 one stack: Home (`pages.home`: the robot, the Robot setup, three task
 tiles) and the existing pages, reused as the content of a **task**'s
 **steps** (`gui.tasks`; `shell.STEP_PAGES` maps step to page). While a
-step is shown, `StepBar` is over it and `Footer` (Back, Next) under it.
+step is shown, `StepBar` is over it and `Footer` (Back, Next; on Manual
+pick's Run Back and Finish, which goes Home, no status line) under it.
 A step's done mark and first unmet need come from `tasks.step_state` each
 time, never from a visit; a step whose need is not met is dimmed
 (`overlays.DimCover`) and disabled - so its keys do nothing - under one
@@ -475,7 +479,7 @@ Z from tip; no Z until one is given, so a first click never sends the tip
 down. Over the
 picture's top left is the `TipGauge` (`CameraView.add_top_left_widget`,
 X, Y, Z under it), the tip's volume counted from the page's aspirates and
-dispenses; Show past picks draws where it aspirated, the last bright
+dispenses; the Past picks chip draws where it aspirated, the last bright
 (`PositionMarks.set_picks`); Look at (a `MiniDeckDropdown`) sends the
 camera over a slot. Work shows the upper camera only.
 
@@ -521,7 +525,7 @@ Settings, Advanced.
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
 
-A section that folds (`theme.factory.Section`, Manual pick's Sizes;
+A section that folds (`theme.factory.Section`;
 `flat` inside a card, Points' Memo and Saved)
 has an arrow as tall as a capital letter (`fold_arrow`), and
 folding lays its scroll column out at once (`_ScrollColumn.fit_now`), so

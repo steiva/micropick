@@ -1701,12 +1701,12 @@ tip box and a 384 plate at hand.
 - [ ] **Tip gauge and past picks.**
   Tip on, Aspirate 15 µl: the gauge reads 15 µl and fills; Dispense All:
   0 µl.
-  Drop the tip: 0 µl. Show past picks (filled while on): a violet ring at
+  Drop the tip: 0 µl. The Past picks chip (filled while on): a violet ring at
   each spot aspirated from, the last bright, the older faint; off hides them.
 
 - [ ] **Detect cuboids and Look at.**
-  Detect cuboids draws the contours and "N cuboids found" on the
-  picture; a click on a cuboid only moves the camera there, the tip
+  Detect cuboids, on the picture, draws the contours and "N cuboids found ·
+  M in size" under the chips; a click on a cuboid only moves the camera there, the tip
   stays up. Look at: the dropdown shows the whole deck with what is on it;
   a slot chosen sends the camera over its center (check slot 8 by eye).
 
@@ -2415,6 +2415,13 @@ On a full HD window, the page in two columns.
   Q and W do it, A and D no longer. In the Amount field the keys type or do
   nothing, the robot stays.
 
+
+- [ ] **Manual pick's Run: the frame (#113).**
+  At 1920×1080: the picture, then a work column and a Points column of 400 px,
+  Points the full height. Look at and Detect cuboids in a row over the chips,
+  Past picks among them. Footer: Back and Finish, nothing on its left; Finish
+  goes Home. Narrow the window under 1600 px: one column of 420 px, Points a
+  folded card after Dispense, the picture still 4:3 with black bars.
 
 - [ ] **Nothing shifts.**
   Manual pick's Run: click through From and Where, with Change open and closed:

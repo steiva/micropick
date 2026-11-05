@@ -97,13 +97,14 @@ lowers the tip into anything.
 Past picks
 ----------
 Where the tip aspirated on this page, in the order taken, kept until the
-program closes. Show past picks (a toggle, filled while on) draws them: the
+program closes. The Past picks chip on the picture draws them: the
 last bright, the older ones faint (`position_marks.pick_items`), so the
 spots already taken from are visible.
 
 Look at
 -------
-A MiniDeckDropdown of the whole deck: choosing a slot sends the **camera**
+A MiniDeckDropdown of the whole deck, on the picture beside Detect cuboids
+(`CameraView.add_top_row_widget`): choosing a slot sends the **camera**
 over that slot's center at the travel height (`core.deck.slot_center`, the
 deck definition's geometry). The definition is in the robot's frame, the
 tip's: the camera goes to it less the pipette offset. Nothing is aspirated.
@@ -213,10 +214,14 @@ Every robot command goes through the jog panel's worker (`run_job`), so a
 click-move and a key press cannot overlap. When anything moves, the
 detections are dropped: they were measured from where the camera was.
 
-After Detect cuboids, the cuboids' sizes against the profile's size
-window are in a folded Sizes section: the Picking page's histogram
-(`widgets.size_histogram`), the same drawing, so the two pages cannot
-disagree about what a run would accept.
+After Detect cuboids, what was found is a line under the chips, "23 cuboids
+found · 9 in size", and the cuboids' sizes against the profile's size window
+are the picture's Sizes chip: the bins of `widgets.size_histogram`, the
+Picking page's, so the two pages cannot disagree about what a run would accept.
+
+The frame (MANUAL.md §1): the picture, then `WorkColumns`, the work and Points.
+What holds while it is true is a line on the picture (`_status_lines`), and an
+answer is a toast: this page has no status of its own to move a card.
 
 The keys - the jog panel's and these - are listed under the jog pad (its
 Keys toggle); what the mouse does is the picture's mouse row.
@@ -234,7 +239,8 @@ import cv2
 import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QVBoxLayout,
+from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout,
+                               QLabel, QSizePolicy, QVBoxLayout,
                                QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
@@ -255,13 +261,11 @@ from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (Section, card, combo_box, compact, heading,
+from ..theme.factory import (card, combo_box, compact, heading,
                              double_spin_box, laid_out_at_once, muted_label,
-                             primary_button, reserve, reserve_lines,
-                             scroll_column, secondary_button, select,
+                             primary_button, reserve, secondary_button, select,
                              tool_button)
 from ..widgets.camera_view import CameraView
-from ..widgets.card_columns import CardColumns
 from ..widgets.controls import Segmented, Switch
 from ..widgets.feed_row import FeedRow
 from ..widgets.fold_card import FoldCard
@@ -272,7 +276,8 @@ from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
 from ..widgets.plate_grid import PlateGrid
 from ..widgets.point_list import PointList, TRAVEL_TEXT, Z_TOP_MM
 from ..widgets.tip_gauge import TipGauge
-from ..widgets.size_histogram import SizeHistogram
+from ..widgets.work_columns import COLUMN_GAP, WorkColumns
+from ..widgets.size_histogram import size_bins
 from ..workers import Worker
 
 __all__ = ["ManualPage"]
@@ -281,7 +286,8 @@ TITLE = "Manual control"
 
 log = logging.getLogger(__name__)
 
-PANEL_WIDTH = 400
+# Left, top, right, bottom: the frame's (MANUAL.md §1).
+PAGE_MARGINS = (20, 16, 20, 16)
 
 # How far outside a cuboid's contour a click still counts as on it: the
 # outline is a line one pixel wide, and a cuboid is a small thing to hit.
@@ -342,6 +348,7 @@ def _number_box(parent: QWidget, value: float, span, suffix: str,
 POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
 # The Points card's list, and the one under "At a point".
 POINTS_LIST_PX = 280
+NO_LIMIT_PX = 16777215      # Qt's QWIDGETSIZE_MAX, which PySide does not export
 AT_A_POINT_LIST_PX = 170
 # What Z a new point gets.
 TRAVEL_Z, TIP_Z, LAST_Z = NEW_Z = ("Travel height", "Z of the tip now",
@@ -555,6 +562,7 @@ class ManualPage(QWidget):
         self._picks: list[tuple[float, float]] = []
         # Set by a stop: ends a job's wait before the tip goes up.
         self._last_z: float | None = None   # see _new_z
+        self._working = ""                  # the worker's job, for the picture
         self._stop = threading.Event()
         self._forget_targets(redraw=False)
 
@@ -587,18 +595,19 @@ class ManualPage(QWidget):
         self.jog.set_page_help(self._page_help())
 
         self.marks = PositionMarks.on(session, self.view)
-        panel = CardColumns([self._in_place_card(), self._tools_card(),
-                             self._sizes_card(),
-                             self._aspirate_card(), self._dispense_card(),
-                             self._points_card(), self.jog], self)
+        self._picture_tools()
+        self.in_place_card = self._in_place_card()
+        columns = WorkColumns([self.in_place_card, self._aspirate_card(),
+                               self._dispense_card()],
+                              self._points_card(), self, last=self.jog)
+        columns.two_columns_changed.connect(self._columns_changed)
 
         body = QHBoxLayout()
         body.setSpacing(SPACING)
-        body.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
-                       1)
+        body.addWidget(FeedRow(self.view, columns, spacing=COLUMN_GAP), 1)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2, SPACING * 2)
+        layout.setContentsMargins(*PAGE_MARGINS)
         layout.setSpacing(SPACING)
         layout.addLayout(body, 1)
 
@@ -634,35 +643,21 @@ class ManualPage(QWidget):
     def _tip_moves(self) -> bool:
         return self.click_mode.current() == CLICK_MOVES.index("Tip")
 
-    def _tools_card(self) -> QWidget:
-        """Detect cuboids and Show past picks, where Picking has Detect
-        and Shake; Look at under them."""
-        box = card(self)
-        row = QHBoxLayout()
-        self.cuboid_button = primary_button("Detect cuboids", self)
-        self.cuboid_button.clicked.connect(self._detect_cuboids)
-        self.past_picks_button = secondary_button("Show past picks", self)
-        self.past_picks_button.setCheckable(True)
-        self.past_picks_button.toggled.connect(lambda _on: self._show_picks())
-        row.addWidget(self.cuboid_button, 1)
-        row.addWidget(self.past_picks_button, 1)
-        box.layout().addLayout(row)
-
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Look at"))
-        self.look_at = MiniDeckDropdown(self, placeholder="Choose a slot")
+    def _picture_tools(self) -> None:
+        """Look at and Detect cuboids in a row over the chips, Past picks
+        among them."""
+        self.look_at = MiniDeckDropdown(self, placeholder="Choose a slot",
+                                        prefix="Look at")
         self.look_at.setToolTip("Move the camera over the slot.")
         self.look_at.slot_chosen.connect(self._slot_clicked)
-        row.addWidget(self.look_at, 1)
-        box.layout().addLayout(row)
-
-        self.state = muted_label("", self)
-        self.state.setWordWrap(True)
-        self.state.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        # Two: a camera still opening is a line beside the calibration's.
-        box.layout().addWidget(reserve_lines(self.state, 2))
-        return box
+        self.cuboid_button = secondary_button("Detect cuboids", self)
+        self.cuboid_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.cuboid_button.clicked.connect(self._detect_cuboids)
+        for widget in (self.look_at, self.cuboid_button):
+            self.view.add_top_row_widget(widget)
+            widget.show()
+        self.past_picks_button = self.view.add_chip("Past picks")
+        self.past_picks_button.toggled.connect(lambda _on: self._show_picks())
 
     def _in_place_card(self) -> QWidget:
         """Amount and speed of its own, and the two buttons; see "In
@@ -831,7 +826,7 @@ class ManualPage(QWidget):
     def _points_card(self) -> QWidget:
         """The one Points card: the list, the moves unfolding under the
         chosen point, and what makes a point; see "Memo points"."""
-        self.points_card = FoldCard("Points", fold=False, parent=self)
+        self.points_card = FoldCard("Points", parent=self)
         self.undo_button = tool_button("Undo", "undo",
                                        self.session.undo_points, self)
         self.redo_button = tool_button("Redo", "redo",
@@ -880,15 +875,19 @@ class ManualPage(QWidget):
         self.jog.pose_changed.connect(lambda _p: self._refresh_memo_buttons())
         return self.points_card
 
-    def _sizes_card(self) -> QWidget:
-        """Folded: the sizes are a second look at a detection, not the
-        reason to make one."""
-        self.sizes = Section("Sizes", collapsed=True, parent=self)
-        self.histogram = SizeHistogram(
-            "Detect cuboids to see their sizes against the profile's "
-            "cuboid_size_threshold, the shaded band.", self)
-        self.sizes.body.layout().addWidget(self.histogram)
-        return self.sizes
+    def _columns_changed(self, two: bool) -> None:
+        """A column of its own is the list's to fill; under the work it is
+        as tall as it was built."""
+        points = self.points_list
+        if two:
+            points.setMinimumHeight(POINTS_LIST_PX)
+            points.setMaximumHeight(NO_LIMIT_PX)
+            points.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                 QSizePolicy.Policy.Expanding)
+        else:
+            points.setFixedHeight(POINTS_LIST_PX)
+            points.setSizePolicy(QSizePolicy.Policy.Preferred,
+                                 QSizePolicy.Policy.Preferred)
 
     def _install_shortcuts(self) -> None:
         """A and D, window-wide while this page is showing - the jog panel's
@@ -1491,7 +1490,7 @@ class ManualPage(QWidget):
 
     def record_pick(self, xy) -> None:
         """A past pick at the tip's (x, y): drawn, the last bright, while
-        Show past picks is on."""
+        the Past picks chip is on."""
         self._picks.append((float(xy[0]), float(xy[1])))
         self._show_picks()
 
@@ -1530,7 +1529,7 @@ class ManualPage(QWidget):
         profile, robot, camera = session.profile, session.robot, self._camera()
         wanted = wanted_model(profile, session.mock)
         if not wanted:
-            self.state.setText("No cuboid model chosen (Settings).")
+            self.jog.refuse("No cuboid model chosen (Settings).")
             return
         service, cfg = session.detector, profile.picking
         pmap = PixelMap.from_config(profile.pixel_map)
@@ -1553,7 +1552,7 @@ class ManualPage(QWidget):
                                 for x, y in zip(df.cX, df.cY)], dtype=bool)
             return frame.shape, detection, worlds, covered
 
-        self._run(Worker(job), "detecting cuboids", self._cuboids_found)
+        self._run(Worker(job), "Detecting cuboids", self._cuboids_found)
 
     def _cuboids_found(self, payload) -> None:
         shape, detection, worlds, covered = payload
@@ -1568,11 +1567,12 @@ class ManualPage(QWidget):
 
     def _show_sizes(self) -> None:
         profile = self.session.profile
-        bins = self.histogram.show_detection(
+        bins = size_bins(
             self._cuboids,
             profile.picking.cuboid_size_threshold if profile else None)
-        # The same bins over the picture, small: what the plot counts.
-        self.view.set_histogram(bins)
+        # A string says why there are none, which the found line covers.
+        self._bins = None if isinstance(bins, str) else bins
+        self.view.set_histogram(self._bins)
 
     # -- clicking ---------------------------------------------------------------
 
@@ -1942,7 +1942,7 @@ class ManualPage(QWidget):
     def _blocked(self) -> bool:
         problems = self._map_problems()
         if problems:
-            self.state.setText("\n".join("• " + p for p in problems))
+            self.jog.refuse(problems[0])
             return True
         return self._busy() or self.jog.busy
 
@@ -1956,7 +1956,7 @@ class ManualPage(QWidget):
         worker.message.connect(self._said)
         worker.finished.connect(self._job_done)
         worker.failed.connect(self._job_failed)
-        self.state.setText(what + "…")
+        self._working = what
         log.info("%s", what)
         worker.start()
         self._refresh()
@@ -1974,7 +1974,7 @@ class ManualPage(QWidget):
         if self.sender() is not self._worker:
             return
         self._worker = None
-        self.state.setText(f"failed: {reason}")
+        self.jog.refuse(reason)
         log.error("manual control: %s", reason)
         self._refresh()
 
@@ -1982,6 +1982,7 @@ class ManualPage(QWidget):
 
     def _forget_targets(self, redraw: bool = True) -> None:
         self._cuboids = None
+        self._bins = None
         self._cuboid_worlds = np.empty((0, 2))
         self._cuboid_covered = np.empty(0, dtype=bool)
         self._frame_shape = None
@@ -2024,19 +2025,22 @@ class ManualPage(QWidget):
         self.dispense_card.setEnabled(self.session.in_tip > 0)
         self.dispense_button.setEnabled(has_robot and target is not None
                                         and self.session.in_tip > 0 and free)
-        # The found count is on the picture, as on Picking.
-        self.view.set_status(
-            [f"{len(self._cuboids.df)} cuboids found"]
-            if self._cuboids is not None else [])
+        self.view.set_status(self._status_lines(busy, problems))
+
+    def _status_lines(self, busy: bool, problems: list[str]) -> list[str]:
+        """What holds while it is true, on the picture under the chips."""
         if busy:
-            return
-        if problems:
-            self.state.setText("\n".join("• " + p for p in problems))
-            return
-        text = ""
-        if self._cuboids is not None and self._cuboids.standin:
-            text = "Stand-in cuboid detector: bright blobs, not the model."
-        self.state.setText(text)
+            return [self._working + "…"]
+        lines = []
+        if self._cuboids is not None:
+            found = f"{len(self._cuboids.df)} cuboids found"
+            if self._bins is not None:
+                found += f" · {self._bins.inside} in size"
+            lines.append(found)
+            if self._cuboids.standin:
+                lines.append(
+                    "Stand-in cuboid detector: bright blobs, not the model.")
+        return lines + problems
 
     def _on_profile_changed(self) -> None:
         profile = self.session.profile

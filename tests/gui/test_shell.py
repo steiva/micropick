@@ -352,3 +352,38 @@ def test_a_step_of_another_task_is_gone_as_the_task_changes(app, window,
     app.processEvents()
     assert shown == ["work"]
     assert (window.task, window.step) == ("manual", "work")
+
+
+def test_manual_picks_run_ends_with_finish_which_goes_home(app, window):
+    _connect(app, window)
+    window.open_task("manual")
+    window.show_step("work")
+    _settle(app, window)
+    footer = window.footer
+    assert footer.finish.isVisible() and footer.finish.text() == "Finish"
+    assert footer.back.isVisible() and not footer.next.isVisible()
+    # No status line: not a tag, not a sentence.
+    assert not footer.tag.isVisible() and not footer.sentence.isVisible()
+    footer.finish.click()
+    assert window.current_page() is window.home
+    assert window.task is None
+
+
+def test_finish_is_manual_picks_run_only(app, window):
+    _connect(app, window)
+    window.open_task("manual")
+    window.show_step("deck")
+    assert not window.footer.finish.isVisible()
+    window.open_task("liquid")
+    window.show_step("run")
+    assert not window.footer.finish.isVisible()
+
+
+def test_back_from_manual_picks_run_goes_to_the_step_before(app, window):
+    _connect(app, window)
+    window.open_task("manual")
+    window.show_step("work")
+    _settle(app, window)
+    steps = window._steps
+    window.footer.back.click()
+    assert window.step == steps[steps.index("work") - 1]

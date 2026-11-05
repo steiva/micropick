@@ -2,7 +2,8 @@
 
 Right-aligned **Back** (outlined) and **Next** (primary, the word only).
 Next is enabled when the step is done or optional. No message text: the
-response to an action is a toast (§7.6).
+response to an action is a toast (§7.6). Manual pick's Run ends the task with
+**Finish** (primary) in Next's place, which goes Home.
 
 On a run's screen (Picking, Liquid Run) the footer carries the run's
 status instead (§6.5): a colored CAPS tag - READY, PICKING, PAUSED,
@@ -34,6 +35,7 @@ STATUS_TONES = {
 class Footer(QFrame):
     back_clicked = Signal()
     next_clicked = Signal()
+    finish_clicked = Signal()
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
@@ -65,6 +67,10 @@ class Footer(QFrame):
         self.next.setIcon(icon("next", COLORS["on-accent"], 16,
                                disabled=COLORS["faint"]))
         self.next.clicked.connect(self.next_clicked)
+        self.finish = primary_button("Finish", self)
+        self.finish.setMinimumWidth(120)
+        self.finish.clicked.connect(self.finish_clicked)
+        self.finish.hide()
         self.clear_status()
         self.set_buttons([self.back, self.next])
 
@@ -81,10 +87,12 @@ class Footer(QFrame):
             widget.show()
 
     def set_navigation(self, *, back: bool = True, next: bool = True,
+                       finish: bool = False,
                        next_enabled: bool = True) -> None:
-        """Back and Next, as an ordinary step has them."""
+        """Back and Next, as an ordinary step has them, or Finish."""
         self.set_buttons([b for b, shown in ((self.back, back),
-                                             (self.next, next)) if shown])
+                                             (self.next, next),
+                                             (self.finish, finish)) if shown])
         self.next.setEnabled(next_enabled)
 
     def set_status(self, tag: str, sentence: str = "", *,

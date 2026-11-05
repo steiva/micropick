@@ -32,7 +32,7 @@ __all__ = ["primary_button", "secondary_button", "tool_button", "set_primary",
            "danger_button", "danger_text_button", "compact", "card",
            "heading", "caption", "muted_label", "combo_box", "select",
            "spin_box", "double_spin_box", "scroll_column", "Section",
-           "fold_arrow", "reserve", "reserve_lines", "choice_stack",
+           "fold_arrow", "reserve", "choice_stack",
            "laid_out_at_once"]
 
 
@@ -120,23 +120,6 @@ def reserve(*widgets: QWidget) -> None:
         policy = widget.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         widget.setSizePolicy(policy)
-
-
-def reserve_lines(label: QLabel, lines: int) -> QWidget:
-    """`label` in a box as tall as that many of its lines: a status that
-    comes, goes or gains a line moves nothing under it. Add the box."""
-    box = QWidget(label.parentWidget())
-    box.setObjectName("plain")
-    layout = QVBoxLayout(box)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.addWidget(label)
-    layout.addStretch(1)
-    label.ensurePolished()
-    text = label.text()
-    label.setText("\n".join("x" * lines))
-    box.setMinimumHeight(_text_height(label, 1000))
-    label.setText(text)
-    return box
 
 
 def choice_stack(*pages: QWidget, parent: QWidget | None = None
@@ -495,7 +478,7 @@ class Section(QFrame):
     """A card whose contents fold away behind its title.
 
     For the panels that carry more controls than any one job needs
-    (Manual pick's Sizes, the settings' Advanced): the page says which
+    (the settings' Advanced): the page says which
     start folded.
 
     Collapsed is a real collapse: the body is hidden, so it contributes no
