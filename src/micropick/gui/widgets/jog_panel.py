@@ -147,7 +147,7 @@ from ..position_marks import PositionMarks
 from ..session import Session
 from ..theme import SPACING
 from ..theme.factory import card, heading, secondary_button
-from .jog_pad import JogPad
+from .jog_pad import JogPad, step_chip_text, step_color
 from .toast import show_toast
 
 # What the picture says while there is no robot to ask.
@@ -720,6 +720,7 @@ class JogPanel(QWidget):
         self._pad_view = view
         view.add_corner_widget(self.pad)
         self._sync_pad()
+        self._show_step()
         view.installEventFilter(self)       # a click on it gives the keys back
         PositionMarks.on(self.session, view).follow(self)
 
@@ -755,10 +756,11 @@ class JogPanel(QWidget):
         """Enter in a field, a click on the picture or the page: the
         keyboard off the field. Nothing is taken from anyone: the field
         still gets its Enter, the picture its click. And the pad shown or
-        hidden: the keys follow it."""
+        hidden: the keys and the step's chip follow it."""
         if watched is self.pad and event.type() in (QEvent.Type.Show,
                                                     QEvent.Type.Hide):
             self._set_enabled(self._worker is None)
+            self._show_step()
             return False
         if not self._typing:
             return False
@@ -868,6 +870,19 @@ class JogPanel(QWidget):
     def _pad_step(self, mm: float) -> None:
         if self.controller is not None:
             self.controller.step = mm
+        self._show_step()
+
+    def _show_step(self) -> None:
+        """The step by X, Y and Z while the pad is on screen, folded or
+        not."""
+        if self._pad_view is None:
+            return
+        if self.pad.isVisible():
+            mm = self.pad.step
+            self._pad_view.set_step_chip(self.pad, step_chip_text(mm),
+                                         step_color(mm))
+        else:
+            self._pad_view.set_step_chip(self.pad)
 
     def _on_profile_changed(self, _profile) -> None:
         if self.controller is not None:

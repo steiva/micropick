@@ -63,6 +63,7 @@ from ..theme.factory import (caption, card, double_spin_box, heading,
                              scroll_column, secondary_button, select)
 from ..theme.icons import pixmap
 from ..widgets.checklist import BLOCKED, OK, TODO
+from ..widgets.jog_pad import StepChip
 from ..widgets.jog_panel import JogPanel
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
@@ -225,11 +226,13 @@ class WellCenterPage(QWidget):
         for widget in (caption("Tip", column), self.xy_readout,
                        self.z_readout, muted_label("mm", column)):
             lines.addWidget(widget, 0, Qt.AlignmentFlag.AlignHCenter)
-        lines.addSpacing(SPACING * 3)
-
         # The hidden panel's own pad: it moves, steps and grays as the
         # panel says, and its keys are on while it is on screen.
         self.pad = self.jog.pad
+        self.step_chip = StepChip(self.pad, column)
+        lines.addWidget(self.step_chip, 0, Qt.AlignmentFlag.AlignHCenter)
+        lines.addSpacing(SPACING * 3)
+
         lines.addWidget(self.pad, 0, Qt.AlignmentFlag.AlignHCenter)
 
         lines.addStretch(1)

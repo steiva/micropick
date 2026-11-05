@@ -101,7 +101,8 @@ camera with a map; the page that has one hands the directions over.
 Quiet chrome (REDESIGN §3)
 --------------------------
 Over the picture only what is used there: the robot's X, Y and Z
-(`set_position`, in a fixed font) with nothing under them, what the page
+(`set_position`, in a fixed font) with nothing under them, the jog pad's
+step in a chip beside them (`set_step_chip`), what the page
 shows (`set_status`: found counts, the marker seen) along the top edge
 beside its own buttons, and one quiet row of what the mouse does
 (`set_mouse_help`) in the bottom-left corner. No camera name, slot,
@@ -134,6 +135,7 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QToolButton, QWidget
 
 from ... import paths
 from ...core.vision.cuboids import center_crop_box
+from ..theme import COLORS
 from . import overlay_painter
 from .frame import to_qimage
 from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE, OUTSIDE_ALPHA,
@@ -244,6 +246,7 @@ class CameraView(QWidget):
         self._snapshot_worker = None
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
+        self._step_chip: tuple | None = None    # owner, text, color
         self._status: list[str] = []
         self._mouse_help: list[str] = list(MOUSE_HELP)
         self._click_line: str | None = None       # see set_click_to_move
@@ -786,6 +789,22 @@ class CameraView(QWidget):
         self._position = [str(line) for line in lines or ()]
         self.update()
 
+    def set_step_chip(self, owner, text: str = "", color: str = "") -> None:
+        """The jog pad's step as a chip beside X, Y and Z: `text` filled
+        with `color`. It says, it takes no click: a press there is on the
+        picture. No text takes `owner`'s chip away and leaves another's: two
+        pads on one view take turns, and either may hide first."""
+        if text:
+            self._step_chip = (owner, text, color)
+        elif self._step_chip is not None and self._step_chip[0] is owner:
+            self._step_chip = None
+        self.update()
+
+    @property
+    def step_chip(self) -> tuple[str, str] | None:
+        """The chip shown, (text, color), or None."""
+        return None if self._step_chip is None else self._step_chip[1:]
+
     def set_mouse_help(self, lines) -> None:
         """What the mouse does on this picture, one row in the bottom-left
         corner: "gesture   what it does" per item. Empty removes it."""
@@ -1140,7 +1159,8 @@ class CameraView(QWidget):
 
     def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> int:
         """Boxes of lines down the top-left corner; the robot's position
-        (`set_position`) in a fixed font, as numbers that change in place."""
+        (`set_position`) in a fixed font, as numbers that change in place,
+        the step's chip on its row."""
         font = QFont(self.font().family(), 10)
         mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         mono.setPointSize(10)
@@ -1148,11 +1168,41 @@ class CameraView(QWidget):
         top = 8
         if self._top_left is not None and self._top_left.isVisible():
             top = self._top_left.geometry().bottom() + 1 + CAPTION_GAP
+        chip_left, chip_top, chip_height = 8, top, 0
         for lines in groups:
             if lines:
-                painter.setFont(mono if lines is self._position else font)
-                top = self._draw_box(painter, top, lines) + CAPTION_GAP
+                ours = lines is self._position
+                painter.setFont(mono if ours else font)
+                bottom = self._draw_box(painter, top, lines)
+                if ours:
+                    chip_top, chip_height = top, bottom - top
+                    chip_left += CAPTION_GAP + 2 * CAPTION_PAD + max(
+                        painter.fontMetrics().horizontalAdvance(line)
+                        for line in lines)
+                else:
+                    chip_top = bottom + CAPTION_GAP
+                top = bottom + CAPTION_GAP
+        if self._step_chip is not None:
+            painter.setFont(font)
+            bottom = self._draw_step_chip(painter, chip_left, chip_top,
+                                          chip_height)
+            top = max(top, bottom + CAPTION_GAP)
         return top
+
+    def _draw_step_chip(self, painter: QPainter, left: int, top: int,
+                        height: int) -> int:
+        """The chip, as tall as the position's box if there is one; returns
+        its bottom."""
+        _owner, text, color = self._step_chip
+        metrics = painter.fontMetrics()
+        box = QRect(left, top,
+                    metrics.horizontalAdvance(text) + 2 * CAPTION_PAD,
+                    height or metrics.height() + 2 * CAPTION_PAD)
+        painter.fillRect(box, QColor(color))
+        painter.setPen(QPen(QColor(COLORS["on-accent"])))
+        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        painter.setPen(QPen(CAPTION_FG))
+        return box.bottom() + 1
 
     def _draw_status(self, painter: QPainter) -> None:
         """The page's lines (`set_status`) on the top edge, ending where

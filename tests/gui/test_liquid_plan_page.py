@@ -25,6 +25,7 @@ from micropick.gui import session as session_module              # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid_plan as page_module       # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
+from micropick.gui.theme import COLORS                           # noqa: E402
 from micropick.gui.widgets.step_list import MIME                 # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
@@ -1278,6 +1279,22 @@ def test_the_keys_are_on_only_while_the_pad_is_on_screen(app, window, page):
     window.show_step("deck")
     app.processEvents()
     assert not _keys_on(page)
+
+
+def test_the_steps_chip_is_on_the_picture_while_the_pad_is(app, page):
+    """#99: the pad is behind Controls here, and the keys go with it."""
+    _take_from(page, 2)
+    assert _until(app, lambda: page.jog.pose is not None
+                  and not page.jog.busy)
+    assert page.view.step_chip is None
+    page.controls_button.click()
+    app.processEvents()
+    assert page.view.step_chip == ("Step 1 mm", COLORS["accent"])
+    page.jog.set_step(5)
+    assert page.view.step_chip == ("Step 5 mm", COLORS["warn"])
+    page.controls_button.click()
+    app.processEvents()
+    assert page.view.step_chip is None
 
 
 def test_a_point_takes_no_height_of_the_wells(app, page):

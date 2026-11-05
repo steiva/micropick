@@ -26,7 +26,11 @@ The pad's own containers are `plain` (transparent): qdarktheme fills a bare
 QWidget with the window's color, an opaque block on the translucent plate.
 
 The chosen step is colored by how far one press moves the gantry
-(`step_color`): a 10 mm step near the dish is the one to notice.
+(`step_color`): a 10 mm step near the dish is the one to notice. So is the
+chip that shows the step while the pad is folded (#99): the panel has it
+painted by X, Y and Z on the picture (`CameraView.set_step_chip`), a page
+with no picture puts up a `StepChip`. Neither is a control: the step is
+changed on the pad and by its keys.
 """
 
 from __future__ import annotations
@@ -44,8 +48,8 @@ from ..theme import COLORS, SIZES, mono_font
 from ..theme.factory import fold_arrow
 from ..theme.icons import icon
 
-__all__ = ["STEPS", "JogPad", "KeycapButton", "StepCarousel", "key_row",
-           "keycap", "step_label", "step_color"]
+__all__ = ["STEPS", "JogPad", "KeycapButton", "StepCarousel", "StepChip",
+           "key_row", "keycap", "step_chip_text", "step_label", "step_color"]
 
 # The carousel's sizes, mm (§8.11): the jog controller's own.
 STEPS = tuple(DEFAULT_STEPS)
@@ -61,6 +65,10 @@ _BUTTONS = (  # action id, grid cell or None for Z, icon or text
 
 def step_label(mm: float) -> str:
     return f"{mm:g} mm"
+
+
+def step_chip_text(mm: float) -> str:
+    return f"Step {step_label(mm)}"
 
 
 def step_color(mm: float) -> str:
@@ -404,6 +412,22 @@ class JogPad(QFrame):
         self.undo_button.setEnabled(enabled)
         self.undo_button.setToolTip("Undo the last jog step." if enabled
                                     else reason)
+
+
+class StepChip(QLabel):
+    """The pad's step in its color, for a page with no picture to paint it
+    on (Well center)."""
+
+    def __init__(self, pad: JogPad, parent: QWidget | None = None):
+        super().__init__(parent)
+        pad.step_changed.connect(self._show_step)
+        self._show_step(pad.step)
+
+    def _show_step(self, mm: float) -> None:
+        self.setText(step_chip_text(mm))
+        self.setStyleSheet(
+            f"background: {step_color(mm)}; color: {COLORS['on-accent']};"
+            f" padding: 2px 6px;")
 
 
 def key_row(line: str) -> str:
