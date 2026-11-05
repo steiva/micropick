@@ -101,11 +101,13 @@ camera with a map; the page that has one hands the directions over.
 Quiet chrome (REDESIGN §3)
 --------------------------
 Over the picture only what is used there: the robot's X, Y and Z
-(`set_position`, in a fixed font), what the page says (`set_status`: found
-counts, a run's state), the page's own buttons and one quiet row of what
-the mouse does (`set_mouse_help`) in the bottom-left corner. No camera
-name, slot, resolution, crop, zoom or frame rate. The keys are on the jog
-pad (`add_corner_widget`), not in a box here.
+(`set_position`, in a fixed font) with nothing under them, what the page
+shows (`set_status`: found counts, the marker seen) along the top edge
+beside its own buttons, and one quiet row of what the mouse does
+(`set_mouse_help`) in the bottom-left corner. No camera name, slot,
+resolution, crop, zoom or frame rate, and no messages: those are the
+window's toast. The keys are on the jog pad (`add_corner_widget`), not in
+a box here.
 
 Saving the picture
 ------------------
@@ -115,12 +117,13 @@ after the camera and the time. The frame as the camera delivered it: the
 whole sensor, no overlay, no marks, no histogram, no crop and no zoom -
 those are how it is looked at, not what was seen. A held frame is saved as
 held. The writing is on a worker, since a 4000x3000 PNG is a second of
-encoding, and where it went is said on the picture for a few seconds.
+encoding, and its name is said in a toast.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -135,6 +138,7 @@ from . import overlay_painter
 from .frame import to_qimage
 from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE, OUTSIDE_ALPHA,
                              WINDOW_EDGE)
+from .toast import show_toast
 
 __all__ = ["CameraView"]
 
@@ -183,9 +187,6 @@ DEFAULT_ASPECT = 4 / 3           # the upper camera, 2592x1944
 
 ZOOM_MIN, ZOOM_MAX = 1.0, 16.0
 ZOOM_STEP = 1.25                 # per wheel notch
-
-# How long "saved: …" stays on the picture.
-FLASH_MS = 4000
 
 # The size histogram over the picture: its box, in widget pixels.
 HIST_BOX = (300, 150)
@@ -240,7 +241,6 @@ class CameraView(QWidget):
         self._overlay_layer = None                # (transform, size, dpr, pixmap)
         self._marks: list = []
         self._axes: dict | None = None
-        self._flash: list[str] = []               # "saved: …", for a moment
         self._snapshot_worker = None
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
@@ -471,23 +471,13 @@ class CameraView(QWidget):
     def _snapshot_done(self, path: str) -> None:
         self._snapshot_worker = None
         self.snapshot_button.setEnabled(True)
-        self.say_for_a_moment([f"saved: {path}"])
+        show_toast(self, f"Saved: {Path(path).name}")
         self.snapshot_saved.emit(path)
 
     def _snapshot_failed(self, reason: str) -> None:
         self._snapshot_worker = None
         self.snapshot_button.setEnabled(True)
-        self.say_for_a_moment([f"not saved: {reason.splitlines()[0]}"])
-
-    def say_for_a_moment(self, lines: list[str]) -> None:
-        """Lines on the picture for FLASH_MS, as "saved: …" is."""
-        self._flash = list(lines)
-        self.update()
-        QTimer.singleShot(FLASH_MS, self._end_flash)
-
-    def _end_flash(self) -> None:
-        self._flash = []
-        self.update()
+        show_toast(self, f"Not saved: {reason.splitlines()[0]}", refusal=True)
 
     def set_histogram(self, bins) -> None:
         """The size histogram to draw over the picture, or None. See the
@@ -540,9 +530,8 @@ class CameraView(QWidget):
         self._place_controls()
 
     def add_top_left_widget(self, widget: QWidget) -> None:
-        """Float `widget` in the picture's top-left corner, the boxes of
-        `set_position` and `set_status` under it: Manual Work's TipGauge.
-        One per view."""
+        """Float `widget` in the picture's top-left corner, the box of
+        `set_position` under it: Manual Work's TipGauge. One per view."""
         widget.setParent(self)
         widget.installEventFilter(self)
         self._top_left = widget
@@ -825,10 +814,12 @@ class CameraView(QWidget):
         return [first, *self._mouse_help]
 
     def set_status(self, lines) -> None:
-        """Lines of text under the position: what a page is doing - found
-        counts, a run's state. Chrome like the position, so it is
-        drawn in widget pixels and reads the same at any frame size or zoom
-        rather than being scaled along with the picture. Empty removes it."""
+        """Lines of text along the top edge, left of the page's buttons:
+        what the page shows as long as it holds - found counts, the marker
+        seen. Never a message (that is a toast), and never under the
+        position. Chrome like the position, so it is drawn in widget pixels
+        and reads the same at any frame size or zoom rather than being
+        scaled along with the picture. Empty removes it."""
         self._status = [str(line) for line in lines or ()]
         self.update()
 
@@ -1048,8 +1039,8 @@ class CameraView(QWidget):
         if self._image is None:
             self._draw_placeholder(painter)
             # Where the gantry is does not depend on there being a picture.
-            self._draw_boxes(painter, [self._lost_lines(), self._position,
-                                       self._status])
+            self._draw_boxes(painter, [self._lost_lines(), self._position])
+            self._draw_status(painter)
             painter.end()
             return
 
@@ -1063,8 +1054,8 @@ class CameraView(QWidget):
             self._draw_crosshair(painter, self._box)
         if self._histogram is not None and self.sizes_box.isChecked():
             self._draw_histogram(painter)
-        top = self._draw_boxes(painter, [self._lost_lines(), self._position,
-                                         self._status, self._flash])
+        top = self._draw_boxes(painter, [self._lost_lines(), self._position])
+        self._draw_status(painter)
         self._draw_axes(painter, top)
         self._draw_mouse_help(painter)
         painter.end()
@@ -1162,6 +1153,21 @@ class CameraView(QWidget):
                 painter.setFont(mono if lines is self._position else font)
                 top = self._draw_box(painter, top, lines) + CAPTION_GAP
         return top
+
+    def _draw_status(self, painter: QPainter) -> None:
+        """The page's lines (`set_status`) on the top edge, ending where
+        its buttons begin."""
+        if not self._status:
+            return
+        painter.setFont(QFont(self.font().family(), 10))
+        painter.setPen(QPen(CAPTION_FG))
+        metrics = painter.fontMetrics()
+        width = 2 * CAPTION_PAD + max(metrics.horizontalAdvance(line)
+                                      for line in self._status)
+        right = min([self.snapshot_button.x()]
+                    + [top.x() for top in self._top if not top.isHidden()])
+        self._draw_box(painter, 8, self._status,
+                       left=right - CAPTION_GAP - width)
 
     def _draw_axes(self, painter: QPainter, top: int) -> None:
         """+X and +Y as arrows from one point, in a box under the others.

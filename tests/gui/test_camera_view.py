@@ -6,6 +6,7 @@ transform - the sensor pixel under the cursor stays under it through a zoom
 """
 
 import os
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -15,10 +16,11 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, QPointF, Qt                      # noqa: E402
-from PySide6.QtGui import QMouseEvent, QWheelEvent                  # noqa: E402
-from PySide6.QtWidgets import QApplication                          # noqa: E402
+from PySide6.QtGui import QImage, QMouseEvent, QWheelEvent          # noqa: E402
+from PySide6.QtWidgets import QApplication, QPushButton             # noqa: E402
 
 from micropick.gui.widgets.camera_view import ZOOM_MAX, CameraView  # noqa: E402
+from micropick.gui.widgets.toast import toast_of                    # noqa: E402
 from micropick.hardware.camera import ControlReport                 # noqa: E402
 
 
@@ -248,9 +250,61 @@ def test_a_snapshot_is_the_frame_itself_in_the_images_folder(app, tmp_path,
         path = saved[0]
         assert path.startswith(str(tmp_path / "pics"))
         assert np.array_equal(cv2.imread(path), frame)
-        assert any("saved:" in line for line in view._flash)
+        said = toast_of(view)
+        assert said.text() == f"Saved: {Path(path).name}"
+        assert said.property("tone") == "answer"
     finally:
         paths.set_overrides()
+
+
+def _pixels(view) -> np.ndarray:
+    image = view.grab().toImage().convertToFormat(QImage.Format.Format_RGB32)
+    return np.frombuffer(image.constBits(), np.uint8).reshape(
+        image.height(), image.bytesPerLine() // 4, 4).copy()
+
+
+def test_a_pages_lines_stand_on_the_top_edge_never_under_the_position(app):
+    view = CameraView()
+    view.resize(800, 600)
+    view.set_position(["X 1.00  Y 2.00  Z 3.00"])
+    view.show()
+    app.processEvents()
+    without = _pixels(view)
+    view.set_status(["12 cuboids found", "2 stuck, tried again after a shake"])
+    app.processEvents()
+    rows, columns = np.nonzero((_pixels(view) != without).any(axis=2))
+    # At the top, beside the buttons of the top-right corner, and clear of
+    # the position's box on the left.
+    assert rows.size and columns.min() > 300
+    assert columns.max() < view.snapshot_button.x()
+    assert rows.min() >= 8 and rows.max() < 8 + 60
+    view.hide()
+    view.deleteLater()
+
+
+def test_a_pages_lines_end_where_its_buttons_begin(app):
+    view = CameraView()
+    view.resize(800, 600)
+    button = QPushButton("Camera to dish center")
+    view.add_top_widget(button)
+    view.show()
+    app.processEvents()
+    without = _pixels(view)
+    view.set_status(["12 cuboids found"])
+    app.processEvents()
+    _, columns = np.nonzero((_pixels(view) != without).any(axis=2))
+    assert columns.size and columns.max() < button.x()
+    view.hide()
+    view.deleteLater()
+
+
+def test_a_picture_not_saved_is_a_refusal(app):
+    view = CameraView()
+    view._snapshot_failed("disk full\nand more")
+    said = toast_of(view)
+    assert said.text() == "Not saved: disk full"
+    assert said.property("tone") == "refusal"
+    view.deleteLater()
 
 
 def test_a_press_on_a_widget_over_the_picture_is_no_click(app):
