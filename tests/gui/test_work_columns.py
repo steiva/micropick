@@ -57,6 +57,23 @@ def test_a_wide_window_has_two_columns_of_400_points_open(app, frame):
     assert not frame.points.header.isVisible()     # it does not fold here
 
 
+def _gap(left, right, frame):
+    return right.mapTo(frame, right.rect().topLeft()).x() \
+        - left.mapTo(frame, left.rect().topRight()).x() - 1
+
+
+def test_the_gap_to_points_is_the_gap_to_the_picture(app, frame):
+    _at(app, frame, 1880)
+    assert _gap(frame.first, frame.points, frame) \
+        == _gap(frame.view, frame.first, frame) == GAP
+
+
+def test_points_ends_at_the_end_of_the_row(app, frame):
+    _at(app, frame, 1880)
+    assert frame.points.mapTo(frame, frame.points.rect().topRight()).x() \
+        == frame.width() - 1
+
+
 def test_points_stands_the_full_height_of_its_column(app, frame):
     _at(app, frame, 1880)
     assert frame.points.height() == frame.columns.height()
