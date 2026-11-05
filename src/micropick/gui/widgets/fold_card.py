@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
 from ..theme import COLORS, SPACING
 from ..theme.factory import laid_out_at_once, primary_button
 from ..theme.icons import icon
+from .controls import CutLabel
 
 __all__ = ["ActionCard", "FoldCard", "FoldGroup"]
 
@@ -148,30 +149,13 @@ class FoldCard(QFrame):
         super().mouseReleaseEvent(event)
 
 
-class _Summary(QLabel):
-    """One line cut to the room it is given, the whole of it in the tooltip:
-    what it says never widens the card."""
+class _Summary(CutLabel):
+    """The header's line under the title."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
         self.setObjectName("foldSummary")
         self.setTextFormat(Qt.TextFormat.PlainText)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored,
-                           QSizePolicy.Policy.Preferred)
-        self.full = ""
-
-    def set_full(self, text: str) -> None:
-        self.full = text
-        self.setToolTip(text)
-        self._cut()
-
-    def _cut(self) -> None:
-        self.setText(self.fontMetrics().elidedText(
-            self.full, Qt.TextElideMode.ElideRight, self.width()))
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._cut()
 
 
 def _repolish(widget: QWidget) -> None:

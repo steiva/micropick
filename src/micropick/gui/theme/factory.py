@@ -19,15 +19,16 @@ from contextlib import contextmanager
 
 from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap, QPolygonF
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
-                               QPushButton, QScrollArea, QSpinBox,
+from PySide6.QtWidgets import (QAbstractSpinBox, QComboBox, QDoubleSpinBox,
+                               QFrame, QLabel, QPushButton, QScrollArea,
+                               QSpinBox,
                                QStackedWidget, QToolButton, QVBoxLayout,
                                QWidget)
 
-from . import COLORS, SPACING
+from . import COLORS, SPACING, mono_font
 from .icons import icon
 
-__all__ = ["primary_button", "secondary_button", "tool_button", "set_primary",
+__all__ = ["number_field", "labeled", "primary_button", "secondary_button", "tool_button", "set_primary",
            "quiet_button",
            "danger_button", "danger_text_button", "compact", "card",
            "heading", "caption", "muted_label", "combo_box", "select",
@@ -226,6 +227,9 @@ def fold_arrow(button: QToolButton, shown: bool) -> None:
     button.setIcon(QIcon(pixmap))
 
 
+NUMBER_FIELD_PX = 38
+
+
 class _WheelSafeComboBox(QComboBox):
     """A combo box the wheel does not turn.
 
@@ -258,6 +262,27 @@ class _WheelSafeDoubleSpinBox(QDoubleSpinBox):
         event.ignore()
 
 
+class _NumberField(QDoubleSpinBox):
+    """A number on Manual pick's Run (MANUAL.md §2.7), its unit in the label
+    above it. ↑/↓ and the wheel step it while it has the keyboard: scrolled
+    past, it stays what it is, for the wheel-safe boxes' reason."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("numberField")
+        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.setAlignment(Qt.AlignmentFlag.AlignRight
+                          | Qt.AlignmentFlag.AlignVCenter)
+        self.setFont(mono_font(14, 500))
+        self.setFixedHeight(NUMBER_FIELD_PX)
+
+    def wheelEvent(self, event) -> None:
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
+
+
 def select(parent: QWidget | None = None) -> QComboBox:
     """A combo box with the drawn chevron (REDESIGN §3, Select), wheel-safe
     like `combo_box`."""
@@ -274,6 +299,41 @@ def spin_box(parent: QWidget | None = None) -> QSpinBox:
 def double_spin_box(parent: QWidget | None = None) -> QDoubleSpinBox:
     """A decimal field the mouse wheel leaves alone."""
     return _WheelSafeDoubleSpinBox(parent)
+
+
+def number_field(parent: QWidget | None, value: float, span, *,
+                 decimals: int = 2, step: float = 0.1,
+                 width: int = 84) -> QDoubleSpinBox:
+    """A number of §2.7: see _NumberField. `labeled` names it and its unit."""
+    field = _NumberField(parent)
+    field.setRange(*span)
+    field.setDecimals(decimals)
+    field.setSingleStep(step)
+    field.setFixedWidth(width)
+    field.setValue(value)
+    return field
+
+
+class _Labeled(QWidget):
+    """A field under its name, hidden as one."""
+
+    def __init__(self, text: str, field: QWidget,
+                 parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("plain")
+        self.label = QLabel(text, self)
+        self.label.setObjectName("fieldLabel")
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(4)
+        column.addWidget(self.label)
+        column.addWidget(field)
+
+
+def labeled(text: str, field: QWidget,
+            parent: QWidget | None = None) -> QWidget:
+    """`field` with `text` over it ("Amount, µl"); `label` is that text."""
+    return _Labeled(text, field, parent)
 
 
 class _ScrollColumn(QScrollArea):

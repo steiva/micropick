@@ -16,11 +16,36 @@ from PySide6.QtCore import (Property, QPropertyAnimation, QRectF, QSize, Qt,
                             Signal)
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFrame,
-                               QHBoxLayout, QPushButton, QSizePolicy, QWidget)
+                               QHBoxLayout, QLabel, QPushButton, QSizePolicy,
+                               QWidget)
 
 from ..theme import COLORS, ui_font
 
 __all__ = ["Segmented", "Switch"]
+
+
+class CutLabel(QLabel):
+    """One line cut to the room it is given, the whole of it in the tooltip:
+    what it says never widens what holds it."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored,
+                           QSizePolicy.Policy.Preferred)
+        self.full = ""
+
+    def set_full(self, text: str) -> None:
+        self.full = text
+        self.setToolTip(text)
+        self._cut()
+
+    def _cut(self) -> None:
+        self.setText(self.fontMetrics().elidedText(
+            self.full, Qt.TextElideMode.ElideRight, self.width()))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._cut()
 
 
 class Segmented(QFrame):

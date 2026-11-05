@@ -441,6 +441,25 @@ QSpinBox, QDoubleSpinBox, QLineEdit {
     border-radius: 8px;
 }
 
+/* Manual pick's Run (MANUAL.md §2.7): a number, its unit in the label over it. */
+QDoubleSpinBox#numberField { min-height: 36px; padding: 0 10px; border-radius: 9px; }
+QLabel#fieldLabel { color: @muted; font-size: 12px; }
+
+/* A point to choose (Manual pick's At a point): its star and name. */
+QPushButton#pointChip {
+    background: transparent;
+    border: 1px solid @control-border;
+    border-radius: 9px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+}
+QPushButton#pointChip:hover { background: @hover; }
+QPushButton#pointChip:checked { background: @selected-bg; border-color: @accent; }
+QPushButton#pointChip[problem="true"] { color: @danger-text; }
+
 /* A choice drawn as a tile (the Plan step's Start from and Fill order):
    taller than a button, its text left, the chosen one outlined. */
 QPushButton#tile {

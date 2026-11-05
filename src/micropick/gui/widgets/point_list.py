@@ -48,6 +48,7 @@ from ..session import Session, SessionError
 from ..theme import COLORS, mono_font
 from ..theme.factory import (compact, danger_text_button, double_spin_box,
                              laid_out_at_once, secondary_button)
+from .controls import CutLabel
 from .overlays import ConfirmDialog
 
 __all__ = ["BAD", "PointButton", "PointList", "PointRow", "StarButton",
@@ -104,31 +105,18 @@ class PointButton(QWidget):
         row.addWidget(self.use)
 
 
-class _Name(QLabel):
+class _Name(CutLabel):
     """A name cut to the room there is, whole under the pointer."""
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
-        self.full = ""
         font = self.font()
         font.setPixelSize(14)
         font.setWeight(font.Weight.DemiBold)
         self.setFont(font)
-        self.setSizePolicy(QSizePolicy.Policy.Ignored,
-                           QSizePolicy.Policy.Preferred)
 
     def set_name(self, name: str) -> None:
-        self.full = name
-        self.setToolTip(name)
-        self._cut()
-
-    def _cut(self) -> None:
-        self.setText(self.fontMetrics().elidedText(
-            self.full, Qt.TextElideMode.ElideRight, self.width()))
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._cut()
+        self.set_full(name)
 
 
 def _text(value) -> str:

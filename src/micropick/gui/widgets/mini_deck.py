@@ -16,10 +16,11 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
-                               QPushButton, QVBoxLayout, QWidget)
+                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from ..theme import COLORS
 from ..theme.icons import icon
+from .controls import CutLabel
 
 __all__ = ["DECK_ROWS", "KIND_COLORS", "DeckTile", "MiniDeckDropdown"]
 
@@ -105,11 +106,16 @@ class MiniDeckDropdown(QPushButton):
     slot_chosen = Signal(int)
 
     def __init__(self, parent: QWidget | None = None, *,
-                 placeholder: str = "Choose a slot", prefix: str = ""):
+                 placeholder: str = "Choose a slot", prefix: str = "",
+                 cut: bool = False):
+        """`cut`: the name cut to the room there is, for a card's width."""
         super().__init__(parent)
         self.setObjectName("secondary")
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMinimumHeight(40)
+        if cut:
+            self.setSizePolicy(QSizePolicy.Policy.Ignored,
+                               QSizePolicy.Policy.Fixed)
         self.tiles: dict[int, DeckTile] = {}
         self.slot: int | None = None
         self.placeholder = placeholder
@@ -123,7 +129,7 @@ class MiniDeckDropdown(QPushButton):
         self.prefix.setVisible(bool(prefix))
         self._slot = QLabel(self)
         self._slot.setStyleSheet(f"color: {COLORS['accent']}; font-weight: 600;")
-        self._name = QLabel(self)
+        self._name = CutLabel(self) if cut else QLabel(self)
         self._name.setStyleSheet("font-weight: 600;")
         self._facts = QLabel(self)
         self._facts.setStyleSheet(f"color: {COLORS['muted']};")
@@ -132,8 +138,9 @@ class MiniDeckDropdown(QPushButton):
                         .pixmap(16, 16))
         for widget in (self.prefix, self._slot, self._name, self._facts):
             widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            row.addWidget(widget)
-        row.addStretch(1)
+            row.addWidget(widget, 1 if cut and widget is self._name else 0)
+        if not cut:
+            row.addStretch(1)
         row.addWidget(arrow)
         arrow.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.clicked.connect(self.open_popover)
@@ -152,13 +159,19 @@ class MiniDeckDropdown(QPushButton):
         tile = self.tiles.get(self.slot) if self.slot is not None else None
         if tile is None:
             self._slot.setText("")
-            self._name.setText(self.placeholder)
+            self._show_name(self.placeholder)
             self._facts.setText("")
         else:
             self._slot.setText(f"Slot {tile.slot}")
-            self._name.setText(tile.name or "Empty")
+            self._show_name(tile.name or "Empty")
             self._facts.setText(tile.facts)
         self.updateGeometry()
+
+    def _show_name(self, name: str) -> None:
+        if isinstance(self._name, CutLabel):
+            self._name.set_full(name)
+        else:
+            self._name.setText(name)
 
     def sizeHint(self) -> QSize:
         width = sum(label.sizeHint().width() for label in
