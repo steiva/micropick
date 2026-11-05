@@ -451,12 +451,10 @@ def test_the_select_leaves_the_arrows_to_the_robot(page):
     assert page.new_z.focusPolicy() == Qt.FocusPolicy.NoFocus
 
 
-def test_the_at_a_point_lists_have_no_actions_of_their_own(page, session):
+def test_at_a_point_lists_the_same_points_as_chips(page, session):
     session.add_memo_point(10.0, 20.0, None)
-    assert page.source_points.actions is None
-    assert page.target_points.actions is None
     assert page.points_list.actions is not None
-    assert page.source_points.names == ["M1"]
+    assert page.source_points.names == page.target_points.names == ["M1"]
 
 
 def test_the_chip_is_on_at_start_on_manual_only(app, page):

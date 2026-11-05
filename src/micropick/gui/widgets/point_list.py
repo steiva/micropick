@@ -46,7 +46,7 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QFrame,
 
 from ..session import Session, SessionError
 from ..theme import COLORS, mono_font
-from ..theme.factory import (compact, danger_text_button, double_spin_box,
+from ..theme.factory import (danger_text_button, double_spin_box,
                              laid_out_at_once, secondary_button)
 from .controls import CutLabel
 from .overlays import ConfirmDialog
@@ -383,10 +383,10 @@ class PointList(QWidget):
         row = QHBoxLayout(bar)
         row.setContentsMargins(8, 0, 8, 8)
         row.setSpacing(CELL_GAP)
-        self.camera_to = compact(secondary_button("Camera to", bar))
-        self.tip_to = compact(secondary_button("Tip to", bar))
-        self.z_from_tip = compact(secondary_button("Z from tip", bar))
-        self.delete = compact(danger_text_button("Delete", bar))
+        self.camera_to = secondary_button("Camera to", bar)
+        self.tip_to = secondary_button("Tip to", bar)
+        self.z_from_tip = secondary_button("Z from tip", bar)
+        self.delete = danger_text_button("Delete", bar)
         self.delete.setToolTip("Delete the chosen point.")
         self.delete.clicked.connect(self._delete_chosen)
         for button in (self.camera_to, self.tip_to, self.z_from_tip,

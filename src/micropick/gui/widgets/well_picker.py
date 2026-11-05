@@ -40,7 +40,7 @@ class WellPicker(QWidget):
         self._clicked_plate = False         # a default gives way to a click
         self._default: str | None = None
         self._well = ""
-        self._marked: tuple[str | None, list[str], QColor | None] = (
+        self._marked: tuple[str | None, list[str], str | None] = (
             None, [], None)
         self.plate = MiniDeckDropdown(self, placeholder="Choose a plate",
                                       cut=True)
@@ -73,7 +73,9 @@ class WellPicker(QWidget):
             DeckTile(int(slot), name=definition.display_name,
                      kind=kind(definition), facts=facts(definition))
             for slot, _id, definition in self._plates.values()])
-        if self._default in self._plates and not self._clicked_plate:
+        if self._clicked_plate and self._slot in self._plates:
+            slot = self._slot
+        elif self._default in self._plates:
             slot = self._default
         elif self._slot in self._plates:
             slot = self._slot
@@ -117,7 +119,7 @@ class WellPicker(QWidget):
         self.map.set_current(self._well if held else None)
         self.well_label.setText(self._well if held else "")
 
-    def set_marked(self, slot: str | None, wells, color: QColor | None) -> None:
+    def set_marked(self, slot, wells, color) -> None:
         """`wells` in `color` while the plate in `slot` is the one shown."""
         self._marked = (None if slot is None else str(slot), list(wells), color)
         self._show_well()

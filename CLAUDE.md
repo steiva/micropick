@@ -108,17 +108,18 @@ long text wraps or is cut, and no card is under 380 px. A row of buttons in thes
 cards has to fit a column, or goes one under the other. Look at and Detect cuboids
 are a row over the chips (`CameraView.add_top_row_widget`), the Past picks chip
 among them (`add_chip`) and the page's lines under them, "23 cuboids found · 9 in
-size", on Manual only. Sizes are the picture's Sizes chip. The page has no status
+size", on Manual only. Sizes are the picture's Sizes chip and, read-only, a popover
+from the size window on Snap's row (`manual._SizesPopover`). The page has no status
 of its own: what holds is such a line, an answer a toast.
 
 ### Nothing shifts
 
 The frame never moves (#106): the camera view (`FeedRow`), the width of a card
 and of a column (`WorkColumns`). Only what the operator clicks moves others, and
-only down the column it is in: a Section, Change, Keys, a Save as template's name
-row, and a choice showing other controls, which is as tall as what it shows, no
-room kept for a choice not made (From and Where on Manual pick's Run, Change's
-height rows, Liquid in tip's From). Show and hide those inside
+only down the column it is in: a Section, Change, a lifting row, Keys, a Save as
+template's name row, and a choice showing other controls, which is as tall as what
+it shows, no room kept for a choice not made (From, Where and the height fields on
+Manual pick's Run, Liquid in tip's From). Show and hide those inside
 `theme.factory.laid_out_at_once`, so nothing is painted at the old height (a
 `FoldCard` does so itself). Aspirate and Dispense folding and opening (#114) move
 what is under them, the one thing a job's end moves.
@@ -362,7 +363,7 @@ keeps Camera to dish center). A double click moves nothing. A **right** click (`
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
 never in the profile), as does Point at crosshair
-(the picture's center through the pixel map, as By hand's aim,
+(the picture's center through the pixel map, as By clicking's aim,
 no Z; gray without a pixel map, "Calibrate the camera first."). Under it
 **Tip to crosshair** (#99) sends the tip to that spot at the travel height
 (`Motion.tip_to`, through `JogPanel.run_job`) and leaves it there, no point
@@ -410,33 +411,40 @@ definition's slots, `core.deck`, in the robot's frame), red on the picture and i
 on the "points" layer (`position_marks.memo_items`), a saved point with a
 filled disc, the chosen one ringed; on Work the Points chip alone says whether
 they are drawn, on at start (`CameraView.marks_default`) and never turned on by
-a new point, which is chosen in the list. Both kinds are listed under "At a
-point" too (`PointList` with no actions). **In place** (#111, `ManualPage._in_place_card`, first of the
+a new point, which is chosen in the list. Both kinds are chips under "At a
+point" too (`widgets.point_chips.PointChips`, a star and a name, three rows high,
+more scrolling, only for choosing; the one flagged red as in the list). **In place** (#111, `ManualPage._in_place_card`, first of the
 cards for now), always shown: Aspirate in place and Dispense in place, their
 keys drawn as bound, A and D doing the same and nothing while a field has the
 keyboard, with an amount and speed of their own (starting as Aspirate's fields,
 then in the page's memory): where the tip is, no move and no lift whatever the
 cards say. Dispense in place is gray while the tip is empty, and above what it
-holds refused, "Only 5 µl in the tip.". Its fields take the keyboard by a click
-only: the first the window finds would have it as the page opens. Aspirate
-(REDESIGN §6.6): the settings as one line with Change (height above a well's
-bottom, or By hand's; volume; speed), From In a well / At a point / By hand,
-enabled once a source is chosen, the TipGauge its answer. By hand (#60)
+holds refused, "Only 5 µl in the tip.". A number on these cards is a
+`theme.factory.number_field` under its `labeled` name and unit (#115, MANUAL.md
+§2.7): no arrows, ↑/↓, the wheel only with the keyboard, which it takes by a click
+only: the first the window finds would have it as the page opens. Aspirate (#115,
+MANUAL.md §4.2) holds its settings in the open, no Change: From By clicking / At a
+point / In a well, what that asks, Amount, Speed, the height (a point has its
+own) and the lifting row, enabled once a source is chosen, the TipGauge its
+answer. In a well is a `widgets.well_picker.WellPicker`: the mini deck, the
+Source step's plate first until one is clicked, the plate in real proportions, a
+well chosen by a click, one always chosen while a plate is. By clicking (#60, By
+hand before)
 takes from under the camera's crosshair (the picture's center through
 the pixel map, plus the measured tip offset); no spot is clicked: a
 click moves the camera, with Snap to found cuboids onto a cuboid's
-center (beside every cuboid, to the point). Its height is Z | Above the
-bottom, the bottom that of the slot the spot is in, whatever the source
+center (beside every cuboid, to the point). Its height is Z (with From tip, the
+tip's Z now) | Above the bottom, the bottom that of the slot the spot is in, whatever the source
 chosen (#90, `ManualPage._slot_bottom`): a plate confirmed in this robot
 session gives its measured bottom, the source dish's slot the dish bottom
 when confirmed (`Session.is_confirmed("dish_bottom")`), anywhere else Above
-is gray and Z is used; the default where there is one, the line naming it
-("0.5 mm above the bottom of slot 5"). Over a plate in Above the bottom a
+is gray and Z is used; the default where there is one, the summary and the
+field's tooltip naming it ("0.5 mm above the bottom of slot 5"). Over a plate in Above the bottom a
 spot not in a well is refused, "The spot is not in a well.", nothing moved,
 with Aspirate as soon as I click too (`well_center.in_a_well`: the
 definition's outline at the measured center, less `TIP_RADIUS_MM`), and so
 is a click aiming into a slot with no bottom; Z may be on a well's wall.
-A target's Z (Tip to, At a point, By hand's Z) more than 1 mm under the
+A target's Z (Tip to, At a point, By clicking's Z) more than 1 mm under the
 bottom of its slot when measured, or 2 mm under a drawing's, is refused in a
 red toast, nothing moved (#101, `manual.under_the_bottom`, its limits
 constants; `ManualPage._heights_in`, what the height line reads, nothing
@@ -450,16 +458,17 @@ the height is above the plate's measured bottom (rim less depth, reached as
 the liquid engine reaches it, `Motion.to_measured_bottom`) once it is
 confirmed in this robot session (`Session.plate_bottom_confirmed`), else
 above the drawing's; x and y are the measured center either way. The
-settings line says which ("0.5 mm above the measured bottom"). Aspirate and
-Dispense each say how the tip leaves, on their own, in the page's memory and
-on their line (#102, `manual._RetractRows`, `workflows.manual.retract`):
-Retract automatically (at the start), Don't retract, Retract after delay
-(0.5-60 s, 5 at the start; "50 µl/s · retract after 5 s"). The tip goes
+summary and the field's tooltip say which ("0.5 mm above the measured bottom").
+Aspirate and Dispense each say how the tip leaves, on their own, in the page's
+memory, on a row folded to its words, "After aspirating: lift right away"
+(#102, #115, MANUAL.md §4.4, `manual._LiftRow`, `workflows.manual.retract`):
+Right away (at the start), After a wait, Stay; Wait, s only with After a wait
+(0.5-60 s, 5 at the start; "lift after 5 s"). The tip goes
 straight up where it stands to the travel height (`Motion.rise`), and only
-By hand then brings the camera back; left down, the camera stays too. The
-delay holds the lease, the buttons gray; Esc ends it, the tip down, "Stopped:
-the tip stays down." in a toast. Retract slowly (#103, a Switch, off at the
-start, gray with Don't retract; "retract slowly after 5 s"): after any delay
+By clicking then brings the camera back; left down, the camera stays too. The
+wait holds the lease, the buttons gray; Esc ends it, the tip down, "Stopped:
+the tip stays down." in a toast. Lift slowly (#103, a Switch, off at the
+start, hidden with Stay; "lift after 5 s, slowly"): after any wait
 the tip goes straight up `motion.SLOW_RISE_MM` at `SLOW_RISE_MM_S` in one
 force_direct move with `speed`, then up to the travel height; with less than
 that way up it only goes there. Aspirate and Dispense are
@@ -474,15 +483,16 @@ then Dispense. A card opens by itself only where a job ends, never on
 that empties the tip opens Aspirate, and In place switches none. Finish by hand
 opens Dispense. A card folding takes the keyboard off its fields, and the action
 buttons take no focus: else it passes to the next field, and the robot's keys
-with it. Dispense: Part | All (#99: Part chosen at
-start, its volume `picking.vol`), under it its settings as one line with
-Change, as Aspirate's (#97, `manual._settings_line`: its own speed, from
-`picking.flow_rate` at start, in the page's memory), In a
-well (a mini map
-of the plan's plate; a well's bottom, as Aspirate's, plus the deposit
-offset, from its well center) / At a point, its button saying what it does
-("Dispense into A7", "Dispense 10 µl"), gray and only "Dispense" while the tip is
-empty. What
+with it. Dispense (MANUAL.md §4.3): In a well (a `WellPicker`, the plan's plate
+first, any well choosable, the plan's wells in one color, no legend and nothing
+of what a run filled, §10.10; a well's bottom, as Aspirate's, plus the deposit
+offset, from its well center, no height field) / At a point, then Part | All
+(#99: Part chosen at start, its volume `picking.vol`), its own speed (#97, from
+`picking.flow_rate` at start, in the page's memory) and the lifting row, its
+button saying what it does ("Dispense into A7", "Dispense 10 µl"), gray and only
+"Dispense" while the tip is empty. A job answers "Aspirated 10 µl.", "Dispensed
+10 µl into A3." (at M1.), Look at "Camera moved to slot 4.", Detect cuboids "23
+cuboids found.". What
 is in the tip is the session's count (`Session.in_tip`,
 `Session.aspirate`, `Session.dispense`: all or a part no larger than it;
 another tip holds nothing). The last Z given is typed into a point or
@@ -499,7 +509,7 @@ the height line (#95, `ManualPage._heights_here`), for the slot the camera
 is over (`camera_moves.camera_slot`: no pixel map or tip calibration needed),
 following it: "Slot 8 · top 85.10 · bottom 67.77 · measured"
 (`well_center.plate_heights`). Measured is a plate confirmed in this robot
-session (`Session.plate_bottom_confirmed`), what In a well and By hand go by;
+session (`Session.plate_bottom_confirmed`), what In a well and By clicking go by;
 any other plate reads "drawing", a measurement not confirmed included. A slot
 with no plate has no line, its row kept (`set_height_line("")`) so what is
 under it does not move. The source dish's slot says only "Slot 8 · bottom 66.00

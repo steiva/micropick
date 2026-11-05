@@ -12,7 +12,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPoint, QPointF, Qt                   # noqa: E402
 from PySide6.QtGui import QWheelEvent                            # noqa: E402
 from PySide6.QtTest import QTest                                 # noqa: E402
-from PySide6.QtWidgets import QAbstractSpinBox, QApplication     # noqa: E402
+from PySide6.QtWidgets import (QApplication, QStyle,             # noqa: E402
+                               QStyleOptionSpinBox)
 
 from micropick.gui.theme.factory import labeled, number_field    # noqa: E402
 
@@ -31,10 +32,9 @@ def _wheel(field, up=True):
     QApplication.sendEvent(field, event)
 
 
-def test_it_is_38_px_high_right_aligned_with_no_arrows(app):
+def test_it_is_38_px_high_and_right_aligned(app):
     field = number_field(None, 10.0, (0.0, 100.0))
     assert field.height() == 38 and field.minimumHeight() == 38
-    assert field.buttonSymbols() == QAbstractSpinBox.ButtonSymbols.NoButtons
     assert field.alignment() & Qt.AlignmentFlag.AlignRight
     assert field.font().pixelSize() == 14
     assert field.suffix() == ""
@@ -59,6 +59,22 @@ def test_the_wheel_turns_it_only_with_the_keyboard(app):
     field.hasFocus = lambda: True
     _wheel(field)
     assert field.value() == 11.0
+
+
+def test_the_number_has_the_room_and_the_arrows_none(themed):
+    # NoButtons under the theme left the line edit 1 px wide, and no value.
+    field = number_field(None, 1000.0, (0.0, 1000.0), decimals=1, width=72)
+    field.show()
+    QApplication.processEvents()
+    assert field.height() == 38
+    line = field.lineEdit()
+    assert line.width() >= line.fontMetrics().horizontalAdvance("1000.0") + 12
+    option = QStyleOptionSpinBox()
+    field.initStyleOption(option)
+    for arrow in (QStyle.SubControl.SC_SpinBoxUp,
+                  QStyle.SubControl.SC_SpinBoxDown):
+        assert field.style().subControlRect(
+            QStyle.ComplexControl.CC_SpinBox, option, arrow, field).isEmpty()
 
 
 def test_a_label_stands_over_its_field(app):

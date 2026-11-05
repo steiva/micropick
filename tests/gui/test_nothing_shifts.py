@@ -120,17 +120,16 @@ def test_manual_where_keeps_the_frame(manual, stands_still, chosen):
 
 
 @pytest.mark.parametrize("chosen", FROM)
-def test_manual_from_keeps_the_frame_with_the_settings_open(
+def test_manual_from_keeps_the_frame_with_the_lifting_open(
         manual, stands_still, chosen):
-    manual.change_button.click()
+    manual.aspirate_retract.header.click()
     _stands_with_the_frame(manual, stands_still, manual.source,
                            FROM.index(chosen), manual.aspirate_card)
 
 
 @pytest.mark.parametrize("chosen", HEIGHT)
-def test_manual_height_keeps_the_frame_with_the_settings_open(
+def test_manual_height_keeps_the_frame(
         manual, stands_still, chosen):
-    manual.change_button.click()
     _stands_with_the_frame(manual, stands_still, manual.height_mode,
                            HEIGHT.index(chosen), manual.aspirate_card)
 
@@ -150,11 +149,12 @@ def test_manual_status_gaining_a_line_moves_nothing(manual, stands_still):
 def test_a_choice_is_laid_out_before_anything_is_painted(app, manual):
     """Measured at once, or the column is painted once at the old height."""
     manual.dispense_card.set_open(True)
+    manual.resize(FULL_HD[0], 400)
     _opened(app, manual)
     column = manual.dispense_card.parentWidget()
-    _choose(manual.target, WHERE.index("At a point"))
-    tall = column.minimumHeight()
     _choose(manual.target, WHERE.index("In a well"))
+    tall = column.minimumHeight()
+    _choose(manual.target, WHERE.index("At a point"))
     short = column.minimumHeight()
     assert short < tall
     _opened(app, manual)
@@ -170,13 +170,13 @@ def test_a_card_is_as_tall_as_what_its_choice_shows(app, manual):
         return card.height()
 
     tall = (height_with(manual.aspirate_card, manual.source,
-                        FROM.index("At a point")),
+                        FROM.index("In a well")),
             height_with(manual.dispense_card, manual.target,
-                        WHERE.index("At a point")))
+                        WHERE.index("In a well")))
     assert height_with(manual.aspirate_card, manual.source,
-                       FROM.index("By hand")) < tall[0] - 100
+                       FROM.index("At a point")) < tall[0] - 100
     assert height_with(manual.dispense_card, manual.target,
-                       WHERE.index("In a well")) < tall[1] - 100
+                       WHERE.index("At a point")) < tall[1] - 100
 
 
 @pytest.mark.parametrize("make, name", [

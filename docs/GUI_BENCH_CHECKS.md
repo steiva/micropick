@@ -2444,3 +2444,49 @@ On a full HD window, the page in two columns.
   with the robot switched off and on. Plan: A template and New plan, what is
   under the tiles stays. A refusal on Deck or Plan is a red toast at the bottom
   left, no line on the page.
+
+## Manual pick: what the Aspirate and Dispense cards hold (#115)
+
+The checks above that say By hand, Change, Retract automatically, Don't retract
+and Retract after delay now read By clicking, the fields in the card, Right away,
+Stay and After a wait; what the robot does is as they say.
+
+- [ ] **The fit.**
+  1920×1080, 100 % scaling, a plate on the deck. No scroll bar with Aspirate open
+  on By clicking and its lifting row open on After a wait, nor with Dispense open
+  on In a well. Opening a lifting row under a plate's map may bring one.
+- [ ] **By clicking.**
+  From reads By clicking, At a point, In a well. A click moves the camera and
+  never lowers the tip; Aspirate takes from under the crosshair; Snap and
+  Aspirate as soon as I click work as before.
+- [ ] **The size window.**
+  "250–500 µm" on Snap's row, the profile's window; after dragging it on Picking,
+  the new one. A click opens the histogram under it, with its sentence after
+  Detect cuboids, "nothing measured yet" before; a click outside closes it. The
+  picture's Sizes chip still works.
+- [ ] **Heights.**
+  By clicking: Z | Above the bottom, From tip only with Z, taking the tip's Z. In
+  a well: Above the bottom, mm, and the summary or the field's tooltip says
+  measured or drawing's. At a point: no height. Dispense: none, and a well is
+  still reached at the deposit's height. A Z under the bottom is still refused.
+- [ ] **Chips.**
+  At a point lists every point as a chip, ★ saved, ☆ not. A click outlines it,
+  again lets it go. More than three rows scroll and the card stands still; a
+  point below a platform is red.
+- [ ] **Plates.**
+  In a well: the mini deck offers the plates only; a long name is cut. Aspirate
+  starts on the Source step's plate. A click on a well chooses it, its name
+  beside the mini deck. On Dispense, after a plan: the plan's plate, its wells in
+  one color, no legend, any other well choosable, and no sign of what Picking
+  filled. Finish by hand opens Dispense on In a well on the first well left short.
+- [ ] **Lifting.**
+  Folded, "After aspirating: lift right away", the same at the end of the summary.
+  Open: Right away, After a wait, Stay. Wait, s only with After a wait; Lift slowly
+  gone with Stay. Each card its own, kept across a change of step.
+- [ ] **Fields.**
+  Numbers right-aligned in the mono face, no arrows, the unit in the label; ↑ and
+  ↓ step them while they have the keyboard, the wheel too, and the wheel scrolled
+  past one changes nothing. The robot's keys work as the page opens.
+- [ ] **Toasts.**
+  "Aspirated 10 µl.", "Dispensed 10 µl into A3.", "Camera moved to slot 4.", "23
+  cuboids found.". No "Tip moved here."

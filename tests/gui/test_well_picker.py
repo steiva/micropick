@@ -137,3 +137,9 @@ def test_a_long_name_does_not_widen_it(app):
     widget = WellPicker("tips", 320)
     widget.set_plates(_plates(("2", P96)))
     assert widget.minimumSizeHint().width() <= 320
+
+
+def test_the_name_has_the_room_of_the_facts(picker):
+    # In a card's width the name is what tells the plates apart.
+    assert picker.plate.tiles[2].facts
+    assert picker.plate._facts.isHidden()

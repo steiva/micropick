@@ -133,6 +133,7 @@ class MiniDeckDropdown(QPushButton):
         self._name.setStyleSheet("font-weight: 600;")
         self._facts = QLabel(self)
         self._facts.setStyleSheet(f"color: {COLORS['muted']};")
+        self._facts.setVisible(not cut)     # the name tells plates apart
         arrow = QLabel(self)
         arrow.setPixmap(icon("chevron-down", COLORS["text-2"], 16)
                         .pixmap(16, 16))

@@ -442,7 +442,13 @@ QSpinBox, QDoubleSpinBox, QLineEdit {
 }
 
 /* Manual pick's Run (MANUAL.md §2.7): a number, its unit in the label over it. */
-QDoubleSpinBox#numberField { min-height: 36px; padding: 0 10px; border-radius: 9px; }
+QDoubleSpinBox#numberField { min-height: 36px; max-height: 36px; padding: 0; border-radius: 9px; }
+/* No arrows, drawn to nothing: setButtonSymbols(NoButtons) under the theme's
+   subcontrol-position leaves the line edit 1 px wide, and no value. */
+QDoubleSpinBox#numberField::up-button,
+QDoubleSpinBox#numberField::down-button,
+QDoubleSpinBox#numberField::up-arrow,
+QDoubleSpinBox#numberField::down-arrow { width: 0; height: 0; border: none; image: none; }
 QLabel#fieldLabel { color: @muted; font-size: 12px; }
 
 /* A point to choose (Manual pick's At a point): its star and name. */
@@ -459,6 +465,17 @@ QPushButton#pointChip {
 QPushButton#pointChip:hover { background: @hover; }
 QPushButton#pointChip:checked { background: @selected-bg; border-color: @accent; }
 QPushButton#pointChip[problem="true"] { color: @danger-text; }
+
+/* How the tip leaves (Manual pick's cards): a row of words that unfolds. */
+QPushButton#liftRow {
+    background: transparent;
+    border: none;
+    min-height: 36px;
+    max-height: 36px;
+    text-align: left;
+}
+QPushButton#liftRow QLabel { color: @text-2; }
+QPushButton#liftRow:hover QLabel { color: @text; }
 
 /* A choice drawn as a tile (the Plan step's Start from and Fill order):
    taller than a button, its text left, the chosen one outlined. */
@@ -489,6 +506,10 @@ QPushButton#segment {
     background: transparent;
     color: @text-2;
     font-weight: 500;
+}
+QFrame#segmented[small="true"] QPushButton#segment {
+    min-height: 26px;
+    max-height: 26px;
 }
 QPushButton#segment:hover { color: @text; }
 QPushButton#segment:checked { background: @hover; color: @text; font-weight: 600; }

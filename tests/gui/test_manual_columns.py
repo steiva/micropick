@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QPushButton,        # noqa: E402
 from micropick.config.labware import (LabwareDefinition,         # noqa: E402
                                       resolve_definition)
 from micropick.gui.app import Options                            # noqa: E402
+from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.gui.pages.manual import FROM, ManualPage          # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.toast import show_toast               # noqa: E402
@@ -90,7 +91,7 @@ def _actions(page, session):
 
     def well_a7():
         page.target.buttons[0].click()                   # In a well
-        page.target_wells.well.setCurrentText("A7")
+        page.target_wells.map.well_clicked.emit("A7")
         assert page.dispense_button.text() == "Dispense into A7"
 
     def long_named_point():
@@ -106,16 +107,14 @@ def _actions(page, session):
     yield "Part", lambda: page.amount.buttons[0].click()
     yield "All", lambda: page.amount.buttons[1].click()
     yield "At a point", lambda: page.target.buttons[1].click()
-    yield "Dispense's Change opened", lambda: page.dispense_change.setChecked(
-        True)
+    yield "Dispense's lifting opened", page.dispense_retract.header.click
     yield "a long speed", lambda: page.dispense_rate.setValue(999.9)
-    yield "Dispense's Change closed", lambda: page.dispense_change.setChecked(
-        False)
-    yield "Change opened", lambda: page.change_button.setChecked(True)
-    for name in ("In a well", "At a point", "By hand"):
+    yield "Dispense's lifting closed", page.dispense_retract.header.click
+    yield "Aspirate's lifting opened", page.aspirate_retract.header.click
+    for name in ("By clicking", "At a point", "In a well"):
         yield name, lambda i=FROM.index(name): page.source.buttons[i].click()
     yield "Above the bottom", lambda: page.height_mode.buttons[1].click()
-    yield "Change closed", lambda: page.change_button.setChecked(False)
+    yield "Aspirate's lifting closed", page.aspirate_retract.header.click
     yield "a saved point", long_named_point
     yield "a long status", lambda: page.view.set_status(["word " * 30])
     yield "the pad's keys", lambda: page.jog.pad.keys.click()
@@ -162,17 +161,47 @@ def test_the_list_fills_the_points_column(app, page):
 
 
 def test_the_scroll_bar_does_not_narrow_the_columns(app, page):
-    _shown(app, page, (2560, 640))
+    _shown(app, page, (2560, 700))
     area = next(a for a in page.findChildren(QScrollArea)
                 if a.widget() is page.aspirate_card.parentWidget())
     first = _where(page)
     assert not area.verticalScrollBar().isVisible()
-    page.change_button.setChecked(True)
-    page.dispense_change.setChecked(True)
-    page.source.buttons[FROM.index("At a point")].click()
+    page.source.buttons[FROM.index("In a well")].click()
     _settle(app, page)
     assert area.verticalScrollBar().isVisible()
     assert _where(page) == first
+
+
+def _bar(page):
+    area = next(a for a in page.findChildren(QScrollArea)
+                if a.widget() is page.aspirate_card.parentWidget())
+    return area.verticalScrollBar().isVisible()
+
+
+def test_a_full_hd_window_needs_no_scrolling(app, page, session):
+    """MANUAL.md §8, bench check 1, with a plate to show."""
+    session.load_labware(resolve_definition(
+        "corning_96_wellplate_360ul_flat"), 5)
+    _shown(app, page, (1920, 860))
+    assert not _bar(page)                                # By clicking
+    page.aspirate_retract.header.click()
+    page.aspirate_retract.choice.buttons[1].click()      # After a wait
+    _settle(app, page)
+    assert not _bar(page), "Aspirate, its lifting row open"
+    page.aspirate_retract.header.click()
+    page.work_cards.open(page.dispense_card)
+    _settle(app, page)
+    assert not _bar(page), "Dispense on In a well"
+
+
+def test_the_column_shrinks_with_nothing_wrapped_in_it(app, page):
+    """A column of fixed heights has no height for a width to ask."""
+    _shown(app, page, (1920, 860))
+    column = page.aspirate_card.parentWidget()
+    tall = column.minimumHeight()
+    page.aspirate_card.set_open(False)
+    _settle(app, page)
+    assert column.minimumHeight() < tall - 100
 
 
 def test_under_1600_px_one_column_of_420_points_folded_after_dispense(

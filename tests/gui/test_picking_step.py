@@ -364,7 +364,7 @@ def test_wells_left_empty_are_finished_by_hand_on_manual_work(
     assert window.session.routine is routine       # the plan carried over
     assert manual.dispense_card.is_open()
     assert manual.target.current() == 0            # In a well
-    assert not manual.plan_box.isHidden()
+    assert not manual.target_wells.isHidden()
     assert manual.target_wells.chosen()[-1] == "A1"
 
 

@@ -13,6 +13,7 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt                                    # noqa: E402
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
@@ -177,7 +178,7 @@ def test_a_click_on_a_cuboid_moves_only_the_camera(app, page, session):
     _open_upper(app, page, session)
     _wait(app, page)
     _over_the_deck(app, page, session)
-    page.source.buttons[0].click()                     # In a well
+    page.source.buttons[2].click()                     # In a well
     _cuboid_at(page, W / 2 + 100, H / 2)
     assert page.view._overlay                           # the cuboid is drawn
     _left_click(app, page, W / 2 + 100, H / 2)
@@ -267,7 +268,7 @@ def test_the_points_chip_alone_says_whether_points_are_drawn(
     _open_upper(app, page, session)
     _wait(app, page)
     _over_the_deck(app, page, session)
-    page.source.buttons[0].click()                     # In a well
+    page.source.buttons[2].click()                     # In a well
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
     _wait(app, page)
     assert page.view.marks_box.isChecked()
@@ -363,20 +364,17 @@ def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
     assert page.gauge.volume.text() == "0 µl"           # dropped with the tip
 
 
-def test_the_aspirate_settings_are_one_line_and_change_unfolds_them(page):
+def test_aspirates_summary_says_the_height_amount_speed_and_lift(page):
     page.above_bottom.setValue(0.5)
     page.volume.setValue(15.0)
     page.flow_rate.setValue(50.0)
     page.hand_z.setValue(70.0)
-    # By hand without a dish bottom in this robot session: a Z.
-    assert page.settings_line.text() == (
-        "Z 70 mm · 15 µl · 50 µl/s · retract automatically")
-    page.source.buttons[0].click()                       # In a well
-    assert page.settings_line.text() == (
-        "0.5 mm above the bottom · 15 µl · 50 µl/s · retract automatically")
-    assert not page.settings_box.isVisibleTo(page)
-    page.change_button.click()
-    assert page.settings_box.isVisibleTo(page)
+    # By clicking without a dish bottom in this robot session: a Z.
+    assert page.aspirate_card.summary.full == (
+        "By clicking · Z 70 mm · 15 µl · 50 µl/s · lift right away")
+    page.source.buttons[2].click()                       # In a well
+    assert page.aspirate_card.summary.full == (
+        "In a well · 15 µl · 50 µl/s · lift right away")
 
 
 def _ready_by_hand(app, page, session):
@@ -385,7 +383,7 @@ def _ready_by_hand(app, page, session):
     _wait(app, page)
     _tip_on(app, page, session)
     _over_the_deck(app, page, session)
-    page.source.buttons[2].click()                     # By hand
+    page.source.buttons[0].click()                     # By clicking
     page.volume.setValue(15.0)
     page.above_bottom.setValue(0.5)
 
@@ -420,7 +418,7 @@ def test_by_hand_aspirate_is_enabled_with_a_tip_on_and_no_click(
     _calibrate(session)
     _open_upper(app, page, session)
     _wait(app, page)
-    page.source.buttons[2].click()                     # By hand
+    page.source.buttons[0].click()                     # By clicking
     assert not page.aspirate_button.isEnabled()         # no tip yet
     _tip_on(app, page, session)
     app.processEvents()
@@ -508,7 +506,7 @@ def test_part_is_chosen_when_the_page_opens(app, session):
     page = ManualPage(session)
     assert [b.text() for b in page.amount.buttons] == ["Part", "All"]
     assert page.amount.buttons[0].isChecked()
-    assert not page.part.isHidden()
+    assert not page.part_row.isHidden()
     assert page.part.value() == pytest.approx(7.0)
     page.deleteLater()
 
@@ -564,7 +562,7 @@ def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
     page._aspirate_in_place()
     _wait(app, page)
     page.target.buttons[0].click()                       # In a well
-    page.target_wells.well.setCurrentText("A7")
+    page.target_wells.map.well_clicked.emit("A7")
     assert page.dispense_button.text() == "Dispense into A7"
     _wait(app, page)                                     # a busy panel refuses
     page.dispense_button.click()
@@ -586,7 +584,7 @@ def test_the_plan_map_chooses_the_well_to_dispense_into(app, page, session):
     destination = Destination.from_definition(definition, 5)
     session.set_routine(Routine(destination, {"A7": 1, "B7": 1}, name="t"))
     page.target.buttons[0].click()
-    page.plan_map.well_clicked.emit("B7")
+    page.target_wells.map.well_clicked.emit("B7")
     assert page.target_wells.chosen()[3] == "B7"
     assert page.dispense_button.text() == "Dispense into B7"
 
@@ -664,7 +662,7 @@ def test_without_a_pixel_map_a_click_moves_nothing(app, page, session):
     session.profile.calibration.pixel_map = None
     _open_upper(app, page, session)
     _over_the_deck(app, page, session)
-    page.source.buttons[0].click()                     # In a well
+    page.source.buttons[2].click()                     # In a well
     clicks = []
     page.view.clicked.connect(lambda u, v: clicks.append((u, v)))
     _mouse_click(app, page.view, 400, 300)
@@ -677,7 +675,7 @@ def test_without_a_pixel_map_a_click_by_hand_moves_nothing(
     session.profile.calibration.pixel_map = None
     _open_upper(app, page, session)
     _over_the_deck(app, page, session)
-    page.source.buttons[2].click()                     # By hand
+    page.source.buttons[0].click()                     # By clicking
     clicks = []
     page.view.clicked.connect(lambda u, v: clicks.append((u, v)))
     _mouse_click(app, page.view, 400, 300)
@@ -917,8 +915,8 @@ def _measured_plate(app, page, session):
     session.profile.picking.well_offset_y = 0.0
     session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
     _tip_on(app, page, session)
-    page.source.buttons[0].click()                       # In a well
-    page.source_wells.well.setCurrentText("A7")
+    page.source.buttons[2].click()                       # In a well
+    page.source_wells.map.well_clicked.emit("A7")
     page.above_bottom.setValue(0.5)
     _wait(app, page)
 
@@ -952,9 +950,9 @@ def test_dispense_in_a_confirmed_plate_reaches_the_deposit_height(
     session.profile.picking.deposit_offset_z = 1.5
     page._aspirate_in_place()
     _wait(app, page)
-    page.dispense_retract.choice.setCurrentText("Don't retract")
+    _lift(page.dispense_retract, "Stay")
     page.target.buttons[0].click()                       # In a well
-    page.target_wells.well.setCurrentText("A7")
+    page.target_wells.map.well_clicked.emit("A7")
     _wait(app, page)
     z = _pose(session)[2]
     page.dispense_button.click()
@@ -973,7 +971,7 @@ def test_a_plate_measured_but_not_confirmed_takes_the_drawings_bottom(
     _measured_plate(app, page, session)
     session.new_run()                        # measured, not said so here
     session.load_labware(resolve_definition(PLATE), 5)
-    page.source_wells.well.setCurrentText("A7")
+    page.source_wells.map.well_clicked.emit("A7")
     _wait(app, page)
     page.aspirate_button.click()
     _wait(app, page)
@@ -987,8 +985,8 @@ def test_a_plate_not_measured_takes_the_drawings_bottom(app, page, session):
     session.profile.picking.well_offset_x = 0.0
     session.profile.picking.well_offset_y = 0.0
     _tip_on(app, page, session)
-    page.source.buttons[0].click()
-    page.source_wells.well.setCurrentText("A7")
+    page.source.buttons[2].click()
+    page.source_wells.map.well_clicked.emit("A7")
     page.above_bottom.setValue(0.5)
     _wait(app, page)
     page.aspirate_button.click()
@@ -997,43 +995,43 @@ def test_a_plate_not_measured_takes_the_drawings_bottom(app, page, session):
     assert session.robot.well_offset == pytest.approx((0.0, 0.0, 0.5))
 
 
-def test_the_settings_line_names_the_bottom_and_follows_the_confirmation(
+def test_the_summary_names_the_bottom_and_follows_the_confirmation(
         app, page, session):
     session.load_labware(resolve_definition(PLATE), 5)
-    page.source.buttons[0].click()
-    page.source_wells.well.setCurrentText("A7")
+    page.source.buttons[2].click()
+    page.source_wells.map.well_clicked.emit("A7")
     page.above_bottom.setValue(0.5)
-    assert page.settings_line.text().startswith(
-        "0.5 mm above the drawing's bottom · ")
+    assert page.aspirate_card.summary.full.startswith(
+        "Slot 5 · A7 · 0.5 mm above the drawing's bottom · ")
     session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
-    assert page.settings_line.text().startswith(
-        "0.5 mm above the measured bottom · ")
+    assert page.aspirate_card.summary.full.startswith(
+        "Slot 5 · A7 · 0.5 mm above the measured bottom · ")
 
 
-def test_the_settings_line_follows_the_plate_chosen(app, page, session):
+def test_the_summary_follows_the_plate_chosen(app, page, session):
     session.load_labware(resolve_definition(PLATE), 5)
     session.load_labware(resolve_definition(PLATE), 6)
     session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
-    page.source.buttons[0].click()
-    page.source_wells.plate.setCurrentIndex(0)
-    assert "measured bottom" in page.settings_line.text()
-    page.source_wells.plate.setCurrentIndex(1)
-    assert "drawing's bottom" in page.settings_line.text()
+    page.source.buttons[2].click()
+    page.source_wells.plate.slot_chosen.emit(5)
+    assert "measured bottom" in page.aspirate_card.summary.full
+    page.source_wells.plate.slot_chosen.emit(6)
+    assert "drawing's bottom" in page.aspirate_card.summary.full
 
 
-def test_the_settings_line_goes_back_when_the_module_height_changes(
+def test_the_summary_goes_back_when_the_module_height_changes(
         app, page, session):
     """#92: a measurement on another height is not the plate's."""
     session.load_labware(resolve_definition(PLATE), 5)
     session.set_well_center(5, PLATE, (0.4, -0.3, -1.0), "B2", depth_mm=9.0)
-    page.source.buttons[0].click()
-    assert "measured bottom" in page.settings_line.text()
+    page.source.buttons[2].click()
+    assert "measured bottom" in page.aspirate_card.summary.full
     session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
-    assert "drawing's bottom" in page.settings_line.text()
+    assert "drawing's bottom" in page.aspirate_card.summary.full
 
 
 def test_by_hand_height_is_above_the_bottom(page):
-    page.source.buttons[2].click()                       # By hand
+    page.source.buttons[0].click()                       # By clicking
     labels = [b.text() for b in page.height_mode.buttons]
     assert labels == ["Z", "Above the bottom"]
 
@@ -1063,7 +1061,7 @@ def _by_hand_on_a_plate(app, page, session):
     _wait(app, page)
     _measured_plate(app, page, session)
     _over_the_deck(app, page, session)
-    page.source.buttons[2].click()                       # By hand
+    page.source.buttons[0].click()                       # By clicking
     page.volume.setValue(15.0)
     _aim_at(app, page, session, *A1)
 
@@ -1079,8 +1077,8 @@ def test_by_hand_over_a_confirmed_plate_goes_above_its_bottom(
         app, page, session):
     _by_hand_on_a_plate(app, page, session)
     assert page.height_mode.current() == 1               # the default then
-    assert page.settings_line.text().startswith(
-        "0.5 mm above the bottom of slot 5 · ")
+    assert page.aspirate_card.summary.full.startswith(
+        "By clicking · 0.5 mm above the bottom of slot 5 · ")
     at = _aspirated_at(session)
     page.aspirate_button.click()
     _wait(app, page)
@@ -1092,15 +1090,15 @@ def test_by_hand_the_bottom_follows_the_spot_from_slot_to_slot(
     _by_hand_on_a_plate(app, page, session)
     _dish_in_slot_8(session)
     _aim_at(app, page, session, 196.0, 224.0)            # slot 8
-    assert page.settings_line.text().startswith(
-        "0.5 mm above the bottom of slot 8 · ")
+    assert page.aspirate_card.summary.full.startswith(
+        "By clicking · 0.5 mm above the bottom of slot 8 · ")
     at = _aspirated_at(session)
     page.aspirate_button.click()
     _wait(app, page)
     assert at[0][2] == pytest.approx(66.5, abs=0.05)
     _aim_at(app, page, session, *A1)
-    assert page.settings_line.text().startswith(
-        "0.5 mm above the bottom of slot 5 · ")
+    assert page.aspirate_card.summary.full.startswith(
+        "By clicking · 0.5 mm above the bottom of slot 5 · ")
 
 
 def test_by_hand_the_bottom_does_not_depend_on_the_source_chosen(
@@ -1108,8 +1106,8 @@ def test_by_hand_the_bottom_does_not_depend_on_the_source_chosen(
     _by_hand_on_a_plate(app, page, session)
     session.choose_source(SOURCE_DISH)
     app.processEvents()
-    assert page.settings_line.text().startswith(
-        "0.5 mm above the bottom of slot 5 · ")
+    assert page.aspirate_card.summary.full.startswith(
+        "By clicking · 0.5 mm above the bottom of slot 5 · ")
 
 
 def test_by_hand_over_a_slot_with_nothing_confirmed_is_a_z(app, page, session):
@@ -1119,7 +1117,7 @@ def test_by_hand_over_a_slot_with_nothing_confirmed_is_a_z(app, page, session):
     _aim_at(app, page, session, 64.0, 133.0)             # slot 4: nothing
     assert not above.isEnabled()
     assert page.height_mode.current() == 0               # Z
-    assert page.settings_line.text().startswith("Z ")
+    assert page.aspirate_card.summary.full.startswith("By clicking · Z ")
     _aim_at(app, page, session, *A1)
     assert above.isEnabled()
     assert page.height_mode.current() == 1
@@ -1500,7 +1498,6 @@ def test_dispense_starts_at_the_profiles_flow_rate(app, session):
     session.profile.picking.flow_rate = 33.0
     page = ManualPage(session)
     assert page.dispense_rate.value() == 33.0
-    assert page.dispense_line.text() == "33 µl/s · retract automatically"
     page.deleteLater()
 
 
@@ -1529,41 +1526,38 @@ def test_the_dispense_button_uses_dispenses_speed(app, page, session):
     assert _liquid_calls(session)[-1][2] == 7.0
 
 
-def test_the_dispense_line_says_the_speed_and_change_edits_it(page):
-    page.dispense_card.set_open(True)
+def test_dispenses_summary_says_the_speed(app, page, session):
+    _held(app, page, session)
+    page.target.buttons[1].click()                       # At a point
     page.dispense_rate.setValue(25.0)
-    assert page.dispense_line.text() == "25 µl/s · retract automatically"
-    assert not page.dispense_box.isVisibleTo(page)
-    page.dispense_change.setChecked(True)
-    assert page.dispense_box.isVisibleTo(page)
-    assert page.dispense_box.isAncestorOf(page.dispense_rate)
+    assert page.dispense_card.summary.full.endswith(
+        "25 µl/s · lift right away")
     page.dispense_rate.setValue(12.5)
-    assert page.dispense_line.text() == "12.5 µl/s · retract automatically"
-    page.dispense_change.setChecked(False)
-    assert not page.dispense_box.isVisibleTo(page)
+    assert page.dispense_card.summary.full.endswith(
+        "12.5 µl/s · lift right away")
 
 
-def test_aspirates_line_does_not_follow_dispenses_speed(page):
+def test_aspirates_summary_does_not_follow_dispenses_speed(app, page, session):
+    _held(app, page, session)
     page.flow_rate.setValue(40.0)
-    before = page.settings_line.text()
+    before = page.aspirate_card.summary.full
     page.dispense_rate.setValue(7.0)
-    assert page.settings_line.text() == before
-    assert page.dispense_line.text() == "7 µl/s · retract automatically"
+    assert page.aspirate_card.summary.full == before
+    assert "7 µl/s" in page.dispense_card.summary.full
     page.flow_rate.setValue(41.0)
-    assert page.dispense_line.text() == "7 µl/s · retract automatically"
+    assert "7 µl/s" in page.dispense_card.summary.full
 
 
-def test_the_dispense_line_stands_under_amount_and_over_where(app, page):
+def test_dispense_reads_where_then_how_much_then_how_it_leaves(app, page):
     page.dispense_card.set_open(True)
-    page.dispense_change.setChecked(True)
     page.show()
     app.processEvents()
 
     def top(widget):
         return widget.mapTo(page, widget.rect().topLeft()).y()
 
-    assert (top(page.amount) < top(page.dispense_line)
-            < top(page.dispense_box) < top(page.target))
+    assert (top(page.target) < top(page.amount)
+            < top(page.dispense_retract))
 
 
 # -- a Z checked against the bottom of its slot (#101) ------------------------
@@ -1745,7 +1739,7 @@ def test_dispense_at_a_point_within_the_limit_goes(app, page, session):
     _over_the_deck(app, page, session)
     _liquid_in_the_tip(app, page, session)
     point = _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 0.95)
-    page.dispense_retract.choice.setCurrentText("Don't retract")
+    _lift(page.dispense_retract, "Stay")
     page.target_points.choose(point.name)
     page.dispense_button.click()
     _wait(app, page)
@@ -1834,8 +1828,8 @@ def test_aspirate_in_a_well_rises_there_by_default(app, page, session):
     _ready_by_hand(app, page, session)
     session.load_labware(
         resolve_definition("corning_96_wellplate_360ul_flat"), 5)
-    page.source.buttons[0].click()                       # In a well
-    page.source_wells.well.setCurrentText("A1")
+    page.source.buttons[2].click()                       # In a well
+    page.source_wells.map.well_clicked.emit("A1")
     x, y = _pose(session)[:2]
     robot, to_well = session.robot, session.robot.move_to_well
 
@@ -1853,7 +1847,7 @@ def test_aspirate_in_a_well_rises_there_by_default(app, page, session):
 
 def test_dont_retract_leaves_the_tip_down_at_a_point(app, page, session):
     _at_a_point(app, page, session)
-    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    _lift(page.aspirate_retract, "Stay")
     page.aspirate_button.click()
     _wait(app, page)
     assert _pose(session) == pytest.approx((170.0, 140.0, 70.0), abs=0.05)
@@ -1864,7 +1858,7 @@ def test_by_hand_dont_retract_leaves_the_tip_down_and_the_camera_where_it_is(
     _ready_by_hand(app, page, session)
     page.height_mode.buttons[0].click()                  # Z
     page.hand_z.setValue(70.0)
-    page.aspirate_retract.choice.setCurrentText("Don't retract")
+    _lift(page.aspirate_retract, "Stay")
     page.aspirate_button.click()
     _wait(app, page)
     assert _pose(session) == pytest.approx((160.0, 145.0, 70.0), abs=0.05)
@@ -1893,29 +1887,30 @@ def test_dispense_rises_by_default(
 
 def test_dispense_dont_retract_stays_down(app, page, session):
     _pour(app, page, session)
-    page.dispense_retract.choice.setCurrentText("Don't retract")
+    _lift(page.dispense_retract, "Stay")
     page.dispense_button.click()
     _wait(app, page)
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx((150.0, 150.0, 70.0), abs=0.05)
 
 
-def test_each_card_has_its_own_retract_on_its_line(page):
-    page.dispense_retract.choice.setCurrentText("Retract after delay")
-    assert page.dispense_line.text() == "50 µl/s · retract after 5 s"
-    page.dispense_retract.delay.setValue(7.5)
-    assert page.dispense_line.text() == "50 µl/s · retract after 7.5 s"
-    assert "retract automatically" in page.settings_line.text()
-    page.aspirate_retract.choice.setCurrentText("Don't retract")
-    assert page.settings_line.text().endswith("don't retract")
-    assert page.dispense_line.text() == "50 µl/s · retract after 7.5 s"
+def test_each_card_has_its_own_lift_on_its_row(page):
+    rows = page.dispense_retract
+    _lift(rows, "After a wait")
+    assert rows.words() == "lift after 5 s"
+    rows.delay.setValue(7.5)
+    assert rows.words() == "lift after 7.5 s"
+    assert "lift right away" in page.aspirate_card.summary.full
+    _lift(page.aspirate_retract, "Stay")
+    assert page.aspirate_card.summary.full.endswith("stay")
+    assert rows.words() == "lift after 7.5 s"
 
 
-def test_the_delay_is_asked_only_for_retract_after_delay(page):
+def test_the_wait_is_asked_only_after_a_wait(page):
     rows = page.aspirate_retract
-    assert not rows.delay.isEnabled()
-    rows.choice.setCurrentText("Retract after delay")
-    assert rows.delay.isEnabled()
+    assert rows.wait_row.isHidden()
+    _lift(rows, "After a wait")
+    assert not rows.wait_row.isHidden()
     assert (rows.delay.minimum(), rows.delay.maximum()) == (0.5, 60.0)
     assert rows.delay.singleStep() == 0.5
     assert rows.delay.value() == 5.0
@@ -1934,7 +1929,7 @@ def _waiting(app, page, session):
 def test_esc_in_the_delay_leaves_the_tip_down_and_says_so(app, page, session):
     _at_a_point(app, page, session)
     rows = page.aspirate_retract
-    rows.choice.setCurrentText("Retract after delay")
+    _lift(rows, "After a wait")
     rows.delay.setValue(60.0)
     page.aspirate_button.click()
     _waiting(app, page, session)
@@ -1954,7 +1949,7 @@ def test_by_hand_esc_in_the_delay_does_not_bring_the_camera_back(
     page.height_mode.buttons[0].click()                  # Z
     page.hand_z.setValue(70.0)
     rows = page.aspirate_retract
-    rows.choice.setCurrentText("Retract after delay")
+    _lift(rows, "After a wait")
     rows.delay.setValue(60.0)
     page.aspirate_button.click()
     _waiting(app, page, session)
@@ -1969,7 +1964,7 @@ def test_by_hand_after_the_delay_brings_the_camera_back(app, page, session):
     page.height_mode.buttons[0].click()                  # Z
     page.hand_z.setValue(70.0)
     rows = page.aspirate_retract
-    rows.choice.setCurrentText("Retract after delay")
+    _lift(rows, "After a wait")
     rows.delay.setValue(0.5)
     page.aspirate_button.click()
     _wait(app, page)
@@ -1991,28 +1986,27 @@ def test_retract_slowly_sends_one_slow_move_then_rises(app, page, session):
         (170.0, 140.0, _travel_z(session)), abs=0.05)
 
 
-def test_retract_slowly_is_off_at_start_and_gray_with_dont_retract(page):
+def test_lift_slowly_is_off_at_start_and_hidden_with_stay(page):
     for rows in (page.aspirate_retract, page.dispense_retract):
-        box = rows.slowly.parentWidget()     # Dispense's card is gray itself
         assert not rows.slowly.isChecked()
-        assert rows.slowly.isEnabledTo(box)
+        assert not rows.slowly.isHidden()
         rows.slowly.setChecked(True)
-        rows.choice.setCurrentText("Don't retract")
-        assert not rows.slowly.isEnabledTo(box)
+        _lift(rows, "Stay")
+        assert rows.slowly.isHidden()
         assert not rows.how().rises
-        rows.choice.setCurrentText("Retract automatically")
-        assert rows.slowly.isEnabledTo(box)
+        _lift(rows, "Right away")
+        assert not rows.slowly.isHidden()
         assert rows.how().slowly
 
 
-def test_the_line_says_retract_slowly(page):
+def test_the_words_say_lift_slowly(page):
     rows = page.dispense_retract
     rows.slowly.setChecked(True)
-    assert page.dispense_line.text() == "50 µl/s · retract slowly"
-    rows.choice.setCurrentText("Retract after delay")
-    assert page.dispense_line.text() == "50 µl/s · retract slowly after 5 s"
-    rows.choice.setCurrentText("Don't retract")
-    assert page.dispense_line.text() == "50 µl/s · don't retract"
+    assert rows.words() == "lift right away, slowly"
+    _lift(rows, "After a wait")
+    assert rows.words() == "lift after 5 s, slowly"
+    _lift(rows, "Stay")
+    assert rows.words() == "stay"
 
 
 # -- Here, and the keys that do it (#104) ----------------------------------------
@@ -2024,10 +2018,8 @@ def _rebind(session, action, key):
 
 
 def test_from_and_where_have_no_here(page):
-    assert [b.text() for b in page.source.buttons] == [
-        "In a well", "At a point", "By hand"]
-    assert [b.text() for b in page.target.buttons] == [
-        "In a well", "At a point"]
+    assert "Here" not in [b.text() for b in page.source.buttons
+                          + page.target.buttons]
 
 
 def test_in_place_draws_the_keys_as_bound(page, session):
@@ -2280,26 +2272,26 @@ def test_the_summaries_state_the_whole_action(app, page, session):
     session.load_labware(
         resolve_definition("corning_96_wellplate_360ul_flat"), 5)
     aspirate = page.aspirate_card.summary
-    assert aspirate.full.startswith("By hand · ")
+    assert aspirate.full.startswith("By clicking · ")
     page.volume.setValue(12.0)
     page.flow_rate.setValue(30.0)
-    page.aspirate_retract.choice.setCurrentText("Retract after delay")
+    _lift(page.aspirate_retract, "After a wait")
     assert aspirate.full.endswith(
-        "12 µl · 30 µl/s · retract after 5 s")
+        "12 µl · 30 µl/s · lift after 5 s")
     page.aspirate_retract.slowly.setChecked(True)
-    assert aspirate.full.endswith("retract slowly after 5 s")
-    page.source.buttons[0].click()                       # In a well
-    page.source_wells.well.setCurrentText("A3")
+    assert aspirate.full.endswith("lift after 5 s, slowly")
+    page.source.buttons[2].click()                       # In a well
+    page.source_wells.map.well_clicked.emit("A3")
     assert aspirate.full.startswith("Slot 5 · A3 · 0.5 mm above ")
 
     _held(app, page, session)
     dispense = page.dispense_card.summary
     page.target.buttons[0].click()                       # In a well
-    page.target_wells.well.setCurrentText("A7")
+    page.target_wells.map.well_clicked.emit("A7")
     page.part.setValue(6.0)
     page.dispense_rate.setValue(20.0)
     assert dispense.full == ("Slot 5 · A7 · 6 µl · 20 µl/s · "
-                             "retract automatically")
+                             "lift right away")
     page.amount.buttons[1].click()                       # All
     assert dispense.full.startswith("Slot 5 · A7 · everything · ")
 
@@ -2325,3 +2317,309 @@ def test_the_dispense_button_says_what_it_does_in_a_header_it_fits(
     assert page.dispense_button.text() == "Dispense 6 µl"
     page.amount.buttons[1].click()                       # All
     assert page.dispense_button.text() == "Dispense 15 µl"
+
+
+# -- What the cards hold (#115, MANUAL.md §4.2-4.4) ---------------------------
+
+def _from(page, name):
+    from micropick.gui.pages.manual import FROM
+    page.source.buttons[FROM.index(name)].click()
+
+
+def _lift(row, name):
+    from micropick.gui.pages.manual import LIFT
+    row.choice.buttons[LIFT.index(name)].click()
+
+
+def _visible_texts(page):
+    from PySide6.QtWidgets import QAbstractButton, QLabel
+    return [w.text() for w in page.findChildren(QLabel)
+            + page.findChildren(QAbstractButton) if w.isVisibleTo(page)]
+
+
+def test_the_cards_choices_read_as_the_design_says(page):
+    assert [b.text() for b in page.source.buttons] == [
+        "By clicking", "At a point", "In a well"]
+    assert [b.text() for b in page.target.buttons] == [
+        "In a well", "At a point"]
+    assert page.source.current() == 0
+    assert page.aspirate_card.summary.full.startswith("By clicking")
+
+
+def test_the_fields_are_in_the_card_with_no_change_to_open(page):
+    page.show()
+    assert page.volume.isVisible() and page.flow_rate.isVisible()
+    assert "Change" not in _visible_texts(page)
+    assert "Amount, µl" in _visible_texts(page)
+    assert "Speed, µl/s" in _visible_texts(page)
+
+
+def test_by_clicking_has_z_or_above_the_bottom_from_tip_with_z(app, page):
+    from micropick.gui.pages.manual import HEIGHT
+    page.show()
+    page.height_mode.buttons[HEIGHT.index("Z")].click()
+    assert page.hand_z_row.isVisible() and page.from_tip.isVisible()
+    assert not page.above_row.isVisible()
+    assert page.height_row.isVisible()
+
+
+def test_from_tip_takes_the_z_of_the_tip_now(app, page, session):
+    from micropick.gui.pages.manual import HEIGHT
+    _over_the_deck(app, page, session)
+    page.height_mode.buttons[HEIGHT.index("Z")].click()
+    page.from_tip.click()
+    assert page.hand_z.value() == pytest.approx(90.0)
+
+
+def test_in_a_well_has_above_the_bottom_and_a_point_no_height(app, page):
+    page.show()
+    _from(page, "In a well")
+    assert page.above_row.isVisible() and not page.hand_z_row.isVisible()
+    assert not page.height_row.isVisible()
+    _from(page, "At a point")
+    assert not page.above_row.isVisible()
+    assert not page.hand_z_row.isVisible()
+    assert page.volume.isVisible()
+
+
+def test_which_bottom_stays_said_in_the_summary_and_the_field(app, page,
+                                                              session):
+    _plate(session, 2)
+    page.show()
+    _from(page, "In a well")
+    assert "above the drawing's bottom" in page.aspirate_card.summary.full
+    assert "above the drawing's bottom" in page.above_bottom.toolTip()
+
+
+def test_the_size_window_is_on_snaps_row_and_follows_the_profile(page):
+    page.session.profile.picking.cuboid_size_threshold = (250, 500)
+    page._show_size_window()
+    assert page.sizes_link.text() == "250–500 µm"
+
+
+def test_the_size_window_opens_the_histogram_in_a_popover(app, page):
+    page.session.profile.picking.cuboid_size_threshold = (250, 500)
+    page._cuboids = _detection([300, 320, 600])
+    page.show()
+    page.sizes_link.click()
+    assert page.sizes_popover.isVisible()
+    assert "2 of 3" in page.sizes_popover.histogram.state.text()
+    page.sizes_popover.close()
+
+
+def test_the_popover_says_when_nothing_is_measured(app, page):
+    page.show()
+    page.sizes_link.click()
+    assert page.sizes_popover.histogram.state.text() == "nothing measured yet"
+    page.sizes_popover.close()
+
+
+def test_there_is_no_sizes_card(page):
+    assert not hasattr(page, "sizes")
+    assert "Sizes" not in _visible_texts(page)
+
+
+def test_at_a_point_are_chips_of_the_points_list(app, page, session):
+    from micropick.gui.widgets.point_chips import PointChips
+    session.add_memo_point(100.0, 100.0, 70.0)
+    assert isinstance(page.source_points, PointChips)
+    assert isinstance(page.target_points, PointChips)
+    _from(page, "At a point")
+    page.source_points.chip("M1").click()
+    assert page.aspirate_card.summary.full.startswith("M1 · Z 70 mm")
+
+
+def test_aspirate_opens_on_the_source_steps_plate(app, page, session):
+    _plate(session, 2)
+    _plate(session, 5)
+    session.choose_source("5")
+    page.show()
+    app.processEvents()
+    assert page.source_wells.chosen()[0] == "5"
+
+
+def _plate(session, slot):
+    session.load_labware(
+        resolve_definition("corning_96_wellplate_360ul_flat"), slot)
+
+
+def _plan_on(session, slot, wells):
+    from micropick.core.routine import Destination, Routine
+    definition = resolve_definition("corning_96_wellplate_360ul_flat")
+    destination = Destination.from_definition(definition, slot)
+    session.set_routine(Routine(destination, {w: 1 for w in wells}, name="t"))
+
+
+def test_dispenses_map_is_the_plate_with_the_plans_wells_in_one_color(
+        app, page, session):
+    from PySide6.QtGui import QColor
+    from micropick.gui.theme import COLORS
+    _plate(session, 2)
+    _plate(session, 5)
+    _plan_on(session, 5, ["A1", "A2", "B3"])
+    picker = page.target_wells
+    assert picker.chosen()[0] == "5"
+    assert picker.map._fills["A2"] == picker.map._fills["B3"] == QColor(
+        COLORS["planned"])
+    # Nothing of what Picking filled: a well done reads as planned.
+    picker.choose("5", "C1")
+    session.routine.next()
+    session.routine.record(delivered=1)
+    page._show_plan()
+    assert not session.routine.remaining("A1")
+    assert picker.map._fills["A1"] == QColor(COLORS["planned"])
+    assert not {"Filled", "Planned"} & set(_visible_texts(page))
+
+
+def test_any_well_of_the_plate_can_be_dispensed_into(app, page, session):
+    _plate(session, 2)
+    _plan_on(session, 2, ["A1"])
+    page.target_wells.map.well_clicked.emit("H12")
+    assert page.target_wells.chosen()[3] == "H12"
+
+
+def test_the_lifting_row_folds_to_words(app, page):
+    row = page.aspirate_retract
+    page.show()
+    assert row.words() == "lift right away"
+    assert row.line.text().endswith("lift right away</b>")
+    assert row.line.text().startswith("After aspirating:")
+    assert not row.box.isVisible()
+    row.header.click()
+    assert row.box.isVisible()
+    row.header.click()
+    assert not row.box.isVisible()
+    assert page.dispense_retract.line.text().startswith("After dispensing:")
+
+
+def test_the_lifting_choices_are_the_codes_three(app, page):
+    row = page.aspirate_retract
+    assert [b.text() for b in row.choice.buttons] == [
+        "Right away", "After a wait", "Stay"]
+    assert row.how() == moves_retract()
+    _lift(row, "After a wait")
+    row.delay.setValue(7.0)
+    assert row.how() == moves_retract(delay_s=7.0)
+    assert row.words() == "lift after 7 s"
+    row.slowly.setChecked(True)
+    assert row.how() == moves_retract(delay_s=7.0, slowly=True)
+    assert row.words() == "lift after 7 s, slowly"
+    _lift(row, "Stay")
+    assert row.how().rises is False
+    assert row.words() == "stay"
+    _lift(row, "Right away")
+    assert row.words() == "lift right away, slowly"
+    assert "lift right away, slowly" in page.aspirate_card.summary.full
+
+
+def moves_retract(**kw):
+    from micropick.workflows.manual import Retract
+    return Retract(**kw)
+
+
+def test_wait_shows_only_with_a_wait_and_lift_slowly_goes_with_stay(app, page):
+    row = page.aspirate_retract
+    page.show()
+    row.header.click()
+    assert not row.wait_row.isVisible() and row.slowly.isVisible()
+    _lift(row, "After a wait")
+    assert row.wait_row.isVisible() and row.wait_row.isEnabled()
+    _lift(row, "Stay")
+    assert not row.wait_row.isVisible() and not row.slowly.isVisible()
+
+
+def test_each_card_keeps_its_own_lifting(app, page, session):
+    _lift(page.aspirate_retract, "Stay")
+    assert page.dispense_retract.words() == "lift right away"
+    page.work_cards.open(page.dispense_card)
+    page.work_cards.open(page.aspirate_card)
+    session.profile_changed.emit(session.profile)
+    assert page.aspirate_retract.words() == "stay"
+
+
+def test_no_hint_sentence_of_the_mockup_is_on_screen(app, page):
+    words = " ".join(_visible_texts(page))
+    for hint in ("Click the picture", "Right-click the picture",
+                 "Click a well", "Filled wells"):
+        assert hint not in words
+
+
+def test_an_aspirate_and_a_dispense_answer_in_the_designs_words(app, page,
+                                                                session):
+    _plate(session, 5)
+    _tip_on(app, page, session)
+    _from(page, "In a well")
+    page.source_wells.choose("5", "A3")
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert toast_of(page).text() == "Aspirated 10 µl."
+    page.target_wells.choose("5", "A7")
+    page.part.setValue(4.0)
+    page.dispense_button.click()
+    _wait(app, page)
+    assert toast_of(page).text() == "Dispensed 4 µl into A7."
+
+
+def test_a_dispense_at_a_point_says_the_point(app, page, session):
+    session.add_memo_point(150.0, 150.0, 90.0)
+    _tip_on(app, page, session)
+    page._aspirate_in_place()
+    _wait(app, page)
+    page.target.buttons[1].click()                       # At a point
+    page.target_points.choose("M1")
+    page.dispense_button.click()
+    _wait(app, page)
+    assert toast_of(page).text().endswith("µl at M1.")
+
+
+def test_look_at_answers_camera_moved_to_slot(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    page._slot_clicked(4)
+    _wait(app, page)
+    assert toast_of(page).text() == "Camera moved to slot 4."
+
+
+def test_detecting_answers_how_many_were_found(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _over_the_deck(app, page, session)
+    _cuboid_at(page, W / 2, H / 2)
+    assert toast_of(page).text() == "1 cuboid found."
+
+
+def test_nothing_on_the_cards_is_a_qt_table(page):
+    from PySide6.QtWidgets import QTableView
+    assert page.findChildren(QTableView) == []
+
+
+def test_every_button_on_the_cards_is_one_of_three_heights(app, page, themed):
+    from PySide6.QtWidgets import QPushButton
+    page.resize(1920, 1000)
+    page.show()
+    page.points_list.choose(None)
+    app.processEvents()
+    cards = (page.in_place_card, page.aspirate_card, page.dispense_card,
+             page.points_card)
+    for card in cards:
+        for button in card.findChildren(QPushButton):
+            if button.objectName() != "segment" and button.isVisible():
+                assert button.height() in (36, 40, 44), button.text()
+
+
+def test_the_numbers_on_the_cards_are_fields_of_the_design(page):
+    fields = (page.in_place_amount, page.in_place_rate, page.volume,
+              page.flow_rate, page.hand_z, page.above_bottom, page.part,
+              page.dispense_rate, page.aspirate_retract.delay,
+              page.dispense_retract.delay)
+    for field in fields:
+        assert field.objectName() == "numberField" and not field.suffix()
+
+
+def test_no_field_takes_the_keyboard_as_the_page_opens(app, page):
+    # It would take the robot's keys with it.
+    for field in (page.volume, page.flow_rate, page.above_bottom):
+        assert field.focusPolicy() == Qt.FocusPolicy.ClickFocus

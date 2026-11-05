@@ -19,9 +19,8 @@ from contextlib import contextmanager
 
 from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap, QPolygonF
-from PySide6.QtWidgets import (QAbstractSpinBox, QComboBox, QDoubleSpinBox,
-                               QFrame, QLabel, QPushButton, QScrollArea,
-                               QSpinBox,
+from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
+                               QPushButton, QScrollArea, QSpinBox,
                                QStackedWidget, QToolButton, QVBoxLayout,
                                QWidget)
 
@@ -270,11 +269,14 @@ class _NumberField(QDoubleSpinBox):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("numberField")
-        self.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.setAlignment(Qt.AlignmentFlag.AlignRight
                           | Qt.AlignmentFlag.AlignVCenter)
         self.setFont(mono_font(14, 500))
         self.setFixedHeight(NUMBER_FIELD_PX)
+        self.lineEdit().setTextMargins(6, 0, 6, 0)
+        # By a click only: the first field the window finds would have the
+        # keyboard as the page opens, and the robot's keys with it.
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
 
     def wheelEvent(self, event) -> None:
         if self.hasFocus():
@@ -431,6 +433,9 @@ class _ScrollColumn(QScrollArea):
         layout.invalidate()
         layout.activate()
         wanted = layout.heightForWidth(self._inner_width)
+        if wanted < 0:
+            # Nothing in it wraps: its height is the same for any width.
+            wanted = layout.sizeHint().height()
         if wanted > 0 and wanted != self._inner.minimumHeight():
             self._inner.setMinimumHeight(wanted)
 

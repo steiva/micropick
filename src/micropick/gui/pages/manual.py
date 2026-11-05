@@ -38,7 +38,7 @@ Under X, Y and Z, and on no other page, is the **height line** (#95): the
 slot the camera is over (`camera_moves.camera_slot`, so before a tip
 calibration too), "Slot 8 · top 85.10 · bottom 67.77 · measured", for the
 operator choosing a Z. Measured is what this page itself goes by: a plate
-measured and confirmed in this robot session, as In a well and By hand; any
+measured and confirmed in this robot session, as In a well and By clicking; any
 other plate is its drawing, a measurement not confirmed included, since a
 line saying measured over a height no aspirate uses would mislead. No plate,
 no line; the source dish has only a bottom, once confirmed, and in the
@@ -49,7 +49,7 @@ Memo points
 A right click on the picture marks a point where the tip would go down
 there (`Session.memo_points`, named with the lowest free number, M1, M2
 ...); so does Point at crosshair, at the spot under the picture's
-center where By hand aims, with no Z (gray without a pixel map); beside it
+center where By clicking aims, with no Z (gray without a pixel map); beside it
 Tip to crosshair sends the tip there at the travel height, no memo point
 needed, and leaves it there (gray without a tip or a pixel map). They are
 listed in the Points card, which never folds, with the saved points in one
@@ -68,17 +68,14 @@ both kinds (`Session.undo_points`, `gui.point_history`, #96); there is no
 key for them. A saved point brought back is written to the profile again.
 
 A point is a place on the deck, the tip's, with no purpose of its own.
-Under both sections, for the one point chosen in either: Camera to (the camera
+Under the chosen row: Camera to (the camera
 over it at the travel height, its Z unused) and Tip to (the tip down to its
 Z, no higher than the travel height; gray while no tip is on), each
 checked against the jog envelope and through `JogPanel.run_job`. Aspirate's
 and Dispense's "At a point" list both kinds and go to one by aspirating or
 dispensing there.
 
-They are drawn on the picture, a saved point with a filled disc, only while
-a section of Points is open or "At a point" is chosen in Aspirate or
-Dispense. Both sections start open: folded, a new point is listed
-and drawn only once one is opened.
+They are drawn on the picture, a saved point with a filled disc.
 
 A point the tip cannot go to is said where it is made and shown in red,
 on the picture and in its Z (`Session.memo_problem`): the jog envelope's
@@ -115,35 +112,39 @@ lower camera's picture is not a place on the deck.
 Aspirate
 --------
 The operator composes the work from Aspirate and Dispense; nothing is a
-script. Aspirate's settings are one line, "0.5 mm above the measured
-bottom · 15 µl · 50 µl/s", and Change unfolds them. The height is above the
-bottom of where the tip goes down: by hand the slot's (below); in a well
-the plate's measured bottom (rim less depth, `Motion.to_measured_bottom`)
-once confirmed in this robot session (`Session.plate_bottom_confirmed`),
-else the drawing's, and the line says which (#89). From:
+script. The card's body holds only settings, in the open (MANUAL.md §4.2): what
+From asks, Amount, Speed and the height, then the lifting row. The height is
+above the bottom of where the tip goes down: by clicking the slot's (below); in
+a well the plate's measured bottom (rim less depth,
+`Motion.to_measured_bottom`) once confirmed in this robot session
+(`Session.plate_bottom_confirmed`), else the drawing's, and the summary and the
+field's tooltip say which (#89). From:
 
-* **In a well** - a plate the robot session holds and its well.
-* **At a point** - a memo or saved point, at its own Z.
-* **By hand** - the spot under the camera's crosshair (#60): the
+* **By clicking** - the spot under the camera's crosshair (#60): the
   picture's center through the pixel map, plus the measured tip offset.
   The operator aims with the picture: a click moves the camera, and with
   Snap to found cuboids on, a click on a detected cuboid moves it so the
   crosshair is on the cuboid's center (a click beside every cuboid moves
-  to the point). The height is a Z, or a height above the bottom of the
-  slot the spot is in (#90), whatever the source chosen: a plate confirmed
-  in this robot session gives its measured bottom, the source dish's slot
-  the dish bottom when that is confirmed (`Session.is_confirmed`), and
-  anywhere else only Z is offered: an older bottom is not one to lower a
-  tip to. It is the default where there is one, and the line names the
-  slot. Over a plate a spot not in a well is refused
+  to the point). The size window on Snap's row opens the sizes in a popover
+  (`_SizesPopover`). The height is a Z, From tip the tip's now, or a height
+  above the bottom of the slot the spot is in (#90), whatever the source
+  chosen: a plate confirmed in this robot session gives its measured bottom,
+  the source dish's slot the dish bottom when that is confirmed
+  (`Session.is_confirmed`), and anywhere else only Z is offered: an older
+  bottom is not one to lower a tip to. It is the default where there is one,
+  and the summary names the slot. Over a plate a spot not in a well is refused
   (`well_center.in_a_well`), and so is a click aiming where there is no
   bottom; a Z is the operator's, in a well or not. Aspirate remembers the
   camera's pose, takes the tip to the spot at the travel height
   (`Motion.tip_to`), lowers it, aspirates, and brings the camera back -
   one job, so nothing comes between. With Aspirate as soon as I click, a
   click aims and does all that.
+* **At a point** - a memo or saved point as a chip (`PointChips`), at its own
+  Z, so no height here.
+* **In a well** - a plate the robot session holds, the Source step's first
+  (`WellPicker`), and its well, a click on the plate in real proportions.
 
-Aspirate is enabled once there is a source - By hand always has one, so
+Aspirate is enabled once there is a source - By clicking always has one, so
 there it is enabled whenever a tip is on and the robot is free. It goes
 there (through the jog panel's `run_job`, after the jog envelope's check)
 and aspirates (`Session.aspirate`); the spot is a past pick. Refused
@@ -152,7 +153,7 @@ unless the robot reports a tip on.
 How far down
 ------------
 A Z given for a target - Tip to, At a point in Aspirate and Dispense, By
-hand's Z - is checked against the bottom of the target's slot, the one the
+clicking's Z - is checked against the bottom of the target's slot, the one the
 height line gives (`_heights_in`): more than 1 mm under a measured bottom
 or 2 mm under a drawing's is refused, nothing moved
 (`moves.under_the_bottom`, #101). So a mistyped Z is stopped where no module
@@ -165,17 +166,17 @@ lowering, go down to a touch.
 
 Dispense
 --------
-Under Aspirate: Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
-the run's volume) or All. Under it the settings as one line, as Aspirate's,
-"50 µl/s", and Change unfolds them: its own speed, starting from the picking
-settings' flow rate and kept by the page, never in the profile. Then where:
+Where, then Part (µl, no more than is in the tip: `Session.dispense`; chosen at
+start, the run's volume) or All, its own speed, starting from the picking
+settings' flow rate and kept by the page, never in the profile, and the lifting
+row:
 
-* **In a well** - the plate and well, and a mini map of the plate plan's
-  plate (filled and still planned wells; a click chooses that well), so
-  the wells a run left empty can be filled by hand. The tip goes to the
-  well's bottom (as Aspirate's, measured or the drawing's) plus the
-  picking settings' deposit offset, from the plate's well center.
-* **At a point** - a memo or saved point.
+* **In a well** - a plate and its well (`WellPicker`), the plate plan's plate
+  first, any well choosable, the plan's wells in one color so the wells a run
+  left empty can be filled by hand; nothing says what a run filled (§10.10).
+  The tip goes to the well's bottom (as Aspirate's, measured or the drawing's)
+  plus the picking settings' deposit offset, from the plate's well center.
+* **At a point** - a memo or saved point, as a chip.
 
 Its button says what it does - "Dispense into A7", "Dispense 10 µl" - and,
 gray while the tip is empty, only "Dispense".
@@ -203,12 +204,12 @@ would push out air.
 
 How the tip leaves
 ------------------
-Each card has its own, on its line (#102, `_RetractRows`): up at once, not
-at all, or after a delay, to the travel height where the tip stands
-(`moves.retract`), slowly at first if asked (#103). Only By hand then brings the camera back to where it
-aimed from, since only there did the camera choose the spot. The delay is
-part of the job, so it holds the lease and every button that moves stays
-gray; a stop ends it with the tip down.
+Each card has its own, a row of words that unfolds (#102, `_LiftRow`,
+MANUAL.md §4.4): Right away, After a wait or Stay, to the travel height where
+the tip stands (`moves.retract`), slowly at first if asked (#103). Only By
+clicking then brings the camera back to where it aimed from, since only there
+did the camera choose the spot. The wait is part of the job, so it holds the
+lease and every button that moves stays gray; a stop ends it with the tip down.
 
 The well center
 ---------------
@@ -247,11 +248,10 @@ from typing import NamedTuple
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QShortcut
-from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout,
-                               QLabel, QSizePolicy, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
+                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
 from ...core.calibration.pixel_map import PixelMap
@@ -271,10 +271,11 @@ from ..labware_kinds import facts, kind
 from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
-from ..theme.factory import (card, combo_box, compact, heading,
-                             double_spin_box, laid_out_at_once, muted_label,
-                             reserve, secondary_button, select, set_primary,
+from ..theme.factory import (card, heading, labeled, laid_out_at_once,
+                             muted_label, number_field, quiet_button, reserve,
+                             secondary_button, select, set_primary,
                              tool_button)
+from ..theme.icons import icon
 from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented, Switch
 from ..widgets.feed_row import FeedRow
@@ -283,11 +284,12 @@ from ..position_marks import PositionMarks
 from ..widgets.jog_pad import KeycapButton
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
-from ..widgets.plate_grid import PlateGrid
+from ..widgets.point_chips import PointChips
 from ..widgets.point_list import PointList, TRAVEL_TEXT, Z_TOP_MM
 from ..widgets.tip_gauge import TipGauge
 from ..widgets.work_columns import COLUMN_GAP, WorkColumns
-from ..widgets.size_histogram import size_bins
+from ..widgets.size_histogram import SizeHistogram, size_bins
+from ..widgets.well_picker import WellPicker
 from ..workers import Worker
 
 __all__ = ["ManualPage"]
@@ -317,17 +319,17 @@ KEYS = (("aspirate", "aspirate in place", "_aspirate_in_place"),
         ("dispense", "dispense in place", "_dispense_in_place"))
 
 # Aspirate from, Dispense how much and where: the segmented choices.
-FROM = ("In a well", "At a point", "By hand")
+FROM = ("By clicking", "At a point", "In a well")
 AMOUNT = ("Part", "All")
 WHERE = ("In a well", "At a point")
 
-# By hand's height: a Z, or above the bottom of the spot's slot.
+# By clicking's height: a Z, or above the bottom of the spot's slot.
 HEIGHT = ("Z", "Above the bottom")
 
-# How the tip leaves, each card its own; the delay's bounds and start.
-RETRACT = ("Retract automatically", "Don't retract", "Retract after delay")
-RETRACT_DELAY_RANGE = (0.5, 60.0)
-RETRACT_DELAY_S = 5.0
+# How the tip leaves, each card its own; the wait's bounds and start.
+LIFT = ("Right away", "After a wait", "Stay")
+WAIT_RANGE = (0.5, 60.0)
+WAIT_S = 5.0
 
 # Said when a stop ended the delay.
 STOPPED_DOWN = "Stopped: the tip stays down."
@@ -341,26 +343,19 @@ CLICK_HELP = "Left click   move"
 CLICK_MOVES = ("Camera", "Tip")
 
 
-def _number_box(parent: QWidget, value: float, span, suffix: str,
-                decimals: int = 2, step: float = 0.1):
-    box = double_spin_box(parent)
-    box.setRange(*span)
-    box.setDecimals(decimals)
-    box.setSingleStep(step)
-    box.setSuffix(suffix)
-    # Wide enough for the value and its suffix: a spin box sized by its
-    # layout shows neither.
-    box.setMinimumWidth(110)
-    box.setValue(value)
-    return box
-
-
 TIP_EMPTY = "The tip is empty. Aspirate first."
 POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
-# The Points card's list, and the one under "At a point".
+# The Points card's list, and three rows of chips under "At a point".
 POINTS_LIST_PX = 280
 NO_LIMIT_PX = 16777215      # Qt's QWIDGETSIZE_MAX, which PySide does not export
-AT_A_POINT_LIST_PX = 170
+AT_A_POINT_PX = 124
+# The plate drawn under In a well (MANUAL.md §4.2, §4.3).
+SOURCE_MAP_PX = 320
+TARGET_MAP_PX = 340
+POPOVER_PX = 360
+# The fields' widths: room for the range's longest number.
+NUMBER_PX = 72
+Z_PX = 80
 # What Z a new point gets.
 TRAVEL_Z, TIP_Z, LAST_Z = NEW_Z = ("Travel height", "Z of the tip now",
                                    "Last Z given")
@@ -381,21 +376,6 @@ def _point_words(point) -> tuple[str, str]:
             "travel height" if point.z is None else f"Z {point.z:g} mm")
 
 
-def _row(box, label: str, widget) -> QWidget:
-    """A labeled row added to `box`; returned, to be hidden as one."""
-    row = QWidget(box)
-    row.setObjectName("plain")
-    layout = QHBoxLayout(row)
-    layout.setContentsMargins(0, 0, 0, 0)
-    name = QLabel(label, row)
-    name.setMinimumWidth(90)
-    layout.addWidget(name)
-    layout.addWidget(widget)
-    layout.addStretch(1)
-    box.layout().addWidget(row)
-    return row
-
-
 def _in_place_button(text: str, color: str, parent: QWidget) -> KeycapButton:
     """A button of In place's, in its color while it can be pressed."""
     button = KeycapButton(text, parent)
@@ -406,59 +386,97 @@ def _in_place_button(text: str, color: str, parent: QWidget) -> KeycapButton:
     return button
 
 
-def _settings_line(parent: QWidget, body) -> tuple[QLabel, QWidget, QWidget]:
-    """A card's settings as one line, added to `body`: the line, the Change
-    beside it and the box it unfolds, which starts folded. A setting is a
-    `_row` of the box and its words on the line; Aspirate and Dispense each
-    have one."""
+def _small(choice: Segmented) -> Segmented:
+    """A choice inside a card, 32 px high (MANUAL.md §4.2)."""
+    choice.setProperty("small", True)
+    return choice
+
+
+def _fields(*widgets: QWidget) -> QHBoxLayout:
+    """Fields side by side from the left, their tops level."""
     row = QHBoxLayout()
-    line = muted_label("", parent)
-    line.setWordWrap(True)
-    change = compact(secondary_button("Change", parent))
-    change.setCheckable(True)
-    row.addWidget(line, 1)
-    row.addWidget(change)
-    body.addLayout(row)
-    box = QWidget(parent)
-    box.setObjectName("plain")
-    QVBoxLayout(box).setContentsMargins(0, 0, 0, 0)
-    change.toggled.connect(box.setVisible)
-    box.setVisible(False)
-    body.addWidget(box)
-    return line, change, box
+    row.setSpacing(10)
+    for widget in widgets:
+        row.addWidget(widget, 0, Qt.AlignmentFlag.AlignBottom)
+    row.addStretch(1)
+    return row
 
 
-class _RetractRows:
-    """How the tip leaves, as rows of a card's settings box: the choice, the
-    delay and Retract slowly, gray where they say nothing so that the rows
-    stand still."""
+class _LiftRow(QWidget):
+    """How the tip leaves (MANUAL.md §4.4): a row in words that unfolds the
+    choice, the wait, shown only with After a wait, and Lift slowly, hidden
+    with Stay. `after` names the row: "After aspirating"."""
 
-    def __init__(self, parent: QWidget, box: QWidget, changed):
-        self.choice = select(parent)
-        self.choice.addItems(RETRACT)
-        self.delay = _number_box(parent, RETRACT_DELAY_S, RETRACT_DELAY_RANGE,
-                                 " s", 1, 0.5)
-        _row(box, "Retract", self.choice)
-        _row(box, "Delay", self.delay)
-        self.slowly = Switch("Retract slowly", parent=box)
+    def __init__(self, after: str, parent: QWidget, changed):
+        super().__init__(parent)
+        self.setObjectName("plain")
+        self._after = after
+        self._changed = lambda: None
+        self.header = QPushButton(self)
+        self.header.setObjectName("liftRow")
+        self.header.setCheckable(True)
+        self.header.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.line = QLabel(self.header)
+        self.line.setTextFormat(Qt.TextFormat.RichText)
+        self._arrow = QLabel(self.header)
+        row = QHBoxLayout(self.header)
+        row.setContentsMargins(0, 0, 0, 0)
+        for widget in (self.line, self._arrow):
+            widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        row.addWidget(self.line, 1)
+        row.addWidget(self._arrow)
+        self.header.toggled.connect(self._folded)
+
+        self.box = QWidget(self)
+        self.box.setObjectName("plain")
+        self.choice = _small(Segmented(list(LIFT), parent=self.box))
+        self.choice.changed.connect(lambda _i: self._chosen())
+        self.delay = number_field(self.box, WAIT_S, WAIT_RANGE, decimals=1,
+                                  step=0.5, width=NUMBER_PX)
+        self.delay.valueChanged.connect(lambda _v: self._said())
+        self.wait_row = labeled("Wait, s", self.delay, self.box)
+        self.slowly = Switch("Lift slowly", parent=self.box)
         self.slowly.setToolTip(
             f"First {SLOW_RISE_MM:g} mm at {SLOW_RISE_MM_S:g} mm/s.")
-        box.layout().addWidget(self.slowly)
-        self.slowly.toggled.connect(lambda _on: changed())
-        self.choice.currentIndexChanged.connect(lambda _i: self._chosen())
-        self.choice.currentIndexChanged.connect(lambda _i: changed())
-        self.delay.valueChanged.connect(lambda _v: changed())
+        self.slowly.toggled.connect(lambda _on: self._said())
+        inner = QVBoxLayout(self.box)
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.addLayout(_fields(labeled("Lift the tip", self.choice, self.box),
+                                self.wait_row))
+        inner.addWidget(self.slowly)
+
+        column = QVBoxLayout(self)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(self.header)
+        column.addWidget(self.box)
+        self._folded(False)
         self._chosen()
+        self._changed = changed
+
+    def _folded(self, open: bool) -> None:
+        self._arrow.setPixmap(icon("chevron-down" if open else "chevron-right",
+                                   COLORS["text-2"], 16).pixmap(16, 16))
+        focus = QApplication.focusWidget()
+        if not open and self.box.isAncestorOf(focus):
+            focus.clearFocus()
+        with laid_out_at_once(self):
+            self.box.setVisible(open)
 
     def _rises(self) -> bool:
-        return self.choice.currentText() != "Don't retract"
+        return LIFT[self.choice.current()] != "Stay"
 
     def _delayed(self) -> bool:
-        return self.choice.currentText() == "Retract after delay"
+        return LIFT[self.choice.current()] == "After a wait"
 
     def _chosen(self) -> None:
-        self.delay.setEnabled(self._delayed())
-        self.slowly.setEnabled(self._rises())
+        with laid_out_at_once(self):
+            self.wait_row.setVisible(self._delayed())
+            self.slowly.setVisible(self._rises())
+        self._said()
+
+    def _said(self) -> None:
+        self.line.setText(f"{self._after}: <b>{self.words()}</b>")
+        self._changed()
 
     def how(self) -> moves.Retract:
         return moves.Retract(
@@ -467,94 +485,30 @@ class _RetractRows:
             slowly=self.slowly.isChecked())
 
     def words(self) -> str:
-        """As said on the settings line."""
+        """As said on the row and at the end of the card's summary."""
         if not self._rises():
-            return "don't retract"
-        how = "retract slowly" if self.slowly.isChecked() else "retract"
-        if self._delayed():
-            return f"{how} after {self.delay.value():g} s"
-        return how if self.slowly.isChecked() else f"{how} automatically"
+            return "stay"
+        how = (f"lift after {self.delay.value():g} s" if self._delayed()
+               else "lift right away")
+        return f"{how}, slowly" if self.slowly.isChecked() else how
 
 
-class _WellPicker(QWidget):
-    """Plate and Well: a plate the robot session holds and one of its
-    wells. `changed` when either does."""
+class _SizesPopover(QFrame):
+    """The size window's histogram, anchored to Snap's row: what the Sizes
+    card showed, the window read-only as it was on this page."""
 
-    changed = Signal()
-
-    def __init__(self, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.plate = combo_box(self)
-        self.plate.currentIndexChanged.connect(lambda _i: self._show_wells())
-        self.well = combo_box(self)
-        # Typed as well as chosen: "H12" is quicker than scrolling to it,
-        # and the completer the editable box brings finds it either way.
-        self.well.setEditable(True)
-        self.well.setInsertPolicy(self.well.InsertPolicy.NoInsert)
-        self.well.currentTextChanged.connect(lambda _t: self.changed.emit())
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        for label, widget in (("Plate", self.plate), ("Well", self.well)):
-            row = QHBoxLayout()
-            name = QLabel(label)
-            name.setMinimumWidth(90)
-            row.addWidget(name)
-            row.addWidget(widget, 1)
-            layout.addLayout(row)
-
-    def set_plates(self, plates) -> None:
-        """`Session.plates()` in the combo, the one in hand kept."""
-        chosen = self.plate.currentData()
-        chosen_slot = chosen[0] if chosen else None
-        self.plate.blockSignals(True)
-        self.plate.clear()
-        for slot, entry, definition in plates:
-            self.plate.addItem(f"slot {slot} - {definition.display_name}",
-                               (slot, entry.labware_id, definition))
-        slots = [self.plate.itemData(i)[0] for i in range(self.plate.count())]
-        if chosen_slot in slots:
-            self.plate.setCurrentIndex(slots.index(chosen_slot))
-        self.plate.blockSignals(False)
-        self._show_wells()
-
-    def _show_wells(self) -> None:
-        """The chosen plate's wells, row by row, the one typed kept."""
-        typed = self.well.currentText()
-        data = self.plate.currentData()
-        wells = []
-        if data is not None:
-            ordering = data[2].ordering
-            for row in range(max((len(c) for c in ordering), default=0)):
-                wells += [column[row] for column in ordering
-                          if row < len(column)]
-        self.well.blockSignals(True)
-        self.well.clear()
-        self.well.addItems(wells)
-        if typed in wells:
-            self.well.setCurrentIndex(wells.index(typed))
-        self.well.blockSignals(False)
-        self.changed.emit()
-
-    def chosen(self):
-        """(slot, labware id, definition, well), or None while the well
-        typed is not one of the plate's."""
-        data = self.plate.currentData()
-        if data is None:
-            return None
-        well = self.well.currentText().strip().upper()
-        return (*data, well) if well in data[2].wells else None
-
-    def choose(self, slot, well: str) -> None:
-        """The plate in `slot` and its `well`, if the session holds it."""
-        for i in range(self.plate.count()):
-            if str(self.plate.itemData(i)[0]) == str(slot):
-                self.plate.setCurrentIndex(i)
-                self.well.setCurrentText(well)
-                return
+    def __init__(self, parent: QWidget):
+        super().__init__(parent, Qt.WindowType.Popup)
+        self.setObjectName("raisedCard")
+        self.histogram = SizeHistogram(parent=self)
+        self.setFixedWidth(POPOVER_PX)
+        column = QVBoxLayout(self)
+        column.setContentsMargins(12, 12, 12, 12)
+        column.addWidget(self.histogram)
 
 
 class SlotBottom(NamedTuple):
-    """The bottom By hand goes above in `slot`, at Z `z`. `in_a_well` says
+    """The bottom By clicking goes above in `slot`, at Z `z`. `in_a_well` says
     whether a spot is one to go down at: over a plate, in one of its wells;
     in the dish, anywhere."""
 
@@ -584,6 +538,7 @@ class ManualPage(QWidget):
         self._picks: list[tuple[float, float]] = []
         # Set by a stop: ends a job's wait before the tip goes up.
         self._last_z: float | None = None   # see _new_z
+        self.sizes_popover: _SizesPopover | None = None     # made when opened
         self._working = ""                  # the worker's job, for the picture
         self._stop = threading.Event()
         self._forget_targets(redraw=False)
@@ -686,20 +641,14 @@ class ManualPage(QWidget):
         """Amount and speed of its own, and the two buttons; see "In
         place"."""
         box = card(self)
-        box.layout().addWidget(heading("In place", 3))
-        self.in_place_amount = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1,
-                                           1.0)
-        self.in_place_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1,
-                                         1.0)
-        fields = QGridLayout()
-        for column, (label, field) in enumerate(
-                (("Amount", self.in_place_amount),
-                 ("Speed", self.in_place_rate))):
-            # By a click only: the first field the window finds would have
-            # the keyboard as the page opens, and the robot's keys with it.
-            field.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-            fields.addWidget(QLabel(label, self), 0, column)
-            fields.addWidget(field, 1, column)
+        title = heading("In place", 3)
+        self.in_place_amount = self._amount_field()
+        self.in_place_rate = self._speed_field()
+        fields = QHBoxLayout()
+        fields.setSpacing(10)
+        fields.addWidget(title, 1, Qt.AlignmentFlag.AlignVCenter)
+        fields.addWidget(labeled("Amount, µl", self.in_place_amount, self))
+        fields.addWidget(labeled("Speed, µl/s", self.in_place_rate, self))
         box.layout().addLayout(fields)
         self.aspirate_in_place = _in_place_button(
             "Aspirate in place", "tips", self)
@@ -714,127 +663,154 @@ class ManualPage(QWidget):
         return box
 
     def _aspirate_card(self) -> QWidget:
-        """The settings as one line and From, Aspirate in the header; see
-        "Aspirate"."""
+        """From and what it asks, the fields, the lifting row, Aspirate in
+        the header; see "Aspirate"."""
         self.aspirate_card = ActionCard("Aspirate", 1, "tips", open=True,
                                         parent=self)
         self.aspirate_button = self.aspirate_card.button
         self.aspirate_button.clicked.connect(self._aspirate_from_source)
         body = self.aspirate_card.body.layout()
 
-        self.settings_line, self.change_button, self.settings_box = (
-            _settings_line(self, body))
-        # By hand's height: Z, or above the bottom.
-        self.height_mode = Segmented(list(HEIGHT), parent=self)
-        self.height_mode.changed.connect(lambda _i: self._source_changed())
-        self.height_row = _row(self.settings_box, "Height", self.height_mode)
-        self.hand_z = _number_box(self, 70.0, (0.0, Z_TOP_MM), " mm")
-        self.hand_z.setToolTip("Z of the tip's end.")
-        self.above_bottom = _number_box(self, 0.5, ABOVE_BOTTOM_RANGE, " mm")
-        self.above_bottom.setToolTip(
-            "Above the dish bottom, or the plate's: the line says which.")
-        self.volume = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
-        self.flow_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1, 1.0)
-        rows = {}
-        for label, box in (("Z", self.hand_z),
-                           ("Above bottom", self.above_bottom),
-                           ("Volume", self.volume),
-                           ("Speed", self.flow_rate)):
-            rows[label] = _row(self.settings_box, label, box)
-            box.valueChanged.connect(lambda _v: self._show_settings_line())
-        self.aspirate_retract = _RetractRows(self, self.settings_box,
-                                             self._show_settings_line)
-        self.hand_z_row = rows["Z"]
-        self.above_row = rows["Above bottom"]
-
-        self.source = Segmented(list(FROM), current=FROM.index("By hand"),
-                                parent=self)
+        self.source = _small(Segmented(
+            list(FROM), current=FROM.index("By clicking"), parent=self))
         self.source.changed.connect(lambda _i: self._source_changed())
         body.addWidget(self.source)
 
-        self.source_wells = _WellPicker(self)
-        self.source_wells.changed.connect(self._show_settings_line)
+        self.hand_box = self._hand_box()
+        body.addWidget(self.hand_box)
+
+        # Both kinds, to aspirate from; made and moved to in their card.
+        self.source_points = self._point_chips()
+        body.addWidget(self.source_points)
+
+        self.source_wells = WellPicker("tips", SOURCE_MAP_PX, self)
+        self.source_wells.changed.connect(self._show_aspirate_summary)
         self.source_wells.changed.connect(self._refresh)
         body.addWidget(self.source_wells)
 
-        # Both kinds, to aspirate from; made and moved to in their cards.
-        self.source_points = self._point_list(AT_A_POINT_LIST_PX)
-        self.source_points.chosen.connect(lambda _name: self._refresh())
-        body.addWidget(self.source_points)
+        # By clicking's height: Z, or above the bottom.
+        self.height_mode = _small(Segmented(list(HEIGHT), parent=self))
+        self.height_mode.changed.connect(lambda _i: self._source_changed())
+        self.height_row = QWidget(self)
+        self.height_row.setObjectName("plain")
+        row = QHBoxLayout(self.height_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QLabel("Height", self.height_row))
+        row.addWidget(self.height_mode, 1)
+        body.addWidget(self.height_row)
 
-        self.hand_box = QWidget(self)
-        hand = QVBoxLayout(self.hand_box)
-        hand.setContentsMargins(0, 0, 0, 0)
-        self.snap = Switch("Snap to found cuboids", checked=True,
-                           parent=self.hand_box)
-        self.snap.setToolTip(
-            "A click on a found cuboid puts the crosshair on its center.")
-        self.aspirate_on_click = Switch("Aspirate as soon as I click",
-                                        parent=self.hand_box)
-        for widget in (self.snap, self.aspirate_on_click):
-            hand.addWidget(widget)
-        body.addWidget(self.hand_box)
+        self.volume = self._amount_field()
+        self.flow_rate = self._speed_field()
+        self.hand_z = number_field(self, 70.0, (0.0, Z_TOP_MM), width=Z_PX)
+        self.hand_z.setToolTip("Z of the tip's end.")
+        self.from_tip = secondary_button("From tip", self)
+        self.from_tip.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.from_tip.setToolTip("Set Z to the tip's Z now.")
+        self.from_tip.clicked.connect(self._hand_z_from_tip)
+        self.above_bottom = number_field(self, 0.5, ABOVE_BOTTOM_RANGE,
+                                         width=Z_PX)
+        for box in (self.volume, self.flow_rate, self.hand_z,
+                    self.above_bottom):
+            box.valueChanged.connect(lambda _v: self._show_aspirate_summary())
+        z = QWidget(self)
+        z.setObjectName("plain")
+        field = QHBoxLayout(z)
+        field.setContentsMargins(0, 0, 0, 0)
+        field.setSpacing(4)
+        field.addWidget(self.hand_z)
+        field.addWidget(self.from_tip)
+        self.hand_z_row = labeled("Height Z, mm", z, self)
+        self.above_row = labeled("Above the bottom, mm", self.above_bottom,
+                                 self)
+        body.addLayout(_fields(labeled("Amount, µl", self.volume, self),
+                               labeled("Speed, µl/s", self.flow_rate, self),
+                               self.hand_z_row, self.above_row))
 
-        self._show_settings_line()
+        self.aspirate_retract = _LiftRow("After aspirating", self,
+                                         self._show_aspirate_summary)
+        body.addWidget(self.aspirate_retract)
+
+        self._show_aspirate_summary()
         return self.aspirate_card
 
+    def _hand_box(self) -> QWidget:
+        """By clicking's switches, the size window on Snap's row."""
+        box = QWidget(self)
+        box.setObjectName("plain")
+        hand = QVBoxLayout(box)
+        hand.setContentsMargins(0, 0, 0, 0)
+        self.snap = Switch("Snap to found cuboids", checked=True, parent=box)
+        self.snap.setToolTip(
+            "A click on a found cuboid puts the crosshair on its center.")
+        self.sizes_link = quiet_button("", box)
+        self.sizes_link.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.sizes_link.setStyleSheet(f"color: {COLORS['accent']};")
+        self.sizes_link.setToolTip("Show the size histogram.")
+        self.sizes_link.clicked.connect(self._open_sizes)
+        row = QHBoxLayout()
+        row.addWidget(self.snap)
+        row.addStretch(1)
+        row.addWidget(self.sizes_link)
+        hand.addLayout(row)
+        self.aspirate_on_click = Switch("Aspirate as soon as I click",
+                                        parent=box)
+        hand.addWidget(self.aspirate_on_click)
+        return box
+
     def _dispense_card(self) -> QWidget:
-        """How much and where, a button that says it in the header; see
+        """Where and how much, a button that says it in the header; see
         "Dispense"."""
         self.dispense_card = ActionCard("Dispense", 2, "plate", parent=self)
         self.dispense_button = self.dispense_card.button
         self.dispense_button.clicked.connect(self._dispense_to_target)
         body = self.dispense_card.body.layout()
 
-        row = QHBoxLayout()
-        self.amount = Segmented(list(AMOUNT), parent=self)
-        self.amount.changed.connect(lambda _i: self._target_changed())
-        self.part = _number_box(self, 10.0, VOLUME_RANGE, " µl", 1, 1.0)
-        self.part.valueChanged.connect(lambda _v: self._refresh())
-        row.addWidget(self.amount)
-        reserve(self.part)
-        row.addWidget(self.part)
-        row.addStretch(1)
-        body.addLayout(row)
-
-        self.dispense_line, self.dispense_change, self.dispense_box = (
-            _settings_line(self, body))
-        self.dispense_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1,
-                                         1.0)
-        self.dispense_rate.valueChanged.connect(
-            lambda _v: self._show_dispense_line())
-        _row(self.dispense_box, "Speed", self.dispense_rate)
-        self.dispense_retract = _RetractRows(self, self.dispense_box,
-                                             self._show_dispense_line)
-
-        self.target = Segmented(list(WHERE), parent=self)
+        self.target = _small(Segmented(list(WHERE), parent=self))
         self.target.changed.connect(lambda _i: self._target_changed())
         body.addWidget(self.target)
 
-        self.target_wells = _WellPicker(self)
+        self.target_wells = WellPicker("accent", TARGET_MAP_PX, self)
         self.target_wells.changed.connect(self._refresh)
         body.addWidget(self.target_wells)
-        # The plate plan's plate: what a run filled and what it left.
-        self.plan_box = QWidget(self)
-        plan = QVBoxLayout(self.plan_box)
-        plan.setContentsMargins(0, 0, 0, 0)
-        self.plan_map = PlateGrid(mini=True, parent=self.plan_box)
-        self.plan_map.well_clicked.connect(self._plan_well_clicked)
-        plan.addWidget(self.plan_map)
-        legend = QHBoxLayout()
-        for name, color in (("Filled", "plate"), ("Planned", "planned")):
-            legend.addWidget(QLabel(f'<span style="color: {COLORS[color]}">'
-                                    f'&#9632;</span> {name}', self.plan_box))
-        legend.addStretch(1)
-        plan.addLayout(legend)
-        body.addWidget(self.plan_box)
 
-        self.target_points = self._point_list(AT_A_POINT_LIST_PX)
-        self.target_points.chosen.connect(lambda _name: self._refresh())
+        self.target_points = self._point_chips()
         body.addWidget(self.target_points)
 
-        self._show_dispense_line()
+        self.amount = _small(Segmented(list(AMOUNT), parent=self))
+        self.amount.changed.connect(lambda _i: self._target_changed())
+        self.part = self._amount_field()
+        self.part.valueChanged.connect(lambda _v: self._refresh())
+        self.part_row = labeled("µl", self.part, self)
+        reserve(self.part_row)
+        self.dispense_rate = self._speed_field()
+        self.dispense_rate.valueChanged.connect(
+            lambda _v: self._show_dispense_summary())
+        body.addLayout(_fields(labeled("How much", self.amount, self),
+                               self.part_row,
+                               labeled("Speed, µl/s", self.dispense_rate,
+                                       self)))
+
+        self.dispense_retract = _LiftRow("After dispensing", self,
+                                         self._show_dispense_summary)
+        body.addWidget(self.dispense_retract)
+
+        self._show_dispense_summary()
         return self.dispense_card
+
+    def _amount_field(self):
+        return number_field(self, 10.0, VOLUME_RANGE, decimals=1, step=1.0,
+                            width=NUMBER_PX)
+
+    def _speed_field(self):
+        return number_field(self, 50.0, FLOW_RANGE, decimals=1, step=1.0,
+                            width=NUMBER_PX)
+
+    def _point_chips(self) -> PointChips:
+        """As tall as three rows whatever it lists: more rows scroll."""
+        chips = PointChips(self.session, self)
+        chips.setFixedHeight(AT_A_POINT_PX)
+        chips.chosen.connect(self._marks_choose)
+        return chips
 
     def _point_list(self, height: int, *, actions: bool = False) -> PointList:
         """As tall as `height` whatever it lists: more rows scroll."""
@@ -957,28 +933,25 @@ class ManualPage(QWidget):
 
     # -- liquid ------------------------------------------------------------------
 
-    def _show_settings_line(self) -> None:
-        """The line, and the header's summary: that and where from."""
-        settings = (f"{self.volume.value():g} µl",
-                    f"{self.flow_rate.value():g} µl/s",
-                    self.aspirate_retract.words())
-        self.settings_line.setText(" · ".join((self._height_words(),
-                                               *settings)))
-        self.aspirate_card.set_summary(" · ".join((*self._source_words(),
-                                                   *settings)))
+    def _show_aspirate_summary(self) -> None:
+        """The header's summary, and which bottom the field is above."""
+        self.aspirate_card.set_summary(" · ".join((
+            *self._source_words(), f"{self.volume.value():g} µl",
+            f"{self.flow_rate.value():g} µl/s",
+            self.aspirate_retract.words())))
+        self.above_bottom.setToolTip(self._height_words())
 
-    def _show_dispense_line(self) -> None:
-        """The line, and the header's summary: that, where and how much."""
-        line = (f"{self.dispense_rate.value():g} µl/s · "
-                f"{self.dispense_retract.words()}")
-        self.dispense_line.setText(line)
+    def _show_dispense_summary(self) -> None:
+        """The header's summary: where, how much, how."""
         if self.session.in_tip <= 0:
             self.dispense_card.set_summary(TIP_EMPTY, warn=True)
             return
         part = self._part()
         self.dispense_card.set_summary(" · ".join((
             *self._target_words(),
-            "everything" if part is None else f"{part:g} µl", line)))
+            "everything" if part is None else f"{part:g} µl",
+            f"{self.dispense_rate.value():g} µl/s",
+            self.dispense_retract.words())))
 
     def _height_words(self) -> str:
         if self._hand_z_chosen():
@@ -993,7 +966,7 @@ class ManualPage(QWidget):
         kind, what = source
         if kind == "point":
             return _point_words(what)
-        return ("By hand" if kind == "hand" else _well_words(what),
+        return ("By clicking" if kind == "hand" else _well_words(what),
                 self._height_words())
 
     def _target_words(self) -> tuple[str, ...]:
@@ -1011,7 +984,7 @@ class ManualPage(QWidget):
 
     def _bottom_words(self) -> str:
         """Which bottom Aspirate's height is above: in a well, the one it
-        will go to; by hand, the slot's."""
+        will go to; by clicking, the slot's."""
         source = self._source()
         if (source is not None and source[0] == "hand"
                 and self._bottom is not None):
@@ -1024,8 +997,8 @@ class ManualPage(QWidget):
                 else "the measured bottom")
 
     def _hand_z_chosen(self) -> bool:
-        """By hand, at a Z rather than above the bottom."""
-        return (FROM[self.source.current()] == "By hand"
+        """By clicking, at a Z rather than above the bottom."""
+        return (FROM[self.source.current()] == "By clicking"
                 and HEIGHT[self.height_mode.current()] == "Z")
 
     def _bottom_changed(self) -> None:
@@ -1034,8 +1007,9 @@ class ManualPage(QWidget):
         plate's bottom may have changed. During a move there is no pose,
         and what was shown stands: passing through it changes no choice."""
         self._show_heights()
+        self.from_tip.setEnabled(self.jog.pose is not None)
         if self.jog.pose is None and self._bottom is not None:
-            self._show_settings_line()
+            self._show_aspirate_summary()
             return
         before, self._bottom = self._bottom, self._bottom_here()
         known = self._bottom is not None
@@ -1046,7 +1020,7 @@ class ManualPage(QWidget):
             self.height_mode.set_current(HEIGHT.index(
                 "Above the bottom" if known else "Z"))
             self._source_changed()
-        self._show_settings_line()
+        self._show_aspirate_summary()
 
     def _bottom_here(self) -> SlotBottom | None:
         """The bottom under the crosshair now, if the spot can be known."""
@@ -1159,11 +1133,12 @@ class ManualPage(QWidget):
         with laid_out_at_once(self.aspirate_card):
             self.source_wells.setVisible(chosen == "In a well")
             self.source_points.setVisible(chosen == "At a point")
-            self.hand_box.setVisible(chosen == "By hand")
-            self.height_row.setVisible(chosen == "By hand")
+            self.hand_box.setVisible(chosen == "By clicking")
+            self.height_row.setVisible(chosen == "By clicking")
             self.hand_z_row.setVisible(self._hand_z_chosen())
-            self.above_row.setVisible(not self._hand_z_chosen())
-        self._show_settings_line()
+            self.above_row.setVisible(chosen != "At a point"
+                                      and not self._hand_z_chosen())
+        self._show_aspirate_summary()
         self._refresh()
 
     def _target_changed(self) -> None:
@@ -1173,14 +1148,13 @@ class ManualPage(QWidget):
         well = chosen == "In a well"
         with laid_out_at_once(self.dispense_card):
             self.target_wells.setVisible(well)
-            self.plan_box.setVisible(well and bool(self.plan_map.wells))
             self.target_points.setVisible(chosen == "At a point")
-        self.part.setVisible(AMOUNT[self.amount.current()] == "Part")
+        self.part_row.setVisible(AMOUNT[self.amount.current()] == "Part")
         self._refresh()
 
     def _by_hand(self) -> bool:
         """Aspirate takes from under the crosshair."""
-        return FROM[self.source.current()] == "By hand"
+        return FROM[self.source.current()] == "By clicking"
 
     def _source(self):
         """("well", (slot, labware id, definition, well)), ("point",
@@ -1239,9 +1213,8 @@ class ManualPage(QWidget):
 
     def _go_to(self, target, z: float | None, *, prepare: bool = False):
         """The move to `target` - a well (`z` above its measured bottom,
-        else the drawing's), a point (its own Z) - as a job's first part,
-        and what to call it. `prepare`: for an
-        aspirate, as the measured bottom asks (`motion.descend`). Raises
+        else the drawing's), a point (its own Z) - as a job's first part.
+        `prepare`: for an aspirate, as the measured bottom asks (`motion.descend`). Raises
         ValueError with the reason when it is out of reach."""
         kind, what = target
         motion = self.session.motion
@@ -1257,7 +1230,7 @@ class ManualPage(QWidget):
                     motion.to_measured_bottom(
                         labware_id, well, offset[:2], *measured, offset[2],
                         prepare=prepare, log=log)
-            return go, f"{well} of slot {slot}"
+            return go
         point = what
         xy = np.array([point.x, point.y])
         pose = self.jog.pose
@@ -1272,7 +1245,7 @@ class ManualPage(QWidget):
 
         def go(log):
             motion.tip_to(xy, to_z, log=log)
-        return go, point.name
+        return go
 
     def _aspirate_from_source(self) -> None:
         """Aspirate: to the source, then aspirate there."""
@@ -1316,7 +1289,7 @@ class ManualPage(QWidget):
             self.jog.refuse(problem)
             return
         try:
-            go, where = self._go_to(source, z, prepare=True)
+            go = self._go_to(source, z, prepare=True)
         except ValueError as exc:
             self.jog.refuse(str(exc))
             return
@@ -1338,7 +1311,7 @@ class ManualPage(QWidget):
             self.work_cards.open(self.dispense_card)
             if how.rises and not rose:
                 return STOPPED_DOWN
-            return f"Aspirated {volume:g} µl at {rate:g} µl/s, {where}."
+            return f"Aspirated {volume:g} µl."
 
         if not self.jog.run_job(job, then=then):
             self.jog.refuse(self.session.robot_lease.refusal)
@@ -1347,8 +1320,15 @@ class ManualPage(QWidget):
         """The tip up as the card says, at a job's end; True if it went."""
         return moves.retract(self.session.motion, how, self._stop, log=log)
 
+    def _hand_z_from_tip(self) -> None:
+        """From tip: By clicking's Z, the tip's now. Not a read: see
+        _clicked."""
+        pose = self.jog.pose
+        if pose is not None:
+            self.hand_z.setValue(round(float(pose[2]), 2))
+
     def _hand_z(self, spot) -> float:
-        """By hand's height at `spot`: the Z, or above the bottom of its
+        """By clicking's height at `spot`: the Z, or above the bottom of its
         slot. Raises ValueError with the reason where it may not go down:
         a click can aim past what the line says."""
         if self._hand_z_chosen():
@@ -1362,7 +1342,7 @@ class ManualPage(QWidget):
         return bottom.z + float(self.above_bottom.value())
 
     def _aspirate_by_hand(self, aim=None) -> None:
-        """By hand: the camera to `aim` first if given (gantry xy); then,
+        """By clicking: the camera to `aim` first if given (gantry xy); then,
         from the camera's pose, the tip to the spot under the crosshair,
         down, aspirate, up as the card says and, once up, the camera back to
         that pose. One job."""
@@ -1410,8 +1390,7 @@ class ManualPage(QWidget):
             self.work_cards.open(self.dispense_card)
             if how.rises and not rose:
                 return STOPPED_DOWN
-            return (f"Aspirated {volume:g} µl at {rate:g} µl/s, "
-                    f"({spot[0]:.2f}, {spot[1]:.2f}).")
+            return f"Aspirated {volume:g} µl."
 
         if not self.jog.run_job(job, then=then):
             self.jog.refuse(self.session.robot_lease.refusal)
@@ -1481,13 +1460,15 @@ class ManualPage(QWidget):
         z = (self.session.profile.picking.deposit_offset_z
              if target[0] == "well" else None)
         try:
-            go, where = self._go_to(target, z)
+            go = self._go_to(target, z)
         except ValueError as exc:
             self.jog.refuse(str(exc))
             return
         session = self.session
         rate = float(self.dispense_rate.value())
         how = self.dispense_retract.how()
+        where = (f"into {target[1][3]}" if target[0] == "well"
+                 else f"at {target[1].name}")
 
         def job(log):
             self._stop.clear()
@@ -1495,7 +1476,7 @@ class ManualPage(QWidget):
             amount = session.dispense(rate, volume)
             if not self._leave(how, log) and how.rises:
                 return STOPPED_DOWN
-            return f"Dispensed {amount:g} µl at {rate:g} µl/s, {where}."
+            return f"Dispensed {amount:g} µl {where}."
 
         def then(said):
             if session.in_tip <= 0:
@@ -1524,22 +1505,24 @@ class ManualPage(QWidget):
     # -- the plan's plate ------------------------------------------------------
 
     def _show_plan(self) -> None:
-        """Dispense's mini map: the plate plan's plate, its filled and still
-        planned wells."""
+        """The plate plan's plate first on Dispense's map, its wells in one
+        color there."""
         routine = self.session.routine
         destination = getattr(routine, "destination", None)
+        picker = self.target_wells
         if destination is None or not getattr(destination, "is_plate", False):
-            self.plan_map.set_ordering([])
+            picker.set_default(None)
+            picker.set_marked(None, [], None)
         else:
-            self.plan_map.set_ordering(destination.ordering)
-            self.plan_map.set_fills({
-                well: COLORS["planned" if routine.remaining(well) else "plate"]
-                for well in routine.plan})
+            picker.set_default(str(destination.slot))
+            picker.set_marked(destination.slot, routine.plan,
+                              COLORS["planned"])
+        self._reload_plates()
         self._target_changed()
 
     def _task_requested(self, task: str, step: str) -> None:
         """Picking's Finish by hand: Dispense on In a well, the first well
-        the run left short chosen, the plan's map showing the rest."""
+        the run left short chosen, the map showing the plan's."""
         if (task, step) != ("manual", "work"):
             return
         routine = self.session.routine
@@ -1553,11 +1536,6 @@ class ManualPage(QWidget):
                  if w in routine.plan and routine.remaining(w)]
         if short:
             self.target_wells.choose(destination.slot, short[0])
-
-    def _plan_well_clicked(self, well: str) -> None:
-        destination = getattr(self.session.routine, "destination", None)
-        if destination is not None:
-            self.target_wells.choose(destination.slot, well)
 
     # -- past picks ------------------------------------------------------------
 
@@ -1637,6 +1615,8 @@ class ManualPage(QWidget):
         self._show_sizes()
         self._redraw()
         self._refresh()
+        count = len(detection.df)
+        self.jog.tell(f"{count} cuboid{'' if count == 1 else 's'} found.")
 
     def _show_sizes(self) -> None:
         profile = self.session.profile
@@ -1646,6 +1626,28 @@ class ManualPage(QWidget):
         # A string says why there are none, which the found line covers.
         self._bins = None if isinstance(bins, str) else bins
         self.view.set_histogram(self._bins)
+        self._show_size_window()
+
+    def _size_window(self):
+        profile = self.session.profile
+        return profile.picking.cuboid_size_threshold if profile else None
+
+    def _show_size_window(self) -> None:
+        """Snap's row: the window a found cuboid is measured against."""
+        window = self._size_window()
+        self.sizes_link.setText("" if window is None
+                                else f"{window[0]:g}–{window[1]:g} µm")
+
+    def _open_sizes(self) -> None:
+        """The sizes against the window, under the link."""
+        if self.sizes_popover is None:
+            self.sizes_popover = _SizesPopover(self)
+        popover, link = self.sizes_popover, self.sizes_link
+        popover.histogram.show_detection(self._cuboids, self._size_window())
+        popover.adjustSize()
+        popover.move(link.mapToGlobal(QPoint(
+            link.width() - popover.width(), link.height() + 4)))
+        popover.show()
 
     # -- clicking ---------------------------------------------------------------
 
@@ -1656,7 +1658,7 @@ class ManualPage(QWidget):
 
     def _clicked(self, u: float, v: float) -> None:
         """A left click on the picture, in sensor pixels: the camera there
-        (see the module's docstring); By hand, onto a cuboid's center with
+        (see the module's docstring); By clicking, onto a cuboid's center with
         Snap, and the aspirate after it with Aspirate as soon as I click."""
         problems = self._map_problems()
         if problems:
@@ -1744,7 +1746,7 @@ class ManualPage(QWidget):
 
     def _place_memo(self) -> None:
         """Point at crosshair: a point under the picture's center,
-        where By hand aims, at the travel height. Moves nothing."""
+        where By clicking aims, at the travel height. Moves nothing."""
         problem = self._crosshair_problem()
         if problem:
             self.jog.refuse(problem)
@@ -1753,8 +1755,8 @@ class ManualPage(QWidget):
 
     def _tip_to_crosshair(self) -> None:
         """Tip to crosshair: the tip at the spot under the picture's center,
-        where By hand aims, at the travel height. It stays there: the
-        camera's way back is By hand's, not this."""
+        where By clicking aims, at the travel height. It stays there: the
+        camera's way back is By clicking's, not this."""
         problem = self._tip_problem("move") or self._crosshair_problem()
         if problem:
             self.jog.refuse(problem)
@@ -1966,7 +1968,7 @@ class ManualPage(QWidget):
 
         def job(log_):
             return Reached(self.session.motion.camera_to(xy, log=log_),
-                           f"Camera over slot {slot}.")
+                           f"Camera moved to slot {slot}.")
 
         if not self.jog.run_job(job):
             self.jog.refuse(self.session.robot_lease.refusal)
@@ -2000,6 +2002,8 @@ class ManualPage(QWidget):
         deck map with them."""
         self._show_deck()
         plates = self.session.plates()
+        source = self.session.source_plate
+        self.source_wells.set_default(None if source is None else source.slot)
         for picker in (self.source_wells, self.target_wells):
             picker.set_plates(plates)
 
@@ -2099,8 +2103,8 @@ class ManualPage(QWidget):
                                         and self.session.in_tip > 0 and free)
         set_primary(self.aspirate_button, self.session.in_tip <= 0)
         set_primary(self.dispense_button, self.session.in_tip > 0)
-        self._show_settings_line()
-        self._show_dispense_line()
+        self._show_aspirate_summary()
+        self._show_dispense_summary()
         self.view.set_status(self._status_lines(busy, problems))
 
     def _status_lines(self, busy: bool, problems: list[str]) -> list[str]:
@@ -2121,6 +2125,7 @@ class ManualPage(QWidget):
     def _on_profile_changed(self) -> None:
         profile = self.session.profile
         self._show_deck()
+        self._show_size_window()
         # The same profile saved again - a setting changed - keeps what was
         # detected. A different profile is a different map, offset and
         # model, and nothing measured belongs to it.
@@ -2174,8 +2179,10 @@ class ManualPage(QWidget):
         # a jog pad over a blank rectangle.
         self.opener.ensure(self.session.upper_camera_label)
         self._show_camera()
-        # A run fills the plan's wells without a word to this page.
+        # The Source step and a plan made elsewhere say nothing to this page;
+        # nor does the size window dragged on Picking.
         self._show_plan()
+        self._show_size_window()
 
     def hideEvent(self, event) -> None:
         for shortcut in self._shortcuts:

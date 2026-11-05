@@ -107,6 +107,7 @@ class PointChips(QWidget):
         session.profile_changed.connect(lambda _p: self.refresh())
         self.refresh()
 
+    @property
     def names(self) -> list[str]:
         return list(self._chips)
 

@@ -45,7 +45,7 @@ def test_every_point_is_a_chip_a_star_saying_which_kind(session, chips):
     session.add_memo_point(100.0, 100.0, None)
     session.add_memo_point(110.0, 100.0, 70.0)
     session.save_memo_point("M2", "Source")
-    assert sorted(chips.names()) == ["M1", "Source"]
+    assert sorted(chips.names) == ["M1", "Source"]
     assert chips.chip("M1").text() == "☆ M1"
     assert chips.chip("Source").text() == "★ Source"
 
@@ -99,10 +99,10 @@ def test_chips_wrap_inside_their_width_and_scroll(session, chips):
         session.add_memo_point(100.0 + i, 100.0, None)
     chips.resize(360, 120)
     QApplication.processEvents()
-    tops = {chips.chip(n).y() for n in chips.names()}
+    tops = {chips.chip(n).y() for n in chips.names}
     assert len(tops) > 1
     assert all(chips.chip(n).geometry().right() <= chips.area.viewport().width()
-               for n in chips.names())
+               for n in chips.names)
     assert chips.height() == 120
 
 
