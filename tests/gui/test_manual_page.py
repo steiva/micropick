@@ -1489,3 +1489,96 @@ def test_the_height_line_stands_during_a_move_and_goes_with_the_robot(
     session.disconnect_robot()
     app.processEvents()
     assert page.view.height_line == ""
+
+
+# -- Dispense's own speed (#97) ---------------------------------------------
+
+
+def _liquid_calls(session):
+    return [c for c in session.robot.calls
+            if c[0] in ("aspirate_in_place", "dispense_in_place")]
+
+
+def test_a_and_d_each_use_their_own_cards_speed(app, page, session):
+    _tip_on(app, page, session)
+    page.volume.setValue(15.0)
+    page.flow_rate.setValue(40.0)
+    page.dispense_rate.setValue(7.0)
+    page.part.setValue(6.0)
+    page._aspirate_here()                                # A
+    _wait(app, page)
+    page._dispense_here()                                # D
+    _wait(app, page)
+    assert _liquid_calls(session) == [("aspirate_in_place", 15.0, 40.0),
+                                      ("dispense_in_place", 6.0, 7.0)]
+    assert _said(page) == ("Dispensed 6 µl at 7 µl/s, here.", "answer")
+
+
+def test_dispense_starts_at_the_profiles_flow_rate(app, session):
+    session.profile.picking.flow_rate = 33.0
+    page = ManualPage(session)
+    assert page.dispense_rate.value() == 33.0
+    assert page.dispense_line.text() == "33 µl/s"
+    page.deleteLater()
+
+
+def test_the_dispense_speed_is_kept_in_the_page_not_the_profile(
+        app, page, session):
+    start = session.profile.picking.flow_rate
+    page.dispense_rate.setValue(start + 5.0)
+    assert session.profile.picking.flow_rate == start
+    session.profile.save_picking()                       # a setting changed
+    session.profile_changed.emit(session.profile)
+    assert page.dispense_rate.value() == start + 5.0     # the same profile
+    session.load_profile("mock")
+    assert page.dispense_rate.value() == start
+
+
+def test_the_dispense_button_uses_dispenses_speed(app, page, session):
+    _tip_on(app, page, session)
+    page.flow_rate.setValue(40.0)
+    page.dispense_rate.setValue(7.0)
+    page._aspirate_here()
+    _wait(app, page)
+    page.target.buttons[2].click()                       # Here
+    page.dispense_button.click()
+    _wait(app, page)
+    assert _liquid_calls(session)[-1][0] == "dispense_in_place"
+    assert _liquid_calls(session)[-1][2] == 7.0
+
+
+def test_the_dispense_line_says_the_speed_and_change_edits_it(page):
+    page.dispense_card.set_open(True)
+    page.dispense_rate.setValue(25.0)
+    assert page.dispense_line.text() == "25 µl/s"
+    assert not page.dispense_box.isVisibleTo(page)
+    page.dispense_change.click()
+    assert page.dispense_box.isVisibleTo(page)
+    assert page.dispense_box.isAncestorOf(page.dispense_rate)
+    page.dispense_rate.setValue(12.5)
+    assert page.dispense_line.text() == "12.5 µl/s"
+    page.dispense_change.click()
+    assert not page.dispense_box.isVisibleTo(page)
+
+
+def test_aspirates_line_does_not_follow_dispenses_speed(page):
+    page.flow_rate.setValue(40.0)
+    before = page.settings_line.text()
+    page.dispense_rate.setValue(7.0)
+    assert page.settings_line.text() == before
+    assert page.dispense_line.text() == "7 µl/s"
+    page.flow_rate.setValue(41.0)
+    assert page.dispense_line.text() == "7 µl/s"
+
+
+def test_the_dispense_line_stands_under_amount_and_over_where(app, page):
+    page.dispense_card.set_open(True)
+    page.dispense_change.click()
+    page.show()
+    app.processEvents()
+
+    def top(widget):
+        return widget.mapTo(page, widget.rect().topLeft()).y()
+
+    assert (top(page.amount) < top(page.dispense_line)
+            < top(page.dispense_box) < top(page.target))

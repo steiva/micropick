@@ -100,6 +100,11 @@ def _actions(page, session):
     yield "All", lambda: page.amount.buttons[1].click()
     yield "At a point", lambda: page.target.buttons[1].click()
     yield "Here", lambda: page.target.buttons[2].click()
+    yield "Dispense's Change opened", lambda: page.dispense_change.setChecked(
+        True)
+    yield "a long speed", lambda: page.dispense_rate.setValue(999.9)
+    yield "Dispense's Change closed", lambda: page.dispense_change.setChecked(
+        False)
     yield "Change opened", lambda: page.change_button.setChecked(True)
     for index, name in enumerate(("In a well", "At a point", "By hand")):
         yield name, lambda i=index: page.source.buttons[i].click()

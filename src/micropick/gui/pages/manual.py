@@ -150,7 +150,9 @@ Dispense
 --------
 Under Aspirate, opening by itself when the tip comes to hold something:
 Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
-the run's volume) or All, where:
+the run's volume) or All. Under it the settings as one line, as Aspirate's,
+"50 µl/s", and Change unfolds them: its own speed, starting from the picking
+settings' flow rate and kept by the page, never in the profile. Then where:
 
 * **In a well** - the plate and well, and a mini map of the plate plan's
   plate (filled and still planned wells; a click chooses that well), so
@@ -162,7 +164,8 @@ the run's volume) or All, where:
 
 Its button says what it does - "Go to A7 and dispense", "Dispense here" -
 and is gray while the tip is empty. A and D aspirate and dispense where
-the tip is, with Aspirate's volume and speed and Dispense's amount.
+the tip is, each with its own card's settings: Aspirate's volume and speed,
+Dispense's amount and speed.
 
 The well center
 ---------------
@@ -311,6 +314,28 @@ def _row(box, label: str, widget) -> QWidget:
     layout.addStretch(1)
     box.layout().addWidget(row)
     return row
+
+
+def _settings_line(parent: QWidget, body) -> tuple[QLabel, QWidget, QWidget]:
+    """A card's settings as one line, added to `body`: the line, the Change
+    beside it and the box it unfolds, which starts folded. A setting is a
+    `_row` of the box and its words on the line; Aspirate and Dispense each
+    have one."""
+    row = QHBoxLayout()
+    line = muted_label("", parent)
+    line.setWordWrap(True)
+    change = compact(secondary_button("Change", parent))
+    change.setCheckable(True)
+    row.addWidget(line, 1)
+    row.addWidget(change)
+    body.addLayout(row)
+    box = QWidget(parent)
+    box.setObjectName("plain")
+    QVBoxLayout(box).setContentsMargins(0, 0, 0, 0)
+    change.toggled.connect(box.setVisible)
+    box.setVisible(False)
+    body.addWidget(box)
+    return line, change, box
 
 
 class _WellPicker(QWidget):
@@ -519,18 +544,8 @@ class ManualPage(QWidget):
         self.aspirate_card.toggled.connect(lambda _open: self._source_changed())
         body = self.aspirate_card.body.layout()
 
-        row = QHBoxLayout()
-        self.settings_line = muted_label("", self)
-        self.settings_line.setWordWrap(True)
-        self.change_button = compact(secondary_button("Change", self))
-        self.change_button.setCheckable(True)
-        self.change_button.toggled.connect(
-            lambda on: self.settings_box.setVisible(on))
-        row.addWidget(self.settings_line, 1)
-        row.addWidget(self.change_button)
-        body.addLayout(row)
-        self.settings_box = QWidget(self)
-        QVBoxLayout(self.settings_box).setContentsMargins(0, 0, 0, 0)
+        self.settings_line, self.change_button, self.settings_box = (
+            _settings_line(self, body))
         # By hand's height: Z, or above the bottom.
         self.height_mode = Segmented(list(HEIGHT), parent=self)
         self.height_mode.changed.connect(lambda _i: self._source_changed())
@@ -551,8 +566,6 @@ class ManualPage(QWidget):
             box.valueChanged.connect(lambda _v: self._show_settings_line())
         self.hand_z_row = rows["Z"]
         self.above_row = rows["Above bottom"]
-        self.settings_box.setVisible(False)
-        body.addWidget(self.settings_box)
 
         self.source = Segmented(list(FROM), current=FROM.index("By hand"),
                                 parent=self)
@@ -604,6 +617,14 @@ class ManualPage(QWidget):
         row.addStretch(1)
         body.addLayout(row)
 
+        self.dispense_line, self.dispense_change, self.dispense_box = (
+            _settings_line(self, body))
+        self.dispense_rate = _number_box(self, 50.0, FLOW_RANGE, " µl/s", 1,
+                                         1.0)
+        self.dispense_rate.valueChanged.connect(
+            lambda _v: self._show_dispense_line())
+        _row(self.dispense_box, "Speed", self.dispense_rate)
+
         self.target = Segmented(list(WHERE), parent=self)
         self.target.changed.connect(lambda _i: self._target_changed())
         body.addWidget(self.target)
@@ -633,6 +654,7 @@ class ManualPage(QWidget):
         self.dispense_button = primary_button("Dispense here", self)
         self.dispense_button.clicked.connect(self._dispense_to_target)
         body.addWidget(self.dispense_button)
+        self._show_dispense_line()
         return self.dispense_card
 
     def _points_table(self, kind: str | None) -> MemoTable:
@@ -761,6 +783,9 @@ class ManualPage(QWidget):
         self.settings_line.setText(
             f"{height} · {self.volume.value():g} µl · "
             f"{self.flow_rate.value():g} µl/s")
+
+    def _show_dispense_line(self) -> None:
+        self.dispense_line.setText(f"{self.dispense_rate.value():g} µl/s")
 
     def _bottom_words(self) -> str:
         """Which bottom Aspirate's height is above: in a well, the one it
@@ -1159,7 +1184,7 @@ class ManualPage(QWidget):
             self.jog.refuse(str(exc))
             return
         session = self.session
-        rate = float(self.flow_rate.value())
+        rate = float(self.dispense_rate.value())
 
         def job(log):
             if go is not None:
@@ -1801,6 +1826,7 @@ class ManualPage(QWidget):
                 self.hand_z.setValue(profile.picking.pickup_height)
                 self.volume.setValue(profile.picking.vol)
                 self.flow_rate.setValue(profile.picking.flow_rate)
+                self.dispense_rate.setValue(profile.picking.flow_rate)
                 self.part.setValue(profile.picking.vol)
             self._forget_targets()
         else:
