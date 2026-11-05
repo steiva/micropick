@@ -60,16 +60,21 @@ and, in a build, its commit.
 
 ### Camera view chrome
 
-Over the picture is only what is used there (REDESIGN §3): the robot's X,
-Y and Z (fixed font, nothing else under them on any page but Manual pick
-Run's height line, `CameraView.set_height_line`), beside them
-the pad's step as a chip (`CameraView.set_step_chip`), the page's
-own lines (`set_status`: found counts, the marker seen, what holds while
-it is true) on the top edge left of the page's buttons, the page's buttons
-and one quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture
-what it does" per item). Never the camera name, slot (but in that height
-line), resolution, crop, zoom, fps or "TIP EMPTY". All drawn by `CameraView` in widget pixels as
-semi-transparent boxes, never into the frame and never as a separate panel.
+Over the picture is only what is used there (REDESIGN §3), in one overlay
+style (`theme.overlay_box`, `overlay_button`, #109) and the same places on
+every feed. The status plate at the top left: Manual's TipGauge
+(`add_top_left_widget`), the robot's X, Y and Z one per line (fixed font), the
+step (`CameraView.set_step_line`), dividers between; nothing under it but
+Manual pick Run's height line (`set_height_line`), its row kept. At the top
+right the chips (Crosshair, Points, Sizes where there is a histogram) and the
+picture button, left of them the page's buttons (`add_top_widget`, which
+restyles them), then the page's lines (`set_status`: found counts, the marker
+seen, what holds while it is true). One quiet mouse row bottom-left
+(`CameraView.set_mouse_help`, "gesture what it does" per item). No native
+checkbox and no axes on a picture. Never the camera name, slot (but in that
+height line), resolution, crop, zoom, fps or "TIP EMPTY". All drawn by
+`CameraView` in widget pixels, never into the frame and never as a separate
+panel.
 
 A message is never on the picture or a line of a page's own under X Y Z:
 it is the toast (`widgets.toast`; `JogPanel.tell`, `MainWindow.say`,
@@ -81,8 +86,9 @@ is a sentence in the operator's words ("Not reachable: Z 50 is below the
 platform in slot 8.", `motion.refusal`), no REFUSED, no pose. The
 StatusPill carries no message.
 A press on a widget floating over the picture (the jog pad's card, the
-TipGauge, a page's button) is that widget's, even beside its buttons:
-never a click on the picture. A page whose click moves the robot names
+TipGauge, a page's button) is that widget's, even beside its buttons, and a
+press on what is painted there (the plate, the page's lines, the mouse row,
+the histogram: `CameraView._chrome`) is nobody's: never a click on the picture. A page whose click moves the robot names
 it with `CameraView.set_click_to_move`; without a pixel map that line is
 "Use the arrows to move the camera." and no click is sent.
 
@@ -270,12 +276,12 @@ title there - the title is the fold toggle, its arrow before it, apart
 from Undo step and Keys (`JogPad.set_folded`; folded from the start on
 Picking, the keys still bound), and only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
-While the pad is on screen, folded or not, its step stands by X Y Z as a
-chip, "Step 1 mm" filled with `step_color` (#99): painted on the picture,
-a `jog_pad.StepChip` where there is none (Well center). It takes no click:
-the step changes on the pad and by its keys. Dish bottom's cards carry
-their own steps, so no chip there; on Liquid's Plan it goes with the pad
-behind Controls.
+While the pad is on screen, folded or not, its step is the status plate's
+last line, "STEP · 1 mm" in `step_ink` (#99, #109: accent-hover, warn and red
+as `step_color`), from `JogPad.step_changed`; a `jog_pad.StepChip` where there
+is no picture (Well center). The step changes on the pad and by its keys.
+Dish bottom's cards carry their own steps, so none there; on Liquid's Plan it
+stays with the pad hidden behind Controls (`JogPanel.keep_step_shown`).
 Undo step is on the pad. A jog panel has no Move or Positions section
 (removed, #27; do not bring them back): saved points are drawn on the
 picture's "points" layer (`show_position_on`), Robot setup's positions
@@ -465,8 +471,8 @@ following it: "Slot 8 · top 85.10 · bottom 67.77 · measured"
 (`well_center.plate_heights`). Measured is a plate confirmed in this robot
 session (`Session.plate_bottom_confirmed`), what In a well and By hand go by;
 any other plate reads "drawing", a measurement not confirmed included. A slot
-with no plate has no line, its row kept (`set_height_line("")`) so the axes
-under it do not move. The source dish's slot says only "Slot 8 · bottom 66.00
+with no plate has no line, its row kept (`set_height_line("")`) so what is
+under it does not move. The source dish's slot says only "Slot 8 · bottom 66.00
 · measured", once `dish_bottom` is confirmed; before a plate's drawing there,
 as `_slot_bottom`. During a move the line stands; a message never goes there.
 

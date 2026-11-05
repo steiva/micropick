@@ -145,7 +145,7 @@ from .. import keys
 from ..position_marks import PositionMarks
 from ..session import Session
 from ..theme import SPACING
-from .jog_pad import JogPad, step_chip_text, step_color
+from .jog_pad import JogPad, step_chip_text, step_ink
 from .toast import show_toast
 
 # What the picture says while there is no robot to ask.
@@ -320,6 +320,7 @@ class JogPanel(QWidget):
         self._help = self._key_help()
         self._typing = False                # a field on the page has the keys
         self._pad_view = None               # the picture the pad floats over
+        self._step_kept = False
         self.pose: tuple[float, float, float] | None = None
 
         # Not a scroll area itself. The page that hosts it may put it in one
@@ -815,16 +816,22 @@ class JogPanel(QWidget):
         self._show_step()
 
     def _show_step(self) -> None:
-        """The step by X, Y and Z while the pad is on screen, folded or
-        not."""
+        """The step in the picture's plate while the pad is on screen,
+        folded or not, or always (`keep_step_shown`)."""
         if self._pad_view is None:
             return
-        if self.pad.isVisible():
+        if self.pad.isVisible() or self._step_kept:
             mm = self.pad.step
-            self._pad_view.set_step_chip(self.pad, step_chip_text(mm),
-                                         step_color(mm))
+            self._pad_view.set_step_line(self.pad, step_chip_text(mm),
+                                         step_ink(mm))
         else:
-            self._pad_view.set_step_chip(self.pad)
+            self._pad_view.set_step_line(self.pad)
+
+    def keep_step_shown(self) -> None:
+        """The step stays in the plate with the pad hidden: Liquid's Plan,
+        whose pad is behind Controls."""
+        self._step_kept = True
+        self._show_step()
 
     def _on_profile_changed(self, _profile) -> None:
         if self.controller is not None:

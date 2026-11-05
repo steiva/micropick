@@ -6,7 +6,8 @@ replaces the "Aspirated 15 µl" messages. The level is the volume over the
 tip's capacity, and an empty tip draws no liquid at all, so "nothing in
 it" reads at a glance.
 
-It sits on a translucent plate over the top left of a picture.
+It stands at the top of the picture's status plate, which is drawn behind
+it (`CameraView.add_top_left_widget`).
 """
 
 from __future__ import annotations
@@ -59,8 +60,7 @@ class TipGauge(QFrame):
                  parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("tipGauge")
-        self.setStyleSheet("QFrame#tipGauge { background: rgba(10, 12, 14, "
-                           "0.84); border-radius: 12px; }")
+        self.setStyleSheet("QFrame#tipGauge { background: transparent; }")
         self.capacity = capacity_ul
         row = QHBoxLayout(self)
         row.setContentsMargins(14, 10, 14, 10)

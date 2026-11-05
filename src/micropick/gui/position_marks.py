@@ -29,9 +29,7 @@ the pose is known: during a move the marks are taken away, since they would
 be drawn for where the gantry was.
 
 `PositionMarks` is created by `JogPanel.show_position_on`, so every page with
-a jog panel and a picture has the "points" box on it. It also hands the view
-the robot's axes as they lie in the picture (`axis_directions`), from the
-same map: the view draws them under the position.
+a jog panel and a picture has the Points chip on it.
 """
 
 from __future__ import annotations
@@ -42,7 +40,7 @@ from PySide6.QtCore import QObject
 from ..core.calibration.pixel_map import PixelMap
 from ..viz import overlays
 
-__all__ = ["MEMO", "PICK", "CAMERA_POSITIONS", "memo_items", "pick_items", "axis_directions", "PositionMarks"]
+__all__ = ["MEMO", "PICK", "CAMERA_POSITIONS", "memo_items", "pick_items", "PositionMarks"]
 
 # The camera poses, by name, with the Robot setup item that sets each: a
 # camera position's slot is the camera's (`camera_moves`). The names are
@@ -128,21 +126,6 @@ def pick_items(picks, pmap: PixelMap, pipette_offset, gantry_xy,
     return out
 
 
-def axis_directions(pmap: PixelMap) -> dict | None:
-    """Which way +X and +Y of the deck point in the picture, in pixels per
-    millimetre: where a deck point 1 mm along each axis from the one at the
-    reference pixel appears. Jogging +X brings what lies that way into the
-    center, so the arrow is also where the view goes."""
-    ref = np.asarray(pmap.config.ref, dtype=float)
-    out = {}
-    for name, step in (("X", (1.0, 0.0)), ("Y", (0.0, 1.0))):
-        pixel = pmap.to_pixel(step[0], step[1], (0.0, 0.0))
-        if pixel is None:
-            return None
-        out[name] = (float(pixel[0] - ref[0]), float(pixel[1] - ref[1]))
-    return out
-
-
 class PositionMarks(QObject):
     """Keeps one view's marks up to date with the pose, the profile and the
     camera shown.
@@ -216,8 +199,6 @@ class PositionMarks(QObject):
     def update(self) -> None:
         found = self._map()
         self.view.set_marks_available(found is not None)
-        self.view.set_axes(axis_directions(found[0]) if found is not None
-                           else None)
         pose = self.pose
         if found is None or pose is None or not self.view.marks_shown:
             self.view.set_marks([])

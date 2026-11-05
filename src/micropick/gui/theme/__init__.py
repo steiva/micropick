@@ -26,12 +26,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
-from .tokens import (COLORS, MONO_FALLBACKS, MONO_FONT, SIZES, UI_FALLBACKS,
-                     UI_FONT)
+from .tokens import (COLORS, MONO_FALLBACKS, MONO_FONT, OVERLAY_BG,
+                     OVERLAY_BORDER, SIZES, UI_FALLBACKS, UI_FONT)
 
-__all__ = ["COLORS", "RADIUS", "SIZES", "SPACING", "accent", "apply_theme",
-           "color", "configure_hidpi", "load_fonts", "mono_font", "stylesheet",
-           "ui_font"]
+__all__ = ["COLORS", "OVERLAY_BG", "OVERLAY_BORDER", "RADIUS", "SIZES",
+           "SPACING", "accent", "apply_theme", "color", "configure_hidpi",
+           "load_fonts", "mono_font", "overlay_box", "overlay_button",
+           "stylesheet", "ui_font"]
 
 # The base step. Every margin and gap in the application is a multiple of it,
 # so a layout is described by a small integer rather than by a pixel count
@@ -93,6 +94,25 @@ def mono_font(px: int = SIZES["body"], weight: int = 400) -> QFont:
     font.setPixelSize(px)
     font.setWeight(QFont.Weight(weight))
     return font
+
+
+def overlay_box() -> str:
+    """The overlay's fill, border and radius, for a stylesheet."""
+    return (f"background: rgba{OVERLAY_BG}; "
+            f"border: 1px solid rgba{OVERLAY_BORDER}; "
+            f"border-radius: {SIZES['overlay-radius']}px;")
+
+
+def overlay_button(kind: str = "QPushButton", side_pad: int = 12) -> str:
+    """A stylesheet for a button over a picture; checked, it is filled as a
+    toggle of the top bar is."""
+    return (f"{kind} {{ {overlay_box()} color: {COLORS['text']}; "
+            f"font: 600 13px '{UI_FONT}'; padding: 0 {side_pad}px; "
+            f"min-height: {SIZES['overlay-button'] - 2}px; "
+            f"max-height: {SIZES['overlay-button'] - 2}px; }} "
+            f"{kind}:checked {{ background: {COLORS['text']}; "
+            f"color: {COLORS['bg']}; }} "
+            f"{kind}:disabled {{ color: {COLORS['muted']}; }}")
 
 
 def color(name: str) -> str:

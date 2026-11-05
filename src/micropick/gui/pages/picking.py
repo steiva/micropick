@@ -291,9 +291,6 @@ class PickingPage(QWidget):
         self.view = CameraView(self)
         self.center_button = compact(secondary_button(CENTER, self))
         self.center_button.clicked.connect(self._goto_dish)
-        # Opaque: an outlined button over a bright dish cannot be read.
-        self.center_button.setStyleSheet(
-            f"QPushButton {{ background: {COLORS['raised']}; }}")
         self.view.add_top_widget(self.center_button)
         self.stats = CuboidStats(self)
 

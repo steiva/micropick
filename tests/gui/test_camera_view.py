@@ -17,9 +17,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, QPointF, Qt                      # noqa: E402
 from PySide6.QtGui import QImage, QMouseEvent, QWheelEvent          # noqa: E402
-from PySide6.QtWidgets import QApplication, QPushButton             # noqa: E402
+from PySide6.QtTest import QTest                                    # noqa: E402
+from PySide6.QtWidgets import (QApplication, QCheckBox,             # noqa: E402
+                               QPushButton)
 
 from micropick.gui.widgets.camera_view import ZOOM_MAX, CameraView  # noqa: E402
+from micropick.gui.widgets.tip_gauge import TipGauge                # noqa: E402
 from micropick.gui.widgets.toast import toast_of                    # noqa: E402
 from micropick.hardware.camera import ControlReport                 # noqa: E402
 
@@ -273,10 +276,8 @@ def test_a_pages_lines_stand_on_the_top_edge_never_under_the_position(app):
     view.set_status(["12 cuboids found", "2 stuck, tried again after a shake"])
     app.processEvents()
     rows, columns = np.nonzero((_pixels(view) != without).any(axis=2))
-    # At the top, beside the buttons of the top-right corner, and clear of
-    # the position's box on the left.
+    # At the top, on the right, and clear of the plate on the left.
     assert rows.size and columns.min() > 300
-    assert columns.max() < view.snapshot_button.x()
     assert rows.min() >= 8 and rows.max() < 8 + 60
     view.hide()
     view.deleteLater()
@@ -285,17 +286,16 @@ def test_a_pages_lines_stand_on_the_top_edge_never_under_the_position(app):
 LINE = "Slot 8 · top 85.10 · bottom 67.77 · measured"
 
 
-def _with_axes(app):
+def _with_plate(app):
     view = _view(app, _Camera("over"))
     view.resize(800, 600)
     view.set_position(["X 1.00  Y 2.00  Z 3.00"])
-    view.set_axes({"X": (1.0, 0.0), "Y": (0.0, -1.0)})
     app.processEvents()
     return view
 
 
 def test_the_height_line_is_painted_under_the_position(app):
-    view = _with_axes(app)
+    view = _with_plate(app)
     view.set_height_line("")
     app.processEvents()
     without = _pixels(view)
@@ -303,16 +303,16 @@ def test_the_height_line_is_painted_under_the_position(app):
     app.processEvents()
     assert view.height_line == LINE
     rows, columns = np.nonzero((_pixels(view) != without).any(axis=2))
-    # One line, at the left edge, under the position's box.
+    # One line, at the left edge, under the plate.
     assert rows.size and columns.min() < 30
-    assert 30 < rows.min() and rows.max() < rows.min() + 40
+    assert 3 * 15 < rows.min() and rows.max() < rows.min() + 40
     view.hide()
     view.deleteLater()
 
 
-def test_the_height_lines_row_keeps_the_axes_where_they_are(app):
+def test_the_height_lines_row_is_kept_as_the_line_goes(app):
     """Over a slot with no plate the line is gone, and nothing moves."""
-    view = _with_axes(app)
+    view = _with_plate(app)
     view.set_height_line(LINE)
     app.processEvents()
     with_line = _pixels(view)
@@ -326,12 +326,13 @@ def test_the_height_lines_row_keeps_the_axes_where_they_are(app):
 
 
 def test_a_view_has_no_height_row_unless_its_page_asks(app):
-    view = _with_axes(app)
+    view = _with_plate(app)
     plain = _pixels(view)
     view.set_height_line("")
     app.processEvents()
     moved = _pixels(view)
-    assert (plain != moved).any()       # the axes went down a row for it
+    assert np.array_equal(moved, plain)      # an empty row paints nothing
+    assert view.height_line == ""
     view.set_height_line(None)
     app.processEvents()
     assert np.array_equal(_pixels(view), plain)
@@ -353,6 +354,105 @@ def test_a_pages_lines_end_where_its_buttons_begin(app):
     assert columns.size and columns.max() < button.x()
     view.hide()
     view.deleteLater()
+
+
+# -- one style, in the same places (#109) ---------------------------------------
+
+
+def test_no_native_checkbox_stands_on_a_picture(app):
+    view = _view(app, _Camera("over"))
+    assert view.findChildren(QCheckBox) == []
+    assert view.crosshair_box.text() == "Crosshair"
+    assert view.marks_box.text() == "Points"
+    view.hide()
+
+
+def test_the_chips_and_the_picture_button_are_one_row_at_the_top_right(app):
+    view = _view(app, _Camera("over"))
+    view.resize(800, 600)
+    view.set_marks_available(True)
+    app.processEvents()
+    row = [view.crosshair_box, view.marks_box, view.snapshot_button]
+    assert {w.y() for w in row} == {8}
+    assert {w.height() for w in row} == {32}
+    assert [w.x() for w in row] == sorted(w.x() for w in row)
+    assert view.snapshot_button.geometry().right() == view.width() - 9
+    view.hide()
+
+
+def test_a_pages_button_stands_left_of_the_chips_in_their_style(app):
+    view = _view(app, _Camera("over"))
+    view.resize(800, 600)
+    button = QPushButton("Camera to dish center")
+    view.add_top_widget(button)
+    button.show()
+    app.processEvents()
+    assert button.geometry().right() < view.crosshair_box.x()
+    assert button.styleSheet() == view.crosshair_box.styleSheet()
+    view.hide()
+
+
+def test_a_layer_on_is_a_filled_chip(app):
+    view = _view(app, _Camera("over"))
+    view.crosshair_box.setChecked(True)
+    assert ":checked" in view.crosshair_box.styleSheet()
+    assert not hasattr(view, "set_axes")
+    view.hide()
+
+
+def _clicks_at(app, view, point):
+    seen = []
+    view.clicked.connect(lambda *a: seen.append(a))
+    view.right_clicked.connect(lambda *a: seen.append(a))
+    QTest.mouseClick(view, Qt.MouseButton.LeftButton, pos=point)
+    QTest.mouseClick(view, Qt.MouseButton.RightButton, pos=point)
+    QTest.qWait(QApplication.doubleClickInterval() + 50)
+    return seen
+
+
+def test_a_press_on_the_plate_is_no_click_on_the_picture(app):
+    view = _with_plate(app)
+    view.set_step_line(object(), "STEP · 1 mm", "#12ab34")
+    view.repaint()
+    assert _clicks_at(app, view, QPoint(30, 30)) == []
+    assert _clicks_at(app, view, QPoint(400, 300)) != []
+    view.hide()
+
+
+def test_a_press_on_the_height_line_or_mouse_row_is_no_click(app):
+    view = _with_plate(app)
+    view.set_height_line(LINE)
+    view.set_mouse_help(["Wheel   zoom"])
+    view.repaint()
+    height = view._chrome[1].center()
+    mouse = view._chrome[-1].center()
+    assert _clicks_at(app, view, height) == []
+    assert _clicks_at(app, view, mouse) == []
+    view.hide()
+
+
+def test_the_plate_holds_a_pages_widget_with_x_y_z_under_it(app):
+    view = _with_plate(app)
+    gauge = TipGauge(parent=view)
+    view.add_top_left_widget(gauge)
+    gauge.show()
+    view.repaint()
+    plate = view._chrome[0]
+    assert plate.contains(gauge.geometry())
+    assert plate.height() > gauge.height() + 3 * 15
+    view.hide()
+
+
+def test_the_plate_is_as_wide_as_a_long_line(app):
+    view = _view(app, _Camera("over"))
+    view.resize(800, 600)
+    view.set_position(["X 1.00  Y 2.00  Z 3.00"])
+    view.repaint()
+    narrow = view._chrome[0].width()
+    view.set_position(["a much longer line than any step or axis"])
+    view.repaint()
+    assert view._chrome[0].width() > narrow
+    view.hide()
 
 
 def test_a_picture_not_saved_is_a_refusal(app):

@@ -58,7 +58,9 @@ A press on anything floating over the picture - the jog pad's card, the
 TipGauge, a page's button - is that widget's, even beside its buttons: the
 press is taken here and no click, right click or double click is sent for
 it. A plain card ignores a press, and Qt then hands it to the parent, this
-view, which would otherwise read it as a click on the picture under it.
+view, which would otherwise read it as a click on the picture under it. What
+is painted over the picture is the same (`_chrome`): the plate, the page's
+lines, the mouse row, the histogram.
 
 A click moves the robot only through a pixel map
 ------------------------------------------------
@@ -70,42 +72,39 @@ deck.
 
 On the picture, small controls
 ------------------------------
-A crosshair toggle, on by default for a camera whose label does not say
+A crosshair chip, on by default for a camera whose label does not say
 "under" and off for one that does: the crosshair marks the reference pixel of
 the upper camera, and on the lower camera it sits over the crosshair disc the
 operator is trying to see. A camera's focus is not set here: Robot setup's
 camera sheet (`pages.camera_sheet`) has the one focus row.
 
-Another, "points", appears only while a page has marks to offer
+Another, Points, appears only while a page has marks to offer
 (`set_marks_available`): the profile's saved positions drawn where they are
 on the deck (`gui.position_marks`). Off by default (a page may turn the
 default on, `marks_default`), and remembered per camera like the crosshair. The marks are a layer of their own, apart from
 `set_overlay_items`, so a page's detections and the saved points never
 overwrite each other.
 
-And a fourth, "sizes", while a page has handed over a size histogram
+And a fourth, Sizes, while a page has handed over a size histogram
 (`set_histogram`, the bins of `widgets.size_histogram`): the cuboids'
 diameters against the size window, small and translucent in the
-bottom-left corner. Chrome like the position box - drawn in widget pixels,
-never into the frame, and not a widget, so a click on it still reaches the
-picture. On by default when it appears. A page that has more to say
+bottom-left corner. Chrome like the status plate: drawn in widget pixels,
+never into the frame. On by default when it appears. A page that has more to say
 about the cuboids enables a chart button in the histogram's corner
 (`enable_stats_button`): it toggles that page's statistics window
 (`stats_toggled`), and is there only while the histogram is.
 
-Under the boxes, the robot's axes as they lie in the picture (`set_axes`):
-an arrow for +X and one for +Y, from the pixel map, so the operator knows
-which way a jog key will carry the view without trying it. Only for a
-camera with a map; the page that has one hands the directions over.
-
 Quiet chrome (REDESIGN §3)
 --------------------------
-Over the picture only what is used there: the robot's X, Y and Z
-(`set_position`, in a fixed font) with nothing under them but Manual pick
-Run's heights of the slot under the crosshair (`set_height_line`), the jog
-pad's step in a chip beside them (`set_step_chip`), what the page
-shows (`set_status`: found counts, the marker seen) along the top edge
-beside its own buttons, and one quiet row of what the mouse does
+Over the picture only what is used there, in one style (the theme's
+overlay) and in the same places on every feed (#109). The status plate at
+the top left: a page's widget (`add_top_left_widget`: Manual Work's
+TipGauge), the robot's X, Y and Z one per line (`set_position`, in a fixed
+font) and the jog pad's step (`set_step_line`), a line apart, with nothing
+under the plate but Manual pick Run's heights of the slot under the crosshair
+(`set_height_line`). At the top right the chips and the picture button, left
+of them the page's own buttons and what the page shows (`set_status`: found
+counts, the marker seen). One quiet row of what the mouse does
 (`set_mouse_help`) in the bottom-left corner. No camera name, slot,
 resolution, crop, zoom or frame rate, and no messages: those are the
 window's toast. The keys are on the jog pad (`add_corner_widget`), not in
@@ -130,13 +129,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import (QColor, QFont, QFontDatabase, QFontMetrics,
-                           QPainter, QPen, QPixmap, QTransform)
-from PySide6.QtWidgets import QApplication, QCheckBox, QToolButton, QWidget
+from PySide6.QtGui import (QColor, QFontMetrics, QPainter, QPen, QPixmap,
+                           QTransform)
+from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QWidget
 
 from ... import paths
 from ...core.vision.cuboids import center_crop_box
-from ..theme import COLORS
+from ..theme import (OVERLAY_BG, OVERLAY_BORDER, SIZES, mono_font,
+                     overlay_button, ui_font)
 from . import overlay_painter
 from .frame import to_qimage
 from .size_histogram import (INSIDE, INSIDE_ALPHA, OUTSIDE, OUTSIDE_ALPHA,
@@ -156,10 +156,14 @@ RESIZE_ABOVE = 2.0
 # a dish read, and the operator judges exposure and focus by eye through this
 # widget.
 BACKDROP = QColor(24, 24, 26)
-CAPTION_BG = QColor(0, 0, 0, 140)
+CAPTION_BG = QColor(*OVERLAY_BG)
+CAPTION_BORDER = QColor(*OVERLAY_BORDER)
 CAPTION_FG = QColor(235, 235, 235)
 CAPTION_PAD = 6
 CAPTION_GAP = 6
+PLATE_MARGIN = 8
+PLATE_PAD = 14
+WIDEST_STEP = "STEP · 0.05 mm"   # what the status plate keeps room for
 # The mouse row: a gesture and what it does, split at three spaces; the
 # gesture in the boxes' ink, what it does dimmer, the items apart.
 MOUSE_SPLIT = "   "
@@ -174,10 +178,6 @@ NO_CLICK_MOVE = "Use the arrows to move the camera."
 # The axes box: arrow length, the margin around the arrows and their
 # letters, and a colour per axis - red and green, as X and Y are drawn in
 # most software that draws them.
-AXIS_ARROW = 24
-AXIS_PAD = 5
-AXIS_LETTER = 8                  # half the box a letter is centered in
-AXIS_COLOURS = {"X": QColor(255, 105, 95), "Y": QColor(110, 220, 120)}
 
 # White, thin and translucent: a reference to aim with, not a mark on the
 # dish. Solid red hid the few pixels it was being aimed at and read as
@@ -243,11 +243,11 @@ class CameraView(QWidget):
         self._overlay: list = []
         self._overlay_layer = None                # (transform, size, dpr, pixmap)
         self._marks: list = []
-        self._axes: dict | None = None
+        self._chrome: list[QRect] = []      # what was painted over the picture
         self._snapshot_worker = None
         self._histogram = None                    # size_histogram.SizeBins
         self._position: list[str] = []
-        self._step_chip: tuple | None = None    # owner, text, color
+        self._step_line: tuple | None = None    # owner, text, color
         self._height_line: str | None = None    # None: no row for it
         self._status: list[str] = []
         self._mouse_help: list[str] = list(MOUSE_HELP)
@@ -296,33 +296,20 @@ class CameraView(QWidget):
         """The two controls that sit on the picture. Children of the widget,
         laid out by hand in resizeEvent: the picture underneath is drawn by
         paintEvent and has no layout to join."""
-        self.crosshair_box = QCheckBox("crosshair", self)
+        self.crosshair_box = self._chip("Crosshair")
         self.crosshair_box.setChecked(True)
-        # Neither control takes keyboard focus: the keys over a feed belong
-        # to the jog panel, and a slider with focus that also stepped on
-        # the arrows would be two things moving on one key.
-        self.crosshair_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.crosshair_box.toggled.connect(self._crosshair_toggled)
-        self.crosshair_box.setStyleSheet(
-            f"QCheckBox {{ color: rgb({CAPTION_FG.red()},{CAPTION_FG.green()},"
-            f"{CAPTION_FG.blue()}); background: rgba(0,0,0,140); "
-            f"padding: 4px 6px; border-radius: 4px; }}")
 
-        self.marks_box = QCheckBox("points", self)
-        self.marks_box.setChecked(False)
-        self.marks_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.marks_box = self._chip("Points")
         self.marks_box.setToolTip("Show saved positions and memo points.")
         self.marks_box.toggled.connect(self._marks_toggled)
-        self.marks_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.marks_box.hide()
 
-        self.sizes_box = QCheckBox("sizes", self)
+        self.sizes_box = self._chip("Sizes")
         self.sizes_box.setChecked(True)
-        self.sizes_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sizes_box.setToolTip("Show the size histogram.")
         self.sizes_box.toggled.connect(lambda _on: (self._place_controls(),
                                                     self.update()))
-        self.sizes_box.setStyleSheet(self.crosshair_box.styleSheet())
         self.sizes_box.hide()
 
         # Saving the picture: an icon on the picture, as the toggles are.
@@ -331,11 +318,11 @@ class CameraView(QWidget):
         self.snapshot_button.setIcon(qta.icon("mdi6.camera", color="white"))
         self.snapshot_button.setToolTip(
             "Save the raw frame to the Images folder.")
+        self.snapshot_button.setAccessibleName("Save the picture")
         self.snapshot_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.snapshot_button.setAutoRaise(True)
-        self.snapshot_button.setStyleSheet(
-            "QToolButton { background: rgba(0,0,0,140); border-radius: 4px; "
-            "padding: 3px; }")
+        self.snapshot_button.setStyleSheet(overlay_button("QToolButton", 0))
+        self.snapshot_button.setFixedSize(SIZES["overlay-button"],
+                                          SIZES["overlay-button"])
         self.snapshot_button.clicked.connect(self.save_snapshot)
         self.snapshot_button.hide()
 
@@ -346,17 +333,24 @@ class CameraView(QWidget):
         self.stats_button.setToolTip("Cuboid statistics")
         self.stats_button.setCheckable(True)
         self.stats_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.stats_button.setAutoRaise(True)
-        self.stats_button.setStyleSheet(
-            "QToolButton { background: rgba(0,0,0,140); border-radius: 4px; "
-            "padding: 2px; } QToolButton:checked { background: "
-            "rgba(240,160,48,170); }")
+        self.stats_button.setStyleSheet(overlay_button("QToolButton", 0))
+        self.stats_button.setFixedSize(SIZES["overlay-button"],
+                                       SIZES["overlay-button"])
         self.stats_button.toggled.connect(self.stats_toggled)
         self.stats_button.hide()
 
         # Both appear with a camera; without one there is only the placeholder.
         self.crosshair_box.hide()
         self._place_controls()
+
+    def _chip(self, text: str) -> QPushButton:
+        """A layer's toggle on the picture. No keyboard focus: the keys over
+        a feed belong to the jog panel."""
+        chip = QPushButton(text, self)
+        chip.setCheckable(True)
+        chip.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        chip.setStyleSheet(overlay_button())
+        return chip
 
     # -- what it is showing --------------------------------------------------
 
@@ -434,15 +428,8 @@ class CameraView(QWidget):
 
     def set_marks(self, primitives) -> None:
         """The marks layer, in sensor coordinates like `set_overlay_items`;
-        drawn while the "points" box is ticked."""
+        drawn while the Points chip is on."""
         self._marks = list(primitives or ())
-        self.update()
-
-    def set_axes(self, axes) -> None:
-        """{"X": (dx, dy), "Y": (dx, dy)}: the direction of each robot axis
-        in sensor pixels, or None to draw no axes. See the module
-        docstring."""
-        self._axes = dict(axes) if axes else None
         self.update()
 
     # -- saving the picture -------------------------------------------------
@@ -527,16 +514,18 @@ class CameraView(QWidget):
 
     def add_top_widget(self, widget: QWidget) -> None:
         """Float `widget` along the picture's top edge, right-aligned left of
-        the snapshot button: a page's button over the picture (Picking's
-        Camera to dish center)."""
+        the chips, in the overlay's style: a page's button over the picture
+        (Picking's Camera to dish center)."""
         widget.setParent(self)
+        widget.setStyleSheet(overlay_button())
         widget.installEventFilter(self)
         self._top.append(widget)
         self._place_controls()
 
     def add_top_left_widget(self, widget: QWidget) -> None:
-        """Float `widget` in the picture's top-left corner, the box of
-        `set_position` under it: Manual Work's TipGauge. One per view."""
+        """Float `widget` at the top of the status plate, which is drawn
+        behind it, X, Y and Z under it: Manual Work's TipGauge. One per
+        view."""
         widget.setParent(self)
         widget.installEventFilter(self)
         self._top_left = widget
@@ -560,27 +549,18 @@ class CameraView(QWidget):
 
     def _place_controls(self) -> None:
         margin = 8
-        hint = self.crosshair_box.sizeHint()
-        self.crosshair_box.move(self.width() - hint.width() - margin, margin)
-        self.crosshair_box.resize(hint)
-        # The snapshot button, left of the crosshair toggle, as tall as it.
-        side = hint.height()
-        self.snapshot_button.setGeometry(
-            self.width() - hint.width() - margin - margin // 2 - side, margin,
-            side, side)
-        # The toggles stack down the top-right corner, the shown ones only.
-        top = margin + hint.height() + margin // 2
-        for box in (self.marks_box, self.sizes_box):
-            size = box.sizeHint()
-            box.move(self.width() - size.width() - margin, top)
-            box.resize(size)
-            if box.isVisible():
-                top += size.height() + margin // 2
-        right = self.width() - hint.width() - margin - margin // 2 - side
-        for widget in self._top:
-            size = widget.sizeHint()
-            right -= margin + size.width()
+        # One row along the top edge, from the right: the picture button,
+        # the chips, the page's buttons; the hidden ones take no room.
+        right = self.width() - margin
+        for widget in (self.snapshot_button, self.sizes_box, self.marks_box,
+                       self.crosshair_box, *reversed(self._top)):
+            if widget.isHidden():
+                continue
+            size = widget.sizeHint().expandedTo(widget.minimumSize()) \
+                .boundedTo(widget.maximumSize())
+            right -= size.width()
             widget.setGeometry(right, margin, size.width(), size.height())
+            right -= margin // 2
         if self._top_left is not None:
             size = self._top_left.sizeHint()
             self._top_left.setGeometry(margin, margin, size.width(),
@@ -595,8 +575,8 @@ class CameraView(QWidget):
         if hist is None:
             self.stats_button.hide()
         else:
-            self.stats_button.setGeometry(hist.right() - side - 3,
-                                          hist.top() + 3, side, side)
+            self.stats_button.move(hist.right() - self.stats_button.width() - 3,
+                                   hist.top() + 3)
             self.stats_button.show()
             self.stats_button.raise_()
 
@@ -636,9 +616,12 @@ class CameraView(QWidget):
         event.accept()
 
     def _over_widget(self, position: QPointF) -> bool:
-        """Whether a widget floats at this point over the picture: a press
-        there is the widget's, never a click on the picture."""
-        return self.childAt(position.toPoint()) is not None
+        """Whether a widget floats at this point over the picture, or
+        chrome was painted there: a press there is never a click on the
+        picture."""
+        point = position.toPoint()
+        return (self.childAt(point) is not None
+                or any(box.contains(point) for box in self._chrome))
 
     def mousePressEvent(self, event) -> None:
         self._press_on_widget = self._over_widget(event.position())
@@ -781,7 +764,7 @@ class CameraView(QWidget):
         self.update()
 
     def set_position(self, lines) -> None:
-        """Where the gantry is, in a box in the top-left corner. Empty removes it.
+        """Where the gantry is, in the status plate. Empty removes it.
 
         On the picture rather than in a panel beside it: the operator jogging
         is looking here, and a readout at the other side of the window is one
@@ -791,27 +774,28 @@ class CameraView(QWidget):
         self._position = [str(line) for line in lines or ()]
         self.update()
 
-    def set_step_chip(self, owner, text: str = "", color: str = "") -> None:
-        """The jog pad's step as a chip beside X, Y and Z: `text` filled
-        with `color`. It says, it takes no click: a press there is on the
-        picture. No text takes `owner`'s chip away and leaves another's: two
-        pads on one view take turns, and either may hide first."""
+    def set_step_line(self, owner, text: str = "", color: str = "") -> None:
+        """The jog pad's step, the status plate's last line: `text` in
+        `color`. It says, it is no control. No text takes `owner`'s line
+        away and leaves another's: two pads on one view take turns, and
+        either may hide first."""
         if text:
-            self._step_chip = (owner, text, color)
-        elif self._step_chip is not None and self._step_chip[0] is owner:
-            self._step_chip = None
+            self._step_line = (owner, text, color)
+        elif self._step_line is not None and self._step_line[0] is owner:
+            self._step_line = None
         self.update()
 
     @property
-    def step_chip(self) -> tuple[str, str] | None:
-        """The chip shown, (text, color), or None."""
-        return None if self._step_chip is None else self._step_chip[1:]
+    def step_line(self) -> tuple[str, str] | None:
+        """The line shown, (text, color), or None."""
+        return None if self._step_line is None else self._step_line[1:]
 
     def set_height_line(self, text: str | None) -> None:
-        """The one line under X, Y and Z: the heights of the slot under
-        Manual pick Run's crosshair (#95), and never a message. "" keeps
-        its row, empty, so the axes under it stay put as the line comes and
-        goes; None, as it starts, has no row: no other page has one."""
+        """The one line under the status plate: the heights of the slot
+        under Manual pick Run's crosshair (#95), and never a message. ""
+        keeps its row, empty, so what is under it stays put as the line
+        comes and goes; None, as it starts, has no row: no other page has
+        one."""
         self._height_line = None if text is None else str(text)
         self.update()
 
@@ -1069,11 +1053,12 @@ class CameraView(QWidget):
         frame arrived or when the widget was resized."""
         painter = QPainter(self)
         painter.fillRect(self.rect(), BACKDROP)
+        self._chrome = []
 
         if self._image is None:
             self._draw_placeholder(painter)
             # Where the gantry is does not depend on there being a picture.
-            self._draw_boxes(painter, [self._lost_lines(), self._position])
+            self._draw_plate(painter)
             self._draw_status(painter)
             painter.end()
             return
@@ -1088,15 +1073,14 @@ class CameraView(QWidget):
             self._draw_crosshair(painter, self._box)
         if self._histogram is not None and self.sizes_box.isChecked():
             self._draw_histogram(painter)
-        top = self._draw_boxes(painter, [self._lost_lines(), self._position])
+        self._draw_plate(painter)
         self._draw_status(painter)
-        self._draw_axes(painter, top)
         self._draw_mouse_help(painter)
         painter.end()
 
     def _draw_placeholder(self, painter: QPainter) -> None:
         painter.setPen(QPen(QColor(120, 120, 128)))
-        painter.setFont(QFont(self.font().family(), 11))
+        painter.setFont(ui_font(14))
         text = ("no camera" if self._camera is None else
                 "waiting for the first frame")
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
@@ -1116,8 +1100,8 @@ class CameraView(QWidget):
         if box is None:
             return
         width, height = box.width(), box.height()
-        painter.fillRect(box, CAPTION_BG)
-        painter.setFont(QFont(self.font().family(), 9))
+        self._fill(painter, box, SIZES["radius-card"])
+        painter.setFont(ui_font(11, 500))
         metrics = painter.fontMetrics()
         line = metrics.height()
         pad = CAPTION_PAD
@@ -1172,129 +1156,105 @@ class CameraView(QWidget):
             return []
         return [self._lost, "the picture is the last frame before it"]
 
-    def _draw_boxes(self, painter: QPainter, groups: list[list[str]]) -> int:
-        """Boxes of lines down the top-left corner; the robot's position
-        (`set_position`) in a fixed font, as numbers that change in place,
-        the step's chip on its row, the height line under them."""
-        font = QFont(self.font().family(), 10)
-        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        mono.setPointSize(10)
-        painter.setPen(QPen(CAPTION_FG))
-        top = 8
-        if self._top_left is not None and self._top_left.isVisible():
-            top = self._top_left.geometry().bottom() + 1 + CAPTION_GAP
-        chip_left, chip_top, chip_height = 8, top, 0
-        for lines in groups:
-            if lines:
-                ours = lines is self._position
-                painter.setFont(mono if ours else font)
-                bottom = self._draw_box(painter, top, lines)
-                if ours:
-                    chip_top, chip_height = top, bottom - top
-                    chip_left += CAPTION_GAP + 2 * CAPTION_PAD + max(
-                        painter.fontMetrics().horizontalAdvance(line)
-                        for line in lines)
-                else:
-                    chip_top = bottom + CAPTION_GAP
-                top = bottom + CAPTION_GAP
-        if self._step_chip is not None:
-            painter.setFont(font)
-            bottom = self._draw_step_chip(painter, chip_left, chip_top,
-                                          chip_height)
-            top = max(top, bottom + CAPTION_GAP)
-        if self._height_line is not None:
-            painter.setFont(font)
-            bottom = (self._draw_box(painter, top, [self._height_line])
-                      if self._height_line else
-                      top + painter.fontMetrics().height() + 2 * CAPTION_PAD)
-            top = bottom + CAPTION_GAP
-        return top
+    def _fill(self, painter: QPainter, box: QRect,
+              radius: int = SIZES["overlay-radius"]) -> None:
+        """The overlay's fill and border, and a press there is no click."""
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(CAPTION_BORDER, 1))
+        painter.setBrush(CAPTION_BG)
+        painter.drawRoundedRect(QRectF(box).adjusted(0.5, 0.5, -0.5, -0.5),
+                                radius, radius)
+        painter.restore()
+        self._chrome.append(box)
 
-    def _draw_step_chip(self, painter: QPainter, left: int, top: int,
-                        height: int) -> int:
-        """The chip, as tall as the position's box if there is one; returns
-        its bottom."""
-        _owner, text, color = self._step_chip
+    def _draw_plate(self, painter: QPainter) -> None:
+        """The status plate, the top-left corner: the page's widget, X, Y
+        and Z one per line, the step, a line apart; under it the height
+        line and what says the picture is an old one. As wide as the widest
+        step, so that a change of number moves nothing."""
+        font = mono_font(13, 500)
+        painter.setFont(font)
         metrics = painter.fontMetrics()
-        box = QRect(left, top,
-                    metrics.horizontalAdvance(text) + 2 * CAPTION_PAD,
-                    height or metrics.height() + 2 * CAPTION_PAD)
-        painter.fillRect(box, QColor(color))
-        painter.setPen(QPen(QColor(COLORS["on-accent"])))
-        painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
-        painter.setPen(QPen(CAPTION_FG))
-        return box.bottom() + 1
+        line = metrics.height()
+        widget = self._top_left if (self._top_left is not None
+                                    and not self._top_left.isHidden()) else None
+        axes = [part for text in self._position for part in text.split("  ")]
+        groups = len(axes) > 0, self._step_line is not None
+        top = PLATE_MARGIN
+        if widget is not None or any(groups):
+            width = 2 * PLATE_PAD + max(metrics.horizontalAdvance(text)
+                                        for text in (WIDEST_STEP, *axes))
+            if widget is not None:
+                width = max(width, widget.width())
+            height = (widget.height() if widget is not None else 0)
+            height += (len(axes) * line + 2 * CAPTION_PAD) if axes else 0
+            height += (line + 2 * CAPTION_PAD) if groups[1] else 0
+            box = QRect(PLATE_MARGIN, top, width, height)
+            self._fill(painter, box, SIZES["radius-card"])
+            y = box.top()
+            if widget is not None:
+                y += widget.height()
+            flags = (Qt.AlignmentFlag.AlignLeft
+                     | Qt.AlignmentFlag.AlignVCenter)
+            if axes:
+                if y > box.top():
+                    self._draw_divider(painter, box, y)
+                y += CAPTION_PAD
+                painter.setPen(QPen(CAPTION_FG))
+                for text in axes:
+                    painter.drawText(QRect(box.left() + PLATE_PAD, y,
+                                           width - 2 * PLATE_PAD, line),
+                                     flags, text)
+                    y += line
+                y += CAPTION_PAD
+            if groups[1]:
+                if y > box.top():
+                    self._draw_divider(painter, box, y)
+                _owner, text, color = self._step_line
+                painter.setPen(QPen(QColor(color)))
+                painter.drawText(QRect(box.left() + PLATE_PAD, y + CAPTION_PAD,
+                                       width - 2 * PLATE_PAD, line),
+                                 flags, text)
+            top = box.bottom() + 1 + CAPTION_GAP
+        painter.setFont(ui_font(13, 600))
+        if self._height_line is not None:
+            painter.setPen(QPen(CAPTION_FG))
+            top = CAPTION_GAP + (
+                self._draw_box(painter, top, [self._height_line])
+                if self._height_line else
+                top + painter.fontMetrics().height() + 2 * CAPTION_PAD)
+        if self._lost_lines():
+            painter.setPen(QPen(CAPTION_FG))
+            self._draw_box(painter, top, self._lost_lines())
+
+    def _draw_divider(self, painter: QPainter, box: QRect, y: int) -> None:
+        painter.setPen(QPen(CAPTION_BORDER, 1))
+        painter.drawLine(box.left() + 1, y, box.right() - 1, y)
 
     def _draw_status(self, painter: QPainter) -> None:
         """The page's lines (`set_status`) on the top edge, ending where
         its buttons begin."""
         if not self._status:
             return
-        painter.setFont(QFont(self.font().family(), 10))
+        painter.setFont(ui_font(13, 600))
         painter.setPen(QPen(CAPTION_FG))
         metrics = painter.fontMetrics()
         width = 2 * CAPTION_PAD + max(metrics.horizontalAdvance(line)
                                       for line in self._status)
-        right = min([self.snapshot_button.x()]
-                    + [top.x() for top in self._top if not top.isHidden()])
-        self._draw_box(painter, 8, self._status,
+        right = min([self.width() - PLATE_MARGIN] + [
+            widget.x() for widget in (self.snapshot_button, self.sizes_box,
+                                      self.marks_box, self.crosshair_box,
+                                      *self._top) if not widget.isHidden()])
+        self._draw_box(painter, PLATE_MARGIN, self._status,
                        left=right - CAPTION_GAP - width)
-
-    def _draw_axes(self, painter: QPainter, top: int) -> None:
-        """+X and +Y as arrows from one point, in a box under the others.
-        The view is the frame scaled and shifted, never turned, so a
-        direction in sensor pixels is the same on the screen.
-
-        The point is in the corner the arrows leave from - bottom-left for
-        X right and Y up - and the box is only as big as the arrows and
-        their letters, so it costs a corner of the picture, not a square
-        with the arrows in its middle."""
-        if not self._axes:
-            return
-        units = {}
-        for name, (dx, dy) in self._axes.items():
-            length = float(np.hypot(dx, dy))
-            if length > 0:
-                units[name] = (dx / length, dy / length)
-        if not units:
-            return
-        # Everything drawn, relative to the origin: the origin, the tips and
-        # the letters' boxes beyond them.
-        reach = AXIS_ARROW + AXIS_LETTER + 1
-        xs, ys = [0.0], [0.0]
-        for ux, uy in units.values():
-            xs += [ux * reach - AXIS_LETTER, ux * reach + AXIS_LETTER]
-            ys += [uy * reach - AXIS_LETTER, uy * reach + AXIS_LETTER]
-        left, right, upper, lower = min(xs), max(xs), min(ys), max(ys)
-        box = QRectF(8, top, right - left + 2 * AXIS_PAD,
-                     lower - upper + 2 * AXIS_PAD)
-        painter.fillRect(box, CAPTION_BG)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setFont(QFont(self.font().family(), 9, QFont.Weight.Bold))
-        origin = QPointF(box.x() + AXIS_PAD - left, box.y() + AXIS_PAD - upper)
-        for name, (ux, uy) in units.items():
-            tip = origin + QPointF(ux * AXIS_ARROW, uy * AXIS_ARROW)
-            colour = AXIS_COLOURS.get(name, CAPTION_FG)
-            painter.setPen(QPen(colour, 2))
-            painter.drawLine(origin, tip)
-            # The head: two strokes back from the tip, 30 degrees apart.
-            for turn in (0.5, -0.5):
-                c, s = np.cos(turn), np.sin(turn)
-                bx, by = -(ux * c - uy * s), -(ux * s + uy * c)
-                painter.drawLine(tip, tip + QPointF(bx * 7, by * 7))
-            label = origin + QPointF(ux * reach, uy * reach)
-            painter.drawText(QRectF(label.x() - AXIS_LETTER,
-                                    label.y() - AXIS_LETTER,
-                                    2 * AXIS_LETTER, 2 * AXIS_LETTER),
-                             Qt.AlignmentFlag.AlignCenter, name)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     def _mouse_rect(self) -> QRect | None:
         """Where the mouse row goes: the bottom-left corner, or None when
         there is nothing to say."""
         if not self.mouse_help:
             return None
-        height = QFontMetrics(QFont(self.font().family(), 9)).height() + 8
+        height = QFontMetrics(ui_font(13)).height() + 8
         return QRect(8, self.height() - 8 - height, self.width() - 16,
                      height)
 
@@ -1308,9 +1268,7 @@ class CameraView(QWidget):
             return
         right = min([w.geometry().left() for w in self._corner
                      if w.isVisible()] + [row.right()]) - 8
-        font = QFont(self.font().family(), 9)
-        bold = QFont(font)
-        bold.setWeight(QFont.Weight.DemiBold)
+        font, bold = ui_font(13), ui_font(13, 600)
         items = []                       # [(text, font, ink)] per item
         x = row.left() + CAPTION_PAD
         for line in self.mouse_help:
@@ -1326,9 +1284,9 @@ class CameraView(QWidget):
             x += width + MOUSE_GAP
         if not items:
             return
-        painter.fillRect(QRect(row.left(), row.top(),
-                               x - MOUSE_GAP + CAPTION_PAD - row.left(),
-                               row.height()), CAPTION_BG)
+        self._fill(painter, QRect(row.left(), row.top(),
+                                  x - MOUSE_GAP + CAPTION_PAD - row.left(),
+                                  row.height()))
         x = row.left() + CAPTION_PAD
         flags = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         for pieces in items:
@@ -1343,13 +1301,14 @@ class CameraView(QWidget):
 
     def _draw_box(self, painter: QPainter, top: int, lines: list[str],
                   left: int = 8) -> int:
-        """One translucent box of left-aligned lines; returns its bottom."""
+        """One box of left-aligned lines, in the overlay's style; returns
+        its bottom."""
         metrics = painter.fontMetrics()
         pad = CAPTION_PAD
         width = max(metrics.horizontalAdvance(line) for line in lines)
         box = QRect(left, top, width + 2 * pad,
                     metrics.height() * len(lines) + 2 * pad)
-        painter.fillRect(box, CAPTION_BG)
+        self._fill(painter, box)
         for i, line in enumerate(lines):
             x, y = box.x() + pad, box.y() + pad + i * metrics.height()
             painter.drawText(QRect(x, y, width + 1, metrics.height()),

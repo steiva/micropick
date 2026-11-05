@@ -2245,13 +2245,16 @@ on screen only.
   and while a job holds the robot. With the tip low in a well it rises
   first. A spot off the deck: "Not reachable: ...", nothing moves.
 
-- [ ] **The step by X Y Z.**
-  Manual pick's Run, Picking, the Tip step's picture, a Robot setup sheet,
-  Liquid's Plan with Controls open: "Step 1 mm" beside X Y Z, the blue of
-  the pad's chosen step. Bigger step on the pad, then the step keys: it
-  follows, yellow at 5, red at 10. Fold the pad: it stays, and the keys
-  still change it. A click on it is a click on the picture. Well center:
-  the same chip under the tip's X Y Z, no picture needed.
+- [ ] **One plate and one style on every picture (#109).**
+  Manual pick's Run, Picking, the Tip step's picture, Camera calibration, a
+  position sheet, Liquid's Plan: X Y Z one per line and "STEP · 1 mm" in the
+  plate at the top left, Crosshair and Points chips and the picture button at
+  the top right, the mouse row at the bottom left, no checkbox and no axes.
+  Bigger step on the pad, then the step keys: it follows at once, yellow at
+  5, red at 10. Fold the pad: it stays, and the keys still change it. Liquid's
+  Plan with Controls closed: the step stays. A click on the plate moves
+  nothing. Well center: the same step in a chip under the tip's X Y Z, no
+  picture. Dish bottom: unchanged.
 
 - [ ] **Part first.**
   Open Manual pick's Run: Dispense reads Part | All, Part chosen, its
@@ -2270,11 +2273,11 @@ platform height, or a Well center measured badly.
 
 - [ ] **The line follows the camera.**
   Manual pick's Run, a plate on a platform in slot 8, another in slot 5,
-  slot 2 empty. Look at slot 8: under X Y Z "Slot 8 · top 85.10 · bottom
+  slot 2 empty. Look at slot 8: under the plate "Slot 8 · top 85.10 · bottom
   67.77 · drawing", the numbers the plate's. Look at slot 5: its own. Jog
   across a slot's edge: the slot changes with the crosshair, not with the
-  tip. It stands while the robot moves. Look at slot 2: no line, and the
-  arrows of the axes stay where they were.
+  tip. It stands while the robot moves. Look at slot 2: no line, and
+  nothing else moves.
 
 - [ ] **Measured or drawing.**
   Measure the plate in slot 8 on Well center, back to Run: the line ends

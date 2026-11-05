@@ -28,7 +28,7 @@ QWidget with the window's color, an opaque block on the translucent plate.
 The chosen step is colored by how far one press moves the gantry
 (`step_color`): a 10 mm step near the dish is the one to notice. So is the
 chip that shows the step while the pad is folded (#99): the panel has it
-painted by X, Y and Z on the picture (`CameraView.set_step_chip`), a page
+in the picture's status plate (`CameraView.set_step_line`), a page
 with no picture puts up a `StepChip`. Neither is a control: the step is
 changed on the pad and by its keys.
 """
@@ -44,12 +44,13 @@ from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
 
 from ...workflows.jog import DEFAULT_STEPS
 from .. import keys as key_actions
-from ..theme import COLORS, SIZES, mono_font
+from ..theme import COLORS, SIZES, mono_font, overlay_box
 from ..theme.factory import fold_arrow
 from ..theme.icons import icon
 
 __all__ = ["STEPS", "JogPad", "KeycapButton", "StepCarousel", "StepChip",
-           "key_row", "keycap", "step_chip_text", "step_label", "step_color"]
+           "key_row", "keycap", "step_chip_text", "step_label", "step_color",
+           "step_ink"]
 
 # The carousel's sizes, mm (§8.11): the jog controller's own.
 STEPS = tuple(DEFAULT_STEPS)
@@ -68,7 +69,7 @@ def step_label(mm: float) -> str:
 
 
 def step_chip_text(mm: float) -> str:
-    return f"Step {step_label(mm)}"
+    return f"STEP · {step_label(mm)}"
 
 
 def step_color(mm: float) -> str:
@@ -77,6 +78,12 @@ def step_color(mm: float) -> str:
     if mm <= 2:
         return COLORS["accent"]
     return COLORS["warn"] if mm <= 5 else COLORS["danger-text"]
+
+
+def step_ink(mm: float) -> str:
+    """The chosen step as text on the overlay: `step_color` warns the same
+    way, and its accent is lighter there."""
+    return COLORS["accent-hover"] if mm <= 2 else step_color(mm)
 
 
 class KeycapButton(QPushButton):
@@ -420,14 +427,14 @@ class StepChip(QLabel):
 
     def __init__(self, pad: JogPad, parent: QWidget | None = None):
         super().__init__(parent)
+        self.setFont(mono_font(13, 500))
         pad.step_changed.connect(self._show_step)
         self._show_step(pad.step)
 
     def _show_step(self, mm: float) -> None:
         self.setText(step_chip_text(mm))
-        self.setStyleSheet(
-            f"background: {step_color(mm)}; color: {COLORS['on-accent']};"
-            f" padding: 2px 6px;")
+        self.setStyleSheet(f"{overlay_box()} color: {step_ink(mm)}; "
+                           f"padding: 6px 12px;")
 
 
 def key_row(line: str) -> str:

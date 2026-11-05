@@ -1281,20 +1281,20 @@ def test_the_keys_are_on_only_while_the_pad_is_on_screen(app, window, page):
     assert not _keys_on(page)
 
 
-def test_the_steps_chip_is_on_the_picture_while_the_pad_is(app, page):
-    """#99: the pad is behind Controls here, and the keys go with it."""
+def test_the_step_is_in_the_plate_with_the_pad_hidden(app, page):
+    """#109: the pad is behind Controls here, the step never."""
     _take_from(page, 2)
     assert _until(app, lambda: page.jog.pose is not None
                   and not page.jog.busy)
-    assert page.view.step_chip is None
+    assert not page.jog.pad.isVisibleTo(page.view)
+    assert page.view.step_line == ("STEP · 1 mm", COLORS["accent-hover"])
     page.controls_button.click()
     app.processEvents()
-    assert page.view.step_chip == ("Step 1 mm", COLORS["accent"])
     page.jog.set_step(5)
-    assert page.view.step_chip == ("Step 5 mm", COLORS["warn"])
+    assert page.view.step_line == ("STEP · 5 mm", COLORS["warn"])
     page.controls_button.click()
     app.processEvents()
-    assert page.view.step_chip is None
+    assert page.view.step_line == ("STEP · 5 mm", COLORS["warn"])
 
 
 def test_a_point_takes_no_height_of_the_wells(app, page):

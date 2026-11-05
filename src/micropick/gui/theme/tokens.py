@@ -78,6 +78,8 @@ SIZES: dict[str, int] = {
     "jog-button": 40,
     "radius": 8,
     "radius-card": 12,
+    "overlay-radius": 9,    # a chip or button over a picture
+    "overlay-button": 32,
     "side-min": 400,
     "side-max": 520,
     "caption": 11,     # CAPS captions
@@ -94,3 +96,7 @@ UI_FONT = "Inter"
 MONO_FONT = "JetBrains Mono"
 UI_FALLBACKS = ("Segoe UI Variable Text", "Segoe UI")
 MONO_FALLBACKS = ("Consolas", "Menlo")
+
+# What is drawn over a picture: one fill and one border on every feed.
+OVERLAY_BG = (12, 14, 17, 214)
+OVERLAY_BORDER = (255, 255, 255, 20)

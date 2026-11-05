@@ -656,11 +656,9 @@ class LiquidPlanPage(QWidget):
         self.jog.pose_changed.connect(lambda _p: self._show_use_spot())
         self.jog.position_changed.connect(lambda _l: self._show_use_spot())
         self.marks = PositionMarks.on(self.session, self.view)
+        self.jog.keep_step_shown()
         self.controls_button = compact(secondary_button("Controls", self.view))
         self.controls_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        # Opaque: an outlined button over a bright dish cannot be read.
-        self.controls_button.setStyleSheet(
-            f"QPushButton {{ background: {COLORS['raised']}; }}")
         self.controls_button.clicked.connect(self._toggle_controls)
         self.view.add_top_widget(self.controls_button)
         column.addWidget(self.view, 1)
