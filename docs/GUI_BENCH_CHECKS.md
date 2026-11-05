@@ -1675,7 +1675,8 @@ tip box and a 384 plate at hand.
   A double click on a row edits it and moves nothing.
 
 - [ ] **Tip gauge and past picks.**
-  Tip on, Aspirate 15 µl: the gauge reads 15 µl and fills; Dispense: 0 µl.
+  Tip on, Aspirate 15 µl: the gauge reads 15 µl and fills; Dispense All:
+  0 µl.
   Drop the tip: 0 µl. Show past picks (filled while on): a violet ring at
   each spot aspirated from, the last bright, the older faint; off hides them.
 
@@ -1741,7 +1742,7 @@ tip box and a 384 plate at hand.
 
 - [ ] **Dispense.**
   Empty tip: Dispense folded, its button gray. After an aspirate it opens
-  by itself. Here: "Dispense here"; Part 6 µl of 15: the gauge reads 9 µl;
+  by itself, on Part with the picking volume. Here: "Dispense here"; Part 6 µl of 15: the gauge reads 9 µl;
   All: 0 µl and the button grays. In a well: with a plate plan made, the
   mini map shows Filled / Planned; a click on a well chooses it and the
   button reads "Go to A7 and dispense"; the tip goes into that well at
@@ -2216,3 +2217,33 @@ only: `widgets.toast`, or a page still telling `JogPanel.tell` a refusal.
   Z 50 is below the platform in slot 8.", nothing moves, and the point's Z
   is red in the card and on the picture, with the same reason as its
   tooltip. Dispense with nothing in the tip: "Nothing is in the tip."
+
+## Manual pick: Tip to crosshair, the step on the picture (#99)
+
+A failure in the first check is the tip landing off the spot: the pixel
+map or the measured tip offset, the same as By hand's aim. The others are
+on screen only.
+
+- [ ] **Tip to crosshair.**
+  A calibrated tip on, the crosshair on a mark on the deck, Tip to
+  crosshair: the tip stops over that mark at the travel height, and stays
+  there; the camera does not come back. Without a tip it is gray ("Put a
+  tip on first."), without a pixel map too ("Calibrate the camera first."),
+  and while a job holds the robot. With the tip low in a well it rises
+  first. A spot off the deck: "Not reachable: ...", nothing moves.
+
+- [ ] **The step by X Y Z.**
+  Manual pick's Run, Picking, the Tip step's picture, a Robot setup sheet,
+  Liquid's Plan with Controls open: "Step 1 mm" beside X Y Z, the blue of
+  the pad's chosen step. Bigger step on the pad, then the step keys: it
+  follows, yellow at 5, red at 10. Fold the pad: it stays, and the keys
+  still change it. A click on it is a click on the picture. Well center:
+  the same chip under the tip's X Y Z, no picture needed.
+
+- [ ] **Part first.**
+  Open Manual pick's Run: Dispense reads Part | All, Part chosen, its
+  field the picking volume. Aspirate, then D: that volume is given back,
+  not all of the tip.
+
+- [ ] **Source's heading.**
+  Manual pick's Source step reads "Where do you pick from?".

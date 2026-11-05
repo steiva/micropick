@@ -61,7 +61,8 @@ and, in a build, its commit.
 ### Camera view chrome
 
 Over the picture is only what is used there (REDESIGN §3): the robot's X,
-Y and Z (fixed font, nothing else under them, on any page), the page's
+Y and Z (fixed font, nothing else under them, on any page), beside them
+the pad's step as a chip (`CameraView.set_step_chip`), the page's
 own lines (`set_status`: found counts, the marker seen, what holds while
 it is true) on the top edge left of the page's buttons, the page's buttons
 and one quiet mouse row bottom-left (`CameraView.set_mouse_help`, "gesture
@@ -238,6 +239,12 @@ title there - the title is the fold toggle, its arrow before it, apart
 from Undo step and Keys (`JogPad.set_folded`; folded from the start on
 Picking, the keys still bound), and only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
+While the pad is on screen, folded or not, its step stands by X Y Z as a
+chip, "Step 1 mm" filled with `step_color` (#99): painted on the picture,
+a `jog_pad.StepChip` where there is none (Well center). It takes no click:
+the step changes on the pad and by its keys. Dish bottom's cards carry
+their own steps, so no chip there; on Liquid's Plan it goes with the pad
+behind Controls.
 Undo step is on the pad. A jog panel has no Move or Positions section
 (removed, #27; do not bring them back): saved points are drawn on the
 picture's "points" layer (`show_position_on`), Robot setup's positions
@@ -310,7 +317,11 @@ keeps Camera to dish center). A double click moves nothing. A **right** click (`
 the lowest free number M1, M2 ..., in memory until the program closes,
 never in the profile), as does Place memo at crosshair
 (the picture's center through the pixel map, as By hand's aim,
-no Z; gray without a pixel map, "Calibrate the camera first."). A point is
+no Z; gray without a pixel map, "Calibrate the camera first."). Beside it
+**Tip to crosshair** (#99) sends the tip to that spot at the travel height
+(`Motion.tip_to`, through `JogPanel.run_job`) and leaves it there, no point
+needed; gray without a tip or a pixel map or while the robot is busy,
+checked against the jog envelope at the travel height. A point is
 one kind - a place on the deck, no purpose stored (#66). One card, **Points**
 (#96), which never folds, its two folding sections (`Section(flat=True)`)
 open from the start: **Memo** (× deletes, `Session.delete_memo_point`; Save asks a name and
@@ -370,7 +381,8 @@ the liquid engine reaches it, `Motion.to_measured_bottom`) once it is
 confirmed in this robot session (`Session.plate_bottom_confirmed`), else
 above the drawing's; x and y are the measured center either way. The
 settings line says which ("0.5 mm above the measured bottom"). Dispense opens
-by itself when the tip holds something: All | Part, In a well (a mini map
+by itself when the tip holds something: Part | All (#99: Part chosen at
+start, its volume `picking.vol`), In a well (a mini map
 of the plan's plate; a well's bottom, as Aspirate's, plus the deposit
 offset, from its well center) / At a point / Here, its button saying what it does ("Go
 to A7 and dispense", "Dispense here"), gray while the tip is empty. What
