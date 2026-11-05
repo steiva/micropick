@@ -138,3 +138,54 @@ def test_a_saved_point_is_renamed_changed_and_deleted_in_the_profile(
 def test_a_new_memo_point_does_not_take_a_saved_points_name(session):
     session.profile.remember("M1", (1.0, 2.0, 3.0))
     assert session.add_memo_point(10, 20, None).name == "M2"
+
+
+# -- a saved point made a memo point again (#112) ------------------------------
+
+def _reloaded_positions(session):
+    from micropick.config.store import load_profile
+    return load_profile(session.profile.name,
+                        directory=session.profile.path).positions
+
+
+def test_unkeep_makes_a_saved_point_a_memo_point_with_its_name_and_z(session):
+    session.add_memo_point(10, 20, 30.5)
+    session.save_memo_point("M1", "trough")
+    changes = []
+    session.memo_points_changed.connect(lambda: changes.append(1))
+    assert session.unkeep_position("trough") is True
+    point = session.memo_point("trough")
+    assert (point.x, point.y, point.z, point.saved) == (10, 20, 30.5, False)
+    assert "trough" not in session.saved_points()
+    assert "trough" not in _reloaded_positions(session)     # at once
+    assert changes == [1]
+
+
+def test_unkeep_tells_the_profile_changed(session):
+    session.add_memo_point(10, 20, 30.5)
+    session.save_memo_point("M1", "trough")
+    profiles = []
+    session.profile_changed.connect(profiles.append)
+    session.unkeep_position("trough")
+    assert profiles == [session.profile]
+
+
+def test_unkeep_is_one_undo_step(session):
+    session.add_memo_point(10, 20, 30.5)
+    session.save_memo_point("M1", "trough")
+    session.unkeep_position("trough")
+    session.undo_points()
+    assert session.saved_points()["trough"] == (10, 20, 30.5)
+    assert session.memo_point("trough") is None
+    assert _reloaded_positions(session)["trough"] == (10, 20, 30.5)
+    session.redo_points()
+    assert session.memo_point("trough").z == 30.5
+    assert "trough" not in session.saved_points()
+
+
+def test_unkeep_leaves_robot_setups_positions_and_unknown_names_alone(session):
+    session.remember("shake", (1, 2, 3))
+    assert session.unkeep_position("shake") is False
+    assert session.unkeep_position("nothing") is False
+    assert session.profile.positions["shake"] == (1, 2, 3)
+    assert session.memo_points == []

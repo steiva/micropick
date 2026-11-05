@@ -712,6 +712,21 @@ class Session(QObject):
         self._points_moved(before)
         return True
 
+    def unkeep_position(self, name: str) -> bool:
+        """The saved point `name` a memo point again, with its name and Z,
+        out of the profile at once; False if there is none. One move:
+        `save_memo_point` the other way."""
+        pose = self.saved_points().get(name)
+        if pose is None:
+            return False
+        before = self._points_now()
+        self.profile.forget(name)
+        self.memo_points.append(MemoPoint(name, *map(float, pose)))
+        log.info("saved point %r made a memo point", name)
+        self.profile_changed.emit(self.profile)
+        self._points_moved(before)
+        return True
+
     def change_point(self, name: str, **values) -> None:
         """`change_memo_point` for a memo or a saved point. A saved point's
         Z is a height: None is refused."""
