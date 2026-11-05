@@ -142,6 +142,16 @@ def test_the_steps_go_in_order(app, session):
     page.deleteLater()
 
 
+def test_a_plate_measured_earlier_can_not_be_skipped(app, session):
+    # #80: a stored center is used, so Skip, which says the drawing, is gray.
+    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "B2", depth_mm=10.0)
+    page = _step(app, session)
+    page.select_plate(5, PLATE)
+    assert page.skip_button.isVisibleTo(page)
+    assert not page.skip_button.isEnabled()
+    page.deleteLater()
+
+
 def test_the_step_lists_the_plates_with_their_state(app, session):
     session.load_labware(resolve_definition(PLATE), 2)
     page = _step(app, session)

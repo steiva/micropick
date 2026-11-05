@@ -73,6 +73,14 @@ def test_a_measured_plate_is_measured_even_if_skipped(session):
     assert session.well_center_status(5, PLATE) == SKIPPED
 
 
+def test_a_run_reads_a_skipped_plate_as_the_status_says(session):
+    session.skip_plate(5, PLATE)
+    assert session.liquid_plates()["5"].center is None
+    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "B2", depth_mm=10.0)
+    assert session.well_center_status(5, PLATE) == MEASURED
+    assert session.liquid_plates()["5"].center == (0.1, 0.2, -1.0)
+
+
 def test_a_plate_cannot_be_skipped_without_a_robot_session(app, tmp_path,
                                                            monkeypatch):
     monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
