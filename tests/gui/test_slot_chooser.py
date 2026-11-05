@@ -11,7 +11,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
-from micropick.gui.widgets.mini_deck import DeckTile             # noqa: E402
+from micropick.gui.widgets.mini_deck import (DeckTile,           # noqa: E402
+                                             TILE_GAP, MiniDeckDropdown,
+                                             Tile)
 from micropick.gui.widgets.slot_chooser import SlotChooser       # noqa: E402
 
 
@@ -66,6 +68,29 @@ def test_a_click_does_not_mark_by_itself(app):
 def test_tiles_name_what_stands_in_a_slot(app):
     chooser = SlotChooser()
     chooser.set_tiles([DeckTile(9, platform="Calibration module")])
-    assert "Calibration module" in chooser.button(9).text()
-    assert chooser.button(9).text().startswith("9")
-    assert chooser.button(2).text() == "2"
+    assert chooser.button(9).name.text() == "Calibration module"
+    assert chooser.button(9).slot_label.text() == "SLOT 9"
+    assert chooser.button(2).name.text() == "Empty"
+
+
+def test_its_tiles_are_the_mini_decks(app):
+    chooser, deck = SlotChooser(), MiniDeckDropdown()
+    deck.open_popover()
+    tile = deck._popover.findChildren(Tile)[0]
+    assert isinstance(chooser.button(5), Tile)
+    assert chooser.button(5).size() == tile.size()
+    deck._popover.close()
+
+
+def test_a_wider_panel_keeps_its_gaps(app):
+    chooser = SlotChooser()
+    chooser.resize(700, 400)
+    chooser.show()
+    app.processEvents()
+    gap = chooser.button(5).x() - chooser.button(4).geometry().right() - 1
+    assert gap == TILE_GAP
+    chooser.close()
+
+
+def test_it_fits_a_step_card_in_a_panel_of_420(app):
+    assert SlotChooser().sizeHint().width() <= 420 - 2 * 16

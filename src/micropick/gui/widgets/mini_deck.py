@@ -5,7 +5,8 @@ popover with the 3×4 deck in its real layout (10 11 12 / 7 8 9 / 4 5 6 /
 1 2 3). The slots that can be chosen here - the plates, or any slot for
 "Look at" - are lit; the rest are dimmed and do nothing. A tile may carry
 a note ("Measured", "Not measured"). The same control on every screen a
-plate or a slot is chosen on (§1.7).
+plate or a slot is chosen on (§1.7), and `Tile` the same tile there and in
+`widgets.slot_chooser`, the deck shown inline.
 
 The page says what is on the deck (`set_tiles`); this knows no labware.
 """
@@ -22,10 +23,15 @@ from ..theme import COLORS
 from ..theme.icons import icon
 from .controls import CutLabel, closed_by
 
-__all__ = ["DECK_ROWS", "KIND_COLORS", "DeckTile", "MiniDeckDropdown"]
+__all__ = ["DECK_ROWS", "KIND_COLORS", "DeckTile", "MiniDeckDropdown", "Tile",
+           "TILE_GAP"]
 
 # Top row first, as the deck stands in front of the user.
 DECK_ROWS = ((10, 11, 12), (7, 8, 9), (4, 5, 6), (1, 2, 3))
+
+# Three tiles and their gaps fit a step card in a panel of 420 px.
+TILE_SIZE = (124, 74)
+TILE_GAP = 8
 
 # A kind of labware: its ink and its tile's background.
 KIND_COLORS = {"plate": ("plate", "plate-bg"), "tips": ("tips", "tips-bg"),
@@ -47,42 +53,60 @@ class DeckTile:
     platform: str = ""         # what stands in the slot ("Picking platform")
 
 
-class _Tile(QPushButton):
+class Tile(QPushButton):
+    """A slot on a small deck, checked while it is the one chosen. Grayed by
+    `setEnabled`, whoever says so."""
+
     def __init__(self, tile: DeckTile, chosen: bool, parent: QWidget):
         super().__init__(parent)
-        self.tile = tile
-        self.setFixedSize(132, 74)
+        self.tile: DeckTile | None = None
+        self.setFixedSize(*TILE_SIZE)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setCheckable(True)
+        self.setChecked(chosen)
         self.setEnabled(tile.valid)
-        ink, bg = KIND_COLORS.get(tile.kind, ("text-2", "bar"))
-        border = COLORS["accent"] if chosen else COLORS["line"]
-        self.setStyleSheet(
-            f"QPushButton {{ background: {COLORS[bg] if tile.valid else COLORS['bg']};"
-            f" border: {2 if chosen else 1}px solid {border}; border-radius: 10px;"
-            f" text-align: left; padding: 6px 10px; }}"
-            f"QPushButton:hover {{ border-color: {COLORS['accent-hover']}; }}")
         column = QVBoxLayout(self)
         column.setContentsMargins(10, 6, 10, 6)
         column.setSpacing(2)
-        slot = QLabel(f"SLOT {tile.slot}", self)
-        slot.setObjectName("caption")
-        name = QLabel(tile.name or ("Trash" if tile.kind == "trash"
-                                    else "Empty"), self)
-        name.setWordWrap(True)
-        ink_color = COLORS[ink] if tile.valid else COLORS["faint"]
-        name.setStyleSheet(f"color: {ink_color}; font-size: 12px; "
-                           "font-weight: 600;")
-        column.addWidget(slot)
-        column.addWidget(name)
-        if tile.note:
-            note = QLabel(tile.note, self)
-            tone = {"ok": "ok", "warn": "warn-text"}.get(tile.note_tone,
-                                                         "muted")
-            note.setStyleSheet(f"color: {COLORS[tone]}; font-size: 11px;")
-            column.addWidget(note)
+        self.slot_label = QLabel(self)
+        self.slot_label.setObjectName("caption")
+        self.name = QLabel(self)
+        self.name.setWordWrap(True)
+        self.name.setAlignment(Qt.AlignmentFlag.AlignLeft
+                               | Qt.AlignmentFlag.AlignTop)
+        self.note = QLabel(self)
+        column.addWidget(self.slot_label)
+        column.addWidget(self.name)
+        column.addWidget(self.note)
         column.addStretch(1)
         for label in self.findChildren(QLabel):
             label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.show_tile(tile)
+
+    def show_tile(self, tile: DeckTile) -> None:
+        if tile == self.tile:
+            return
+        self.tile = tile
+        ink, bg = KIND_COLORS.get(tile.kind, ("text-2", "bar"))
+        self.setStyleSheet(
+            f"QPushButton {{ background: {COLORS[bg]};"
+            f" border: 1px solid {COLORS['line']}; border-radius: 10px;"
+            f" text-align: left; padding: 6px 10px; }}"
+            f"QPushButton:hover {{ border-color: {COLORS['accent-hover']}; }}"
+            f"QPushButton:checked {{ background: {COLORS[bg]};"
+            f" border: 2px solid {COLORS['accent']}; }}"
+            f"QPushButton:disabled {{ background: {COLORS['bg']}; }}")
+        self.slot_label.setText(f"SLOT {tile.slot}")
+        self.name.setText(tile.name or tile.platform
+                          or ("Trash" if tile.kind == "trash" else "Empty"))
+        self.name.setStyleSheet(
+            f"QLabel {{ color: {COLORS[ink]}; font-size: 12px;"
+            f" font-weight: 600; }}"
+            f"QLabel:disabled {{ color: {COLORS['faint']}; }}")
+        tone = {"ok": "ok", "warn": "warn-text"}.get(tile.note_tone, "muted")
+        self.note.setText(tile.note)
+        self.note.setStyleSheet(f"color: {COLORS[tone]}; font-size: 11px;")
+        self.note.setVisible(bool(tile.note))
 
 
 class _Popover(QFrame):
@@ -96,11 +120,11 @@ class _Popover(QFrame):
         closed_by(self, owner)
         grid = QGridLayout(self)
         grid.setContentsMargins(12, 12, 12, 12)
-        grid.setSpacing(8)
+        grid.setSpacing(TILE_GAP)
         for r, row in enumerate(DECK_ROWS):
             for c, slot in enumerate(row):
                 tile = owner.tiles.get(slot, DeckTile(slot, valid=False))
-                button = _Tile(tile, slot == owner.slot, self)
+                button = Tile(tile, slot == owner.slot, self)
                 button.clicked.connect(lambda _=False, s=slot: owner._chosen(s))
                 grid.addWidget(button, r, c)
 

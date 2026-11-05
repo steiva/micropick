@@ -20,7 +20,7 @@ from micropick.gui.widgets.fold_card import FoldCard, FoldGroup         # noqa: 
 from micropick.gui.widgets.footer import Footer                         # noqa: E402
 from micropick.gui.widgets.jog_pad import STEPS, JogPad                 # noqa: E402
 from micropick.gui.widgets.mini_deck import (DeckTile,                  # noqa: E402
-                                             MiniDeckDropdown, _Tile)
+                                             MiniDeckDropdown, Tile)
 from micropick.gui.widgets.overlays import (ConfirmDialog,              # noqa: E402
                                             LockOverlay, SheetWindow)
 from micropick.gui.widgets.plate_grid import PlateGrid, PlateTools      # noqa: E402
@@ -270,7 +270,7 @@ def test_mini_deck_lights_only_valid_slots(app):
     chosen = []
     deck.slot_chosen.connect(chosen.append)
     deck.open_popover()
-    tiles = {t.tile.slot: t for t in deck._popover.findChildren(_Tile)}
+    tiles = {t.tile.slot: t for t in deck._popover.findChildren(Tile)}
     assert len(tiles) == 12
     assert tiles[5].isEnabled() and not tiles[8].isEnabled()
     assert not tiles[1].isEnabled()
@@ -282,12 +282,12 @@ def test_the_deck_looks_the_same_opened_from_the_picture(app):
     """A button over the picture is restyled, and its height was the tiles'."""
     plain = MiniDeckDropdown()
     plain.open_popover()
-    tile = plain._popover.findChildren(_Tile)[0]
+    tile = plain._popover.findChildren(Tile)[0]
     view = CameraView()
     over = MiniDeckDropdown()
     view.add_top_row_widget(over)
     over.open_popover()
-    tiles = over._popover.findChildren(_Tile)
+    tiles = over._popover.findChildren(Tile)
     assert {t.size() for t in tiles} == {tile.size()}
     assert tile.height() == 74
     plain._popover.close()

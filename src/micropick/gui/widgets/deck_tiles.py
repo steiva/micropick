@@ -33,13 +33,13 @@ from PySide6.QtWidgets import (QApplication, QFrame, QGridLayout,
 
 from ..theme import COLORS
 from ..theme.factory import close_button
+from ..labware_kinds import TRASH_SLOT
 from ..theme.icons import pixmap
 from .mini_deck import DECK_ROWS, KIND_COLORS, DeckTile
 
 __all__ = ["ASPECT", "DeckTiles", "KIND_ICONS", "SLOT_MIME", "TRASH_SLOT",
            "kind_icon", "set_kind_icon"]
 
-TRASH_SLOT = 12
 # The OT-2 deck's width over its depth, slot 1's front edge to 10's back.
 ASPECT = 40 / 36.5
 TILE_MIN = (150, 96)

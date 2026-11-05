@@ -200,8 +200,9 @@ while the robot is busy; Cancel and × save nothing. The camera
 calibration has its sheet too (`pages.calibration_camera.
 CameraCalibrationSheet`), the steps confirmed one after another: place
 the marker (It is in place); its slot on the mini deck slot chooser
-(`widgets.slot_chooser.SlotChooser`: all 12 slots, nothing preselected,
-grayed while the robot is busy; a click moves the camera there at once,
+(`widgets.slot_chooser.SlotChooser`: all 12 slots, the `mini_deck.Tile`s of
+every mini deck with what stands there (`labware_kinds.deck_tiles`), nothing
+preselected, grayed while the robot is busy; a click moves the camera there at once,
 through `JogPanel.run_job`: the slot's center less the measured tip
 offset, else Settings' start dx, dy, and marks the slot once moved - the
 one way a Robot setup sheet chooses a slot); center it with the arrows - a click
@@ -631,7 +632,8 @@ center step, one page in every task (`pages.well_center`,
 REDESIGN §6.7, `set_task`: the plates on the deck,
 `tasks.well_center_plates`, "Measured today" / "Not measured: using the
 drawing" / "Not measured yet"; the jog pad under the tip's X Y Z, with
-its Keys; Move the tip, It is centered, It is level, the well depth from
+its Keys; a well on the plate's map (`WellPicker(plate_choice=False)`, the
+plate being the list's), Move the tip, It is centered, It is level, the well depth from
 the drawing, Save; in Liquid only Skip this plate, use the drawing -
 `Session.skip_plate`, for the robot session only); Liquid handling only
 reads it. In Liquid the step is required and done when every plate is

@@ -253,7 +253,6 @@ from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
-from ...config.labware import LabwareError, resolve_definition
 from ...core.calibration.pixel_map import PixelMap
 from ...core.deck import nearest_slot, slot_center
 from ...hardware.protocols import xyz
@@ -267,7 +266,7 @@ from ..auto_camera import CameraOpener
 from ..camera_moves import (NO_TIP_CALIBRATION, OUTSIDE_THE_MAP, camera_slot,
                             pose_slot)
 from ..detector import wanted_model
-from ..labware_kinds import facts, kind
+from ..labware_kinds import deck_tiles
 from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
@@ -283,7 +282,7 @@ from ..widgets.fold_card import ActionCard, FoldCard, FoldGroup
 from ..position_marks import PositionMarks
 from ..widgets.jog_pad import KeycapButton
 from ..widgets.jog_panel import JogPanel
-from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
+from ..widgets.mini_deck import MiniDeckDropdown
 from ..widgets.point_chips import PointChips
 from ..widgets.point_list import PointList, TRAVEL_TEXT, Z_TOP_MM
 from ..widgets.tip_gauge import TipGauge
@@ -1975,25 +1974,7 @@ class ManualPage(QWidget):
 
     def _show_deck(self) -> None:
         """Look at's tiles: every slot, with what the run holds there."""
-        state = self.session.run_state
-        held = (state.labware if state is not None
-                and self.session.robot is not None else {})
-        tiles = []
-        for row in DECK_ROWS:
-            for slot in row:
-                entry = held.get(str(slot))
-                if entry is None:
-                    tiles.append(DeckTile(slot))
-                    continue
-                try:
-                    definition = resolve_definition(entry.load_name)
-                except LabwareError:
-                    tiles.append(DeckTile(slot, name=entry.load_name))
-                    continue
-                tiles.append(DeckTile(slot, name=definition.display_name,
-                                      kind=kind(definition),
-                                      facts=facts(definition)))
-        self.look_at.set_tiles(tiles)
+        self.look_at.set_tiles(deck_tiles(self.session))
 
     # -- the well ------------------------------------------------------------------
 

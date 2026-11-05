@@ -13,10 +13,10 @@ does is the page's. It does not mark the slot by itself either: the page
 marks it (`set_marked`) once what the click asked for went, so a refused
 move leaves no slot looking chosen. `setEnabled(False)` grays it, and a
 click then says nothing - a page grays it while the robot is busy, with
-the reason as its tooltip. A tile can name what stands in its slot
-(`set_tiles`, the `DeckTile`s of `widgets.mini_deck`).
+the reason as its tooltip. The page says what stands in a slot (`set_tiles`,
+`labware_kinds.deck_tiles`).
 
-Unlike `MiniDeckDropdown` it is shown inline, small enough for a step card.
+`MiniDeckDropdown`'s deck, its `Tile`s and gaps, shown inline in a step card.
 
     chooser = SlotChooser(parent)
     chooser.slot_clicked.connect(lambda slot: ...)
@@ -26,15 +26,12 @@ Unlike `MiniDeckDropdown` it is shown inline, small enough for a step card.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QGridLayout, QPushButton, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QGridLayout, QWidget
 
-from ..theme import COLORS
-from .mini_deck import DECK_ROWS, DeckTile
+from .mini_deck import DECK_ROWS, TILE_GAP, DeckTile, Tile
 
 __all__ = ["SlotChooser"]
-
-TILE_W, TILE_H = 92, 44
 
 
 class SlotChooser(QWidget):
@@ -46,25 +43,23 @@ class SlotChooser(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.marked: int | None = None
-        self._buttons: dict[int, QPushButton] = {}
+        self._buttons: dict[int, Tile] = {}
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(6)
+        grid.setSpacing(TILE_GAP)
         for r, row in enumerate(DECK_ROWS):
             for c, slot in enumerate(row):
-                button = QPushButton(str(slot), self)
-                button.setCheckable(True)
-                button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                button.setFixedSize(TILE_W, TILE_H)
-                button.setStyleSheet(_STYLE)
+                button = Tile(DeckTile(slot), False, self)
                 # A checkable button checks itself on a click; only
                 # `set_marked` marks, so the click is undone at once.
                 button.clicked.connect(lambda _=False, s=slot: self._clicked(s))
                 grid.addWidget(button, r, c)
                 self._buttons[slot] = button
+        # A wider panel keeps the gaps: the room left is beside the deck.
+        grid.setColumnStretch(len(DECK_ROWS[0]), 1)
         self.slots = sorted(self._buttons)
 
-    def button(self, slot: int) -> QPushButton:
+    def button(self, slot: int) -> Tile:
         """The tile of `slot`."""
         return self._buttons[slot]
 
@@ -75,26 +70,13 @@ class SlotChooser(QWidget):
             button.setChecked(n == slot)
 
     def set_tiles(self, tiles) -> None:
-        """Name what stands in a slot: a tile's platform, else its labware.
-        Slots without a tile show their number only."""
+        """What stands in each slot; a slot without a tile is empty."""
         named = {t.slot: t for t in tiles}
         for n, button in self._buttons.items():
-            tile: DeckTile | None = named.get(n)
-            what = (tile.platform or tile.name) if tile is not None else ""
-            button.setText(f"{n}\n{what}" if what else str(n))
-            button.setToolTip(what)
+            tile = named.get(n, DeckTile(n))
+            button.show_tile(tile)
+            button.setToolTip(tile.name or tile.platform)
 
     def _clicked(self, slot: int) -> None:
         self.set_marked(self.marked)
         self.slot_clicked.emit(slot)
-
-
-_STYLE = (
-    f"QPushButton {{ background: {COLORS['bar']}; color: {COLORS['text-2']};"
-    f" border: 1px solid {COLORS['line']}; border-radius: 8px;"
-    f" font-size: 11px; font-weight: 600; padding: 2px; }}"
-    f"QPushButton:hover {{ border-color: {COLORS['accent-hover']}; }}"
-    f"QPushButton:checked {{ border: 2px solid {COLORS['accent']};"
-    f" color: {COLORS['accent']}; }}"
-    f"QPushButton:disabled {{ background: {COLORS['bg']};"
-    f" color: {COLORS['faint']}; }}")

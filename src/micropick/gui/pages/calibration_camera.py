@@ -73,6 +73,7 @@ from ...viz import markers
 from ...workflows.calibrate_camera import Cancelled, calibrate_camera
 from ..auto_camera import CameraOpener
 from ..camera_moves import move_over_slot, move_to_pixel
+from ..labware_kinds import deck_tiles
 from ..marker_watch import DICTIONARIES, MarkerWatch
 from ..session import Session
 from ..tasks import SETUP_TITLES
@@ -279,6 +280,10 @@ class CameraCalibrationSheet(SheetWindow):
         session.robot_state_changed.connect(lambda _s: self._refresh())
         session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.settings_changed.connect(lambda _s: self._refresh())
+        session.labware_changed.connect(lambda _s: self._show_deck())
+        session.profile_changed.connect(lambda _p: self._show_deck())
+        session.robot_state_changed.connect(lambda _s: self._show_deck())
+        self._show_deck()
         # The window's Stop: the sweep stops at its next pose.
         session.stop_requested.connect(self._stop)
         self._refresh()
@@ -627,6 +632,9 @@ class CameraCalibrationSheet(SheetWindow):
             self._sighting = None
             self.view.set_overlay_items([])
         self._refresh()
+
+    def _show_deck(self) -> None:
+        self.slots.set_tiles(deck_tiles(self.session))
 
     def _refresh(self) -> None:
         running = self._running()

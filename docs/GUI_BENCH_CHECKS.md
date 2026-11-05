@@ -1352,7 +1352,7 @@ hand.
 
 - [ ] **Calibration position.**
   Four numbered cards; only "It is there" is active. It is there: the
-  mini deck lights up. Click the calibration module's slot: the camera
+  mini deck lights up, the same tiles as Look at's, saying what stands there. Click the calibration module's slot: the camera
   goes over it, the slot is marked, "It is centered" lights up. Center
   the crosshair (a click on the picture with a pixel map, else the
   arrows), It is centered, Save position: "Saved: slot 9 · X … Y … Z …",
@@ -1806,7 +1806,9 @@ tip box and a 384 plate at hand.
   pad over it. With none on the deck: "No plate on the deck."
 
 - [ ] **Measure a plate.**
-  Choose a well, Move the tip: the tip goes to its top center as the
+  Click a well on the plate's map (the selected plate, in its real
+  proportions; a click on another well sends the steps back to the first),
+  Move the tip: the tip goes to its top center as the
   robot has it (watch it: no crash into the rim). It is centered and It
   is level take turns with the arrows; Well depth reads "10.67 mm, from
   the plate's drawing" (for a Corning 96). Save: "Well center saved.",
