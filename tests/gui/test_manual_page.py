@@ -1934,7 +1934,7 @@ def _pour(app, page, session):
     page.amount.buttons[1].click()                       # All
 
 
-def test_dispense_here_rises_by_default_and_each_key_follows_its_card(
+def test_dispense_here_rises_by_default(
         app, page, session):
     _pour(app, page, session)
     page.dispense_button.click()
@@ -2143,3 +2143,17 @@ def test_the_d_key_follows_dispenses_retract(app, page, session):
     _wait(app, page)
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx((150.0, 150.0, 70.0), abs=0.05)
+
+
+def test_rising_in_place_keeps_what_was_found_on_the_picture(
+        app, page, session):
+    """The camera does not go up with the tip: the gantry has not moved."""
+    _ready_by_hand(app, page, session)
+    session.motion.tip_to((150.0, 150.0), 70.0)
+    page.jog.refresh_position()
+    _wait(app, page)
+    _cuboid_at(page, W / 2 + 100, H / 2)
+    page._aspirate_here()
+    _wait(app, page)
+    assert _pose(session)[2] == pytest.approx(_travel_z(session), abs=0.05)
+    assert page._cuboids is not None

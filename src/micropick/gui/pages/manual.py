@@ -1220,9 +1220,9 @@ class ManualPage(QWidget):
                 return STOPPED_DOWN
             return f"Aspirated {volume:g} µl at {rate:g} µl/s, {where}."
 
-        # In place nothing moves: what is detected on the picture stands.
-        if not self.jog.run_job(job, moves=go is not None or how.rises,
-                                then=then):
+        # In place the gantry stays, the tip rising or not: what is detected
+        # on the picture stands.
+        if not self.jog.run_job(job, moves=go is not None, then=then):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _leave(self, how: moves.Retract, log) -> bool:
@@ -1360,7 +1360,7 @@ class ManualPage(QWidget):
                 return STOPPED_DOWN
             return f"Dispensed {amount:g} µl at {rate:g} µl/s, {where}."
 
-        if not self.jog.run_job(job, moves=go is not None or how.rises):
+        if not self.jog.run_job(job, moves=go is not None):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
