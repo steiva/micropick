@@ -167,10 +167,7 @@ class HomePage(QWidget):
         column.addStretch(1)
         self.robot_box = self._robot_card()
         column.addWidget(self.robot_box)
-        # Until the robot is connected: one line, and the rest dimmed.
-        self.waiting = muted_label("Waiting for the robot.", self)
-        reserve(self.waiting)
-        column.addWidget(self.waiting)
+        column.addWidget(self._line())
         self.below = QWidget(self)
         below = QVBoxLayout(self.below)
         below.setContentsMargins(0, 0, 0, 0)
@@ -196,6 +193,26 @@ class HomePage(QWidget):
 
     # -- construction --------------------------------------------------
 
+    def _line(self) -> QWidget:
+        """Under the Robot card, its room kept: until the robot is connected
+        one line, the rest dimmed, and in its place what went wrong. Not in
+        the card, whose room for it left the words above its middle."""
+        line = QWidget(self)
+        place = QGridLayout(line)
+        place.setContentsMargins(0, 0, 0, 0)
+        self.waiting = muted_label("Waiting for the robot.", line)
+        # Selectable: a path or an address in it can be copied out.
+        self.error = QLabel(line)
+        self.error.setObjectName("warnText")
+        self.error.setWordWrap(True)
+        self.error.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.error.hide()
+        reserve(self.waiting, self.error)
+        place.addWidget(self.waiting, 0, 0)
+        place.addWidget(self.error, 0, 0)
+        return line
+
     def _robot_card(self) -> QWidget:
         box = card(self)
         row = QHBoxLayout()
@@ -208,15 +225,6 @@ class HomePage(QWidget):
         self.robot_text = muted_label("", box)
         text.addWidget(self.robot_title)
         text.addWidget(self.robot_text)
-        # Selectable: a path or an address in it can be copied out.
-        self.error = QLabel(box)
-        self.error.setObjectName("warnText")
-        self.error.setWordWrap(True)
-        self.error.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.error.hide()
-        reserve(self.error)
-        text.addWidget(self.error)
         row.addLayout(text, 1)
         self.home_button = primary_button("Home and connect", box)
         self.home_button.setToolTip(
@@ -318,7 +326,7 @@ class HomePage(QWidget):
                                         and not ready)
         self.home_button.setEnabled(not busy
                                     and not session.robot_lease.busy)
-        self.waiting.setVisible(not ready)
+        self.waiting.setVisible(not ready and not self.error.text())
         self.below.setEnabled(ready)
         if ready:
             self.below_dim.hide()
@@ -363,6 +371,7 @@ class HomePage(QWidget):
     def show_error(self, text: str) -> None:
         self.error.setText(text)
         self.error.setVisible(bool(text))
+        self.refresh()
 
     # -- actions -------------------------------------------------------
 

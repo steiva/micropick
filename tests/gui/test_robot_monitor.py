@@ -172,6 +172,27 @@ def _buttons(window):
             if b.isVisibleTo(window.home)}
 
 
+def test_the_robot_card_is_as_tall_as_the_setup_card(app, window):
+    """What went wrong has its room under the card: in it, it left the
+    words above the card's middle."""
+    home = window.home
+    home.resize(1400, 860)
+    home.show()
+    app.processEvents()
+    assert home.robot_box.height() == home.setup_card.height()
+    assert not home.robot_box.isAncestorOf(home.error)
+    home.hide()
+
+
+def test_what_went_wrong_stands_in_the_waiting_line(app, window):
+    home = window.home
+    home.show_error("The robot said no.")
+    assert home.error.isVisibleTo(home)
+    assert not home.waiting.isVisibleTo(home)
+    home.show_error("")
+    assert not home.error.isVisibleTo(home)
+
+
 def test_home_follows_the_robot_switched_off_and_on(app, window):
     home, session = window.home, window.session
     _until(app, lambda: session.robot is not None)     # carried on with
