@@ -38,6 +38,7 @@ class FoldCard(QFrame):
 
         header = QHBoxLayout()
         header.setSpacing(8)
+        self.header_row = header
         self.header = QToolButton(self)
         self.header.setObjectName("foldHeader")
         self.header.setText(title)

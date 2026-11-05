@@ -49,6 +49,10 @@ name is renamed by a double click and the × asks first (#66). Robot setup's
 positions are not points (#61). Marking moves nothing and opens nothing, and
 a double click only edits.
 
+Undo and Redo on the card's title row go back over the last 3 moves, of
+both kinds (`Session.undo_points`, `gui.point_history`, #96); there is no
+key for them. A saved point brought back is written to the profile again.
+
 A point is a place on the deck, the tip's, with no purpose of its own.
 Under both sections, for the one point chosen in either: Camera to (the camera
 over it at the travel height, its Z unused) and Tip to (the tip down to its
@@ -202,7 +206,7 @@ from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (Section, card, combo_box, compact,
                              double_spin_box, muted_label, primary_button,
-                             scroll_column, secondary_button)
+                             scroll_column, secondary_button, tool_button)
 from ..widgets.camera_view import CameraView
 from ..widgets.card_columns import CardColumns
 from ..widgets.controls import Segmented, Switch
@@ -635,6 +639,12 @@ class ManualPage(QWidget):
         """The one Points card: the Memo section over the Saved section,
         and under both the moves to the chosen point; see "Memo points"."""
         self.points_card = FoldCard("Points", fold=False, parent=self)
+        self.undo_button = tool_button("Undo", "undo",
+                                       self.session.undo_points, self)
+        self.redo_button = tool_button("Redo", "redo",
+                                       self.session.redo_points, self)
+        self.points_card.header_row.addWidget(self.undo_button)
+        self.points_card.header_row.addWidget(self.redo_button)
         layout = self.points_card.body.layout()
 
         self.memo_section = Section("Memo", flat=True, parent=self)
@@ -1400,6 +1410,8 @@ class ManualPage(QWidget):
     def _refresh_memo_buttons(self) -> None:
         if not hasattr(self, "saved_table"):
             return
+        self.undo_button.setEnabled(self.session.point_history.can_undo)
+        self.redo_button.setEnabled(self.session.point_history.can_redo)
         chosen = self.chosen_point() is not None
         free = (self.session.robot is not None
                 and not self.session.robot_lease.busy)

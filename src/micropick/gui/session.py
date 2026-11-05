@@ -22,7 +22,7 @@ import os
 import sys
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -71,6 +71,7 @@ from ..workflows.motion import Motion               # noqa: E402
 from .detector import DetectorService              # noqa: E402
 from .labware_kinds import well_volume              # noqa: E402
 from .camera_moves import pose_slot                 # noqa: E402
+from .point_history import PointHistory             # noqa: E402
 from .readiness import DISH_POSITION, SHAKE_POSITION  # noqa: E402
 from .tasks import SETUP_POSITIONS, SETUP_TITLES   # noqa: E402
 
@@ -475,6 +476,8 @@ class Session(QObject):
         # "points" layer of every page draws them, and gone at the next
         # start - a profile's positions are what is kept.
         self.memo_points: list[MemoPoint] = []
+        # The last moves of the points, for Undo and Redo; in memory.
+        self.point_history = PointHistory()
         # What the operator confirmed in this robot session (`confirm`):
         # key -> the robot session it was confirmed in.
         self._confirmed: dict[str, str | None] = {}
@@ -562,6 +565,7 @@ class Session(QObject):
         """A new point, named with the lowest free number: M1, M2 ... in the
         order marked, and a deleted point's number is the next one's. A
         saved point's name is not free."""
+        before = self._points_now()
         taken = {p.name for p in self.points}
         number = 1
         while f"M{number}" in taken:
@@ -571,7 +575,7 @@ class Session(QObject):
         self.memo_points.append(point)
         log.info("memo point %s at (%.2f, %.2f)%s", point.name, point.x,
                  point.y, "" if z is None else f", z {point.z:g}")
-        self.memo_points_changed.emit()
+        self._points_moved(before)
         return point
 
     def memo_problem(self, point: MemoPoint) -> str:
@@ -594,11 +598,12 @@ class Session(QObject):
         point = self.memo_point(name)
         if point is None:
             return
+        before = self._points_now()
         for key, value in values.items():
             if key not in ("x", "y", "z"):
                 raise ValueError(f"a memo point has no {key!r}")
             setattr(point, key, None if value is None else float(value))
-        self.memo_points_changed.emit()
+        self._points_moved(before)
 
     def delete_memo_point(self, name: str) -> bool:
         """Delete the point named `name`; False if there is none. Its
@@ -606,9 +611,10 @@ class Session(QObject):
         kept = [p for p in self.memo_points if p.name != name]
         if len(kept) == len(self.memo_points):
             return False
+        before = self._points_now()
         self.memo_points = kept
         log.info("memo point %s deleted", name)
-        self.memo_points_changed.emit()
+        self._points_moved(before)
         return True
 
     # -- saved points ----------------------------------------------------------
@@ -678,9 +684,10 @@ class Session(QObject):
         why = self.point_name_refusal(new_name, own=name)
         if why:
             raise SessionError(why)
+        before = self._points_now()
         self.memo_points = [p for p in self.memo_points if p.name != name]
         self.remember(new_name, (point.x, point.y, float(z)))
-        self.memo_points_changed.emit()
+        self._points_moved(before)
 
     def rename_saved_point(self, old: str, new: str) -> None:
         new = new.strip()
@@ -689,18 +696,20 @@ class Session(QObject):
             raise SessionError(why)
         if new == old:
             return
+        before = self._points_now()
         self.profile.rename(old, new)
         log.info("saved point %r renamed %r", old, new)
         self.profile_changed.emit(self.profile)
-        self.memo_points_changed.emit()
+        self._points_moved(before)
 
     def delete_saved_point(self, name: str) -> bool:
         if name not in self.saved_points():
             return False
+        before = self._points_now()
         self.profile.forget(name)
         log.info("saved point %r deleted", name)
         self.profile_changed.emit(self.profile)
-        self.memo_points_changed.emit()
+        self._points_moved(before)
         return True
 
     def change_point(self, name: str, **values) -> None:
@@ -719,7 +728,46 @@ class Session(QObject):
             if key not in pose:
                 raise ValueError(f"a point has no {key!r}")
             pose[key] = float(value)
+        before = self._points_now()
         self.remember(name, (pose["x"], pose["y"], pose["z"]))
+        self._points_moved(before)
+
+    # -- undo and redo of the points -------------------------------------------
+
+    def _points_now(self) -> tuple[list[MemoPoint], dict]:
+        """Every point as it is, for `point_history`: copies, since a memo
+        point is changed in place."""
+        return [replace(p) for p in self.memo_points], self.saved_points()
+
+    def _points_moved(self, before) -> None:
+        """Every change of a point ends here: one move, unless it left the
+        points as they were (a Z typed again), then the signal."""
+        if before != self._points_now():
+            self.point_history.record(before)
+        self.memo_points_changed.emit()
+
+    def undo_points(self) -> None:
+        if self.point_history.can_undo:
+            self._restore_points(self.point_history.undo(self._points_now()))
+
+    def redo_points(self) -> None:
+        if self.point_history.can_redo:
+            self._restore_points(self.point_history.redo(self._points_now()))
+
+    def _restore_points(self, state) -> None:
+        """The points as in `state`. The saved ones are written to the
+        profile, in their order; Robot setup's positions are left alone."""
+        memo, saved = state
+        self.memo_points = memo
+        now = self.saved_points()
+        if self.profile is not None and saved != now:
+            setup = {name: pose
+                     for name, pose in self.profile.positions.items()
+                     if name not in now}
+            self.profile.positions = {**setup, **saved}
+            self.profile.save_positions()
+            log.info("saved points put back: %s", ", ".join(saved) or "none")
+            self.profile_changed.emit(self.profile)
         self.memo_points_changed.emit()
 
     # -- state ---------------------------------------------------------------
@@ -851,6 +899,8 @@ class Session(QObject):
         # belong to the installation, not to the application.
         self.cameras = CameraManager.from_profile(profile)
         log.info("profile %r loaded from %s", profile.name, profile.path)
+        # A move back would write another profile's points into this one.
+        self.point_history.clear()
         if self._api is not None:
             # This profile's modules, not the last one's, for the next load.
             self.register_deck_modules()

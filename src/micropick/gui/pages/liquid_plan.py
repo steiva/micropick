@@ -106,8 +106,7 @@ from ..session import MEASURED, NOT_MEASURED, Session, SessionError
 from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, compact, danger_text_button,
                              double_spin_box, heading, muted_label, primary_button,
-                             secondary_button, set_primary)
-from ..theme.icons import icon
+                             secondary_button, set_primary, tool_button)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented
@@ -507,14 +506,6 @@ class LiquidPlanPage(QWidget):
         column.addStretch(1)
         return box
 
-    def _tool(self, text: str, name: str | None, slot) -> QPushButton:
-        button = secondary_button(text, self)
-        if name:
-            button.setIcon(icon(name, COLORS["text-2"], 16))
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        button.clicked.connect(slot)
-        return button
-
     def _question(self) -> QWidget:
         box = QWidget(self)
         column = QVBoxLayout(box)
@@ -607,11 +598,12 @@ class LiquidPlanPage(QWidget):
         self.facts.setWordWrap(False)
         tools.addWidget(self.facts)
         tools.addStretch(1)
-        self.undo_button = self._tool("Undo", "undo", self.undo)
-        self.redo_button = self._tool("Redo", "redo", self.redo)
-        self.select_all_button = self._tool("Select all", None,
-                                            self._select_all)
-        self.clear_button = self._tool("Clear", None, lambda: self.plate.clear())
+        self.undo_button = tool_button("Undo", "undo", self.undo, self)
+        self.redo_button = tool_button("Redo", "redo", self.redo, self)
+        self.select_all_button = tool_button("Select all", None,
+                                             self._select_all, self)
+        self.clear_button = tool_button("Clear", None,
+                                        lambda: self.plate.clear(), self)
         for button in (self.undo_button, self.redo_button,
                        self.select_all_button, self.clear_button):
             tools.addWidget(button)

@@ -21,9 +21,10 @@ from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
                                QPushButton, QScrollArea, QSpinBox, QToolButton,
                                QVBoxLayout, QWidget)
 
-from . import SPACING
+from . import COLORS, SPACING
+from .icons import icon
 
-__all__ = ["primary_button", "secondary_button", "set_primary",
+__all__ = ["primary_button", "secondary_button", "tool_button", "set_primary",
            "quiet_button",
            "danger_button", "danger_text_button", "compact", "card",
            "heading", "caption", "muted_label", "combo_box", "select",
@@ -50,6 +51,18 @@ def secondary_button(text: str, parent: QWidget | None = None) -> QPushButton:
     """Everything else. Outlined, from qdarktheme's plain QPushButton rule."""
     button = QPushButton(text, parent)
     button.setObjectName("secondary")
+    return button
+
+
+def tool_button(text: str, name: str | None, slot,
+                parent: QWidget | None = None) -> QPushButton:
+    """A secondary button of a tool row (Undo, Redo), its icon `name` if
+    any. It takes no focus: a click leaves the keys where they were."""
+    button = secondary_button(text, parent)
+    if name:
+        button.setIcon(icon(name, COLORS["text-2"], 16))
+    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    button.clicked.connect(slot)
     return button
 
 
