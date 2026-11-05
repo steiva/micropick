@@ -455,6 +455,9 @@ class TipCalibrationBlock(QObject):
         for panel in (self.jog, self.touch_jog):
             panel.pose_changed.connect(self._on_pose)
         self.touch_jog.moved.connect(self._on_nudge)
+        # One screen, one fold, whichever pad is over the picture.
+        self.jog.pad.fold_changed.connect(self.touch_jog.pad.set_folded)
+        self.touch_jog.pad.fold_changed.connect(self.jog.pad.set_folded)
         session.camera_opened.connect(lambda _l: self.refresh())
         session.camera_closed.connect(lambda _l: self.refresh())
         session.robot_state_changed.connect(lambda _s: self.refresh())

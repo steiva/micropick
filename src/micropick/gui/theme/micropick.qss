@@ -383,17 +383,15 @@ QLabel#caption {
     font-weight: 600;
     letter-spacing: 0.09em;
 }
-/* The jog pad's title, its fold toggle: a caption that can be clicked. */
+/* Controls' title, its fold toggle. */
 QToolButton#padTitle {
-    color: @muted;
-    font-size: 11px;
+    color: @text;
+    font-size: 15px;
     font-weight: 600;
-    letter-spacing: 0.09em;
     border: none;
     background: transparent;
-    padding: 2px 0;
+    padding: 2px 4px;
 }
-QToolButton#padTitle:hover { color: @text; }
 QLabel#heading1 { font-size: 26px; font-weight: 600; }
 QLabel#heading2 { font-size: 20px; font-weight: 600; }
 QLabel#heading3 { font-size: 16px; font-weight: 600; }

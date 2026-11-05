@@ -268,13 +268,17 @@ and step the run was started from. Home's tiles are dimmed under "The
 robot is busy. Go back to <task> to stop or finish it." A new run names
 its holder in `RUNS` and gives its page a `run_activity`.
 
-Every jog panel's face is the `widgets.jog_pad.JogPad` (XY arrows, Z Up /
-Down, the step carousel of `jog.DEFAULT_STEPS`, the one list of step
-sizes): it floats over the picture's bottom-right
+Every jog panel's face is the `widgets.jog_pad.JogPad`, **Controls** on
+screen (#110; XY arrows, Z Up / Down, the step carousel of
+`jog.DEFAULT_STEPS`, the one list of step sizes): 340 px wide wherever it
+is, it floats over the picture's bottom-right
 (`CameraView.add_corner_widget`) while its panel is shown, folds to its
-title there - the title is the fold toggle, its arrow before it, apart
-from Undo step and Keys (`JogPad.set_folded`; folded from the start on
-Picking, the keys still bound), and only says what was pressed - the panel moves as before (lease, envelope,
+header there - the title is the fold toggle, its arrow before it, apart
+from Undo step and Keys, which stay (`JogPad.set_folded`, the keys still
+bound). The fold is the screen's for as long as the program runs: a page
+is built once and keeps its pad, so no state of its own and no other
+page's follows; Picking starts folded, the others open, and the Tip step's
+two pads share one (`fold_changed`). It only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
 While the pad is on screen, folded or not, its step is the status plate's
 last line, "STEP · 1 mm" in `step_ink` (#99, #109: accent-hover, warn and red
@@ -286,8 +290,9 @@ Undo step is on the pad. A jog panel has no Move or Positions section
 (removed, #27; do not bring them back): saved points are drawn on the
 picture's "points" layer (`show_position_on`), Robot setup's positions
 never (#61), each set on its own sheet. There is no keys box: the pad's Keys toggle (H) puts
-the keys as bound on its buttons and lists the step keys, the panel's
-other keys and the page's own (`add_help`) under it. A key added to a page
+the keys as bound on its buttons, under the icon, and lists the step keys,
+the panel's other keys and the page's own (`add_help`) under it, folded or
+not. A key added to a page
 belongs in that list too; what the mouse does goes in the picture's mouse
 row. A text or number field with the keyboard keeps the keys it uses
 (never taken from it: the robot would move while a digit is corrected);

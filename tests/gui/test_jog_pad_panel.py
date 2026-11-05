@@ -175,7 +175,7 @@ def test_the_title_is_the_fold_toggle_apart_from_the_actions(app):
     pad = JogPad()
     pad.show()
     app.processEvents()
-    assert pad.fold_button.text() == "MOVE THE ROBOT"
+    assert pad.fold_button.text() == "Controls"
     assert not pad.fold_button.icon().isNull()               # its arrow
     assert (pad.fold_button.geometry().right()
             < pad.undo_button.geometry().left()

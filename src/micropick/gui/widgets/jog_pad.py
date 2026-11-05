@@ -1,10 +1,10 @@
-"""The face of the jog panel (REDESIGN §3, JogPad).
+"""The face of the jog panel: **Controls** (MANUAL.md §2.3, #110).
 
-XY arrows and Z Up / Down, all one size, labeled "XY" and "Z"; over them
-the step size as a carousel - three sizes in view, ‹ › to slide - and a
-**Keys** toggle that puts each button's key on it as a keycap, so the
-shortcuts are learned from the buttons (§1.9). Beside Keys, **Undo step**:
-it undoes the last step, so it sits with the steps.
+XY arrows and Z Up / Down, labeled "XY" and "Z"; over them the step size as
+a carousel - three sizes in view, ‹ › to slide - and a **Keys** toggle that
+puts each button's key on it, under its icon, so the shortcuts are learned
+from the buttons (§1.9). Beside Keys, **Undo step**: it undoes the last
+step, so it sits with the steps.
 
 Only the face. It emits `jog(axis, sign)`, `undo()` and `step_changed(mm)`; what a
 step does - the robot's lease, the jog envelope, the travel height - stays
@@ -14,13 +14,17 @@ in Settings shows here; under them, with Keys on, the panel's other keys
 and the page's (`set_key_lines`), which used to be a box on the picture.
 
 The pad floats over the bottom right of a picture, on a dark translucent
-plate, as the prototype draws it (`JogPanel.show_position_on`). Its title
-is the fold toggle, with the arrow of every title that folds (`fold_arrow`)
-before it, apart from Undo step and Keys at the row's other end: an arrow
-at the end of the row read as a third button. It folds the pad into that
-corner, the title alone left over the picture (#50); the keys still move
-the robot - they are the panel's, not the face's. Picking folds it from the
-start.
+plate, as the prototype draws it (`JogPanel.show_position_on`), and is as
+wide wherever it is. Its title is the fold toggle, with the arrow of every
+title that folds (`fold_arrow`) before it, apart from Undo step and Keys at
+the row's other end: an arrow at the end of the row read as a third button.
+It folds the pad into that corner, the header alone left over the picture
+(#50); the keys still move the robot - they are the panel's, not the face's.
+Keys stays in that header, so its list shows folded too. The fold is the
+screen's: a page is built once and its pad stays with it, so it holds for
+as long as the program runs and no other page's follows (§10.20); the Tip
+step's two pads, on one picture, share theirs. Picking folds its own from
+the start.
 
 The pad's own containers are `plain` (transparent): qdarktheme fills a bare
 QWidget with the window's color, an opaque block on the translucent plate.
@@ -37,14 +41,15 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel,
-                               QPushButton, QToolButton, QVBoxLayout, QWidget)
+                               QPushButton, QSizePolicy, QToolButton,
+                               QVBoxLayout, QWidget)
 
 from ...workflows.jog import DEFAULT_STEPS
 from .. import keys as key_actions
-from ..theme import COLORS, SIZES, mono_font, overlay_box
+from ..theme import COLORS, mono_font, overlay_box
 from ..theme.factory import fold_arrow
 from ..theme.icons import icon
 
@@ -56,12 +61,43 @@ __all__ = ["STEPS", "JogPad", "KeycapButton", "StepCarousel", "StepChip",
 STEPS = tuple(DEFAULT_STEPS)
 VISIBLE = 3
 
+# The panel and its buttons, px (ManualPick.dc.html).
+PANEL_WIDTH = 340
+XY_BUTTON = (48, 44)
+Z_BUTTON = (64, 44)
+STEP_ARROW = (34, 36)
+HEADER_BUTTON_HEIGHT = 36
+
 _BUTTONS = (  # action id, grid cell or None for Z, icon or text
     ("y+", (0, 1), "chevron-up"),
     ("x-", (1, 0), "chevron-left"),
     ("x+", (1, 2), "chevron-right"),
     ("y-", (2, 1), "chevron-down"),
 )
+
+
+def _jog_style() -> str:
+    """A button of the panel's: the arrows, Up and Down, ‹ and ›."""
+    return (f"QPushButton {{ background: {COLORS['raised']};"
+            f" border: 1px solid {COLORS['control-border']};"
+            f" border-radius: 9px; color: {COLORS['text']};"
+            f" font-weight: 600; font-size: 14px; }}"
+            f"QPushButton:hover {{ background: #262B33; }}"
+            f"QPushButton:pressed {{ background: {COLORS['selected-bg']}; }}"
+            f"QPushButton:disabled {{ color: {COLORS['faint']}; }}")
+
+
+def _header_style() -> str:
+    """Undo step and Keys; Keys is filled while it is on."""
+    return (f"QPushButton {{ background: transparent;"
+            f" border: 1px solid {COLORS['control-border']};"
+            f" border-radius: 9px; color: {COLORS['text-2']};"
+            f" font-weight: 600; font-size: 13px; padding: 0 12px; }}"
+            f"QPushButton:hover {{ background: {COLORS['hover']};"
+            f" color: {COLORS['text']}; }}"
+            f"QPushButton:checked {{ background: {COLORS['text']};"
+            f" border-color: {COLORS['text']}; color: {COLORS['bg']}; }}"
+            f"QPushButton:disabled {{ color: {COLORS['faint']}; }}")
 
 
 def step_label(mm: float) -> str:
@@ -89,11 +125,12 @@ def step_ink(mm: float) -> str:
 class KeycapButton(QPushButton):
     """A button that can carry a keycap in its corner, its key as bound:
     the pad's, and a page's own robot buttons (Dish bottom's Up and Down,
-    #58)."""
+    #58). `under`: the key under the icon instead, as Controls has it."""
 
     def __init__(self, text: str = "", parent: QWidget | None = None):
         super().__init__(text, parent)
         self.keycap = ""
+        self.under = False
 
     def set_keycap(self, text: str) -> None:
         self.keycap = text
@@ -105,6 +142,14 @@ class KeycapButton(QPushButton):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.under:
+            painter.setFont(mono_font(10, 600))
+            painter.setPen(QColor(COLORS["accent-hover"]))
+            painter.drawText(self.rect().adjusted(0, 0, 0, -2),
+                             Qt.AlignmentFlag.AlignHCenter
+                             | Qt.AlignmentFlag.AlignBottom, self.keycap)
+            painter.end()
+            return
         font = mono_font(9, 500)
         painter.setFont(font)
         w = painter.fontMetrics().horizontalAdvance(self.keycap) + 8
@@ -124,28 +169,24 @@ class _JogButton(KeycapButton):
         super().__init__(parent=parent)
         self.action = action
         self.hint = ""                  # the tooltip while it is enabled
+        self.under = True
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAutoRepeat(False)
-        side = SIZES["jog-button"] + 4
-        self.setFixedSize(side if action[0] != "z" else side + 12, side)
-        self.setStyleSheet(
-            f"QPushButton {{ background: #22262D; border: none;"
-            f" border-radius: 8px; color: {COLORS['text']};"
-            f" font-weight: 600; font-size: 13px; }}"
-            f"QPushButton:hover {{ background: #2C313A; }}"
-            f"QPushButton:pressed {{ background: {COLORS['selected-bg']}; }}"
-            f"QPushButton:disabled {{ color: {COLORS['faint']}; }}")
+        self.setFixedSize(*(Z_BUTTON if action[0] == "z" else XY_BUTTON))
+        self.setStyleSheet(_jog_style())
 
 
 class StepCarousel(QWidget):
     """The step size: three sizes in view, ‹ › to slide. The pad's, and
-    the Dish bottom step's between its Up and Down."""
+    the Dish bottom step's between its Up and Down. `panel`: as Controls
+    draws it, filling its row, in mm."""
 
     step_changed = Signal(float)
 
-    def __init__(self, *, steps=STEPS, step: float = 1.0,
+    def __init__(self, *, steps=STEPS, step: float = 1.0, panel: bool = False,
                  parent: QWidget | None = None):
         super().__init__(parent)
+        self.panel = panel
         self.steps = tuple(sorted(steps))
         self.step = min(self.steps, key=lambda s: abs(s - step))
         self._first = 0
@@ -163,7 +204,13 @@ class StepCarousel(QWidget):
         for _ in range(VISIBLE):
             option = QPushButton(self)
             option.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            option.setFixedSize(64, 28)
+            if panel:
+                option.setFont(mono_font(14, 600))
+                option.setFixedHeight(STEP_ARROW[1])
+                option.setSizePolicy(QSizePolicy.Policy.Expanding,
+                                     QSizePolicy.Policy.Fixed)
+            else:
+                option.setFixedSize(64, 28)
             option.clicked.connect(lambda _=False, b=option:
                                    self.set_step(b.property("mm"), emit=True))
             carousel.addWidget(option)
@@ -171,6 +218,10 @@ class StepCarousel(QWidget):
         self.bigger = self._arrow("chevron-right", "Bigger step")
         self.bigger.clicked.connect(lambda: self.step_by(+1))
         carousel.addWidget(self.bigger)
+        if panel:
+            unit = QLabel("mm", self)
+            unit.setObjectName("faint")
+            carousel.addWidget(unit)
         self.set_step(self.step)
 
     def _arrow(self, name: str, tip: str) -> KeycapButton:
@@ -178,7 +229,11 @@ class StepCarousel(QWidget):
         button.setObjectName("quiet")
         button.setProperty("compact", True)
         button.setIcon(icon(name, COLORS["text-2"], 14, stroke=2.4))
-        button.setFixedWidth(34)
+        button.setFixedWidth(STEP_ARROW[0])
+        if self.panel:
+            button.under = True
+            button.setFixedHeight(STEP_ARROW[1])
+            button.setStyleSheet(_jog_style())
         button.setToolTip(tip)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         return button
@@ -215,9 +270,12 @@ class StepCarousel(QWidget):
             button.setToolTip(step_label(mm))
             bg = step_color(mm) if chosen else "transparent"
             ink = COLORS["on-accent"] if chosen else COLORS["text-2"]
+            radius = 9 if self.panel else 7
+            size = 14 if self.panel else 13
             button.setStyleSheet(
                 f"QPushButton {{ background: {bg}; color: {ink}; border: none;"
-                f" border-radius: 7px; font-weight: 600; font-size: 13px; }}"
+                f" border-radius: {radius}px; font-weight: 600;"
+                f" font-size: {size}px; }}"
                 f"QPushButton:hover {{ background: "
                 f"{bg if chosen else '#22262D'}; }}")
         self.smaller.setEnabled(self.step != self.steps[0])
@@ -228,23 +286,26 @@ class JogPad(QFrame):
     jog = Signal(str, int)          # axis "x" / "y" / "z", sign +1 / -1
     undo = Signal()                 # Undo step
     step_changed = Signal(float)
+    fold_changed = Signal(bool)
 
     def __init__(self, *, steps=STEPS, step: float = 1.0,
                  bindings: dict | None = None, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("jogPad")
-        self.setStyleSheet("QFrame#jogPad { background: rgba(10, 12, 14, 0.86);"
-                           " border-radius: 12px; }")
+        self.setStyleSheet("QFrame#jogPad { background: rgba(16, 18, 22, 0.92);"
+                           " border: 1px solid rgba(255, 255, 255, 0.08);"
+                           " border-radius: 14px; }")
+        self.setFixedWidth(PANEL_WIDTH)
         self._bindings = bindings or {}
 
         column = QVBoxLayout(self)
-        column.setContentsMargins(12, 12, 12, 12)
-        column.setSpacing(10)
+        column.setContentsMargins(12, 10, 12, 12)
+        column.setSpacing(12)
 
         head = QHBoxLayout()
         self.fold_button = QToolButton(self)
         self.fold_button.setObjectName("padTitle")
-        self.fold_button.setText("MOVE THE ROBOT")
+        self.fold_button.setText("Controls")
         self.fold_button.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.fold_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -253,22 +314,23 @@ class JogPad(QFrame):
         head.addWidget(self.fold_button)
         head.addStretch(1)
         self.undo_button = QPushButton("Undo step", self)
-        self.undo_button.setObjectName("secondary")
-        self.undo_button.setProperty("compact", True)
+        self.undo_button.setStyleSheet(_header_style())
+        self.undo_button.setFixedHeight(HEADER_BUTTON_HEIGHT)
         self.undo_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.undo_button.setToolTip("Undo the last jog step.")
         self.undo_button.clicked.connect(self.undo)
         head.addWidget(self.undo_button)
         self.keys = QPushButton("Keys", self)
-        self.keys.setObjectName("secondary")
-        self.keys.setProperty("compact", True)
+        self.keys.setStyleSheet(_header_style())
+        self.keys.setFixedHeight(HEADER_BUTTON_HEIGHT)
         self.keys.setCheckable(True)
         self.keys.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.keys.toggled.connect(self._show_keys)
         head.addWidget(self.keys)
         column.addLayout(head)
 
-        self.carousel = StepCarousel(steps=steps, step=step, parent=self)
+        self.carousel = StepCarousel(steps=steps, step=step, panel=True,
+                                     parent=self)
         self.carousel.step_changed.connect(self.step_changed)
         self.smaller = self.carousel.smaller
         self.bigger = self.carousel.bigger
@@ -278,8 +340,8 @@ class JogPad(QFrame):
         self.pads = QWidget(self)
         self.pads.setObjectName("plain")
         pads = QHBoxLayout(self.pads)
-        pads.setContentsMargins(0, 0, 0, 0)
-        pads.setSpacing(14)
+        pads.setContentsMargins(6, 0, 6, 0)
+        pads.setSpacing(0)
         grid = QGridLayout()
         grid.setSpacing(4)
         self.buttons: dict[str, _JogButton] = {}
@@ -295,6 +357,7 @@ class JogPad(QFrame):
         xy.setAlignment(Qt.AlignmentFlag.AlignCenter)
         grid.addWidget(xy, 1, 1)
         pads.addLayout(grid)
+        pads.addStretch(1)
         z = QVBoxLayout()
         z.setSpacing(4)
         for action, text in (("z+", "Up"), (None, "Z"), ("z-", "Down")):
@@ -302,7 +365,7 @@ class JogPad(QFrame):
                 label = QLabel(text, self)
                 label.setObjectName("faint")
                 label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                label.setFixedHeight(SIZES["jog-button"] + 4)
+                label.setFixedHeight(Z_BUTTON[1])
                 z.addWidget(label)
                 self._z_label = label
                 continue
@@ -318,11 +381,13 @@ class JogPad(QFrame):
         self.key_list = QLabel(self)
         self.key_list.setObjectName("faint")
         self.key_list.setTextFormat(Qt.TextFormat.RichText)
+        self.key_list.setWordWrap(True)
         self.key_list.hide()
         column.addWidget(self.key_list)
         # Whatever the toggle: the keys are a field's for now.
         self.note = QLabel(self)
         self.note.setObjectName("faint")
+        self.note.setWordWrap(True)
         self.note.hide()
         column.addWidget(self.note)
         self.key_lines: list[str] = []
@@ -330,24 +395,41 @@ class JogPad(QFrame):
         self.set_bindings(self._bindings)
         self._show_fold()
 
+    def sizeHint(self) -> QSize:
+        """As tall as the panel's width makes it: a key line wraps. The
+        picture's corner places the pad by this."""
+        layout = self.layout()
+        if layout.hasHeightForWidth():
+            return QSize(PANEL_WIDTH, layout.totalHeightForWidth(PANEL_WIDTH))
+        return QSize(PANEL_WIDTH, super().sizeHint().height())
+
     # -- folding ---------------------------------------------------------
 
     def set_folded(self, folded: bool) -> None:
-        """Fold the pad to its title row, or open it again."""
+        """Fold the pad to its header, or open it again."""
+        changed = bool(folded) != self.folded
         self.folded = bool(folded)
         self._show_fold()
+        if changed:
+            self.fold_changed.emit(self.folded)
 
     def _show_fold(self) -> None:
         open_ = not self.folded
-        for widget in (self.undo_button, self.keys, self.carousel,
-                       self.pads):
+        for widget in (self.carousel, self.pads):
             widget.setVisible(open_)
-        self.key_list.setVisible(open_ and self.keys.isChecked())
-        self.note.setVisible(open_ and bool(self.note.text()))
+        self._show_lines()
         fold_arrow(self.fold_button, open_)
-        self.fold_button.setToolTip("Fold the pad" if open_
-                                    else "Open the pad")
+        self.fold_button.setToolTip("Fold Controls" if open_
+                                    else "Open Controls")
         self.adjustSize()
+
+    def _show_lines(self) -> None:
+        """Under the panel: the key list while Keys is on, folded or not,
+        and the note with it; open, the note whatever Keys says."""
+        on = self.keys.isChecked()
+        self.key_list.setVisible(on)
+        self.note.setVisible(bool(self.note.text())
+                             and (on or not self.folded))
 
     # -- the step --------------------------------------------------------
 
@@ -380,7 +462,7 @@ class JogPad(QFrame):
     def set_note(self, text: str) -> None:
         """A line under the pad whatever Keys says, or none."""
         self.note.setText(text)
-        self.note.setVisible(bool(text) and not self.folded)
+        self._show_lines()
 
     def _write_keys(self) -> None:
         ink = COLORS["text-2"]
@@ -397,7 +479,7 @@ class JogPad(QFrame):
         for action, button in self.buttons.items():
             button.set_keycap(keycap(self._bindings, action) if on else "")
         self.carousel.show_keycaps(self._bindings if on else None)
-        self.key_list.setVisible(on and not self.folded)
+        self._show_lines()
 
     def set_xy_only(self, on: bool) -> None:
         for action in ("z+", "z-"):

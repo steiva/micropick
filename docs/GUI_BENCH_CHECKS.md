@@ -1271,16 +1271,25 @@ cameras.
 
 - [ ] **The pad is over the picture.**
   Manual control, Liquid handling, the camera calibration sheet's centering
-  step, the tip calibration: MOVE THE ROBOT at the picture's bottom-right,
-  XY arrows, Up / Down, Step ‹ 0.5 1 2 ›; on Picking too.
+  step, the tip calibration: Controls at the picture's bottom-right,
+  XY arrows, Up / Down, Step ‹ 0.5 1 2 › mm; on Picking too.
   Expected failure if wrong: two pads on one picture, or a pad left over
   another page.
 
 - [ ] **Its title folds it.**
-  ▾ MOVE THE ROBOT at the pad's top left, Undo step and Keys at the
-  right: a click on the title folds the pad to "▸ MOVE THE ROBOT" in the
-  corner, again opens it. Over a bright picture the plate is evenly
-  translucent, the area between the arrows and Up / Down too.
+  ▾ Controls at the pad's top left, Undo step and Keys at the right: a
+  click on the title folds the pad to its header in the corner, Undo step
+  and Keys still there, again opens it. Over a bright picture the plate is
+  evenly translucent, the area between the arrows and Up / Down too.
+
+- [ ] **The fold is the screen's.**
+  Fold Controls on Manual pick's Run, go Home and come back: still folded,
+  and Liquid's and the Tip step's are as they were. Picking starts folded,
+  the others open, each time the program starts.
+
+- [ ] **Keys folded.**
+  Keys on a folded Controls: the list shows under the header, the buttons
+  it names folded away. Keys off: it goes.
 
 - [ ] **A press moves one step.**
   At step 1 each arrow moves 1 mm, Up / Down 1 mm in Z; ‹ › and + / - walk
