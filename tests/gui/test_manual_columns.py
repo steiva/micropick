@@ -18,13 +18,15 @@ from micropick.config.labware import (LabwareDefinition,         # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages.manual import ManualPage                # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.theme import SPACING                          # noqa: E402
 from micropick.gui.widgets.card_columns import CardColumns       # noqa: E402
 
-# The picture takes four thirds of the height, the panel what is left:
-# 1920 x 860 is a full HD window, 762 px of panel in two columns of 377. It
-# is the size that moved: there the two columns' minimums fit the panel, so
-# the box layout gave each what it asked for. On 1560 x 680 they do not.
-SIZES = [((1920, 860), 377), ((1560, 680), 317)]
+# The picture takes four thirds of the height, the panel what is left, less
+# a scroll bar as wide as the platform draws it: 1920 x 860 is a full HD
+# window. It is the size that moved: there the two columns' minimums fit the
+# panel, so the box layout gave each what it asked for. On 1560 x 680 they
+# do not.
+SIZES = [(1920, 860), (1560, 680)]
 
 
 @pytest.fixture(scope="module")
@@ -123,12 +125,13 @@ def _actions(page, session):
     yield "the pad folded", lambda: page.jog.pad.set_folded(True)
 
 
-@pytest.mark.parametrize("size,column", SIZES)
-def test_no_action_changes_the_columns(app, page, session, size, column):
+@pytest.mark.parametrize("size", SIZES)
+def test_no_action_changes_the_columns(app, page, session, size):
     panel = _shown(app, page, size)
     assert panel.two_columns
     first = _where(panel)
-    assert {width for _x, width in first} == {column}
+    assert {width for _x, width in first} == {
+        (panel.width() - SPACING) // 2}
     assert len({x for x, _width in first}) == 2          # both columns used
     for name, action in _actions(page, session):
         action()
