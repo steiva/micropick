@@ -308,16 +308,17 @@ pickup clips switch); there is no Camera / Tip back to center (Picking
 keeps Camera to dish center). A double click moves nothing. A **right** click (`CameraView.right_clicked`) marks a
 **memo point** (`Session.memo_points`: tip XY and a Z or none, named with
 the lowest free number M1, M2 ..., in memory until the program closes,
-never in the profile), as does the Memo points card's Place memo at
-crosshair (the picture's center through the pixel map, as By hand's aim,
+never in the profile), as does Place memo at crosshair
+(the picture's center through the pixel map, as By hand's aim,
 no Z; gray without a pixel map, "Calibrate the camera first."). A point is
-one kind - a place on the deck, no purpose stored (#66). Two cards: **Memo
-points** (× deletes, `Session.delete_memo_point`; Save asks a name and
+one kind - a place on the deck, no purpose stored (#66). One card, **Points**
+(#96), which never folds, its two folding sections (`Section(flat=True)`)
+open from the start: **Memo** (× deletes, `Session.delete_memo_point`; Save asks a name and
 moves it into the profile as a **saved point**, `Session.save_memo_point`,
 #62, refused for a name in use or a setup position's,
 `Session.point_name_refusal`; never gray: a point at the travel height
 is stored at that height then, `Motion.travel_z` or else the jog
-envelope's top), and under it **Saved points** (`Session.saved_points`:
+envelope's top), and under it **Saved** (`Session.saved_points`:
 the profile's positions less `tasks.SETUP_POSITIONS`, which are never
 listed or drawn as points, #61; marked Saved, a Z always; the name
 renamed by double click, `rename_saved_point`; × asking "Delete point
@@ -326,15 +327,22 @@ renamed by double click, `rename_saved_point`; × asking "Delete point
 the point less the tip offset, its Z unused), **Tip to** (`Motion.tip_to`
 to its Z, no higher than the travel height; gray while no tip is on, "Put
 a tip on first.") and Z from tip, each checked against the jog envelope,
-through `JogPanel.run_job`. There is no Go to, no Click to move and no
+through `JogPanel.run_job`. **Undo** and **Redo** on the card's title row
+(`theme.factory.tool_button`, as Liquid Plan's; no Ctrl+Z) go over the last 3
+moves (`Session.undo_points`, `gui.point_history`: in memory, ended by loading
+a profile). A move is any change of a point, wherever it was made, so Liquid's
+right click is one too: added, deleted, X, Y or Z changed (Z from tip
+included), renamed, Saved; every change goes through `Session._points_moved`. A
+move keeps every point as it was, and a saved point brought back is written to
+the profile again, in its place. There is no Go to, no Click to move and no
 Mark points; a double click only edits or renames, never moves. A point below
 a deck module's top is flagged (`Session.memo_problem`, the jog
 envelope's floors, `Motion.envelope`: the profile's modules over the deck
 definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Both kinds drawn in cyan
 on the "points" layer (`position_marks.memo_items`), a saved point with a
-filled disc; on Work only while a points card is open or "At a point" is
+filled disc; on Work only while a section of Points is open or "At a point" is
 chosen in an open Aspirate or Dispense card (`PositionMarks.show_memo`;
-a right click opens Memo points when nothing shows them), and both kinds
+a right click only adds a point: it opens nothing), and both kinds
 listed under "At a point"
 (`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
 settings as one line with Change (height above a well's bottom, or By
@@ -402,7 +410,8 @@ has one, else claims the lease for a worker of its own.
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
 
-A section that folds (`theme.factory.Section`, Manual pick's Sizes)
+A section that folds (`theme.factory.Section`, Manual pick's Sizes;
+`flat` inside a card, Points' Memo and Saved)
 has an arrow as tall as a capital letter (`fold_arrow`), and
 folding lays its scroll column out at once (`_ScrollColumn.fit_now`), so
 the cards around it do not flicker.

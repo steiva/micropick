@@ -1636,16 +1636,29 @@ tip box and a 384 plate at hand.
   the robot: a click says "Robot busy." and nothing moves.
 
 - [ ] **Points.**
-  A right click marks M1 where the tip would go down, opens Points and
-  draws it in cyan (red with "!" when below a platform's top). Fold Points:
-  the point leaves the picture; open it: back. × on a row deletes that
+  One card, Points, that does not fold, with Memo and Saved open under its
+  title and Camera to, Tip to and Z from tip under both. A right click
+  marks M1 where the tip would go down and draws it in cyan (red with "!"
+  when below a platform's top). Fold Memo and Saved: the point leaves the
+  picture; a right click adds M2, a green toast, and opens nothing, and
+  the cards do not move; open one: both back. × on a row deletes that
   point from the list and the picture; the next right click takes its
   number. Nothing moves when marking.
+
+- [ ] **Undo and Redo of the points (#96).**
+  Undo and Redo are on Points' title row, gray with nothing to undo or
+  redo. Do each, and Undo and Redo it: add a point, × on it, type its Z,
+  Z from tip, Save it, rename a saved point, × on a saved point (Delete).
+  Each comes back in the list and on the picture, for both kinds. Make
+  four moves: Undo goes back three, then is gray. A new move after an Undo
+  grays Redo. × on a saved point, Undo, close the program and start it
+  again: it is listed, with its Z. Ctrl+Z does nothing here. Memo point
+  made on Liquid's Plan: Undo on Manual pick takes it off.
 
 - [ ] **Saved points (#61, #62).**
   With the three Robot setup positions set: none of them is in the points
   lists, and none is drawn on the picture (no "observe"). Save M1, name it
-  "trough": the row leaves Memo points for Saved points, reading trough
+  "trough": the row leaves Memo for Saved, reading trough
   with "Saved", a cyan ring with a filled disc on the picture. Save another as "trough" or
   "shake": refused in a red toast, the memo point stays.
   Double-click trough's name, type "bench", Enter: renamed. × on bench
@@ -1654,8 +1667,8 @@ tip box and a 384 plate at hand.
 
 - [ ] **Camera to, Tip to, Place memo at crosshair (#66).**
   Place memo at crosshair: a memo point under the crosshair, z "travel
-  height"; Save it: its Z in Saved points is the travel height then.
-  Choose a point in Memo points, then one in Saved points: the first is
+  height"; Save it: its Z in Saved is the travel height then.
+  Choose a point in Memo, then one in Saved: the first is
   no longer chosen. Camera to: the point comes under the crosshair, the
   tip stays at the travel height. Without a tip Tip to is gray ("Put a
   tip on first."); with one, Tip to takes the tip down to the point's Z.
