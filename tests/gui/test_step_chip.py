@@ -156,24 +156,30 @@ def test_the_chip_goes_with_the_pad(app, shown):
     assert view.step_chip == ("Step 1 mm", COLORS["accent"])
 
 
-def test_the_page_with_two_pads_shows_the_one_on_screen(app, session):
-    page = PipetteCalibration(session)
-    page.show()
+def test_two_pads_on_one_view_take_turns(app, session):
+    """The Tip step's jog and touch-up panels, in the order it swaps them:
+    the page itself sets who is shown on every refresh."""
+    host = QWidget()
+    view = CameraView(host)
+    jog = JogPanel(session, shortcut_host=host, parent=host)
+    touch = JogPanel(session, shortcut_host=host, parent=host)
+    jog.show_position_on(view)
+    touch.show_position_on(view)
+    touch.hide()
+    host.show()
     app.processEvents()
-    block = page.calibration
-    assert page.view.step_chip == ("Step 1 mm", COLORS["accent"])
-    block.tune_box.show()
-    block.touch_jog.setVisible(True)
-    block.jog.setVisible(False)
-    block.touch_jog.set_step(0.05)
+    assert view.step_chip == ("Step 1 mm", COLORS["accent"])
+    touch.setVisible(True)
+    jog.setVisible(False)
+    touch.set_step(0.05)
     app.processEvents()
-    assert page.view.step_chip == ("Step 0.05 mm", COLORS["accent"])
-    block.jog.setVisible(True)
-    block.touch_jog.setVisible(False)
+    assert view.step_chip == ("Step 0.05 mm", COLORS["accent"])
+    touch.setVisible(False)
+    jog.setVisible(True)
     app.processEvents()
-    assert page.view.step_chip == ("Step 1 mm", COLORS["accent"])
-    page.hide()
-    page.deleteLater()
+    assert view.step_chip == ("Step 1 mm", COLORS["accent"])
+    host.hide()
+    host.deleteLater()
 
 
 def _make(page_type, session):
