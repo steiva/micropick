@@ -14,6 +14,14 @@ pixel - "move the camera there" - is simply the deck point itself
 (`camera_target`). The tip is a separate calibration, the pipette offset
 from the reference point to the tip, added on top (`tip_target`) - the
 calibration check's `pixel_to_robot`.
+
+How far down a target may go
+----------------------------
+A height typed for a target (`under_the_bottom`) is checked against the
+bottom of its slot, apart from the jog envelope: a jog step, and Dish
+bottom's lowering, have to be able to go down to a touch. Under a bottom,
+not on it, since pressing lightly on it stays possible: by less under a
+measured one, which is known better than a drawing's.
 """
 
 from __future__ import annotations
@@ -22,7 +30,13 @@ import numpy as np
 
 from ..hardware.protocols import Robot, require_ok
 
-__all__ = ["camera_target", "tip_target", "aspirate", "dispense"]
+__all__ = ["camera_target", "tip_target", "aspirate", "dispense",
+           "under_the_bottom", "UNDER_MEASURED_BOTTOM_MM",
+           "UNDER_DRAWN_BOTTOM_MM"]
+
+# How far under a slot's bottom a target may go.
+UNDER_MEASURED_BOTTOM_MM = 1.0
+UNDER_DRAWN_BOTTOM_MM = 2.0
 
 
 def camera_target(pmap, u: float, v: float, gantry) -> np.ndarray:
@@ -34,6 +48,17 @@ def camera_target(pmap, u: float, v: float, gantry) -> np.ndarray:
 def tip_target(pmap, u: float, v: float, gantry, offset) -> np.ndarray:
     """The XY the tip has to be at to stand over pixel (u, v)."""
     return camera_target(pmap, u, v, gantry) + np.array([offset.dx, offset.dy])
+
+
+def under_the_bottom(z: float, bottom: float, slot, *,
+                     measured: bool) -> str:
+    """Why a target at `z` is too far under the `bottom` of `slot`, or "":
+    the words of a sentence, as `motion.refusal`, for the caller to finish."""
+    limit = UNDER_MEASURED_BOTTOM_MM if measured else UNDER_DRAWN_BOTTOM_MM
+    if round(bottom - z, 6) <= limit:
+        return ""
+    which = "measured" if measured else "drawing's"
+    return f"Z {round(z, 2):g} is below the {which} bottom in slot {slot}"
 
 
 def aspirate(robot: Robot, volume: float, flow_rate: float):
