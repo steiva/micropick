@@ -392,7 +392,10 @@ confirmed in this robot session (`Session.plate_bottom_confirmed`), else
 above the drawing's; x and y are the measured center either way. The
 settings line says which ("0.5 mm above the measured bottom"). Dispense opens
 by itself when the tip holds something: Part | All (#99: Part chosen at
-start, its volume `picking.vol`), In a well (a mini map
+start, its volume `picking.vol`), under it its settings as one line with
+Change, as Aspirate's (#97, `manual._settings_line`: its own speed, from
+`picking.flow_rate` at start, in the page's memory, the D key's too), In a
+well (a mini map
 of the plan's plate; a well's bottom, as Aspirate's, plus the deposit
 offset, from its well center) / At a point / Here, its button saying what it does ("Go
 to A7 and dispense", "Dispense here"), gray while the tip is empty. What

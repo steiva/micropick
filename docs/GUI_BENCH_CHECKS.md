@@ -1748,6 +1748,14 @@ tip box and a 384 plate at hand.
   button reads "Go to A7 and dispense"; the tip goes into that well at
   the deposit height, above the same bottom as Aspirate's. At a point: "Go to M1 and dispense".
 
+- [ ] **Dispense has its own speed (#97).**
+  Dispense open: under Part | All the line reads "50 µl/s" (the profile's
+  flow rate), and Change unfolds Speed. Set it to 10 and leave Aspirate's at
+  50: the line says 10 µl/s and Aspirate's still 50. Aspirate, then Dispense
+  here: the toasts say "at 50 µl/s" and "at 10 µl/s", and the liquid goes out
+  visibly slower. A and D do the same. Close the program and start it again:
+  Dispense is back on the profile's flow rate.
+
 - [ ] **Well center.**
   Work has no Well center card (#63: it is Manual pick's step before).
   A plate measured there: Aspirate and Dispense in a well go to the
