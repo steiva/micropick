@@ -2279,3 +2279,19 @@ platform height, or a Well center measured badly.
 - [ ] **Only here.**
   Picking, the Tip step's picture, a Robot setup sheet, Liquid's Plan: no
   line under X Y Z.
+
+## Manual pick: equal columns (#100)
+
+On a full HD window, the page in two columns.
+
+- [ ] **The line between the columns stands still.**
+  Manual pick's Run. Aspirate From In a well, At a point, By hand; fold and
+  open Memo and Saved; open Change until a scroll bar shows; Dispense In a
+  well until the button reads "Go to A7 and dispense". The two columns stay
+  the same width and no card goes to the other column. A plate's long name
+  is cut in its Select.
+
+- [ ] **Nothing cut on a full HD window.**
+  Every button's text is whole, Place memo at crosshair and Tip to
+  crosshair one under the other. Narrow the window: the columns stay equal,
+  then the cards go to one column.

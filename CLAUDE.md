@@ -92,6 +92,15 @@ letterboxed in it with black bars, so a switch of cameras resizes
 nothing; the panel gets the rest, within 1-2x its designed width. Pages carry no title;
 the TopBar's breadcrumb is the title.
 
+Manual pick's Run lays its cards out in `widgets.card_columns.CardColumns`
+(its only user): two columns from `2 * COLUMN_MIN + SPACING`, else one. The
+two are always the same width, half the panel each, and a card's width never
+follows what it shows: a column asks for no width of its own (a box layout's
+stretch yields to a minimum, so the widest row shown used to move the line
+between them), and long text wraps or is cut. A card stays in its column
+until the arrangement changes. A row of buttons in these cards has to fit a
+full HD window's column, or goes one under the other.
+
 ### The shell: Home, tasks as steps (REDESIGN §4)
 
 There are no tabs, no status bar, no floating next step and no Profile
@@ -318,7 +327,7 @@ keeps Camera to dish center). A double click moves nothing. A **right** click (`
 the lowest free number M1, M2 ..., in memory until the program closes,
 never in the profile), as does Place memo at crosshair
 (the picture's center through the pixel map, as By hand's aim,
-no Z; gray without a pixel map, "Calibrate the camera first."). Beside it
+no Z; gray without a pixel map, "Calibrate the camera first."). Under it
 **Tip to crosshair** (#99) sends the tip to that spot at the travel height
 (`Motion.tip_to`, through `JogPanel.run_job`) and leaves it there, no point
 needed; gray without a tip or a pixel map or while the robot is busy,
