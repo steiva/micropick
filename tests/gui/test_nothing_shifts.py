@@ -1,5 +1,6 @@
-"""A static GUI (#106): only what the operator folds or unfolds with a click
-moves others. A choice or a message moves nothing else on the page."""
+"""A steady GUI (#106): the picture and the cards' widths never move. Only
+what the operator clicks moves others, and only down the column it is in: a
+section, or a choice showing other controls. A message moves nothing."""
 
 import os
 import time
@@ -27,6 +28,7 @@ from micropick.gui.pages.picking import PickingPage              # noqa: E402
 from micropick.gui.pages.routine import RoutinePage              # noqa: E402
 from micropick.gui.pages.well_center import WellCenterPage       # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.widgets.fold_card import FoldCard             # noqa: E402
 from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
@@ -81,14 +83,55 @@ def manual(app, themed, session):
     page.deleteLater()
 
 
+def _frame(page):
+    """What a choice never moves: the picture, and every card's left edge and
+    width."""
+    return (page.view.geometry(),
+            {card: (card.x(), card.width())
+             for card in page.findChildren(FoldCard) if card.isVisible()})
+
+
+def _column_height(page):
+    return page.aspirate_card.parentWidget().height()
+
+
+def _stands_with_the_frame(manual, stands_still, control, index, card):
+    """The frame stays, and the card's own top: only what is under the choice
+    moves down its column."""
+    _opened(QApplication.instance(), manual)
+    before = _frame(manual)
+    top = card.y()
+    stands_still(manual.view, lambda: _choose(control, index))
+    assert _frame(manual) == before
+    assert card.y() == top
+
+
 @pytest.mark.parametrize("chosen", FROM)
-def test_manual_from_moves_nothing(manual, stands_still, chosen):
-    stands_still(manual, lambda: _choose(manual.source, FROM.index(chosen)))
+def test_manual_from_keeps_the_frame(manual, stands_still, chosen):
+    _stands_with_the_frame(manual, stands_still, manual.source,
+                           FROM.index(chosen), manual.aspirate_card)
 
 
 @pytest.mark.parametrize("chosen", WHERE)
-def test_manual_where_moves_nothing(manual, stands_still, chosen):
-    stands_still(manual, lambda: _choose(manual.target, WHERE.index(chosen)))
+def test_manual_where_keeps_the_frame(manual, stands_still, chosen):
+    _stands_with_the_frame(manual, stands_still, manual.target,
+                           WHERE.index(chosen), manual.dispense_card)
+
+
+@pytest.mark.parametrize("chosen", FROM)
+def test_manual_from_keeps_the_frame_with_the_settings_open(
+        manual, stands_still, chosen):
+    manual.change_button.click()
+    _stands_with_the_frame(manual, stands_still, manual.source,
+                           FROM.index(chosen), manual.aspirate_card)
+
+
+@pytest.mark.parametrize("chosen", HEIGHT)
+def test_manual_height_keeps_the_frame_with_the_settings_open(
+        manual, stands_still, chosen):
+    manual.change_button.click()
+    _stands_with_the_frame(manual, stands_still, manual.height_mode,
+                           HEIGHT.index(chosen), manual.aspirate_card)
 
 
 @pytest.mark.parametrize("chosen", AMOUNT)
@@ -96,19 +139,40 @@ def test_manual_part_or_all_moves_nothing(manual, stands_still, chosen):
     stands_still(manual, lambda: _choose(manual.amount, AMOUNT.index(chosen)))
 
 
-@pytest.mark.parametrize("chosen", HEIGHT)
-def test_manual_height_moves_nothing_with_the_settings_open(
-        manual, stands_still, chosen):
-    manual.change_button.click()
-    stands_still(manual,
-                 lambda: _choose(manual.height_mode, HEIGHT.index(chosen)))
+def test_manual_status_gaining_a_line_moves_nothing(manual, stands_still):
+    stands_still(manual, lambda: manual.state.setText("• One.\n• Two."))
+    stands_still(manual, lambda: manual.state.setText("• One."))
+    stands_still(manual, lambda: manual.state.setText(""))
 
 
-@pytest.mark.parametrize("chosen", FROM)
-def test_manual_from_moves_nothing_with_the_settings_open(
-        manual, stands_still, chosen):
-    manual.change_button.click()
-    stands_still(manual, lambda: _choose(manual.source, FROM.index(chosen)))
+def test_a_choice_is_laid_out_before_anything_is_painted(app, manual):
+    """Measured at once, or the column is painted once at the old height."""
+    _opened(app, manual)
+    column = manual.aspirate_card.parentWidget()
+    _choose(manual.source, FROM.index("At a point"))
+    tall = column.minimumHeight()
+    _choose(manual.source, FROM.index("Here"))
+    short = column.minimumHeight()
+    assert short < tall
+    _opened(app, manual)
+    assert column.minimumHeight() == short
+
+
+def test_a_card_is_as_tall_as_what_its_choice_shows(app, manual):
+    """No room kept for a choice not made: with Here on both the panel fits a
+    full HD window, the Dispense button in sight."""
+    _choose(manual.source, FROM.index("At a point"))
+    _choose(manual.target, WHERE.index("At a point"))
+    _opened(app, manual)
+    tall = manual.aspirate_card.height(), manual.dispense_card.height()
+    assert _column_height(manual) > manual.height()
+
+    _choose(manual.source, FROM.index("Here"))
+    _choose(manual.target, WHERE.index("Here"))
+    _opened(app, manual)
+    assert manual.aspirate_card.height() < tall[0] - 150
+    assert manual.dispense_card.height() < tall[1] - 150
+    assert _column_height(manual) <= manual.height()
 
 
 @pytest.mark.parametrize("make, name", [

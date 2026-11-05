@@ -2391,9 +2391,12 @@ On a full HD window, the page in two columns.
 
 
 - [ ] **Nothing shifts.**
-  Manual pick's Run: click through From and Where, Part and All, with Change
-  open and closed: no card or button moves, the column scrolls instead of
-  growing. Tip step: Take tip and Drop in trash, the Calibrate card stays. A
+  Manual pick's Run: click through From and Where, with Change open and closed:
+  the picture, the width of every card and the other column stay, the card
+  clicked keeps its top and is only as tall as what it shows, no flicker. Here in
+  both: no scrolling on a full HD window, Dispense's button in sight. Part and
+  All move nothing. Opening the page: nothing jumps as the camera opens. Liquid
+  in tip's From: only what is under it moves. Tip step: Take tip and Drop in trash, the Calibrate card stays. A
   liquid run: Pause and Continue, the plates keep their size. Home: the same
   with the robot switched off and on. Plan: A template and New plan, what is
   under the tiles stays. A refusal on Deck or Plan is a red toast at the bottom

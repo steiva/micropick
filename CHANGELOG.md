@@ -10,10 +10,12 @@ the third for fixes.
 
 ## Unreleased
 
-- Nothing shifts: a choice, a status line or a warning no longer moves what is
-  around it. Only what you fold or unfold with a click does. The Deck and Plan
-  steps say a refusal in a toast. Manual pick's Run now scrolls on a full HD
-  window, for the room At a point takes.
+- Nothing shifts: the camera picture and the width of the cards never move, and
+  a status line or a warning no longer moves what is around it. What you click
+  can move what is under it in its column: a section, or a choice showing other
+  controls. A card is as tall as what it shows: Aspirate and Dispense keep no
+  empty room for another choice, and Manual pick's Run scrolls on a full HD window
+  only with At a point. The Deck and Plan steps say a refusal in a toast.
 - Liquid: Lift out slowly is now Retract slowly, the same movement as Manual
   pick's: 2 mm at 0.5 mm/s in one move, not four small rises. Saved plans and
   older programs load and run with it.

@@ -103,15 +103,23 @@ full HD window's column, or goes one under the other.
 
 ### Nothing shifts
 
-Only what the operator folds or unfolds with a click moves others (#106): a
-Section, Change, Keys, a Save as template's name row. A choice, a status line
-or a warning moves nothing else on the page. A message is the toast. Anything
-else that comes and goes has its place kept: `theme.factory.reserve` for a line
-or a field, `choice_stack` for what a choice shows, one page at a time in the
-room of the tallest (From and Where on Manual pick's Run, the Tip step's rack
-or drop buttons, a liquid run's banners). So Manual pick's Run scrolls on a full
-HD window: that is the room At a point takes. A test says it with
-`stands_still` (`tests/gui/conftest.py`).
+The frame never moves (#106): the camera view (`FeedRow`), the width of a card
+and of a column (`CardColumns`). Only what the operator clicks moves others, and
+only down the column it is in: a Section, Change, Keys, a Save as template's name
+row, and a choice showing other controls, which is as tall as what it shows, no
+room kept for a choice not made (From and Where on Manual pick's Run, Change's
+height rows, Liquid in tip's From). Show and hide those inside
+`theme.factory.laid_out_at_once`, so nothing is painted at the old height. Manual
+pick's Run then scrolls on a full HD window only with At a point chosen.
+
+A status line or a warning moves nothing: a message is the toast, and what comes
+and goes by itself has its place kept, `theme.factory.reserve` for a line or a
+field, `reserve_lines` for a status of more than one line (Manual pick's), and
+`choice_stack` for what the robot or a run changes, one page at a time in the
+room of the tallest (the Tip step's rack or drop buttons, a liquid run's
+banners): a card must not leave from under the operator's hand. A test says it
+with `stands_still` (`tests/gui/conftest.py`), and for a choice that the frame
+and the card's own top stay (`tests/gui/test_nothing_shifts.py`).
 
 ### The shell: Home, tasks as steps (REDESIGN §4)
 

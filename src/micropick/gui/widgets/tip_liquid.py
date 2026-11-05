@@ -43,7 +43,8 @@ from ...workflows import well_center
 from ..labware_kinds import facts, kind
 from ..pages.dish_bottom import dish_center
 from ..session import Session
-from ..theme.factory import (caption, compact, double_spin_box, muted_label,
+from ..theme.factory import (caption, compact, double_spin_box,
+                             laid_out_at_once, muted_label,
                              primary_button, reserve, secondary_button)
 from .controls import Segmented
 from .jog_panel import JogPanel
@@ -170,7 +171,6 @@ class TipLiquidBox(QWidget):
         self.well_line = muted_label("Click a well.", self.well_box)
         wells.addWidget(self.well_line)
         self.well_box.setVisible(False)
-        reserve(self.well_box, self.plate_map, self.well_line)
         body.addWidget(self.well_box)
 
         self.holds = muted_label("", self)
@@ -260,7 +260,8 @@ class TipLiquidBox(QWidget):
     # -- the source ----------------------------------------------------------
 
     def _source_changed(self) -> None:
-        self.well_box.setVisible(self.source.current() == WELL)
+        with laid_out_at_once(self):
+            self.well_box.setVisible(self.source.current() == WELL)
         self.refresh()
 
     def _reload_plates(self) -> None:

@@ -82,7 +82,8 @@ def _places(root) -> dict:
 @pytest.fixture
 def stands_still(app):
     """`stands_still(root, act)`: fails naming what `act` moved under `root`
-    (#106). What appears or goes is not asked about, only what stayed."""
+    (#106). What appears or goes is not asked about, only what stayed. What
+    the operator chooses may move what is under it: see test_nothing_shifts."""
 
     def settle():
         # A scroll column measures itself on a timer of its own.

@@ -15,6 +15,8 @@ Nothing here knows about the session, the robot or a camera. These are widgets.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
@@ -30,7 +32,8 @@ __all__ = ["primary_button", "secondary_button", "tool_button", "set_primary",
            "danger_button", "danger_text_button", "compact", "card",
            "heading", "caption", "muted_label", "combo_box", "select",
            "spin_box", "double_spin_box", "scroll_column", "Section",
-           "fold_arrow", "reserve", "choice_stack"]
+           "fold_arrow", "reserve", "reserve_lines", "choice_stack",
+           "laid_out_at_once"]
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -119,10 +122,28 @@ def reserve(*widgets: QWidget) -> None:
         widget.setSizePolicy(policy)
 
 
+def reserve_lines(label: QLabel, lines: int) -> QWidget:
+    """`label` in a box as tall as that many of its lines: a status that
+    comes, goes or gains a line moves nothing under it. Add the box."""
+    box = QWidget(label.parentWidget())
+    box.setObjectName("plain")
+    layout = QVBoxLayout(box)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(label)
+    layout.addStretch(1)
+    label.ensurePolished()
+    text = label.text()
+    label.setText("\n".join("x" * lines))
+    box.setMinimumHeight(_text_height(label, 1000))
+    label.setText(text)
+    return box
+
+
 def choice_stack(*pages: QWidget, parent: QWidget | None = None
                  ) -> QStackedWidget:
-    """What a choice shows, one page at a time, in the room of the tallest:
-    choosing moves nothing under it. `setCurrentWidget` chooses."""
+    """What the robot or a run changes, one page at a time, in the room of
+    the tallest: nothing moves under the operator's hand. What the operator
+    chooses is shown as tall as it is. `setCurrentWidget` chooses."""
     stack = QStackedWidget(parent)
     stack.setObjectName("plain")
     # A page out of sight still answers for its height: a stack asks only
@@ -329,12 +350,22 @@ class _ScrollColumn(QScrollArea):
     def fit_now(self) -> None:
         """Measure and lay out at once, not a turn of the event loop later.
 
-        For a section folded or unfolded (`Section`): a change of what is
-        shown, not of any text, so measured now it is right. Deferred, the
+        For a section folded or unfolded (`Section`), or a choice showing
+        other controls: a change of what is shown, not of any text, so
+        measured now it is right. Deferred, the
         column was painted once with the cards squeezed into the old height
         and then again at the new one - the other cards flickered. The
         deferred pass still follows, and finds nothing to change.
+
+        A box layout keeps each child's height for a width until that child
+        says it changed, which a card nested deeper only does a turn of the
+        event loop later: every level is told now, or this measures the old
+        height.
         """
+        for widget in self._inner.findChildren(QWidget):
+            if widget.layout() is not None:
+                widget.layout().invalidate()
+                widget.updateGeometry()
         self._fit_height()
         inner = self._inner
         inner.resize(self._inner_width,
@@ -405,6 +436,25 @@ def _text_height(label: QLabel, width: int) -> int:
     _MEASURE.setContentsMargins(label.contentsMargins())
     _MEASURE.setText(label.text())
     return _MEASURE.heightForWidth(width)
+
+
+@contextmanager
+def laid_out_at_once(widget: QWidget):
+    """What is shown or hidden inside this changes the height of the scroll
+    column `widget` is in, laid out again before anything is painted: see
+    `_ScrollColumn.fit_now`."""
+    column = widget.parentWidget()
+    while column is not None and not isinstance(column, _ScrollColumn):
+        column = column.parentWidget()
+    if column is None:
+        yield
+        return
+    column.setUpdatesEnabled(False)
+    try:
+        yield
+        column.fit_now()
+    finally:
+        column.setUpdatesEnabled(True)
 
 
 def scroll_column(inner: QWidget, width: int) -> QScrollArea:
@@ -505,17 +555,8 @@ class Section(QFrame):
 
     def _toggled(self, shown: bool) -> None:
         fold_arrow(self.toggle, shown)
-        # The column it is in laid out again before anything is painted:
-        # see `_ScrollColumn.fit_now`.
-        column = self.parentWidget()
-        while column is not None and not isinstance(column, _ScrollColumn):
-            column = column.parentWidget()
-        if column is not None:
-            column.setUpdatesEnabled(False)
-        self.body.setVisible(shown)
-        if column is not None:
-            column.fit_now()
-            column.setUpdatesEnabled(True)
+        with laid_out_at_once(self):
+            self.body.setVisible(shown)
 
     def changeEvent(self, event) -> None:
         if event.type() in (QEvent.Type.PaletteChange,
