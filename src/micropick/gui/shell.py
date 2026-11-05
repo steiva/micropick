@@ -269,10 +269,12 @@ class MainWindow(QMainWindow):
         self.robot_setup_page.item_chosen.connect(
             lambda item: self.open_setup_item(item, from_setup=True))
         self.robot_setup_page.said.connect(self.say)
+        self.robot_setup_page.refused.connect(self.refuse)
         self.robot_setup_page.done.connect(self.open_home)
-        self.camera_sheet.said.connect(self.say)
-        self.platforms_sheet.said.connect(self.say)
-        self.position_sheet.said.connect(self.say)
+        for sheet in (self.camera_sheet, self.platforms_sheet,
+                      self.position_sheet):
+            sheet.said.connect(self.say)
+            sheet.refused.connect(self.refuse)
         self.step_bar.clicked.connect(
             lambda i: self.show_step(self._steps[i]))
         self.footer.back_clicked.connect(self._back)
@@ -397,8 +399,8 @@ class MainWindow(QMainWindow):
                 time.sleep(0.02)
         if lease.busy:
             _log.warning("not closing: %s still has the robot", lease.holder)
-            self.say(f"Not closed: the {lease.holder} is still stopping. "
-                     f"Close again once it has.")
+            self.refuse(f"Not closed: the {lease.holder} is still stopping. "
+                        f"Close again once it has.")
             event.ignore()
             return
         self.monitor.stop()
@@ -408,6 +410,10 @@ class MainWindow(QMainWindow):
     def say(self, text: str) -> None:
         """The answer to an action, as a toast."""
         self.toast.show_text(text)
+
+    def refuse(self, text: str) -> None:
+        """Why an action did nothing, as a red toast."""
+        self.toast.show_text(text, refusal=True)
 
     # -- where the window is --------------------------------------------------
 
@@ -771,7 +777,7 @@ class MainWindow(QMainWindow):
         """Lock or Unlock. The session refuses a lock while a run has the
         robot; the button then goes back to what the session says."""
         if not self.session.set_locked(on):
-            self.say(f"Robot busy: {self.session.robot_lease.holder}.")
+            self.refuse(f"Robot busy: {self.session.robot_lease.holder}.")
         self._show_lock(self.session.locked)
 
     def _show_lock(self, locked: bool) -> None:
@@ -824,7 +830,7 @@ class MainWindow(QMainWindow):
         if self.session.robot is None:
             return
         if self._robot_busy():
-            self.say("Robot busy.")
+            self.refuse("Robot busy.")
             return
         panels = [panel for panel in
                   self.current_page().findChildren(JogPanel)
@@ -834,7 +840,7 @@ class MainWindow(QMainWindow):
             return
         lease = self.session.robot_lease.claim("Park")
         if lease is None:
-            self.say(self.session.robot_lease.refusal)
+            self.refuse(self.session.robot_lease.refusal)
             return
         worker = Worker(motion.park, what="parking the robot", lease=lease)
         self._park_worker = worker
@@ -859,7 +865,7 @@ class MainWindow(QMainWindow):
         self.top.set_parking(False)
         self._show_park()
         _log.error("park: %s", reason)
-        self.say(f"Park failed: {reason}")
+        self.refuse(f"Park failed: {reason}")
 
     # -- stop -----------------------------------------------------------------
 

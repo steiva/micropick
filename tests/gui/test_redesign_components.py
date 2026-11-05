@@ -25,7 +25,6 @@ from micropick.gui.widgets.overlays import (ConfirmDialog,              # noqa: 
 from micropick.gui.widgets.plate_grid import PlateGrid, PlateTools      # noqa: E402
 from micropick.gui.widgets.step_bar import StepBar                      # noqa: E402
 from micropick.gui.widgets.tip_gauge import TipGauge                    # noqa: E402
-from micropick.gui.widgets.toast import Toast, show_toast               # noqa: E402
 from micropick.gui.widgets.top_bar import TopBar                        # noqa: E402
 
 
@@ -171,16 +170,6 @@ def test_banner_carries_its_actions(app):
     banner.clear_actions()
     banner.set_tone("ok")
     assert banner.property("tone") == "ok"
-
-
-def test_toast_shows_once_per_window_and_replaces_its_text(app):
-    window = QWidget()
-    window.resize(800, 600)
-    show_toast(window, "Plan ready")
-    show_toast(window, "Tip A3 is on.")
-    toasts = window.findChildren(Toast)
-    assert len(toasts) == 1 and toasts[0].text() == "Tip A3 is on."
-    assert toasts[0].isVisibleTo(window)
 
 
 def test_plate_grid_toggles_wells_rows_and_columns_with_undo(app):

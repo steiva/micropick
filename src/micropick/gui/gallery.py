@@ -163,6 +163,10 @@ class Gallery(QMainWindow):
         toast = secondary_button("Show a toast")
         toast.clicked.connect(lambda: show_toast(self, "Tip A3 is on."))
         layout.addWidget(toast)
+        refusal = secondary_button("Show a refusal")
+        refusal.clicked.connect(
+            lambda: show_toast(self, "Robot busy.", refusal=True))
+        layout.addWidget(refusal)
         return frame
 
     def _folds(self) -> QWidget:

@@ -69,6 +69,7 @@ class PlatformsSheet(SheetWindow):
     Discard asked on closing with changes (None while not asked)."""
 
     said = Signal(str)
+    refused = Signal(str)
 
     def __init__(self, session: Session, host: QWidget):
         # Done only closes; Save changes is the panel's one action.
@@ -314,7 +315,7 @@ class PlatformsSheet(SheetWindow):
                 self.session.set_deck_modules(modules)
         except Exception as exc:                     # noqa: BLE001
             log.error("platforms not saved: %s", exc)
-            self.said.emit(describe_error(exc))
+            self.refused.emit(describe_error(exc))
             return False
         saved = [f"slot {slot} · "
                  + (self._draft[slot].name if slot in self._draft

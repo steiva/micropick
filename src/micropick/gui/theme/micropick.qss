@@ -351,6 +351,12 @@ QLabel#toast {
     font-weight: 600;
 }
 
+QLabel#toast[tone="refusal"] {
+    background: @danger-bg;
+    color: @danger-text;
+    border: 1px solid @danger;
+}
+
 QFrame#sheet {
     background: @bg;
     border: 1px solid @control-border;

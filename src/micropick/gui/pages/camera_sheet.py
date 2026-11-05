@@ -62,6 +62,7 @@ class CameraSheet(SheetWindow):
     """`open_for(role)`, "upper" or "lower"; `said(text)` after Done."""
 
     said = Signal(str)
+    refused = Signal(str)
 
     def __init__(self, session: Session, host: QWidget):
         super().__init__(host, "")
@@ -353,7 +354,7 @@ class CameraSheet(SheetWindow):
                 self.session.save_camera_focus(self.role, focus)
         except Exception as exc:                     # noqa: BLE001
             log.error("camera not chosen: %s", exc)
-            self.said.emit(describe_error(exc))
+            self.refused.emit(describe_error(exc))
             return
         title = SETUP_TITLES[f"{self.role}_camera"]
         other = SETUP_TITLES[f"{OTHER_ROLE[self.role]}_camera"]

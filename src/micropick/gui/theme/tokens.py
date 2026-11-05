@@ -46,9 +46,10 @@ COLORS: dict[str, str] = {
     "warn": "#F5B841",            # waiting, needs a choice
     "warn-bg": "#2A2213",
     "warn-text": "#F5D48A",
-    "danger": "#D93A41",          # Stop run only
+    "danger": "#D93A41",          # Stop run, a refusal
     "danger-hover": "#E5484F",
     "danger-text": "#FF8A8F",     # destructive buttons' text
+    "danger-bg": "#2C1618",       # a refusal
     # Kinds of labware.
     "plate": "#A99BFA",
     "plate-bg": "#221E35",

@@ -137,6 +137,7 @@ class RobotSetupPage(QWidget):
 
     item_chosen = Signal(str)
     said = Signal(str)
+    refused = Signal(str)
     done = Signal()
 
     def __init__(self, session: Session, parent: QWidget | None = None):
@@ -246,7 +247,7 @@ class RobotSetupPage(QWidget):
             archive = self.session.reset_setup()
         except Exception as exc:                     # noqa: BLE001
             log.error("reset setup: %s", exc)
-            self.said.emit(describe_error(exc))
+            self.refused.emit(describe_error(exc))
             return
         log.info("setup reset; the profile before it is in %s", archive)
         self.refresh()

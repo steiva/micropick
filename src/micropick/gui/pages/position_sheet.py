@@ -211,6 +211,7 @@ class PositionSheet(SheetWindow):
     Save position. `step` is the index of the step open now in `steps`."""
 
     said = Signal(str)
+    refused = Signal(str)
 
     def __init__(self, session: Session, host: QWidget):
         # Done only closes, as × does; Save position is the one action.
@@ -580,7 +581,7 @@ class PositionSheet(SheetWindow):
         if not self.jog.run_job(lambda _log: xyz(robot), moves=False,
                                 what=f"reading the {self.name} pose",
                                 then=self._remember):
-            self.said.emit(self.session.robot_lease.refusal)
+            self.refused.emit(self.session.robot_lease.refusal)
 
     def _remember(self, pose) -> str:
         try:
@@ -590,8 +591,8 @@ class PositionSheet(SheetWindow):
             said = describe_error(exc)
             if self.saved_note is not None:
                 self.saved_note.setText(said)
-            self.said.emit(said)
-            return said
+            self.refused.emit(said)
+            return ""
         marked = (self.slots.marked
                   if self.slots is not None and not self._slot_guessed
                   else None)
