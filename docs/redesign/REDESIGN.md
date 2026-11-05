@@ -173,6 +173,7 @@ everywhere it appears. Prototype names are in parentheses.
     (icon and word).
   - **No permanent red STOP** (users found it alarming). Esc stays the
     window-wide stop. See §11 for an open question.
+  - Changed by `MANUAL.md` §2.
 - **StepBar.**
   - Numbered steps of the current task; a done step shows ✓ (`ok` on
     `ok-bg`); the current step is an accent dot on `selected-bg`.
@@ -216,6 +217,7 @@ everywhere it appears. Prototype names are in parentheses.
     step-size keys ([ ]).
   - It wraps the existing `JogPanel` logic (`run_job`, envelopes, the travel-Z
     rules in `CLAUDE.md`); only the face changes.
+  - Changed by `MANUAL.md` §2.
 - **CameraView chrome.**
   - It overlays only what is useful: the robot's current X/Y/Z (mono), found
     counts ("23 cuboids found"), and the contextual buttons for that screen.
@@ -223,6 +225,7 @@ everywhere it appears. Prototype names are in parentheses.
     text.
   - The mouse help is one quiet row: "Left click move · Right click mark a
     point · Wheel zoom".
+  - Changed by `MANUAL.md` §2.
 - **TipGauge.** A drawn tip with a fill level and "In the tip: 15 µl"
   (Manual). The diagram replaces "Aspirated 15 µl" messages.
 - **SheetWindow (window-in-window).**
@@ -546,64 +549,7 @@ only during step 2.
 
 ### 6.6 Manual pick: Work (Manual step 4) — existing `manual` page logic
 
-The user saw Manual as **a toolbox, not a script**: the user composes their own
-workflow from aspirate and dispense actions. The screen guides by opening the
-section needed next, but nothing is forced.
-
-**Left: camera.**
-- Top-left overlay: **TipGauge** ("In the tip 15 µl") and X/Y/Z.
-- Top-right: "A click moves the **[Camera | Tip]**" (segmented) and **Camera
-  back to center** / **Tip back to center** (the label follows the selection).
-- Bottom-left: the one-line mouse help.
-- Memo points M1… are drawn **only while "At a point" is selected** in
-  Aspirate or Dispense.
-- "Show past picks" draws earlier pick spots: the last one bright, older ones
-  faint.
-
-**Right, top to bottom:**
-1. **Analyze the dish** and **Show past picks** (toggle, filled while on).
-   This is the same place as on Picking.
-2. **Look at:** a MiniDeckDropdown labeled "Slot 8 · Petri dish". Choosing a
-   slot moves the **camera** there; nothing is aspirated.
-3. **Aspirate** (FoldCard):
-   - **Settings line**, folded: "0.5 mm above the bottom · 15 µl · 50 µl/s",
-     with **Change** to unfold the fields (height above the bottom, volume,
-     speed). The height is relative to the measured dish bottom.
-   - **From:** segmented control.
-     - **In a well:** plate and well Selects.
-     - **At a point:** the list of points, each with × to delete, and "Right-
-       click the picture to add a point." Points must be deletable; today they
-       cannot be.
-     - **By hand:**
-       - Switch "Snap to found cuboids": a click snaps to the nearest detected
-         cuboid. Off: the click point itself is used, which is how plain
-         liquid is taken.
-       - Switch "Aspirate as soon as I click".
-       - Hint "Click the spot to aspirate from on the picture." Once a spot is
-         chosen: "Cuboid selected. Press Aspirate."
-   - **Aspirate** (primary). Enabled only when a source is chosen. No
-     "Aspirated 15 µl" toast; the TipGauge is the response.
-4. **Dispense** (FoldCard, under Aspirate; it opens by itself when the tip
-   holds something):
-   - **How much:** All | Part, with a µl field for Part.
-   - **Where:**
-     - **In a well:** plate and well Selects plus a **mini map of the plan's
-       plate** (Filled / Planned, still empty), so missing wells after Auto
-       are visible. A click on a well selects it.
-     - **At a point:** the points list.
-     - **Here:** where the tip is now.
-   - Button: "Go to A7 and dispense" or "Dispense here". Enabled only when the
-     tip holds something.
-
-**Removed:**
-- step numbers "1 / 2" on the cards;
-- "Take a cuboid" / "Take it" / "Where it goes";
-- the moved-cuboids counter;
-- Finish;
-- the camera-name chips;
-- the "Targets / crosshair Z" card (moved to Tip);
-- the Click-to-move checkbox (left click moves, right click marks a point);
-- "Nothing to release yet" text (the button is grey instead).
+Replaced by `MANUAL.md`.
 
 ### 6.7 Well center (Liquid step 3) — from Liquid's / Manual's "well center"
 

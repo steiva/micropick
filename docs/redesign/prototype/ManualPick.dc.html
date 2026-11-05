@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Manual pick</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:1920px;height:1080px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font:500 15px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 16px 'Inter',sans-serif;text-decoration:none}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;color:#B3B9C2;font-size:16px;font-weight:500}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box;flex:none}
+.line{width:28px;height:1px;background:#2E333B}
+.seg{display:flex;padding:3px;border-radius:12px;background:#111317;border:1px solid #23272E;gap:3px}
+.seg button{flex:1;height:38px;padding:0 10px;border:none;border-radius:9px;font:600 14px 'Inter',sans-serif;cursor:pointer}
+.seg.small button{height:32px;font-size:13px;padding:0 8px}
+.chipbtn{height:36px;padding:0 12px;border-radius:9px;font:600 13px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-sizing:border-box}
+.over{height:36px;padding:0 12px;border-radius:9px;background:rgba(12,14,17,.84);border:1px solid rgba(255,255,255,.08);color:#E8EAED;font:600 13px 'Inter',sans-serif;display:inline-flex;align-items:center;gap:8px;box-sizing:border-box}
+button.over{cursor:pointer}
+button.over:hover{background:rgba(30,34,40,.95)}
+.card{display:flex;flex-direction:column;border-radius:14px;background:#171A1F;border:1px solid #23272E;overflow:hidden;flex:none}
+.chead{display:flex;align-items:center;gap:12px;padding:12px 12px 12px 14px;min-height:64px;box-sizing:border-box}
+.fold{display:flex;align-items:center;gap:12px;flex:1;min-width:0;border:none;background:transparent;color:#E8EAED;font-family:inherit;text-align:left;cursor:pointer;padding:0}
+.ctitle{font-size:17px;font-weight:600}
+.fld{height:38px;box-sizing:border-box;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 10px;font:500 14px 'JetBrains Mono',monospace;text-align:right;width:84px}
+.lab{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#8A919B}
+.sel{position:relative;display:inline-block}
+.sel select{height:38px;border-radius:9px;border:1px solid #2E333B;background:#0F1114;color:#E8EAED;padding:0 32px 0 10px;font:500 14px 'Inter',sans-serif;appearance:none;-webkit-appearance:none}
+.sel svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none}
+.sw{display:flex;align-items:center;gap:12px;padding:6px 0;border:none;background:transparent;color:#E8EAED;font:500 14px 'Inter',sans-serif;cursor:pointer;text-align:left;width:100%}
+.knob{width:34px;height:20px;border-radius:999px;position:relative;flex:none}
+.knob span{position:absolute;top:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.jog{width:48px;height:44px;border-radius:9px;border:1px solid #2E333B;background:#1B1E24;color:#E8EAED;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font:600 14px 'Inter',sans-serif;padding:0}
+.jog:hover{background:#262B33}
+.kc{font:600 10px 'JetBrains Mono',monospace;color:#8DB8FF;line-height:1}
+.mbtn{height:36px;padding:0 12px;border-radius:9px;border:1px solid #2E333B;background:transparent;color:#C9CED6;font:600 13px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.mbtn:hover{background:#1E2228;color:#E8EAED}
+.w{border-radius:50%;aspect-ratio:1;justify-self:center;align-self:center;box-sizing:border-box;padding:0;cursor:pointer}
+.key{margin-left:2px;padding:1px 6px;border-radius:5px;border:1px solid currentColor;opacity:.65;font:600 11px 'JetBrains Mono',monospace;line-height:16px}
+.lift{display:flex;flex-direction:column;gap:10px;padding-top:10px;border-top:1px solid #22262C}
+.liftrow{display:flex;align-items:center;gap:10px;width:100%;min-height:32px;padding:0;border:none;background:transparent;color:#B3B9C2;font:500 14px 'Inter',sans-serif;cursor:pointer;text-align:left}
+.liftrow:hover{color:#E8EAED}
+.toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:9}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Manual pick</span>
+    <div style="flex:1"></div>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path><path d="M5 21h14"></path></svg>Retract</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Tip</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Source</span><span class="line"></span>
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Well center</span><span class="line"></span>
+    <span class="st" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">5</span>Run</span>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0; gap:16px; padding:16px 20px; box-sizing:border-box">
+
+    <!-- CAMERA: everything about seeing and moving sits on the picture -->
+    <section onClick="{{clickPicture}}" style="position:relative; flex:1; min-width:0; border-radius:14px; overflow:hidden; background:#050607; border:1px solid #22262C; cursor:crosshair">
+      <svg viewBox="0 0 800 620" preserveAspectRatio="xMidYMid slice" style="position:absolute; inset:0; width:100%; height:100%" role="img" aria-label="Camera picture of the dish">
+        <rect width="800" height="620" fill="#0b0c0e"></rect>
+        <circle cx="380" cy="320" r="360" fill="#14161a" stroke="#30343a" stroke-width="5"></circle>
+        <rect x="220" y="160" width="330" height="330" rx="8" fill="#101214"></rect>
+        <sc-for list="{{cuboids}}" as="c" hint-placeholder-count="6">
+          <g transform="translate({{c.x}} {{c.y}}) rotate({{c.r}})">
+            <rect x="-9" y="-9" width="18" height="18" rx="2" fill="#d6ccb6" opacity=".85"></rect>
+            <rect x="-15" y="-15" width="30" height="30" rx="4" fill="none" stroke="#3DD68C" stroke-width="2" opacity="{{c.o}}"></rect>
+          </g>
+        </sc-for>
+        <g fill="none" stroke-width="2" opacity="{{pastOpacity}}"><circle cx="300" cy="230" r="18" stroke="#A99BFA" stroke-opacity=".5"></circle><circle cx="450" cy="410" r="18" stroke="#A99BFA" stroke-opacity=".5"></circle></g>
+        <g opacity="{{pointsOpacity}}" fill="#4FC9E0" font-family="Inter, sans-serif" font-size="13" font-weight="700">
+          <circle cx="330" cy="180" r="6"></circle><text x="341" y="176">test</text>
+          <circle cx="410" cy="360" r="6"></circle><text x="421" y="356">M1</text>
+        </g>
+        <g opacity="{{crossOpacity}}" stroke="#ffffff" stroke-opacity=".6" stroke-width="1.5"><line x1="380" y1="300" x2="380" y2="340"></line><line x1="360" y1="320" x2="400" y2="320"></line></g>
+      </svg>
+
+      <!-- top left: tip and position -->
+      <div style="position:absolute; left:14px; top:14px; display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:12px; background:rgba(12,14,17,.84); border:1px solid rgba(255,255,255,.08)">
+        <svg width="20" height="46" viewBox="0 0 22 52" role="img" aria-label="Tip, {{tip}} µl inside">
+          <path d="M3 2h16l-5 46h-6z" fill="none" stroke="#C9CED6" stroke-width="2" stroke-linejoin="round"></path>
+          <path d="M6 30h10l-2 18h-6z" fill="#6CA6FF" opacity="{{tipFill}}"></path>
+        </svg>
+        <div style="display:flex; flex-direction:column; gap:3px">
+          <span class="cap">In the tip</span>
+          <span class="mono" style="font-size:18px; font-weight:600">{{tip}} µl</span>
+        </div>
+        <span style="width:1px; height:34px; background:#2E333B"></span>
+        <span class="mono" style="font-size:13px; color:#C9CED6; line-height:1.6">X 288.78<br>Y 162.22<br>Z 118.60</span>
+        <span style="width:1px; height:34px; background:#2E333B"></span>
+        <div style="display:flex; flex-direction:column; gap:3px">
+          <span class="cap">Step</span>
+          <span class="mono" style="font-size:18px; font-weight:600; color:#8DB8FF">{{stepNow}} mm</span>
+        </div>
+      </div>
+
+      <!-- top right: where the camera looks, and what is drawn -->
+      <div style="position:absolute; right:14px; top:14px; display:flex; flex-direction:column; align-items:flex-end; gap:8px">
+        <div style="display:flex; gap:8px; position:relative">
+          <button class="over" type="button" onClick="{{toggleDeck}}" aria-expanded="{{deckOpen}}"><span style="color:#8A919B; font-weight:500">Look at</span><span style="color:#8DB8FF">Slot {{lookSlot}}</span>{{lookName}}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <button class="over" type="button" onClick="{{analyze}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>Detect cuboids</button>
+          <sc-if value="{{deckOpen}}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute; top:44px; right:0; z-index:6; width:320px; padding:12px; border-radius:14px; background:#1B1E24; border:1px solid #2E333B; box-shadow:0 16px 40px rgba(0,0,0,.5); display:flex; flex-direction:column; gap:8px">
+              <span class="cap">Move the camera to</span>
+              <div style="display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:6px">
+                <sc-for list="{{miniDeck}}" as="m" hint-placeholder-count="12">
+                  <button type="button" onClick="{{m.pick}}" style="height:52px; border-radius:8px; border:{{m.bd}}; background:{{m.bg}}; color:{{m.fg}}; font:600 11px 'Inter',sans-serif; cursor:pointer; display:flex; flex-direction:column; align-items:flex-start; justify-content:space-between; padding:6px 8px; text-align:left"><span style="letter-spacing:.08em; color:#8A919B">{{m.n}}</span><span>{{m.name}}</span></button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="display:flex; gap:6px">
+          <sc-for list="{{layers}}" as="l" hint-placeholder-count="3">
+            <button class="over" type="button" onClick="{{l.toggle}}" aria-pressed="{{l.on}}" style="height:32px; font-size:12px; background:{{l.bg}}; color:{{l.fg}}">{{l.label}}</button>
+          </sc-for>
+          <button class="over" type="button" aria-label="Save a picture" style="height:32px; width:32px; padding:0; justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg></button>
+        </div>
+        <sc-if value="{{analyzed}}" hint-placeholder-val="{{ true }}">
+          <span class="over" style="height:32px; font-size:12px; color:#3DD68C">23 cuboids found · 9 in size</span>
+        </sc-if>
+      </div>
+
+      <!-- bottom left: mouse help, one quiet row -->
+      <span class="over" style="position:absolute; left:14px; bottom:14px; font-weight:500; color:#B3B9C2; gap:14px"><span><b style="color:#E8EAED">Left click</b> {{leftClickText}}</span><span><b style="color:#E8EAED">Right click</b> add a point</span><span><b style="color:#E8EAED">Wheel</b> zoom</span><span><b style="color:#E8EAED">Middle-drag</b> pan</span></span>
+
+      <!-- bottom right: Controls, folds down to its title -->
+      <div style="position:absolute; right:14px; bottom:14px; width:340px; box-sizing:border-box; display:flex; flex-direction:column; gap:12px; padding:10px 12px 12px; border-radius:14px; background:rgba(16,18,22,.92); border:1px solid rgba(255,255,255,.08); cursor:default">
+        <div style="display:flex; align-items:center; gap:8px">
+          <button type="button" onClick="{{toggleControls}}" aria-expanded="{{controlsOpen}}" style="flex:1; display:flex; align-items:center; gap:8px; height:36px; padding:0 4px; border:none; background:transparent; color:#E8EAED; font:600 15px 'Inter',sans-serif; cursor:pointer; text-align:left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{controlsDeg}}deg)"><path d="m6 9 6 6 6-6"></path></svg>Controls
+          </button>
+          <sc-if value="{{controlsOpen}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; gap:6px">
+              <button class="mbtn" type="button">Undo step</button>
+              <button class="mbtn" type="button" onClick="{{toggleKeys}}" aria-pressed="{{keys}}" style="background:{{keysBg}}; color:{{keysFg}}; border-color:{{keysBd}}">Keys</button>
+            </div>
+          </sc-if>
+        </div>
+        <sc-if value="{{controlsOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; flex-direction:column; gap:12px">
+            <div style="display:flex; align-items:center; gap:4px">
+              <span style="font-size:13px; color:#8A919B; width:44px">Step</span>
+              <button class="jog" type="button" onClick="{{stepDown}}" aria-label="Smaller step" style="width:34px; height:36px">‹<sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">[</span></sc-if></button>
+              <sc-for list="{{stepView}}" as="s" hint-placeholder-count="3">
+                <button type="button" onClick="{{s.pick}}" class="mono" style="flex:1; height:36px; border-radius:9px; border:none; background:{{s.bg}}; color:{{s.fg}}; font-size:14px; font-weight:600; cursor:pointer">{{s.v}}</button>
+              </sc-for>
+              <button class="jog" type="button" onClick="{{stepUp}}" aria-label="Larger step" style="width:34px; height:36px">›<sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">]</span></sc-if></button>
+              <span style="font-size:13px; color:#8A919B; padding-left:4px">mm</span>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:0 6px">
+              <div style="display:grid; grid-template-columns:repeat(3, 48px); grid-template-rows:repeat(3, 44px); gap:4px" role="group" aria-label="Move in X and Y">
+                <span></span>
+                <button class="jog" type="button" aria-label="Back (Y+)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg><sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">↑</span></sc-if></button>
+                <span></span>
+                <button class="jog" type="button" aria-label="Left (X−)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg><sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">←</span></sc-if></button>
+                <span style="display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#8A919B">XY</span>
+                <button class="jog" type="button" aria-label="Right (X+)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">→</span></sc-if></button>
+                <span></span>
+                <button class="jog" type="button" aria-label="Forward (Y−)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg><sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">↓</span></sc-if></button>
+                <span></span>
+              </div>
+              <div style="display:grid; grid-template-rows:repeat(3, 44px); gap:4px" role="group" aria-label="Move in Z">
+                <button class="jog" type="button" style="width:64px">Up<sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">PgUp</span></sc-if></button>
+                <span style="display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#8A919B">Z</span>
+                <button class="jog" type="button" style="width:64px">Down<sc-if value="{{keys}}" hint-placeholder-val="{{ false }}"><span class="kc">PgDn</span></sc-if></button>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </section>
+
+    <!-- RIGHT, column 1: the work. Take, then put. -->
+    <div style="width:400px; flex:none; display:flex; flex-direction:column; gap:12px; min-height:0; overflow-y:auto">
+
+      <!-- IN PLACE: the two quick actions where the tip is now, with their own amount and speed -->
+      <section class="card">
+        <div style="display:flex; flex-direction:column; gap:10px; padding:14px">
+          <div style="display:flex; align-items:flex-end; gap:10px">
+            <span class="ctitle" style="flex:1; align-self:center">In place</span>
+            <label class="lab">Amount, µl<input class="fld" type="text" value="10" style="width:72px"></label>
+            <label class="lab">Speed, µl/s<input class="fld" type="text" value="50" style="width:72px"></label>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px">
+            <button class="btn" type="button" onClick="{{hereAsp}}" style="padding:0 10px; font-size:14px; border-color:#2F4A47; color:#7FDCCF">Aspirate in place<span class="key">A</span></button>
+            <button class="btn" type="button" onClick="{{hereDisp}}" style="padding:0 10px; font-size:14px; border-color:#3A3360; color:#C9BFFF; opacity:{{hereDispOp}}">Dispense in place<span class="key">D</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ASPIRATE -->
+      <section class="card" style="border-color:{{takeBd}}">
+        <div class="chead">
+          <button class="fold" type="button" onClick="{{openTake}}" aria-expanded="{{takeOpen}}">
+            <span class="num" style="background:#4FC9B8; color:#0F1114">1</span>
+            <span style="flex:1; display:flex; flex-direction:column; gap:3px; min-width:0">
+              <span class="ctitle">Aspirate</span>
+              <span style="font-size:13px; color:#B3B9C2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{takeSummary}}</span>
+            </span>
+          </button>
+          <button class="btn" type="button" onClick="{{doTake}}" style="height:40px; padding:0 14px; background:{{takeBtnBg}}; border-color:{{takeBtnBd}}; color:{{takeBtnFg}}">Aspirate {{vol}} µl</button>
+        </div>
+        <sc-if value="{{takeOpen}}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; flex-direction:column; gap:12px; padding:2px 14px 14px">
+            <div class="seg small" role="group" aria-label="Aspirate from">
+              <sc-for list="{{takeSeg}}" as="o" hint-placeholder-count="4"><button type="button" onClick="{{o.pick}}" style="background:{{o.bg}}; color:{{o.fg}}">{{o.label}}</button></sc-for>
+            </div>
+
+            <sc-if value="{{takeHand}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:2px">
+                <span style="font-size:14px; color:#B3B9C2; padding-bottom:4px">Click the picture: the tip goes there.</span>
+                <sc-for list="{{takeSwitches}}" as="x" hint-placeholder-count="2">
+                  <button class="sw" type="button" onClick="{{x.toggle}}" aria-pressed="{{x.on}}">
+                    <span class="knob" style="background:{{x.knobBg}}"><span style="left:{{x.knobX}}px"></span></span>
+                    <span style="flex:1">{{x.label}}</span>
+                    <span style="font-size:13px; color:#8DB8FF">{{x.extra}}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{takePoint}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; gap:8px; flex-wrap:wrap">
+                <sc-for list="{{pointChips}}" as="p" hint-placeholder-count="4">
+                  <button class="chipbtn" type="button" onClick="{{p.pick}}" style="border:1px solid {{p.bd}}; background:{{p.bg}}; color:#E8EAED">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="{{p.starFill}}" stroke="#F5B841" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"></path></svg>{{p.name}}
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{takeWell}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:8px">
+                <button type="button" style="height:40px; display:flex; align-items:center; gap:10px; padding:0 12px; border-radius:10px; border:1px solid #2E333B; background:#0F1114; color:#E8EAED; font:600 14px 'Inter',sans-serif; cursor:pointer"><span style="color:#8DB8FF">Slot 6</span><span style="flex:1; text-align:left">6-well plate</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+                <div style="width:100%; max-width:320px; align-self:center; aspect-ratio:127.76 / 85.48; box-sizing:border-box; padding:5%; border-radius:12px; background:#111317; border:1px solid #2E333B; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); grid-template-rows:repeat(2, minmax(0, 1fr)); gap:5%">
+                  <sc-for list="{{srcWells}}" as="w" hint-placeholder-count="6"><button class="w" type="button" aria-label="{{w.id}}" onClick="{{w.pick}}" style="height:90%; width:auto; background:{{w.bg}}; border:{{w.bd}}"></button></sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+
+            <div style="display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap">
+              <label class="lab">Amount, µl<input class="fld" type="text" value="10" style="width:72px"></label>
+              <label class="lab">Speed, µl/s<input class="fld" type="text" value="50" style="width:72px"></label>
+              <sc-if value="{{showTakeZ}}" hint-placeholder-val="{{ true }}">
+                <label class="lab">Height Z, mm<span style="display:flex; gap:4px"><input class="fld" type="text" value="66.85" style="width:80px"><button class="mbtn" type="button" style="height:38px; padding:0 10px">From tip</button></span></label>
+              </sc-if>
+            </div>
+
+            <div class="lift">
+              <button class="liftrow" type="button" onClick="{{takeLift.toggle}}" aria-expanded="{{takeLift.open}}">
+                <span style="flex:1">After aspirating: <span style="color:#E8EAED; font-weight:600">{{takeLift.summary}}</span></span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{takeLift.deg}}deg)"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <sc-if value="{{takeLift.open}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <div style="display:flex; align-items:flex-end; gap:10px">
+                    <div class="lab" style="flex:1">Lift the tip
+                      <div class="seg small" role="group" aria-label="Lift the tip after aspirating">
+                        <sc-for list="{{takeLift.seg}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" style="background:{{o.bg}}; color:{{o.fg}}">{{o.label}}</button></sc-for>
+                      </div>
+                    </div>
+                    <sc-if value="{{takeLift.wait}}" hint-placeholder-val="{{ false }}">
+                      <label class="lab">Wait, s<input class="fld" type="text" value="5.0" style="width:64px"></label>
+                    </sc-if>
+                  </div>
+                  <button class="sw" type="button" onClick="{{takeLift.toggleSlow}}" aria-pressed="{{takeLift.slow}}">
+                    <span class="knob" style="background:{{takeLift.knobBg}}"><span style="left:{{takeLift.knobX}}px"></span></span>
+                    <span>Lift slowly</span>
+                  </button>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+
+      <!-- DISPENSE -->
+      <section class="card" style="border-color:{{putBd}}">
+        <div class="chead">
+          <button class="fold" type="button" onClick="{{openPut}}" aria-expanded="{{putOpen}}">
+            <span class="num" style="background:#A99BFA; color:#0F1114">2</span>
+            <span style="flex:1; display:flex; flex-direction:column; gap:3px; min-width:0">
+              <span class="ctitle">Dispense</span>
+              <span style="font-size:13px; color:{{putSummaryColor}}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{putSummary}}</span>
+            </span>
+          </button>
+          <button class="btn" type="button" onClick="{{doPut}}" style="height:40px; padding:0 14px; background:{{putBtnBg}}; border-color:{{putBtnBd}}; color:{{putBtnFg}}; opacity:{{putBtnOp}}">{{putBtnLabel}}</button>
+        </div>
+        <sc-if value="{{putOpen}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-direction:column; gap:12px; padding:2px 14px 14px">
+            <div class="seg small" role="group" aria-label="Dispense into">
+              <sc-for list="{{putSeg}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" style="background:{{o.bg}}; color:{{o.fg}}">{{o.label}}</button></sc-for>
+            </div>
+
+            <sc-if value="{{putWell}}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:8px">
+                <div style="display:flex; align-items:center; gap:10px">
+                  <button type="button" style="flex:1; height:40px; display:flex; align-items:center; gap:10px; padding:0 12px; border-radius:10px; border:1px solid #2E333B; background:#0F1114; color:#E8EAED; font:600 14px 'Inter',sans-serif; cursor:pointer"><span style="color:#8DB8FF">Slot 2</span><span style="flex:1; text-align:left">Corning 96</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+                  <span class="mono" style="font-size:15px; font-weight:600; color:#C9BFFF; min-width:40px; text-align:right">{{well}}</span>
+                </div>
+                <div style="width:100%; max-width:340px; align-self:center; aspect-ratio:127.76 / 85.48; box-sizing:border-box; padding:5%; border-radius:12px; background:#111317; border:1px solid #2E333B; display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); grid-template-rows:repeat(8, minmax(0, 1fr)); gap:1.4%">
+                  <sc-for list="{{dstWells}}" as="w" hint-placeholder-count="96"><button class="w" type="button" aria-label="{{w.id}}" onClick="{{w.pick}}" style="height:86%; width:auto; background:{{w.bg}}; border:{{w.bd}}"></button></sc-for>
+                </div>
+                <span style="font-size:12px; color:#8A919B">Click a well. Filled wells already got liquid today.</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{putPoint}}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; gap:8px; flex-wrap:wrap">
+                <sc-for list="{{pointChips}}" as="p" hint-placeholder-count="4">
+                  <button class="chipbtn" type="button" onClick="{{p.pick}}" style="border:1px solid {{p.bd}}; background:{{p.bg}}; color:#E8EAED">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="{{p.starFill}}" stroke="#F5B841" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"></path></svg>{{p.name}}
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <div style="display:flex; align-items:flex-end; gap:10px">
+              <div class="lab">How much
+                <div class="seg" role="group" aria-label="How much" style="padding:2px">
+                  <sc-for list="{{partSeg}}" as="o" hint-placeholder-count="2"><button type="button" onClick="{{o.pick}}" style="height:32px; padding:0 14px; background:{{o.bg}}; color:{{o.fg}}">{{o.label}}</button></sc-for>
+                </div>
+              </div>
+              <sc-if value="{{isPart}}" hint-placeholder-val="{{ true }}">
+                <label class="lab">µl<input class="fld" type="text" value="10" style="width:72px"></label>
+              </sc-if>
+              <label class="lab">Speed, µl/s<input class="fld" type="text" value="50" style="width:72px"></label>
+            </div>
+
+            <div class="lift">
+              <button class="liftrow" type="button" onClick="{{putLift.toggle}}" aria-expanded="{{putLift.open}}">
+                <span style="flex:1">After dispensing: <span style="color:#E8EAED; font-weight:600">{{putLift.summary}}</span></span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform:rotate({{putLift.deg}}deg)"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <sc-if value="{{putLift.open}}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; flex-direction:column; gap:8px">
+                  <div style="display:flex; align-items:flex-end; gap:10px">
+                    <div class="lab" style="flex:1">Lift the tip
+                      <div class="seg small" role="group" aria-label="Lift the tip after dispensing">
+                        <sc-for list="{{putLift.seg}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" style="background:{{o.bg}}; color:{{o.fg}}">{{o.label}}</button></sc-for>
+                      </div>
+                    </div>
+                    <sc-if value="{{putLift.wait}}" hint-placeholder-val="{{ false }}">
+                      <label class="lab">Wait, s<input class="fld" type="text" value="5.0" style="width:64px"></label>
+                    </sc-if>
+                  </div>
+                  <button class="sw" type="button" onClick="{{putLift.toggleSlow}}" aria-pressed="{{putLift.slow}}">
+                    <span class="knob" style="background:{{putLift.knobBg}}"><span style="left:{{putLift.knobX}}px"></span></span>
+                    <span>Lift slowly</span>
+                  </button>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </section>
+    </div>
+
+    <!-- RIGHT, column 2: points -->
+    <div style="width:400px; flex:none; display:flex; flex-direction:column; gap:12px; min-height:0">
+      <section class="card" style="flex:1; min-height:0">
+        <div class="chead" style="min-height:56px; padding-bottom:6px">
+          <span class="ctitle" style="flex:1">Points</span>
+          <button class="mbtn" type="button" aria-label="Undo" style="width:36px; padding:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10a6 6 0 0 1 0 12h-3"></path></svg></button>
+          <button class="mbtn" type="button" aria-label="Redo" style="width:36px; padding:0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"></path><path d="M20 9H10a6 6 0 0 0 0 12h3"></path></svg></button>
+        </div>
+        <div style="flex:1; min-height:0; display:flex; flex-direction:column; gap:8px; padding:0 12px 12px">
+          <span style="font-size:13px; color:#B3B9C2; padding:0 2px">Right-click the picture to add a point. The star keeps it for later.</span>
+          <div style="display:grid; grid-template-columns:30px minmax(0, 1fr) 62px 62px 66px; gap:6px; padding:4px 10px 0 4px; font-size:11px; letter-spacing:.09em; text-transform:uppercase; color:#8A919B; font-weight:600">
+            <span></span><span>Point</span><span style="text-align:right">X</span><span style="text-align:right">Y</span><span style="text-align:right">Z</span>
+          </div>
+          <div style="flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:4px">
+            <sc-for list="{{pointRows}}" as="p" hint-placeholder-count="4">
+              <div style="display:flex; flex-direction:column; border-radius:10px; background:{{p.bg}}; border:1px solid {{p.bd}}">
+                <div style="display:flex; align-items:center">
+                  <button type="button" onClick="{{p.star}}" aria-label="{{p.starLabel}}" style="width:34px; height:44px; border:none; background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0 0 0 4px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="{{p.starFill}}" stroke="#F5B841" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"></path></svg>
+                  </button>
+                  <button type="button" onClick="{{p.pick}}" style="flex:1; display:grid; grid-template-columns:minmax(0, 1fr) 62px 62px 66px; gap:6px; align-items:center; height:44px; padding:0 10px 0 2px; border:none; background:transparent; color:#E8EAED; font-family:inherit; text-align:left; cursor:pointer">
+                    <span style="font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">{{p.name}}</span>
+                    <span class="mono" style="font-size:13px; text-align:right">{{p.x}}</span>
+                    <span class="mono" style="font-size:13px; text-align:right">{{p.y}}</span>
+                    <span class="mono" style="font-size:13px; text-align:right; color:{{p.zColor}}">{{p.z}}</span>
+                  </button>
+                </div>
+                <sc-if value="{{p.on}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; padding:0 8px 8px">
+                    <button class="mbtn" type="button" style="padding:0 6px">Camera to</button>
+                    <button class="mbtn" type="button" style="padding:0 6px">Tip to</button>
+                    <button class="mbtn" type="button" style="padding:0 6px">Z from tip</button>
+                    <button class="mbtn" type="button" onClick="{{p.remove}}" style="padding:0 6px; color:#FF8A8F; border-color:#4A2A2E">Delete</button>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; padding-top:10px; border-top:1px solid #22262C">
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px">
+              <button class="btn" type="button" onClick="{{addAtCross}}" style="padding:0 10px; font-size:14px">Point at crosshair</button>
+              <button class="btn" type="button" style="padding:0 10px; font-size:14px">Tip to crosshair</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; font-size:14px; color:#B3B9C2">
+              <span style="flex:1">New points get Z</span>
+              <span class="sel"><select aria-label="Z for new points"><option>Travel height</option><option>Z of the tip now</option><option>Last Z given</option></select><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <span style="font-size:14px; color:#B3B9C2">{{footerLine}}</span>
+    <div style="flex:1"></div>
+    <button class="btn" type="button">Back</button>
+    <a class="btn btn-p" href="#">Finish</a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","options":["Aspirate: click the picture","Aspirate: from a point","Aspirate: lifting settings open","Dispense: into a well","Dispense: the tip is empty","Controls folded"],"default":"Aspirate: click the picture"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      init: false, open: 'take', takeHow: 'hand', putHow: 'well', tip: 0, vol: 10,
+      snap: true, onClick: false, analyzed: true, cross: true, pts: true, past: false, keys: false, controls: true,
+      step: 6, deck: false, look: '4', well: 'A3', srcWell: 'A1', part: 'part', sel: 'test', point: 'Source', flash: '',
+      filled: ['A1', 'A2'],
+      takeLift: 'now', takeSlow: false, takeLiftOpen: false,
+      putLift: 'now', putSlow: false, putLiftOpen: false,
+      points: [
+        { name: 'Source', x: 147.44, y: 253.1, z: 67.77, kept: true },
+        { name: 'Source CLink', x: 146.9, y: 231.4, z: 67.77, kept: true },
+        { name: 'test', x: 306.12, y: 230.55, z: 117.6, kept: true },
+        { name: 'M1', x: 309.22, y: 219.88, z: null, kept: false }
+      ]
+    };
+  }
+  renderVals() {
+    let st = this.state;
+    if (!st.init) {
+      const M = {
+        'Aspirate: click the picture': { open: 'take', takeHow: 'hand', tip: 0 },
+        'Aspirate: from a point': { open: 'take', takeHow: 'point', tip: 0 },
+        'Aspirate: lifting settings open': { open: 'take', takeHow: 'hand', tip: 0, takeLiftOpen: true, takeLift: 'wait', takeSlow: true },
+        'Dispense: into a well': { open: 'put', putHow: 'well', tip: 10 },
+        'Dispense: the tip is empty': { open: 'put', putHow: 'well', tip: 0 },
+        'Controls folded': { controls: false }
+      };
+      st = Object.assign({}, st, M[this.props.scenario ?? 'Aspirate: click the picture'] || {});
+    }
+    const set = (p) => this.setState(Object.assign({}, st, p, { init: true }));
+    const SEGBG = (on) => (on ? '#2A303A' : 'transparent');
+    const SEGFG = (on) => (on ? '#E8EAED' : '#B3B9C2');
+    const segOf = (opts, cur, key) => opts.map((o) => ({ label: o[1], bg: SEGBG(cur === o[0]), fg: SEGFG(cur === o[0]), pick: () => { const p = {}; p[key] = o[0]; set(p); } }));
+    const fmt = (n) => (n === null ? 'travel' : n.toFixed(2));
+
+    const STEPS = ['0.01', '0.02', '0.05', '0.1', '0.2', '0.5', '1', '2', '5', '10'];
+    const si = st.step;
+    const view = [si - 1, si, si + 1].filter((i) => i >= 0 && i < STEPS.length);
+    const stepView = view.map((i) => ({ v: STEPS[i], bg: i === si ? '#6CA6FF' : 'transparent', fg: i === si ? '#0B1220' : '#C9CED6', pick: () => set({ step: i }) }));
+
+    const names = { '1': 'Reservoir', '2': 'Corning 96', '3': 'Petri dish', '4': 'Dish', '6': '6-well', '10': 'Tips', '12': 'Trash' };
+    const miniDeck = ['10', '11', '12', '7', '8', '9', '4', '5', '6', '1', '2', '3'].map((n) => ({
+      n: 'SLOT ' + n, name: names[n] || '',
+      bg: st.look === n ? '#1A2130' : '#16191D', fg: names[n] ? '#E8EAED' : '#5B626C',
+      bd: st.look === n ? '2px solid #6CA6FF' : '1px solid #22262C',
+      pick: () => set({ look: n, deck: false, flash: 'Camera moved to slot ' + n + '.' })
+    }));
+
+    const pointChips = st.points.map((p) => ({ name: p.name, starFill: p.kept ? '#F5B841' : 'none',
+      bg: st.point === p.name ? '#1A2130' : 'transparent', bd: st.point === p.name ? '#6CA6FF' : '#3A4049',
+      pick: () => set({ point: p.name }) }));
+    const pointRows = st.points.map((p, i) => ({
+      name: p.name, x: fmt(p.x), y: fmt(p.y), z: p.z === null ? 'travel' : p.z.toFixed(2), zColor: p.z === null ? '#8A919B' : '#E8EAED',
+      starFill: p.kept ? '#F5B841' : 'none', starLabel: p.kept ? 'Kept for later. Click to make it temporary.' : 'Keep this point for later',
+      on: st.sel === p.name, bg: st.sel === p.name ? '#1A2130' : 'transparent', bd: st.sel === p.name ? '#6CA6FF' : 'transparent',
+      pick: () => set({ sel: st.sel === p.name ? null : p.name }),
+      star: () => { const pts = st.points.map((q, k) => (k === i ? Object.assign({}, q, { kept: !q.kept }) : q)); set({ points: pts, flash: p.kept ? p.name + ' is temporary now.' : p.name + ' kept for later.' }); },
+      remove: () => set({ points: st.points.filter((_, k) => k !== i), sel: null, flash: p.name + ' deleted.' })
+    }));
+
+    const srcWells = ['A1', 'A2', 'A3', 'B1', 'B2', 'B3'].map((id) => ({ id: id, bg: st.srcWell === id ? '#4FC9B8' : '#2B3036', bd: st.srcWell === id ? '3px solid #E8EAED' : '3px solid transparent', pick: () => set({ srcWell: id }) }));
+    const dstWells = [];
+    'ABCDEFGH'.split('').forEach((r) => { for (let c = 1; c <= 12; c++) { const id = r + c; const done = st.filled.indexOf(id) >= 0; const on = st.well === id;
+      dstWells.push({ id: id, bg: on ? '#6CA6FF' : (done ? '#A99BFA' : '#2B3036'), bd: on ? '2px solid #E8EAED' : '2px solid transparent', pick: () => set({ well: id }) }); } });
+
+    const LIFT = { now: 'lift right away', wait: 'lift after 5 s', stay: 'stay in the liquid' };
+    const liftOf = (k) => {
+      const mode = st[k + 'Lift'], slow = st[k + 'Slow'], open = st[k + 'LiftOpen'];
+      return {
+        open: open, deg: open ? 180 : 0, wait: mode === 'wait', slow: slow,
+        summary: LIFT[mode] + (slow && mode !== 'stay' ? ', slowly' : ''),
+        knobBg: slow ? '#6CA6FF' : '#3A4049', knobX: slow ? 16 : 2,
+        toggle: () => { const p = {}; p[k + 'LiftOpen'] = !open; set(p); },
+        toggleSlow: () => { const p = {}; p[k + 'Slow'] = !slow; set(p); },
+        seg: [['now', 'Right away'], ['wait', 'After a wait'], ['stay', 'Stay']].map((o) => ({ label: o[1], bg: SEGBG(mode === o[0]), fg: SEGFG(mode === o[0]), pick: () => { const p = {}; p[k + 'Lift'] = o[0]; set(p); } }))
+      };
+    };
+
+    const whereTake = { hand: 'Click the picture', point: 'At ' + st.point, well: 'Slot 6 · ' + st.srcWell }[st.takeHow];
+    const takeSummary = whereTake + ' · ' + st.vol + ' µl · 50 µl/s · ' + LIFT[st.takeLift];
+    const empty = st.tip <= 0;
+    const wherePut = st.putHow === 'well' ? 'Slot 2 · ' + st.well : 'At ' + st.point;
+    const putAmount = st.part === 'part' ? st.vol : st.tip;
+    return {
+      tip: st.tip, tipFill: empty ? 0 : 1,
+      cuboids: [[280, 230, 12], [350, 266, -8], [430, 244, 30], [322, 348, 4], [450, 360, -20], [385, 422, 15], [500, 300, 40], [270, 410, -30], [520, 430, 10]].map((c, i) => ({ x: c[0], y: c[1], r: c[2], o: st.analyzed && i % 3 !== 2 ? 1 : 0 })),
+      pastOpacity: st.past ? 1 : 0, pointsOpacity: st.pts ? 1 : 0, crossOpacity: st.cross ? 1 : 0,
+      clickPicture: () => { if (st.open === 'take' && st.takeHow === 'hand') set({ flash: st.onClick ? 'Aspirated ' + st.vol + ' µl here.' : 'Tip moved here.', tip: st.onClick ? st.tip + st.vol : st.tip, open: st.onClick ? 'put' : st.open }); },
+      leftClickText: st.open === 'take' && st.takeHow === 'hand' && st.onClick ? 'move and aspirate' : 'move',
+      stepNow: STEPS[si],
+      deckOpen: st.deck, toggleDeck: () => set({ deck: !st.deck }), miniDeck: miniDeck,
+      lookSlot: st.look, lookName: names[st.look] || 'Empty',
+      analyzed: st.analyzed, analyze: () => set({ analyzed: true, flash: '23 cuboids found.' }),
+      layers: [['cross', 'Crosshair'], ['pts', 'Points'], ['past', 'Past picks']].map((l) => ({ label: l[1], on: st[l[0]],
+        bg: st[l[0]] ? '#E8EAED' : 'rgba(12,14,17,.84)', fg: st[l[0]] ? '#0F1114' : '#C9CED6', toggle: () => { const p = {}; p[l[0]] = !st[l[0]]; set(p); } })),
+      controlsOpen: st.controls, controlsDeg: st.controls ? 0 : -90, toggleControls: () => set({ controls: !st.controls }),
+      keys: st.keys, toggleKeys: () => set({ keys: !st.keys }),
+      keysBg: st.keys ? '#E8EAED' : 'transparent', keysFg: st.keys ? '#0F1114' : '#C9CED6', keysBd: st.keys ? '#E8EAED' : '#2E333B',
+      stepView: stepView, stepDown: () => set({ step: Math.max(0, si - 1) }), stepUp: () => set({ step: Math.min(STEPS.length - 1, si + 1) }),
+      takeOpen: st.open === 'take', openTake: () => set({ open: st.open === 'take' ? 'put' : 'take' }),
+      takeBd: st.open === 'take' ? '#2F4A47' : '#23272E', takeSummary: takeSummary, vol: st.vol,
+      takeBtnBg: empty ? '#6CA6FF' : 'transparent', takeBtnBd: empty ? '#6CA6FF' : '#2E333B', takeBtnFg: empty ? '#0B1220' : '#E8EAED',
+      doTake: () => set({ tip: st.tip + st.vol, open: 'put', flash: 'Aspirated ' + st.vol + ' µl.' }),
+      hereAsp: () => set({ tip: st.tip + st.vol, flash: 'Aspirated ' + st.vol + ' µl here.' }),
+      hereDisp: () => { if (empty) return; set({ tip: Math.max(0, st.tip - st.vol), flash: 'Dispensed ' + st.vol + ' µl here.' }); },
+      hereDispOp: empty ? 0.4 : 1,
+      takeSeg: segOf([['hand', 'By clicking'], ['point', 'At a point'], ['well', 'In a well']], st.takeHow, 'takeHow'),
+      takeHand: st.takeHow === 'hand', takePoint: st.takeHow === 'point', takeWell: st.takeHow === 'well',
+      showTakeZ: st.takeHow === 'hand' || st.takeHow === 'well',
+      takeSwitches: [['snap', 'Snap to found cuboids', '250–500 µm'], ['onClick', 'Take as soon as I click', '']].map((x) => ({ label: x[1], extra: x[2], on: st[x[0]],
+        knobBg: st[x[0]] ? '#6CA6FF' : '#3A4049', knobX: st[x[0]] ? 16 : 2, toggle: () => { const p = {}; p[x[0]] = !st[x[0]]; set(p); } })),
+      takeLift: liftOf('take'), putLift: liftOf('put'),
+      pointChips: pointChips, srcWells: srcWells,
+      putOpen: st.open === 'put', openPut: () => set({ open: st.open === 'put' ? 'take' : 'put' }),
+      putBd: st.open === 'put' ? '#3A3360' : '#23272E',
+      putSummary: empty ? 'The tip is empty. Aspirate first.' : wherePut + ' · ' + (st.part === 'part' ? st.vol + ' µl' : 'everything') + ' · 50 µl/s · ' + LIFT[st.putLift],
+      putSummaryColor: empty ? '#F5D48A' : '#B3B9C2',
+      putBtnLabel: st.putHow === 'well' ? 'Dispense into ' + st.well : 'Dispense ' + putAmount + ' µl',
+      putBtnBg: !empty ? '#6CA6FF' : 'transparent', putBtnBd: !empty ? '#6CA6FF' : '#2E333B', putBtnFg: !empty ? '#0B1220' : '#E8EAED', putBtnOp: empty ? 0.4 : 1,
+      doPut: () => { if (empty) return; const left = Math.max(0, st.tip - putAmount); set({ tip: left, filled: st.putHow === 'well' ? st.filled.concat([st.well]) : st.filled, open: left > 0 ? 'put' : 'take', flash: 'Dispensed ' + putAmount + ' µl' + (st.putHow === 'well' ? ' into ' + st.well : '') + '.' }); },
+      putSeg: segOf([['well', 'In a well'], ['point', 'At a point']], st.putHow, 'putHow'),
+      putWell: st.putHow === 'well', putPoint: st.putHow === 'point',
+      well: st.well, dstWells: dstWells,
+      partSeg: segOf([['part', 'Part'], ['all', 'All']], st.part, 'part'), isPart: st.part === 'part',
+      pointRows: pointRows,
+      addAtCross: () => { let n = 1; const taken = st.points.map((p) => p.name); while (taken.indexOf('M' + n) >= 0) n++; set({ points: st.points.concat([{ name: 'M' + n, x: 288.78, y: 162.22, z: null, kept: false }]), sel: 'M' + n, flash: 'M' + n + ' added.' }); },
+      footerLine: st.filled.length + ' wells filled today · Slot 2 · Corning 96',
+      hasToast: !!st.flash, toast: st.flash
+    };
+  }
+}
+</script>
+</body>
+</html>

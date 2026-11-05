@@ -10,13 +10,16 @@ Every move of the tip across the deck, and the rules they share: travel height, 
 _Avoid_: mover, travel, drive
 
 **Retract**:
-Driving the Z axis all the way up, to the top of its travel with the tip that is on.
-On screen, a Retract choice after Aspirate or Dispense takes the tip up to the travel height.
-_Avoid_: home (homing is all axes, to their switches)
+The tip straight up where it stands, to the travel height, from anywhere in the program. Above the travel height it stays. While the measured top is not known it goes to the top and measures it.
+_Avoid_: home (homing is all axes, to their switches), lift (a lift ends an aspirate or a dispense)
 
-**Retract slowly**:
+**Lift**:
+How the tip leaves the liquid after an aspirate or a dispense: right away, after a wait, or not at all.
+_Avoid_: retract (on screen, for this)
+
+**Lift slowly**:
 The tip first rises a little, very slowly, so the liquid leaving with it does not pull a cuboid along; then it goes up as usual.
-_Avoid_: slow lift, lift out slowly
+_Avoid_: retract slowly (on screen), lift out slowly
 
 **Measured top**:
 The Z the robot reports right after a retract. It depends only on the tip that is on, so it holds until the tip or the robot connection changes.
@@ -132,9 +135,9 @@ _Avoid_: preset
 A plate whose well center the user chose not to measure in this robot session; its drawing is used instead.
 
 **Memo point**:
-A point marked with a right click on the picture, named M1, M2 ... It lasts until the program closes.
+A point that lasts until the program closes. Marked with a right click on the picture it is named M1, M2 ...; a saved point the user takes the star off keeps its name.
 _Avoid_: mark
 
 **Saved point**:
-A point with a name the user gave it, kept in the profile between days. Made by saving a memo point.
+A point with a name the user gave it, kept in the profile between days and marked with a star. Made by starring a memo point.
 _Avoid_: position (positions are Robot setup's), preset
