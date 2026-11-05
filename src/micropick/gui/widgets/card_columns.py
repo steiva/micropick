@@ -11,8 +11,9 @@ height at the width they will have. It is chosen when the arrangement
 changes, not on every resize, so the cards do not hop between columns while
 a window is being dragged.
 
-`wide` cards go above the columns, across both: a plate map on the Liquid
-handling page, which needs the room more than any column of buttons.
+The two columns are always the same width, half the panel each, whatever
+the cards show: a card's width never follows its text, which wraps or is cut
+(`_Column`). `wide` cards go above the columns, across both.
 
 This is the inner widget of `theme.factory.scroll_column`, which measures
 its height for its width; a pair of box layouts answers that like one does.
@@ -20,6 +21,7 @@ its height for its width; a pair of box layouts answers that like one does.
 
 from __future__ import annotations
 
+from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ..theme import SPACING
@@ -27,6 +29,20 @@ from ..theme import SPACING
 __all__ = ["CardColumns", "COLUMN_MIN"]
 
 COLUMN_MIN = 300
+
+
+class _Column(QVBoxLayout):
+    """A column that asks for no width of its own.
+
+    A box layout's stretch yields to an item's minimum, and a column's
+    minimum is its widest card's: the longest button text, the widest row
+    shown. So the column that asked for more took it from its neighbor, and
+    every text changed and every section folded could move the line between
+    them. Asking for nothing leaves the stretch, the same on both, to decide.
+    """
+
+    def minimumSize(self) -> QSize:
+        return QSize(0, super().minimumSize().height())
 
 
 class CardColumns(QWidget):
@@ -48,7 +64,7 @@ class CardColumns(QWidget):
         top.addLayout(self._outer, 1)
         self._columns = []
         for _ in range(2):
-            column = QVBoxLayout()
+            column = _Column()
             column.setContentsMargins(0, 0, 0, 0)
             column.setSpacing(SPACING)
             self._outer.addLayout(column, 1)
@@ -109,10 +125,18 @@ class CardColumns(QWidget):
                 column.addWidget(card)
             if cards:
                 column.addStretch(1)
+        self._even_out()
         self._outer.invalidate()
+
+    def _even_out(self) -> None:
+        """An odd pixel goes unused rather than to one column."""
+        odd = self._two and (self.width() - SPACING) % 2
+        self._outer.setContentsMargins(0, 0, 1 if odd else 0, 0)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         two = self._fits_two(self.width())
         if two != self._two:
             self._arrange(two)
+        else:
+            self._even_out()
