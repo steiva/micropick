@@ -268,6 +268,18 @@ def test_camera_to_dish_center_waits_for_a_pause(app, window, monkeypatch):
     assert page.center_button.text() == "Camera to dish center"
 
 
+def test_camera_to_dish_center_is_answered_in_a_toast(app, window):
+    page = window.picking_page
+    window.session.profile.positions[picking_page.DISH_POSITION] = (
+        200.0, 150.0, 90.0)
+    _settle(app, window)
+    page._goto_dish()
+    assert _until(app, lambda: window.toast.text()
+                  == "Camera over the dish center.")
+    assert window.toast.property("tone") == "answer"
+    assert len(page.jog.position_lines) == 1
+
+
 def test_and_list_names_the_wells():
     assert picking_page.and_list(["A7"]) == "A7"
     assert picking_page.and_list(["A7", "A18"]) == "A7 and A18"
