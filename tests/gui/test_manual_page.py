@@ -253,8 +253,8 @@ def test_a_right_click_marks_a_point_drawn_only_while_points_are_shown(
     page.saved_section.set_collapsed(True)
     page.source.buttons[0].click()                     # In a well
     assert _points_drawn(page) == []
-    page.target.buttons[1].click()                     # Dispense: At a point
-    page.dispense_card.set_open(True)
+    page.target.set_current(1)                         # Dispense: At a point
+    page._target_changed()
     assert len(_points_drawn(page)) == 1
 
 
@@ -472,15 +472,16 @@ def test_part_is_chosen_when_the_page_opens(app, session):
     page.deleteLater()
 
 
-def test_dispense_opens_by_itself_and_gives_back_part_then_all(
+def test_dispense_is_gray_until_the_tip_holds_and_gives_back_part_then_all(
         app, page, session):
     _tip_on(app, page, session)
-    assert not page.dispense_card.is_open()
-    assert not page.dispense_button.isEnabled()         # the tip is empty
+    assert page.dispense_card.is_open()                  # #105: always
+    assert not page.dispense_card.isEnabled()            # the tip is empty
+    assert not page.dispense_button.isEnabled()
     page.volume.setValue(15.0)
     page._aspirate_here()
     _wait(app, page)
-    assert page.dispense_card.is_open()
+    assert page.dispense_card.isEnabled()
     page.target.buttons[2].click()                       # Here
     assert page.dispense_button.text() == "Dispense here"
     assert page.dispense_button.isEnabled()
@@ -492,7 +493,39 @@ def test_dispense_opens_by_itself_and_gives_back_part_then_all(
     page.dispense_button.click()
     _wait(app, page)
     assert session.in_tip == 0.0
+    assert not page.dispense_card.isEnabled()
     assert not page.dispense_button.isEnabled()
+
+
+def test_aspirate_and_dispense_never_fold(page):
+    """#105: what the tip holds or a click cannot move a card."""
+    for card in (page.aspirate_card, page.dispense_card):
+        assert card.is_open()
+        card.set_open(False)
+        assert card.is_open()
+
+
+def test_liquid_in_the_tip_and_a_right_click_move_no_card(app, page, session):
+    _calibrate(session)
+    _open_upper(app, page, session)
+    _wait(app, page)
+    _tip_on(app, page, session)
+    _over_the_deck(app, page, session)
+    page.resize(1600, 900)
+    app.processEvents()
+
+    def where():
+        return [c.geometry() for c in (page.aspirate_card, page.dispense_card)]
+
+    before = where()
+    page._aspirate_here()
+    _wait(app, page)
+    assert session.in_tip > 0
+    assert where() == before
+    page.view.right_clicked.emit(W / 2 + 100, H / 2)
+    _wait(app, page)
+    assert where() == before
+    assert len(_points_drawn(page)) == 1                 # and it is seen
 
 
 def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
@@ -1548,16 +1581,15 @@ def test_the_dispense_button_uses_dispenses_speed(app, page, session):
 
 
 def test_the_dispense_line_says_the_speed_and_change_edits_it(page):
-    page.dispense_card.set_open(True)
     page.dispense_rate.setValue(25.0)
     assert page.dispense_line.text() == "25 µl/s"
     assert not page.dispense_box.isVisibleTo(page)
-    page.dispense_change.click()
+    page.dispense_change.setChecked(True)
     assert page.dispense_box.isVisibleTo(page)
     assert page.dispense_box.isAncestorOf(page.dispense_rate)
     page.dispense_rate.setValue(12.5)
     assert page.dispense_line.text() == "12.5 µl/s"
-    page.dispense_change.click()
+    page.dispense_change.setChecked(False)
     assert not page.dispense_box.isVisibleTo(page)
 
 
@@ -1572,8 +1604,7 @@ def test_aspirates_line_does_not_follow_dispenses_speed(page):
 
 
 def test_the_dispense_line_stands_under_amount_and_over_where(app, page):
-    page.dispense_card.set_open(True)
-    page.dispense_change.click()
+    page.dispense_change.setChecked(True)
     page.show()
     app.processEvents()
 

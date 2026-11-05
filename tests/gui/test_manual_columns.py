@@ -96,7 +96,7 @@ def _actions(page, session):
     yield "the plate", lambda: session.load_labware(plate, 5)
     yield "the tip", lambda: (session.load_labware(rack, 10),
                               session.pick_up_tip(10, "A1"))
-    yield "Dispense opened", lambda: page.dispense_card.set_open(True)
+    yield "liquid in the tip", lambda: session.aspirate(20.0, 50.0)
     yield "Go to A7 and dispense", well_a7
     yield "Part", lambda: page.amount.buttons[0].click()
     yield "All", lambda: page.amount.buttons[1].click()
@@ -112,8 +112,6 @@ def _actions(page, session):
         yield name, lambda i=index: page.source.buttons[i].click()
     yield "Above the bottom", lambda: page.height_mode.buttons[1].click()
     yield "Change closed", lambda: page.change_button.setChecked(False)
-    yield "Aspirate folded", lambda: page.aspirate_card.set_open(False)
-    yield "Aspirate opened", lambda: page.aspirate_card.set_open(True)
     yield "Sizes opened", lambda: page.sizes.toggle.setChecked(True)
     yield "a saved point", long_named_point
     yield "Memo folded", lambda: page.memo_section.set_collapsed(True)
@@ -145,8 +143,8 @@ def test_the_scroll_bar_does_not_narrow_the_columns(app, page):
                 if a.widget() is panel)
     first = _where(panel)
     assert not area.verticalScrollBar().isVisible()
-    page.dispense_card.set_open(True)
     page.change_button.setChecked(True)
+    page.dispense_change.setChecked(True)
     _settle(app, page)
     assert area.verticalScrollBar().isVisible()
     assert _where(panel) == first

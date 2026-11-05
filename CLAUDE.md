@@ -362,7 +362,7 @@ envelope's floors, `Motion.envelope`: the profile's modules over the deck
 definition's slots, `core.deck`, in the robot's frame), red on the picture and in its Z. Both kinds drawn in cyan
 on the "points" layer (`position_marks.memo_items`), a saved point with a
 filled disc; on Work only while a section of Points is open or "At a point" is
-chosen in an open Aspirate or Dispense card (`PositionMarks.show_memo`;
+chosen in Aspirate or Dispense (`PositionMarks.show_memo`;
 a right click only adds a point: it opens nothing), and both kinds
 listed under "At a point"
 (`widgets.memo_points.MemoTable`). Aspirate (REDESIGN §6.6): the
@@ -397,8 +397,9 @@ the height is above the plate's measured bottom (rim less depth, reached as
 the liquid engine reaches it, `Motion.to_measured_bottom`) once it is
 confirmed in this robot session (`Session.plate_bottom_confirmed`), else
 above the drawing's; x and y are the measured center either way. The
-settings line says which ("0.5 mm above the measured bottom"). Dispense opens
-by itself when the tip holds something: Part | All (#99: Part chosen at
+settings line says which ("0.5 mm above the measured bottom"). Aspirate,
+Dispense and Points never fold and no card opens by itself (#105); Dispense
+is gray while the tip is empty: Part | All (#99: Part chosen at
 start, its volume `picking.vol`), under it its settings as one line with
 Change, as Aspirate's (#97, `manual._settings_line`: its own speed, from
 `picking.flow_rate` at start, in the page's memory, the D key's too), In a

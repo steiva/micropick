@@ -74,8 +74,8 @@ and Dispense's "At a point" list both kinds and go to one by aspirating or
 dispensing there.
 
 They are drawn on the picture, a saved point with a filled disc, only while
-a section of Points is open or "At a point" is chosen in an open Aspirate
-or Dispense card. Both sections start open: folded, a new point is listed
+a section of Points is open or "At a point" is chosen in Aspirate or
+Dispense. Both sections start open: folded, a new point is listed
 and drawn only once one is opened.
 
 A point the tip cannot go to is said where it is made and shown in red,
@@ -162,8 +162,8 @@ lowering, go down to a touch.
 
 Dispense
 --------
-Under Aspirate, opening by itself when the tip comes to hold something:
-Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
+Under Aspirate, always open and gray while the tip is empty (#105: what
+the tip holds moves no card): Part (µl, no more than is in the tip: `Session.dispense`; chosen at start,
 the run's volume) or All. Under it the settings as one line, as Aspirate's,
 "50 µl/s", and Change unfolds them: its own speed, starting from the picking
 settings' flow rate and kept by the page, never in the profile. Then where:
@@ -563,8 +563,7 @@ class ManualPage(QWidget):
 
     def _aspirate_card(self) -> QWidget:
         """The settings as one line, From, and Aspirate; see "Aspirate"."""
-        self.aspirate_card = FoldCard("Aspirate", open=True, parent=self)
-        self.aspirate_card.toggled.connect(lambda _open: self._source_changed())
+        self.aspirate_card = FoldCard("Aspirate", fold=False, parent=self)
         body = self.aspirate_card.body.layout()
 
         self.settings_line, self.change_button, self.settings_box = (
@@ -626,8 +625,7 @@ class ManualPage(QWidget):
 
     def _dispense_card(self) -> QWidget:
         """How much and where, and a button that says it; see "Dispense"."""
-        self.dispense_card = FoldCard("Dispense", parent=self)
-        self.dispense_card.toggled.connect(lambda _open: self._target_changed())
+        self.dispense_card = FoldCard("Dispense", fold=False, parent=self)
         body = self.dispense_card.body.layout()
 
         row = QHBoxLayout()
@@ -981,8 +979,7 @@ class ManualPage(QWidget):
 
     def _by_hand(self) -> bool:
         """Aspirate takes from under the crosshair."""
-        return (self.aspirate_card.is_open()
-                and FROM[self.source.current()] == "By hand")
+        return FROM[self.source.current()] == "By hand"
 
     def _source(self):
         """("well", (slot, labware id, definition, well)), ("point",
@@ -1260,10 +1257,7 @@ class ManualPage(QWidget):
         return float(self.volume.value()), float(self.flow_rate.value())
 
     def _in_tip_changed(self, ul: float) -> None:
-        """The gauge; Dispense opens once the tip holds something."""
         self.gauge.set_volume(ul)
-        if ul > 0 and not self.dispense_card.is_open():
-            self.dispense_card.set_open(True)
         self._refresh()
 
     # -- the plan's plate ------------------------------------------------------
@@ -1283,15 +1277,14 @@ class ManualPage(QWidget):
         self._target_changed()
 
     def _task_requested(self, task: str, step: str) -> None:
-        """Picking's Finish by hand: Dispense open on In a well, the first
-        well the run left short chosen, the plan's map showing the rest."""
+        """Picking's Finish by hand: Dispense on In a well, the first well
+        the run left short chosen, the plan's map showing the rest."""
         if (task, step) != ("manual", "work"):
             return
         routine = self.session.routine
         destination = getattr(routine, "destination", None)
         if destination is None or not getattr(destination, "is_plate", False):
             return
-        self.dispense_card.set_open(True)
         self.target.set_current(WHERE.index("In a well"))
         self._show_plan()
         short = [w for c in destination.ordering for w in c
@@ -1465,14 +1458,12 @@ class ManualPage(QWidget):
 
     @property
     def points_shown(self) -> bool:
-        """A section of the Points card open, or "At a point" chosen in an
-        open Aspirate or Dispense card."""
+        """A section of the Points card open, or "At a point" chosen in
+        Aspirate or Dispense."""
         return (not self.memo_section.collapsed
                 or not self.saved_section.collapsed
-                or (self.aspirate_card.is_open()
-                    and FROM[self.source.current()] == "At a point")
-                or (self.dispense_card.is_open()
-                    and WHERE[self.target.current()] == "At a point"))
+                or FROM[self.source.current()] == "At a point"
+                or WHERE[self.target.current()] == "At a point")
 
     def _points_toggled(self) -> None:
         # Built in turn: a toggle can come before the next card exists.
@@ -1848,6 +1839,7 @@ class ManualPage(QWidget):
             self.aspirate_button.setEnabled(has_robot and source is not None)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
+        self.dispense_card.setEnabled(self.session.in_tip > 0)
         self.dispense_button.setEnabled(has_robot and target is not None
                                         and self.session.in_tip > 0)
         # The found count is on the picture, as on Picking.
