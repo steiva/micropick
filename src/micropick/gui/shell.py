@@ -496,7 +496,9 @@ class MainWindow(QMainWindow):
     def _list_steps(self) -> None:
         """The StepBar, for the steps the task has now."""
         self._steps = tasks.steps(self.task, self.session)
-        self.step_bar.set_steps([tasks.title(s) for s in self._steps])
+        self.step_bar.set_steps(
+            [tasks.title(s) for s in self._steps],
+            [tasks.marked_optional(self.task, s) for s in self._steps])
 
     def open_task(self, task: str) -> None:
         """On its first step not done, an optional one skipped; the last

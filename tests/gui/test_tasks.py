@@ -51,6 +51,17 @@ def test_each_task_is_its_steps_in_order():
     assert {tasks.title(tasks.steps(t)[-1]) for t in tasks.TASKS} == {"Run"}
 
 
+@pytest.mark.parametrize("task, marked", [
+    ("auto", ["well_center"]),
+    ("manual", ["well_center", "dish_bottom"]),
+    ("liquid", ["well_center"]),
+])
+def test_the_steps_marked_optional_are_a_list_of_their_own(task, marked):
+    # Manual pick's Run can be passed, and reads as a step like any other.
+    assert [s for s in tasks.TASKS[task][1]
+            if tasks.marked_optional(task, s)] == marked
+
+
 def _connect(session):
     session.probe_robot()
     session.new_run()

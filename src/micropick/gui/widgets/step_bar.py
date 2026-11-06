@@ -2,13 +2,17 @@
 
 `Deck — Tip — Plan — Dish bottom — Picking`, centered. A done step shows
 a green ✓ on `ok-bg`; the current one is an accent dot with its number on
-`selected-bg`; the others a gray number. Every step can be clicked: the
+`selected-bg`; the others a gray number. A step marked optional has a
+dashed ring around its number while it is not done, drawn in the room the
+chip already has, so it takes no width. Every step can be clicked: the
 user is led, never locked (§1.5). Whether a step is done is the caller's
 to say, computed from the session's state each time (§4), never stored
 here as "visited".
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
@@ -23,6 +27,7 @@ class StepChip(QPushButton):
     """One step: a round mark and the step's name."""
 
     MARK = 22
+    RING_GAP = 3                # from the round mark to the dashed ring
 
     def __init__(self, number: int, name: str, parent: QWidget | None = None):
         super().__init__(name, parent)
@@ -32,6 +37,7 @@ class StepChip(QPushButton):
         self.number = number
         self.done = False
         self.current = False
+        self.optional = False
         self.setProperty("current", False)
         # Room on the left for the painted mark.
         self.setStyleSheet(f"padding-left: {self.MARK + 16}px;")
@@ -74,6 +80,14 @@ class StepChip(QPushButton):
             painter.setFont(ui_font(12, 700))
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter,
                              str(self.number))
+        if self.optional and not self.done:
+            pen = QPen(QColor(COLORS["accent" if self.current else "muted"]),
+                       1.5)
+            pen.setDashPattern([3, 2.5])
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            gap = self.RING_GAP
+            painter.drawEllipse(rect.adjusted(-gap, -gap, gap, gap))
         painter.end()
 
 
@@ -93,7 +107,9 @@ class StepBar(QFrame):
         self.chips: list[StepChip] = []
         self.set_steps(steps or [])
 
-    def set_steps(self, steps: list[str]) -> None:
+    def set_steps(self, steps: list[str],
+                  optional: Sequence[bool] = ()) -> None:
+        """The steps' names, and for each whether it is marked optional."""
         while self._row.count():
             item = self._row.takeAt(0)
             if item.widget() is not None:
@@ -108,6 +124,7 @@ class StepBar(QFrame):
                 line.setFixedSize(24, 1)
                 self._row.addWidget(line)
             chip = StepChip(i + 1, name, self)
+            chip.optional = i < len(optional) and bool(optional[i])
             chip.clicked.connect(lambda _=False, n=i: self.clicked.emit(n))
             self._row.addWidget(chip)
             self.chips.append(chip)

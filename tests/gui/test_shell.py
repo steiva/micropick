@@ -96,6 +96,18 @@ def _chips(window):
     return [(chip.text(), chip.done) for chip in window.step_bar.chips]
 
 
+@pytest.mark.parametrize("task, marked", [
+    ("auto", ["Well center"]),
+    ("manual", ["Well center", "Dish bottom"]),
+    ("liquid", ["Well center"]),
+])
+def test_the_step_bar_marks_the_tasks_optional_steps(app, window, task,
+                                                     marked):
+    window.home.tiles[task].clicked.emit()
+    assert [chip.text() for chip in window.step_bar.chips
+            if chip.optional] == marked
+
+
 def test_a_tile_opens_its_task_and_home_goes_back(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.top.path == ["Auto pick"]

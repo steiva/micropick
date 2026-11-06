@@ -1,5 +1,6 @@
 """The redesign's shared components (REDESIGN §3), each in its states."""
 
+import math
 import os
 
 import pytest
@@ -124,6 +125,55 @@ def test_step_bar_marks_done_and_current_and_reports_a_click(app):
     bar.clicked.connect(clicked.append)
     bar.chips[2].click()
     assert clicked == [2]
+
+
+def _chip(optional, *, done=False, current=False):
+    """The second step of a bar, as drawn at its own size."""
+    bar = StepBar()
+    bar.set_steps(["Deck", "Well center"], optional=[False, optional])
+    bar.set_state(1 if current else 0, [False, done])
+    chip = bar.chips[1]
+    chip.resize(chip.sizeHint())
+    return bar, chip
+
+
+def _around_the_number(chip):
+    """The pixels on a circle just outside the round mark."""
+    image = chip.grab().toImage()
+    x = 8 + chip.MARK / 2
+    y = chip.height() / 2
+    radius = chip.MARK / 2 + 3
+    return [image.pixelColor(round(x + radius * math.cos(math.radians(a))),
+                             round(y + radius * math.sin(math.radians(a))))
+            for a in range(0, 360, 3)]
+
+
+@pytest.mark.parametrize("current", [False, True])
+def test_a_marked_step_not_done_has_a_dashed_ring(app, current):
+    _bar, plain = _chip(False, current=current)
+    _bar2, marked = _chip(True, current=current)
+    changed = [a != b for a, b in zip(_around_the_number(plain),
+                                      _around_the_number(marked))]
+    # Dashes, not a line: some of the circle is drawn, some is left.
+    assert 0.2 < sum(changed) / len(changed) < 0.9
+
+
+def test_the_done_mark_replaces_the_ring(app):
+    _bar, plain = _chip(False, done=True)
+    _bar2, marked = _chip(True, done=True)
+    assert plain.grab().toImage() == marked.grab().toImage()
+
+
+def test_a_step_shown_and_done_has_no_ring(app):
+    _bar, plain = _chip(False, done=True, current=True)
+    _bar2, marked = _chip(True, done=True, current=True)
+    assert plain.grab().toImage() == marked.grab().toImage()
+
+
+def test_the_ring_takes_no_width(app):
+    _bar, plain = _chip(False)
+    _bar2, marked = _chip(True)
+    assert plain.sizeHint() == marked.sizeHint()
 
 
 def test_footer_navigation_and_run_status(app):

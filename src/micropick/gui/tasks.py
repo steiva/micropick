@@ -58,9 +58,9 @@ from ..workflows.well_center import plan_plate
 from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
-__all__ = ["TASKS", "SETUP", "SETUP_TITLES", "OPTIONAL", "Need",
-           "SETUP_POSITIONS", "StepState", "missing_setup", "optional",
-           "setup_done", "step_state", "steps", "title",
+__all__ = ["TASKS", "SETUP", "SETUP_TITLES", "MARKED_OPTIONAL", "OPTIONAL",
+           "Need", "SETUP_POSITIONS", "StepState", "marked_optional",
+           "missing_setup", "optional", "setup_done", "step_state", "steps", "title",
            "well_center_plates"]
 
 # task -> (its name on screen, its steps in order)
@@ -301,6 +301,17 @@ def well_center_plates(session, task: str) -> list:
 # "done"; Well center is optional everywhere but Liquid, a plate not
 # measured using its drawing. Unless Manual pick picks from a plate.
 OPTIONAL = {"auto": {"well_center"}, "manual": {"well_center", "work"}}
+
+
+# Steps whose number is in a dashed ring until done. A list of its own:
+# Manual pick's Run can be passed but reads as a step like any other.
+MARKED_OPTIONAL = {"auto": {"well_center"},
+                   "manual": {"well_center", "dish_bottom"},
+                   "liquid": {"well_center"}}
+
+
+def marked_optional(task: str, step: str) -> bool:
+    return step in MARKED_OPTIONAL[task]
 
 
 def optional(task: str, step: str, session=None) -> bool:
