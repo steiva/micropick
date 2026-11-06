@@ -10,9 +10,9 @@ routine measures the tip - and on the right one column of two cards, read
 top to bottom:
 
 **Put a tip on.** A Select of the tip boxes on the deck ("<name> · slot
-10"), the rack's wells (a well taken here and not put back gray,
-`Session.used_tips`; the one to take ringed, the first free one until
-another is clicked) and **Take tip A3**, fixed in width so that "H12" does
+10"), the rack (TIP.md §2.3: a well taken here and not put back a dashed
+ring, `Session.used_tips`; the one to take blue and ringed, the first free
+one until another is clicked) and **Take tip A3**, fixed in width so that "H12" does
 not move it. Once one is on: "Tip A3 is on." with Drop in trash and
 Drop in place (the robot's `dropTipInPlace` where the pipette is, nothing
 moved). No Put back: the robot's return to the rack did not work. With
@@ -110,7 +110,7 @@ from ...workflows.motion import READ_TOL_MM
 from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
-from ..theme import COLORS, SPACING
+from ..theme import SPACING
 from ..theme.factory import (card, choice_stack, heading, muted_label,
                              primary_button, reserve, scroll_column,
                              secondary_button, select)
@@ -120,7 +120,7 @@ from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel, check_view_axes
-from ..widgets.plate_grid import PlateGrid
+from ..widgets.plate_grid import PlateGrid, RackLegend
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
 from ..workers import Worker
@@ -219,16 +219,19 @@ class TipOnBlock(QObject):
         offer.addWidget(self.racks)
         self.rack_hint = muted_label("Click the tip to take.", box)
         offer.addWidget(self.rack_hint)
-        self.rack_grid = PlateGrid(mini=True, parent=box)
+        self.rack_grid = PlateGrid(mini=True, rack=True, parent=box)
         self.rack_grid.well_clicked.connect(self._choose_tip)
         offer.addWidget(self.rack_grid)
+        self.rack_legend = RackLegend(box)
+        offer.addWidget(self.rack_legend)
         self.take_button = primary_button("Take tip", box)
         metrics = self.take_button.fontMetrics()
         self.take_button.setFixedWidth(
             metrics.horizontalAdvance("Take tip H12") + 6 * SPACING)
         self.take_button.clicked.connect(self._take)
         offer.addWidget(self.take_button)
-        reserve(self.racks, self.rack_hint, self.rack_grid, self.take_button)
+        reserve(self.racks, self.rack_hint, self.rack_grid, self.rack_legend,
+                self.take_button)
 
         self.dropping = QWidget(box)
         dropping = QVBoxLayout(self.dropping)
@@ -369,7 +372,7 @@ class TipOnBlock(QObject):
             self.dropping if on else self.no_rack if connected and not racks
             else self.offer)
         for widget in (self.racks, self.rack_hint, self.rack_grid,
-                       self.take_button):
+                       self.rack_legend, self.take_button):
             widget.setVisible(offering)
         rack = self._rack()
         if rack is not None:
@@ -377,10 +380,7 @@ class TipOnBlock(QObject):
             if self.rack_grid.wells != [w for c in definition.ordering
                                         for w in c]:
                 self.rack_grid.set_ordering(definition.ordering)
-            used = session.used_tips(slot)
-            self.rack_grid.set_fills(
-                {w: COLORS["faint"] if w in used else COLORS["tips"]
-                 for c in definition.ordering for w in c})
+            self.rack_grid.set_used(session.used_tips(slot))
         well = self._well_to_take()
         self.rack_grid.set_current(well)
         self.take_button.setText(f"Take tip {well}" if well else "Take tip")

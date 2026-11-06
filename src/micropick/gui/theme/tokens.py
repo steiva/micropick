@@ -63,6 +63,7 @@ COLORS: dict[str, str] = {
     "tips": "#4FC9B8",
     "tips-bg": "#15282A",
     "tips-border": "#2F4A47",     # an open Aspirate card
+    "rack-tip": "#4A515B",        # a tip in its rack
     "dish": "#EE93BE",
     "dish-bg": "#2C1A24",
     "point": "#4FC9E0",           # memo points

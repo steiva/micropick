@@ -564,3 +564,5 @@ QPushButton#pathLink {
 }
 QPushButton#pathLink:hover { color: @info-text; }
 QPushButton#pathLink:disabled { color: @faint; }
+
+QLabel#rackLegend { font-size: 12px; color: @muted; }

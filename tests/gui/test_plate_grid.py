@@ -182,3 +182,46 @@ def test_dim_fills_can_be_taken_away(app):
     grid.set_dim_fills({"A1": "#e8a33d"})
     grid.set_dim_fills({})
     assert _pixel(grid, "A1") == bare
+
+
+def test_a_rack_keeps_the_footprint_and_is_padded(app):
+    grid = _grid(NINETY_SIX, mini=True, rack=True, size=(408, 273))
+    box = grid.plate_rect()
+    assert box.width() / box.height() == pytest.approx(SBS_RATIO, rel=0.01)
+    first, last = grid.well_rect("A1"), grid.well_rect("H12")
+    assert first.width() == pytest.approx(first.height())
+    assert first.top() - box.top() >= box.height() * 0.05 - 1
+    assert box.bottom() - last.bottom() >= box.height() * 0.05 - 1
+
+
+def test_a_racks_tips_are_in_it_used_or_next(app):
+    from micropick.gui.theme import COLORS
+    grid = _grid(NINETY_SIX, mini=True, rack=True, size=(408, 273))
+    grid.set_used({"A1"})
+    grid.set_current("B1")
+    assert _pixel(grid, "C1") == QColor(COLORS["rack-tip"])
+    assert _pixel(grid, "B1") == QColor(COLORS["accent"])
+    assert _pixel(grid, "A1") == QColor(COLORS["steps-bg"])   # a ring, no fill
+
+
+def test_a_racks_tip_is_round_not_square(app):
+    from micropick.gui.theme import COLORS
+    grid = _grid(NINETY_SIX, mini=True, rack=True, size=(408, 273))
+    corner = grid.well_rect("C3").topLeft().toPoint()
+    assert grid.grab().toImage().pixelColor(corner) == QColor(
+        COLORS["steps-bg"])
+
+
+def test_a_racks_legend_shows_the_three_looks_in_one_line(app):
+    from PySide6.QtWidgets import QLabel
+
+    from micropick.gui.widgets.plate_grid import RackLegend
+    legend = RackLegend()
+    legend.resize(408, 20)
+    legend.show()
+    app.processEvents()
+    labels = legend.findChildren(QLabel)
+    assert [w.text() for w in labels] == ["in the rack", "used", "next"]
+    assert len({w.y() + w.height() // 2 for w in labels}) == 1
+    legend.close()
+    legend.deleteLater()

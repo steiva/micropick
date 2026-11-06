@@ -105,6 +105,7 @@ def test_a_click_on_the_rack_chooses_the_tip_to_take(app, page):
     width = page.take_button.width()
     page.rack_grid.well_clicked.emit("F12")
     assert page.take_button.text() == "Take tip F12"
+    assert page.rack_grid._current == "F12"              # drawn as next
     assert page.take_button.width() == width             # fixed
     page.rack_grid.well_clicked.emit("A3")
     page.take_button.click()

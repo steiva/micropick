@@ -28,6 +28,10 @@ gives one - §12.11: only when more than one cuboid goes per well) and
 `set_dim_fills` is the wells other plan steps use, toned down towards an
 empty well so they never read as chosen, and under all of the above.
 
+`rack=True` (with `mini`) is a tip rack (TIP.md §2.3): the same footprint in
+a dark box, round tips, each in the rack, used (`set_used`: a dashed ring) or
+next (`set_current`). `RackLegend` is the line that goes under it.
+
 `planning=True` is the Plan step's grid (#43): a **plan** - the wells
 planned, each with its count, drawn in every planned well, "1" included -
 and a **selection** apart from it, the wells a count is set for
@@ -45,14 +49,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from ...core.routine import grid_labels
 from ..theme import COLORS, mono_font
 from ..theme.factory import secondary_button
 from ..theme.icons import icon
 
-__all__ = ["PlateGrid", "PlateTools"]
+__all__ = ["PlateGrid", "PlateTools", "RackLegend"]
 
 HEADER = 22            # px for the row letters and column numbers
 DRAG_SLOP = 4          # px a press travels before it is a box
@@ -63,6 +67,9 @@ PLATE_MM = (127.76, 85.48)
 WELLS_MM = (116.0, 78.0)
 DIM = 0.35             # how much of its color a dim fill keeps
 EMPTY_WELL = "#23272E"
+RACK_PADDING = 0.05    # of the box, each side
+RACK_RADIUS = 12
+RACK_TIP = 0.8         # of its cell
 
 
 def _toned_down(color: QColor) -> QColor:
@@ -85,10 +92,13 @@ class PlateGrid(QWidget):
     hovered = Signal(object)              # a name, or None off the wells
 
     def __init__(self, *, mini: bool = False, planning: bool = False,
-                 read_only: bool = False, parent: QWidget | None = None):
+                 read_only: bool = False, rack: bool = False,
+                 parent: QWidget | None = None):
         """`read_only`: a click chooses nothing; `hovered` still says."""
         super().__init__(parent)
         self.mini = mini
+        self.rack = rack
+        self._used: set[str] = set()
         self.planning = planning
         self.read_only = read_only
         # The count a well newly planned takes.
@@ -158,6 +168,11 @@ class PlateGrid(QWidget):
 
     def set_counts(self, counts: dict) -> None:
         self._counts = dict(counts or {})
+        self.update()
+
+    def set_used(self, names) -> None:
+        """A rack's tips taken and not put back."""
+        self._used = set(names)
         self.update()
 
     def set_current(self, name: str | None) -> None:
@@ -302,14 +317,18 @@ class PlateGrid(QWidget):
         cols, rows = self._shape()
         box = self.plate_rect()
         scale = box.width() / PLATE_MM[0]
-        cell = max(2.0, min(WELLS_MM[0] / cols, WELLS_MM[1] / rows) * scale)
+        room = ((PLATE_MM[0] * (1 - 2 * RACK_PADDING),
+                 PLATE_MM[1] * (1 - 2 * RACK_PADDING)) if self.rack
+                else WELLS_MM)
+        cell = max(2.0, min(room[0] / cols, room[1] / rows) * scale)
         return (cell, box.center().x() - cell * cols / 2,
                 box.center().y() - cell * rows / 2)
 
     def well_rect(self, name: str) -> QRectF:
         cell, left, top = self._layout()
         c, r = self._at[name]
-        gap = max(1.0, cell * (0.14 if not self.mini else 0.18))
+        gap = (cell * (1 - RACK_TIP) if self.rack
+               else max(1.0, cell * (0.14 if not self.mini else 0.18)))
         return QRectF(left + c * cell + gap / 2, top + r * cell + gap / 2,
                       cell - gap, cell - gap)
 
@@ -415,6 +434,10 @@ class PlateGrid(QWidget):
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.rack:
+            self._paint_rack(painter)
+            painter.end()
+            return
         cell, left, top = self._layout()
         empty = QColor(EMPTY_WELL)
         ring = QColor(COLORS["text"])
@@ -485,6 +508,65 @@ class PlateGrid(QWidget):
             painter.setBrush(QColor(255, 255, 255, 24))
             painter.drawRect(self._band)
         painter.end()
+
+    def _paint_rack(self, painter: QPainter) -> None:
+        painter.setPen(QPen(QColor(COLORS["control-border"]), 1))
+        painter.setBrush(QColor(COLORS["steps-bg"]))
+        painter.drawRoundedRect(self.plate_rect(), RACK_RADIUS, RACK_RADIUS)
+        for name in self._at:
+            _paint_tip(painter, self.well_rect(name),
+                       NEXT if name == self._current
+                       else USED if name in self._used else IN_RACK)
+
+
+IN_RACK, USED, NEXT = "in the rack", "used", "next"
+
+
+def _paint_tip(painter: QPainter, rect: QRectF, state: str) -> None:
+    """One round tip, as the rack and its legend draw it."""
+    if state == USED:
+        pen = QPen(QColor(COLORS["rack-tip"]), 1.5, Qt.PenStyle.CustomDashLine)
+        pen.setDashPattern([2, 2])
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+    elif state == NEXT:
+        painter.setPen(QPen(QColor(COLORS["text"]), 2))
+        painter.setBrush(QColor(COLORS["accent"]))
+    else:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(COLORS["rack-tip"]))
+    painter.drawEllipse(rect.adjusted(1, 1, -1, -1) if state != IN_RACK
+                        else rect)
+
+
+class _LegendDot(QWidget):
+    def __init__(self, state: str, parent: QWidget):
+        super().__init__(parent)
+        self.state = state
+        self.setFixedSize(12, 12)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        _paint_tip(painter, QRectF(1, 1, 10, 10), self.state)
+        painter.end()
+
+
+class RackLegend(QWidget):
+    """What a rack's tips mean, in one line."""
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
+        for state in (IN_RACK, USED, NEXT):
+            row.addWidget(_LegendDot(state, self))
+            label = QLabel(state, self)
+            label.setObjectName("rackLegend")
+            row.addWidget(label)
+            row.addSpacing(8)
+        row.addStretch(1)
 
 
 class PlateTools(QWidget):
