@@ -44,8 +44,12 @@ class FeedRow(QWidget):
         self._side_grows = side_grows
         view.setParent(self)
         side.setParent(self)
-        # The width the panel was built for is its minimum here.
-        self._min_side = max(side.minimumWidth(), side.sizeHint().width())
+        # The width the panel was built for is its minimum here. Only a panel
+        # that grows goes by what is in it: a scroll column's hint is that, not
+        # the width it was fixed at.
+        self._min_side = (max(side.minimumWidth(), side.sizeHint().width())
+                          if side_grows
+                          else side.minimumWidth() or side.sizeHint().width())
         self._max_side = int(self._min_side * MAX_SIDE_FACTOR)
 
     def _place(self) -> None:

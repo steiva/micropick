@@ -3,8 +3,13 @@
 The expected colors are worked by hand, 0.4 * color + 0.6 * card (#171A1F).
 """
 
+import os
+
 import pytest
-from PySide6.QtCore import QPoint
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QPoint                                # noqa: E402
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QPushButton
 

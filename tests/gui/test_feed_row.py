@@ -1,7 +1,12 @@
 """The camera screens' layout rule (TIP.md §2.1, #120)."""
 
+import os
+
 import pytest
-from PySide6.QtCore import QPoint
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PySide6.QtCore import QPoint                                # noqa: E402
 from PySide6.QtWidgets import QApplication, QLabel, QWidget
 
 from micropick.gui.theme.factory import scroll_column
@@ -60,6 +65,18 @@ def test_with_no_room_the_picture_gives_way_never_the_column(app, row):
     assert row.inner.width() == 440
     assert row.side.geometry().right() < row.width()
     assert row.view.width() < 860 * 4 / 3
+
+
+def test_a_panel_wider_inside_than_designed_still_stands_at_its_width(app):
+    """A scroll column's size hint is what is in it, not its fixed width."""
+    from PySide6.QtWidgets import QVBoxLayout
+    inner = QWidget()
+    QVBoxLayout(inner).addWidget(QLabel("a long line " * 20))
+    row = FeedRow(CameraView(), scroll_column(inner, 440))
+    _at(app, row, 1880, 860)
+    assert inner.width() == 440
+    row.close()
+    row.deleteLater()
 
 
 def test_two_columns_keep_their_width_and_the_picture_takes_the_rest(app):
