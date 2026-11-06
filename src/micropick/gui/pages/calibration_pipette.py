@@ -120,7 +120,7 @@ from ..widgets.camera_view import CameraView
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel, check_view_axes
-from ..widgets.plate_grid import PlateGrid
+from ..widgets.plate_grid import PLATE_MM, PlateGrid
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
 from ..workers import Worker
@@ -131,6 +131,8 @@ __all__ = ["PipetteCalibration", "POSITION_NAME", "RUN_HOLDER",
 TITLE = "Tip"
 
 log = logging.getLogger(__name__)
+
+RACK_MAP_PX = 340
 
 PANEL_WIDTH = 420
 
@@ -209,7 +211,13 @@ class TipOnBlock(QObject):
         self.back_to_deck.clicked.connect(
             lambda: self.session.page_requested.emit("labware"))
 
+        box.layout().addWidget(self.no_rack)
+
+        # The rack stays with a tip on, that tip ringed: the card keeps its
+        # height with nothing kept empty, and the Calibrate card under it
+        # stays. Only the row of buttons changes.
         self.offer = QWidget(box)
+        self.offer.setObjectName("plain")
         offer = QVBoxLayout(self.offer)
         offer.setContentsMargins(0, 0, 0, 0)
         self.racks = select(box)
@@ -220,15 +228,23 @@ class TipOnBlock(QObject):
         self.rack_hint = muted_label("Click the tip to take.", box)
         offer.addWidget(self.rack_hint)
         self.rack_grid = PlateGrid(mini=True, parent=box)
+        self.rack_grid.setFixedSize(
+            RACK_MAP_PX, round(RACK_MAP_PX * PLATE_MM[1] / PLATE_MM[0]))
         self.rack_grid.well_clicked.connect(self._choose_tip)
         offer.addWidget(self.rack_grid)
+        reserve(self.racks, self.rack_hint, self.rack_grid)
+        box.layout().addWidget(self.offer)
+
+        self.taking = QWidget(box)
+        taking = QVBoxLayout(self.taking)
+        taking.setContentsMargins(0, 0, 0, 0)
         self.take_button = primary_button("Take tip", box)
         metrics = self.take_button.fontMetrics()
         self.take_button.setFixedWidth(
             metrics.horizontalAdvance("Take tip H12") + 6 * SPACING)
         self.take_button.clicked.connect(self._take)
-        offer.addWidget(self.take_button)
-        reserve(self.racks, self.rack_hint, self.rack_grid, self.take_button)
+        taking.addWidget(self.take_button)
+        reserve(self.take_button)
 
         self.dropping = QWidget(box)
         dropping = QVBoxLayout(self.dropping)
@@ -243,10 +259,7 @@ class TipOnBlock(QObject):
         row.addStretch(1)
         dropping.addLayout(row)
         dropping.addStretch(1)
-        # A tip taken or dropped leaves the card its height: the Calibrate
-        # card under it stays.
-        self.tip_stack = choice_stack(self.offer, self.no_rack, self.dropping,
-                                      parent=box)
+        self.tip_stack = choice_stack(self.taking, self.dropping, parent=box)
         box.layout().addWidget(self.tip_stack)
         self.tip_state = wrapped()
         box.layout().addWidget(self.tip_state)
@@ -365,12 +378,17 @@ class TipOnBlock(QObject):
 
         on = tip.attached is True
         offering = connected and not on and bool(racks)
-        self.tip_stack.setCurrentWidget(
-            self.dropping if on else self.no_rack if connected and not racks
-            else self.offer)
-        for widget in (self.racks, self.rack_hint, self.rack_grid,
-                       self.take_button):
-            widget.setVisible(offering)
+        no_rack = connected and not racks
+        self.no_rack.setVisible(no_rack and not on)
+        self.offer.setVisible(not no_rack)
+        self.tip_stack.setVisible(on or not no_rack)
+        self.tip_stack.setCurrentWidget(self.dropping if on else self.taking)
+        for widget in (self.racks, self.rack_grid):
+            widget.setVisible(connected and bool(racks))
+        self.racks.setEnabled(offering)
+        self.rack_grid.setEnabled(offering)
+        self.rack_hint.setVisible(offering)
+        self.take_button.setVisible(offering)
         rack = self._rack()
         if rack is not None:
             slot, definition = rack
@@ -382,7 +400,11 @@ class TipOnBlock(QObject):
                 {w: COLORS["faint"] if w in used else COLORS["tips"]
                  for c in definition.ordering for w in c})
         well = self._well_to_take()
-        self.rack_grid.set_current(well)
+        ringed = well
+        if on:
+            ringed = (tip.well if rack is not None and tip.returnable
+                      and tip.slot == rack[0] else None)
+        self.rack_grid.set_current(ringed)
         self.take_button.setText(f"Take tip {well}" if well else "Take tip")
         free = not session.robot_lease.busy and not running
         known = connected and free and tip.attached is not None

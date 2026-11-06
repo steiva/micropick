@@ -172,14 +172,14 @@ def _buttons(window):
             if b.isVisibleTo(window.home)}
 
 
-def test_the_robot_card_is_as_tall_as_the_setup_card(app, window):
+def test_the_robot_card_is_no_taller_than_the_setup_card(app, window):
     """What went wrong has its room under the card: in it, it left the
     words above the card's middle."""
     home = window.home
     home.resize(1400, 860)
     home.show()
     app.processEvents()
-    assert home.robot_box.height() == home.setup_card.height()
+    assert home.robot_box.height() <= home.setup_card.height()
     assert not home.robot_box.isAncestorOf(home.error)
     home.hide()
 

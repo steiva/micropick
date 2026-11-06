@@ -119,6 +119,20 @@ def test_a_click_on_the_rack_chooses_the_tip_to_take(app, page):
     assert page.take_button.isHidden()
 
 
+def test_the_rack_stays_with_a_tip_on_that_tip_ringed(app, page):
+    _tip_on(app, page, "A3")
+    assert not page.rack_grid.isHidden() and not page.racks.isHidden()
+    assert not page.rack_grid.isEnabled() and not page.racks.isEnabled()
+    assert page.rack_grid._current == "A3"
+    assert page.rack_hint.isHidden()
+
+
+def test_the_rack_is_no_wider_than_a_map(app, page):
+    """Across the panel it was the card's height, and an empty one with a
+    tip on."""
+    assert page.rack_grid.width() == tip_page.RACK_MAP_PX
+
+
 def test_drop_in_trash_uses_the_tip(app, page):
     _tip_on(app, page, "A3")
     page.drop_button.click()

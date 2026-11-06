@@ -227,7 +227,6 @@ def test_a_tip_taken_leaves_the_calibrate_card_where_it_is(
     _opened(app, page)
     block = page.tip
     stands_still(page, lambda: block.tip_stack.setCurrentWidget(block.dropping))
-    stands_still(page, lambda: block.tip_stack.setCurrentWidget(block.no_rack))
     page.close()
     page.deleteLater()
 

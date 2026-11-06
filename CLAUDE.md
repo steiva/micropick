@@ -127,7 +127,7 @@ what is under them, the one thing a job's end moves.
 A status line or a warning moves nothing: a message is the toast, and what comes
 and goes by itself has its place kept, `theme.factory.reserve` for a line or a
 field, and `choice_stack` for what the robot or a run changes, one page at a time in the
-room of the tallest (the Tip step's rack or drop buttons, a liquid run's
+room of the tallest (the Tip step's Take tip or drop buttons, a liquid run's
 banners): a card must not leave from under the operator's hand. A test says it
 with `stands_still` (`tests/gui/conftest.py`), and for a choice that the frame
 and the card's own top stay (`tests/gui/test_nothing_shifts.py`).
@@ -765,8 +765,9 @@ change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
 verify, manual adjustment, the start offset dx, dy). The Tip step
 (`pages.calibration_pipette`, REDESIGN §6.2) is one column of two cards. Put a tip on:
-a Select of the deck's tip boxes, the rack (wells taken here and not put
-back gray, `Session.used_tips`), Take tip A3; then "Tip A3 is on." with
+a Select of the deck's tip boxes, the rack (a map of `RACK_MAP_PX`, wells taken
+here and not put back gray, `Session.used_tips`), Take tip A3; then the rack
+stays, grayed, that tip ringed, with "Tip A3 is on.",
 Drop in trash and Drop in place (`dropTipInPlace`, nothing moved; no
 Put back: it did not work); no tip box, a warning with Back to Deck.
 Calibrate the tip, its steps dimmed until a tip is on: Start tip
