@@ -80,10 +80,6 @@ _Avoid_: observe (on screen)
 The dish the robot picks from.
 _Avoid_: dish with cuboids, picking dish
 
-**Source**:
-What Manual pick picks from, chosen on its Source step: the source dish or a plate on the deck. Chosen for the robot session; a plate moved or taken off the deck is not the source any more. Auto pick always picks from the source dish.
-_Avoid_: pick source, origin
-
 **Adjust by hand**:
 After a tip calibration, the operator moving the tip onto the central crosshair and saving where it ended up. Optional.
 _Avoid_: fine-tune, touch-up (on screen)
@@ -102,11 +98,14 @@ _Avoid_: hold (a hold is Stop's second press, ended by the robot becoming free)
 ## A day's work
 
 **Task**:
-One of the three kinds of work started from Home: Auto pick, Manual pick, Liquid. A task is an order of steps; Manual pick's follow its source.
+One of the three kinds of work started from Home: Auto pick, Manual pick, Liquid. A task is an order of steps.
 _Avoid_: mode, workflow
 
 **Step**:
 One screen of a task (a plan step is something else). A step is done when the state it sets up holds now, never because it was visited. Deck, Tip and Dish bottom are the same steps, with the same state, in every task that has them.
+
+**Optional step**:
+A step a task can go past without its being done. It still gets its done mark, once the state it sets up holds.
 
 **Path item**:
 One line of a path on screen: a thing the operator goes through once, in order, shown done, current or later, never numbered. Not a step of a task and not a plan step.
@@ -117,7 +116,7 @@ The last step of every task, where the work itself is done. In Manual pick it ho
 _Avoid_: Work, Picking (as a step name)
 
 **Well center**:
-The measured center of a plate's wells, one per slot and plate type. Measuring it is a step in every task; only Liquid needs it done. It belongs to the module height it was measured on: on another height the plate is not measured.
+The measured center of a plate's wells, one per slot and plate type. Measuring it is a step in every task, for the plates the operator chooses; a plate not measured uses its drawing. It belongs to the module height it was measured on: on another height the plate is not measured.
 
 **Plate plan**:
 Which wells of a plate get cuboids, how many each, and in what order.
@@ -142,9 +141,6 @@ _Avoid_: here
 **Template**:
 A plate plan or a liquid plan saved under a name the user gave it, as a file that can be shared.
 _Avoid_: preset
-
-**Skipped plate**:
-A plate whose well center the user chose not to measure in this robot session; its drawing is used instead.
 
 **Memo point**:
 A point that lasts until the program closes. Marked with a right click on the picture it is named M1, M2 ...; a saved point the user takes the star off keeps its name.
