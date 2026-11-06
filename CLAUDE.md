@@ -21,7 +21,7 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
   every later test, and a MainWindow then builds in 1.1 s, not 0.25 s.
   On `offscreen` a `QDrag` returns at once: a real drag is tested on
   `minimal`, in a process of its own (`tests/gui/step_list_drags.py`).
-- GUI: `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
+- GUI: `micropick-gui.bat` (a desktop shortcut points to it) or `conda run -n lab python -m micropick.gui` (`--mock` for no hardware).
 - `lab` has an unrelated package named `tests` installed, so
   `python -m tests.…` resolves to it, not to this repository's `tests/`.
 - Windows build: `conda run -n lab python packaging/build.py` (PyInstaller,
