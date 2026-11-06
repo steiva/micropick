@@ -380,6 +380,12 @@ QFrame#banner[tone="ok"] {
     border-radius: 10px;
 }
 QFrame#banner[tone="ok"] QLabel { color: @ok; }
+QFrame#banner[tone="danger"] {
+    background: @danger-bg;
+    border: none;
+    border-radius: 10px;
+}
+QFrame#banner[tone="danger"] QLabel { color: @danger-text; }
 
 QLabel#toast {
     background: @ok-bg;
@@ -585,5 +591,19 @@ QPushButton#pathLink {
 }
 QPushButton#pathLink:hover { color: @info-text; }
 QPushButton#pathLink:disabled { color: @accent-hover-off; }
+
+/* Where a path stands: Not done, In progress, Done. */
+QLabel#pathChip {
+    min-height: 26px;
+    max-height: 26px;
+    border-radius: 13px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: @line;
+    color: @text-2;
+}
+QLabel#pathChip[state="in-progress"] { background: @selected-bg; color: @accent-hover; }
+QLabel#pathChip[state="done"] { background: @ok-bg; color: @ok; }
 
 QLabel#rackLegend { font-size: 12px; color: @muted; }

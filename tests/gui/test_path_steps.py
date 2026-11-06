@@ -123,3 +123,22 @@ def test_the_page_keeps_its_body_widgets(app):
     assert path.state("only") == CURRENT
     assert path._rows["only"].node.last
     path.deleteLater()
+
+
+def test_the_rows_show_the_card_behind_them(themed):
+    """A plain QWidget under the theme paints the window's color."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QColor
+
+    from micropick.gui.theme import COLORS
+    from micropick.gui.theme.factory import card
+    frame = card()
+    widget = PathSteps([PathItem("go", "Go", "Gone", QLabel("a sentence"))],
+                       frame)
+    frame.layout().addWidget(widget)
+    widget.set_current("go")
+    frame.resize(400, 200)
+    image = frame.grab().toImage()
+    inside = widget.mapTo(frame, QPoint(widget.width() - 4, 4))
+    assert image.pixelColor(inside) == QColor(COLORS["card"])
+    frame.deleteLater()

@@ -1442,17 +1442,18 @@ tip box and a 384 plate at hand.
   where it is, the gantry does not move, A1 stays gray.
 
 - [ ] **Calibrate the tip.**
-  Without a tip the three steps are dimmed. With one: Start tip
-  calibration - the pill reads "Calibrating the tip", STOP shows, the
-  camera goes over the calibration position and waits ("Waiting for
-  you"). The disc is there, Calibrate: a spinner and "Calibrating…" for
-  about 30 s (no numbers on screen; the routine's lines are in the Log),
-  the lower camera's picture. Then the run ends by itself: the pill goes, a
-  green "Tip calibrated." (saved), Tip gets its ✓, the tip stays over
-  the crosshair. Only the current step's button is blue.
+  Without a tip the card is dimmed with "Put a tip on first." and nothing in
+  it takes a click. With one: Go to the disc - the pill reads "Calibrating
+  the tip", STOP shows, the chip In progress, the camera goes over the
+  calibration position and waits ("Waiting for you"). Yes, calibrate: a bar
+  that only turns for about 30 s (no numbers on screen; the routine's lines
+  are in the Log), the lower camera's picture. Then the run ends by itself:
+  the pill goes, "Tip calibrated." in the toast and the footer, the chip
+  Done, Tip gets its ✓, the tip stays over the crosshair. Two clicks in all.
+  No numbers on the path, no red mark unless something failed.
 
 - [ ] **Fine-tune by hand.**
-  In the Calibrate card under "Tip calibrated." and Redo, no fold: at
+  In the Calibrate card under the path, no fold: at
   once the lower camera and the pad (XY only, 0.05 mm), Save gray. The
   left arrow (and the left key) moves the tip left on the picture, not
   up. One step: Save lights; Save: "Fine-tune saved.", gray again, no
@@ -1466,12 +1467,14 @@ tip box and a 384 plate at hand.
   moves the tip left on the picture, not up. Move the tip away: the upper
   camera, its arrows as on every page.
 
-- [ ] **Redo calibration.**
-  After a result: Redo calibration starts the run again at the disc.
+- [ ] **Redo.**
+  After a result: Redo on Tip found starts the run again, the camera to the
+  disc, the path on Disc in the picture, no link there.
 
 - [ ] **Stop while it waits.**
-  Start, then Esc (or STOP) at the disc: the run ends, "Calibration
-  stopped. Nothing was saved.", the pill goes.
+  Go to the disc, then Esc (or STOP) at the disc: the run ends, "Stopped.
+  Nothing was saved." in the toast, the pill goes, the path back on Camera
+  over the disc, or at its end after a Redo.
 
 - [ ] **Done follows the tip.**
   Drop the tip and take another: Tip loses its ✓ until calibrated again.
@@ -2522,3 +2525,21 @@ screen (§10.10).
   chips and the picture button top right, the mouse row bottom left, Controls
   bottom right, the same corners and chip style. A page's own buttons and the
   histogram stay where they were.
+
+## Tip (#119, #120, #122, #124)
+
+- [ ] **The picture and the column.**
+  At 1920×1080 the picture is 4:3, undistorted (the disc is round), and the
+  440 px column is centered in the space beside it. Camera calibration and
+  the position sheets the same; Manual pick's two columns keep their width,
+  the picture taking the rest; Picking's panel as before. A switch of cameras
+  moves nothing.
+
+- [ ] **The rack.**
+  Round tips in the rack's real proportions, no teal: used ones dashed, the
+  next one blue. A click on another tip makes it next, and Take tip takes it.
+  A one-line legend under it.
+
+- [ ] **Disabled buttons.**
+  On every screen a gray button reads as its normal self, faded: the Footer's
+  Next, Drop in trash during a run, a red one.

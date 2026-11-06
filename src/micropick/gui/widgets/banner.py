@@ -5,6 +5,7 @@ Check that it matches the real deck." with Got it.
 **Warn** (`warn-bg`): always with its action buttons in the banner -
 "Put a tip on first. [Go to Tip]" - so the way out is where the problem
 is said. **Ok** (`ok-bg`): a result, "Camera calibrated and saved."
+**Danger** (`danger-bg`): something failed, in a sentence.
 
 The color comes with an icon, because the screen is read from the side
 (§1.4).
@@ -22,7 +23,7 @@ from ..theme.icons import pixmap
 __all__ = ["Banner"]
 
 _ICON = {"info": ("info", "accent"), "warn": ("alert", "warn"),
-         "ok": ("check", "ok")}
+         "ok": ("check", "ok"), "danger": ("alert", "danger-text")}
 
 
 class Banner(QFrame):

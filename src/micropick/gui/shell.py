@@ -681,8 +681,11 @@ class MainWindow(QMainWindow):
             self._navigation = navigation
             self.footer.set_navigation(**navigation)
         blocked = need is None and not navigation["next_enabled"]
-        self.footer.set_reason(page.next_reason() if blocked
-                               and hasattr(page, "next_reason") else "")
+        if need is None and hasattr(page, "footer_line"):
+            self.footer.set_reason(*page.footer_line())
+        else:
+            self.footer.set_reason(page.next_reason() if blocked
+                                   and hasattr(page, "next_reason") else "")
 
     def _need_button(self, need: tasks.Need) -> str:
         if need.kind == "robot":

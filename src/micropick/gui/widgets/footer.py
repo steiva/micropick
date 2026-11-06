@@ -103,14 +103,22 @@ class Footer(QFrame):
         self.tag.setStyleSheet(f"background: {COLORS[bg]}; "
                                f"color: {COLORS[ink]};")
         self.tag.show()
+        self._show_sentence_as(ok=False)
         self.sentence.setText(sentence)
         self.sentence.show()
         self.tone = tone
 
-    def set_reason(self, text: str) -> None:
-        """Why Next is gray, on an ordinary step: one sentence, no tag."""
+    def set_reason(self, text: str, ok: bool = False) -> None:
+        """Why Next is gray, on an ordinary step, or with `ok` a result in
+        green: one sentence, no tag."""
+        self._show_sentence_as(ok=ok)
         self.sentence.setText(text)
         self.sentence.setVisible(bool(text))
+
+    def _show_sentence_as(self, *, ok: bool) -> None:
+        sheet = f"color: {COLORS['ok']};" if ok else ""
+        if self.sentence.styleSheet() != sheet:
+            self.sentence.setStyleSheet(sheet)
 
     def clear_status(self) -> None:
         self.tag.hide()

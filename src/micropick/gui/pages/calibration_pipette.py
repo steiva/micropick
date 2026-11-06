@@ -21,19 +21,25 @@ was asked: no pick-up while a tip is on, no drop while there is none,
 nothing while it could not be read. These go through the page's jog panel
 (`JogPanel.run_job`), as every robot command from a page with one.
 
-**Calibrate the tip**, its steps shown from the start and dimmed until a
-tip is on - the robot never moves while the disc is being placed:
+**Calibrate the tip**, a path (`widgets.path_steps`, TIP.md §3.2) with a chip
+saying Not done, In progress or Done. Dimmed, all its items later, until a tip
+is on - the robot never moves while the disc is being placed:
 
-1. Start tip calibration: the camera goes to the calibration position
-   (the profile's `tip_calib`, set in Robot setup).
-2. The disc is there: checked on the picture once the camera is over it.
-3. Calibrate: the automatic routine, about 30 s, a spinner and
-   "Calibrating…" while it runs - what the routine is doing goes to the
-   log, never on screen. Its result is saved as it ends.
+- Camera over the disc: **Go to the disc**, the camera to the calibration
+  position (the profile's `tip_calib`, set in Robot setup).
+- Disc in the picture: **Yes, calibrate**, the disc confirmed and at once
+  the calibration.
+- Find the tip: the automatic routine, about 30 s, a bar that only turns -
+  what the routine is doing goes to the log, never on screen. Its result is
+  saved as it ends; the item then reads Tip found, with Redo, which starts
+  again at the disc: the routine finds the crosshair with the upper camera,
+  so it cannot run alone.
 
-Then a green "Tip calibrated." and Redo calibration, which runs it
-again. Liquid's Tip step has no calibration (`set_task`): it is done
-once a tip is on.
+Where the path is comes from the tip, the run's phase and
+`tip_calibration_status` at each refresh (`_place`), never from a visit.
+What stops a start is said in the item, a failure in a red banner under the
+path. Liquid's Tip step has no calibration (`set_task`): it is done once a tip
+is on. The footer's sentence is `PipetteCalibration.footer_line`.
 
 In the same card, optional (when Settings has the manual adjustment on),
 the fine-tune by hand: at once after Calibrate, the lower camera and the
@@ -49,9 +55,10 @@ as a short job, not a run.
 
 **The calibration is one run.** Start claims the robot's lease as a run
 (STOP and "Calibrating the tip" in the top bar) and one worker goes
-through every step: it drives there, waits for Calibrate, measures,
+through every step: it drives there, waits for Yes, calibrate, measures,
 saves. The wait is an Event the GUI sets; Stop (Esc, STOP) during it ends
-the run with nothing saved. After it the routine is a handful of moves
+the run with nothing saved, and the path goes back to where the calibration
+stands. After it the routine is a handful of moves
 and a few seconds of detection, with no point to stop at; a second Stop
 holds the robot.
 
@@ -98,8 +105,8 @@ import time
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import (QHBoxLayout, QProgressBar, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel,
+                               QProgressBar, QPushButton, QVBoxLayout, QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
 from ...config.schema import PipetteOffset
@@ -117,11 +124,11 @@ from ..theme.factory import (card, choice_stack, heading, muted_label,
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
-from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel, check_view_axes
+from ..widgets.path_steps import PathItem, PathSteps
 from ..widgets.plate_grid import PlateGrid, RackLegend
-from ..widgets.step_card import StepCard, wrapped
+from ..widgets.step_card import wrapped
 from ..widgets.toast import show_toast
 from ..workers import Worker
 
@@ -148,19 +155,26 @@ TUNE_RANGE_MM = 1.0
 NO_RACK = "There is no tip box on the deck. Add it on the Deck step."
 CALIBRATED = "Tip calibrated."
 NOTHING_SAVED = "Nothing was saved."
+STOPPED = f"Stopped. {NOTHING_SAVED}"
 FIRST_A_TIP = "Put a tip on first."
 # What the run shows while it goes on: a plain state, the routine's own
 # lines are the log's.
 MOVING_LINE = "Moving to the calibration position."
-CALIBRATING = "Calibrating…"
+# How far the card fades with no tip on (TIP.md §3.2).
+NO_TIP_OPACITY = 0.55
+# The chip's words; its look is the style sheet's, by the same words.
+NOT_DONE, IN_PROGRESS, DONE_CHIP = "Not done", "In progress", "Done"
 
 # What the calibration run holds the robot for (`shell.RUNS`): a host
 # with a pill of its own gives the block another name.
 RUN_HOLDER = "pipette calibration"
 
-# Where a run is: driving to the calibration position, waiting for the
-# disc to be checked and Calibrate, measuring.
+# Where a run is: driving to the calibration position, waiting for Yes,
+# calibrate, measuring.
 MOVING, DISC, MEASURING = "moving", "disc", "measuring"
+
+# The path's items, and its end.
+GO, CHECK, FIND, END = "go", "check", "find", "end"
 
 
 class TouchUpAborted(RuntimeError):
@@ -439,8 +453,12 @@ class TipCalibrationBlock(QObject):
         self._disc_seen = False
         self._gate = threading.Event()
         self._aborted = False
-        # How the last run ended, shown under Start until the next one.
+        # What the last start or run left to say, until the next one; a
+        # failure apart, in its banner.
         self._outcome = ""
+        self._failure = ""
+        # Where the path was last put (`_place`).
+        self._at: str | None = None
         # The crosshair the last calibration found, robot XY: what the
         # fine-tune measures from (else `_crosshair_xy`'s guess).
         self._crosshair: tuple[float, float] | None = None
@@ -472,57 +490,62 @@ class TipCalibrationBlock(QObject):
         self.refresh()
 
     def _build(self, parent) -> QWidget:
-        """The three steps under one heading, the result and the fine-tune,
-        in one widget: dimmed as one until a tip is on, hidden as one on
-        Liquid's Tip step."""
-        box = QWidget(parent)
-        column = QVBoxLayout(box)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(SPACING)
-        self.heading = heading("Calibrate the tip", 2)
+        """The heading and chip, the path, the fine-tune, in one card: dimmed
+        as one until a tip is on, hidden as one on Liquid's Tip step."""
+        box = card(parent)
+        column = box.layout()
+        # A host whose own step card names it hides this row.
+        self.heading = QWidget(box)
+        self.heading.setObjectName("plain")
+        head = QHBoxLayout(self.heading)
+        head.setContentsMargins(0, 0, 0, 0)
+        head.addWidget(heading("Calibrate the tip", 2), 1)
+        self.chip = QLabel(NOT_DONE, self.heading)
+        self.chip.setObjectName("pathChip")
+        head.addWidget(self.chip)
         column.addWidget(self.heading)
+        self.first_tip = muted_label(FIRST_A_TIP, box)
+        column.addWidget(self.first_tip)
 
-        self.start_step = StepCard(box, 1, "Start")
-        self.start_step.add(wrapped(
-            "The camera goes to the calibration position."))
-        self.start_button = primary_button("Start tip calibration", box)
-        self.start_button.clicked.connect(self._start)
-        self.start_step.add_button(self.start_button)
-        column.addWidget(self.start_step.box)
-
-        self.disc_step = StepCard(box, 2, "Disc on the calibration module")
-        self.disc_step.add(wrapped(
-            "Check on the picture that the crosshair disc is there. If not, "
-            "put it on now."))
-        self.disc_button = secondary_button("The disc is there", box)
-        self.disc_button.clicked.connect(self._disc_there)
-        self.disc_step.add_button(self.disc_button)
-        column.addWidget(self.disc_step.box)
-
-        self.calibrate_step = StepCard(box, 3, "Calibrate")
-        self.calibrate_step.add(wrapped(
-            "The robot finds the tip under the camera by itself. About "
-            "30 s."))
-        self.calibrate_button = primary_button("Calibrate", box)
-        self.calibrate_button.clicked.connect(self._calibrate)
-        self.calibrate_step.add_button(self.calibrate_button)
+        self.go_button = primary_button("Go to the disc", box)
+        self.go_button.clicked.connect(self._start)
+        # What stops Go, or what the run is doing: said here, its line kept
+        # so that the items under it stay.
+        self.checks = muted_label("", box)
+        self.checks.setWordWrap(True)
+        reserve(self.checks)
+        self.yes_button = primary_button("Yes, calibrate", box)
+        self.yes_button.clicked.connect(self._yes_calibrate)
         self.spinner = QProgressBar(box)
         self.spinner.setRange(0, 0)                  # turning, no amount
         self.spinner.setTextVisible(False)
         self.spinner.setFixedHeight(6)
-        self.spinner.hide()
-        self.calibrate_step.add(self.spinner)
+        self.path = PathSteps([
+            PathItem(GO, "Camera over the disc", "Camera is over the disc",
+                     _body("Put the crosshair disc on the calibration module. "
+                           "The camera then goes to it.",
+                           self.go_button, self.checks)),
+            PathItem(CHECK, "Disc in the picture", "Disc is in the picture",
+                     _body("Is the disc with the crosshair in the picture? If "
+                           "not, put it on the calibration module now.",
+                           self.yes_button)),
+            PathItem(FIND, "Find the tip", "Tip found",
+                     _body("The robot finds the tip under the camera by "
+                           "itself.", self.spinner), link_text="Redo"),
+        ], box)
+        self.path.link_clicked.connect(lambda _key: self._start())
+        column.addWidget(self.path)
 
-        # Calibrated: the result, Redo and the optional fine-tune, in the
-        # Calibrate card - one card from Calibrate to the offset saved.
-        self.calibrated_banner = Banner(CALIBRATED, tone="ok", parent=box)
-        self.calibrate_step.add(self.calibrated_banner)
-        self.redo_button = secondary_button("Redo calibration", box)
-        self.redo_button.clicked.connect(self._start)
-        self.calibrate_step.box.layout().addWidget(
-            self.redo_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.failure = Banner("", tone="danger", parent=box)
+        self.failure.hide()
+        column.addWidget(self.failure)
+        # What is left to say with the path at its end.
+        self.end_note = muted_label("", box)
+        self.end_note.setWordWrap(True)
+        column.addWidget(self.end_note)
 
         self.tune_box = QWidget(box)
+        self.tune_box.setObjectName("plain")
         tune = QVBoxLayout(self.tune_box)
         tune.setContentsMargins(0, SPACING, 0, 0)
         tune.addWidget(wrapped(
@@ -540,13 +563,11 @@ class TipCalibrationBlock(QObject):
         self.tune_save_button = primary_button("Save", box)
         self.tune_save_button.clicked.connect(self._save_tune)
         tune.addWidget(self.tune_save_button, 0, Qt.AlignmentFlag.AlignLeft)
-        self.calibrate_step.add(self.tune_box)
-        column.addWidget(self.calibrate_step.box)
+        column.addWidget(self.tune_box)
 
-        # What stops Start, what the run is doing, or how it ended.
-        self.checks = muted_label("", box)
-        self.checks.setWordWrap(True)
-        column.addWidget(self.checks)
+        self._dim = QGraphicsOpacityEffect(box)
+        self._dim.setOpacity(NO_TIP_OPACITY)
+        box.setGraphicsEffect(self._dim)
         return box
 
     @property
@@ -673,7 +694,7 @@ class TipCalibrationBlock(QObject):
                 f"{tuple(round(v, 2) for v in stored)}")
             motion.tip_to(stored[:2], stored[2], log=log)
             wait(self.disc_requested, "waiting for you: check the disc, "
-                 "then Calibrate")
+                 "then Yes, calibrate")
             time.sleep(0.5)
             log(f"starting from ({current[0]:+.3f}, {current[1]:+.3f}) mm, "
                 f"{frames} frames per reading"
@@ -701,7 +722,7 @@ class TipCalibrationBlock(QObject):
             self._outcome = session.robot_lease.refusal
             self.refresh()
             return
-        self._outcome = ""
+        self._outcome = self._failure = ""
         self._disc_seen = False
         self._phase = MOVING
         worker = Worker(job, what="calibrating the pipette", lease=lease)
@@ -742,6 +763,11 @@ class TipCalibrationBlock(QObject):
             self._phase = MEASURING
             self._gate.set()
             self.refresh()
+
+    def _yes_calibrate(self) -> None:
+        """One click, the two calls in turn."""
+        self._disc_there()
+        self._calibrate()
 
     def _on_pose(self, pose) -> None:
         if pose is not None:
@@ -847,10 +873,10 @@ class TipCalibrationBlock(QObject):
         error = getattr(self.sender(), "error", None)
         if isinstance(error, TouchUpAborted):
             log.info("pipette calibration stopped: %s", reason)
-            self._outcome = f"Calibration stopped. {NOTHING_SAVED}"
+            show_toast(self.box, STOPPED)
         else:
             log.error("pipette calibration failed: %s", reason)
-            self._outcome = f"Calibration failed: {reason} {NOTHING_SAVED}"
+            self._failure = f"Calibration failed: {reason} {NOTHING_SAVED}"
         self.refresh()
 
     # -- display -------------------------------------------------------------
@@ -892,51 +918,70 @@ class TipCalibrationBlock(QObject):
             self.jog.set_view_axes(axes)
         self.changed.emit()
 
+    def _place(self, on: bool, measured: bool) -> str | None:
+        """Where the path is: an item, its end, or None with nothing to do
+        yet. A run's phase first: Redo goes through the items again while
+        the calibration before it still holds."""
+        if self.running:
+            return {MOVING: GO, DISC: CHECK, MEASURING: FIND}[self._phase]
+        if measured:
+            return END
+        return GO if on else None
+
+    def _show_path(self, place: str | None) -> None:
+        if place == self._at:
+            return
+        self._at = place
+        if place == END:
+            self.path.set_all_done()
+        elif place is None:
+            self.path.set_all_later()
+        else:
+            self.path.set_current(place)
+
+    def _show_chip(self, running: bool, measured: bool) -> None:
+        text = (IN_PROGRESS if running else DONE_CHIP if measured
+                else NOT_DONE)
+        if self.chip.text() != text:
+            self.chip.setText(text)
+            self.chip.setProperty("state", text.lower().replace(" ", "-"))
+            self.chip.style().unpolish(self.chip)
+            self.chip.style().polish(self.chip)
+
     def _show(self, running: bool, tuning: bool) -> None:
         session = self.session
         on = session.tip.attached is True
         # Dimmed until a tip is on; never while its own run goes on.
-        self.box.setEnabled(on or running)
-        measured, why, _stale = tip_calibration_status(session)
+        dimmed = not on and not running
+        self.box.setEnabled(not dimmed)
+        self._dim.setEnabled(dimmed)
+        self.first_tip.setVisible(dimmed)
+        measured = tip_calibration_status(session)[0]
         problems = [] if running else self._readiness()
         phase = self._phase
+        place = self._place(on, measured)
+        self._show_path(place)
+        self._show_chip(running, measured)
 
-        # The step open now: Start, the disc, Calibrate, or all done.
-        if running:
-            at = (0 if phase == MOVING else
-                  1 if phase == DISC and not self._disc_seen else 2)
-        else:
-            at = 3 if measured else 0
-        for number, step in enumerate((self.start_step, self.disc_step,
-                                       self.calibrate_step)):
-            if not on and not running:
-                step.set_state(BLOCKED, FIRST_A_TIP)
-            else:
-                step.set_state(OK if number < at else
-                               TODO if number == at else BLOCKED)
         free = not running and not session.robot_lease.busy
-        self.start_button.setEnabled(free and not problems)
-        self.disc_button.setEnabled(phase == DISC and not self._disc_seen)
-        self.calibrate_button.setEnabled(phase == DISC and self._disc_seen)
-        self.spinner.setVisible(phase == MEASURING)
+        self.go_button.setEnabled(free and not problems)
+        self.yes_button.setEnabled(phase == DISC)
+        redo = self.path.link(FIND)
+        redo.setEnabled(free and not problems)
+        redo.setToolTip(problems[0] if problems else "")
 
-        if running:
-            # At the disc, its step card says what to do.
-            self.checks.setText(MOVING_LINE if phase == MOVING else
-                                CALIBRATING if phase == MEASURING else "")
-        else:
-            lines = [self._outcome] if self._outcome else []
-            if problems and on:
-                lines.append(problems[0])
-            elif not measured and on and not self._outcome:
-                lines.append(why)
-            self.checks.setText("\n".join(lines))
+        lines = [self._outcome] if self._outcome else []
+        if problems and on:
+            lines.append(problems[0])
+        note = "\n".join(lines)
+        self.checks.setText(MOVING_LINE if phase == MOVING else note)
         self.checks.setVisible(bool(self.checks.text()))
-        result = measured and not running
-        self.calibrated_banner.setVisible(result)
-        self.redo_button.setVisible(result)
-        self.redo_button.setEnabled(free and not problems)
+        self.end_note.setText(note if place == END else "")
+        self.end_note.setVisible(bool(self.end_note.text()))
+        self.failure.set_text(self._failure)
+        self.failure.setVisible(bool(self._failure) and not dimmed)
 
+        result = measured and not running
         self.tune_box.setVisible(result
                                  and session.settings.tip_cal_touch_up)
         self.tune_away.setVisible(not tuning)
@@ -971,6 +1016,22 @@ class TipCalibrationBlock(QObject):
         spec = profile.cameras.get(label) if profile and label else None
         return (tuple(int(v) for v in spec.default_resolution)
                 if spec is not None else None)
+
+
+def _body(sentence: str, *widgets: QWidget) -> QWidget:
+    """A path item's body: its sentence, then what it offers, a button at its
+    own width at the left."""
+    body = QWidget()
+    body.setObjectName("plain")
+    column = QVBoxLayout(body)
+    column.setContentsMargins(0, 0, 0, 0)
+    column.setSpacing(SPACING)
+    column.addWidget(wrapped(sentence))
+    for widget in widgets:
+        column.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft
+                         if isinstance(widget, QPushButton)
+                         else Qt.AlignmentFlag(0))
+    return body
 
 
 def _to_calibration(name: str) -> property:
@@ -1014,15 +1075,13 @@ class PipetteCalibration(QWidget):
         # The blocks' widgets, by the names the page has always had.
         self.opener = self.calibration.opener
         self.calibration_box = self.calibration.box
-        self.calibrated = self.calibration.calibrated_banner
         for name in ("no_rack", "back_to_deck", "racks", "rack_hint",
                      "rack_grid", "take_button", "tip_state", "drop_button",
                      "drop_here_button", "tip_note"):
             setattr(self, name, getattr(self.tip, name))
-        for name in ("start_step", "start_button", "disc_step", "disc_button",
-                     "calibrate_step", "calibrate_button", "spinner",
-                     "checks", "redo_button", "tune_box", "tune_away",
-                     "touch_jog", "tune_save_button"):
+        for name in ("path", "chip", "go_button", "yes_button", "spinner",
+                     "checks", "tune_box", "tune_away", "touch_jog",
+                     "tune_save_button"):
             setattr(self, name, getattr(self.calibration, name))
         self._refresh()
 
@@ -1040,6 +1099,16 @@ class PipetteCalibration(QWidget):
 
     def run_activity(self) -> str | None:
         return self.calibration.run_activity()
+
+    def footer_line(self) -> tuple[str, bool]:
+        """The footer's sentence, and whether it is a result (TIP.md §3.4)."""
+        on = self.session.tip.attached is True
+        if self._task == "liquid":
+            return ("", False) if on else ("Put a tip on.", False)
+        if self.calibration.done:
+            return CALIBRATED, True
+        return ("Calibrate the tip to go on." if on
+                else "Put a tip on, then calibrate it."), False
 
     # -- a value typed and not saved (`MainWindow._ask_unsaved`) -------------
 

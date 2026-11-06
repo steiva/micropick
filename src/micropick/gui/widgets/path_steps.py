@@ -110,6 +110,7 @@ class _Row:
         self.state = LATER
         self.hidden = False
         self.box = QWidget(parent)
+        self.box.setObjectName("plain")
         row = QHBoxLayout(self.box)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(GAP_PX)

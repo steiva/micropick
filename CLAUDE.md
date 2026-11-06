@@ -95,7 +95,11 @@ it with `CameraView.set_click_to_move`; without a pixel map that line is
 A camera view and its side panel sit in a `widgets.feed_row.FeedRow`: the
 picture is 4:3 (the upper camera's) whatever it shows, another shape
 letterboxed in it with black bars, so a switch of cameras resizes
-nothing; the panel gets the rest, within 1-2x its designed width. Pages carry no title;
+nothing, and the box gives way before the panel, still 4:3. The panel's content
+keeps its designed width (one 440 px column; two 400 px columns on Manual pick)
+and is centered in the rest, its cards never stretched (TIP.md §2.1). Picking
+keeps the old rule, the panel taking the rest within 1-2x its designed width
+(`side_grows`), until it is redesigned. Pages carry no title;
 the TopBar's breadcrumb is the title.
 
 Manual pick's Run (#113, MANUAL.md §1) is the picture, then
@@ -757,19 +761,28 @@ measures each device that works on the first load and takes the faster
 change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
 verify, manual adjustment, the start offset dx, dy). The Tip step
-(`pages.calibration_pipette`, REDESIGN §6.2) is one column of two cards. Put a tip on:
-a Select of the deck's tip boxes, the rack (wells taken here and not put
-back gray, `Session.used_tips`), Take tip A3; then "Tip A3 is on." with
+(`pages.calibration_pipette`, TIP.md) is one column of two cards. Put a tip on:
+a Select of the deck's tip boxes, the rack (`PlateGrid(rack=True)`: the SBS
+footprint in a dark box, round tips, each in the rack, used, a dashed ring,
+`Session.used_tips`, or next, blue; a click makes a tip next; `RackLegend`
+under it), Take tip A3; then "Tip A3 is on." with
 Drop in trash and Drop in place (`dropTipInPlace`, nothing moved; no
 Put back: it did not work); no tip box, a warning with Back to Deck.
-Calibrate the tip, its steps dimmed until a tip is on: Start tip
-calibration (the camera to the calibration position), The disc is
-there, Calibrate (a spinner and "Calibrating…", the routine's lines
-only in the log; its result saved as it ends, the tip left over the
-crosshair) - one run from Start to its end (lease `run=True`, STOP, the
-pill), waiting for the operator at the disc, where Stop ends it with
-nothing saved; then, in the same Calibrate card, "Tip calibrated."
-with Redo calibration (no Check button) and the optional fine-tune, no
+Calibrate the tip is a `widgets.path_steps.PathSteps` path with a chip (Not done,
+In progress, Done), dimmed with "Put a tip on first." until a tip is on, where it
+stands read at each refresh from the tip, the run's phase and
+`tip_calibration_status`, never from a visit: Camera over the disc (Go to the disc,
+the camera to the calibration position), Disc in the picture (Yes, calibrate: the
+disc confirmed, then at once the calibration), Find the tip (a bar that only
+turns, the routine's lines only in the log; its result saved as it ends, the tip
+left over the crosshair) - one run from Go to its end (lease `run=True`, STOP, the
+pill). Two clicks once a tip is on. Stop at the disc ends it with nothing saved,
+"Stopped. Nothing was saved.", the path back on Camera over the disc, or at its end
+while an earlier calibration holds; during Find the tip the routine has no point
+to stop at. What stops a start is said in the current item, a failure in a red
+banner. The footer's sentence is the page's `footer_line` ("Tip calibrated."
+green). Done, Find the tip reads Tip found with the link Redo, which goes back
+through the disc (no Check button); then the optional fine-tune, no
 fold: "Optional: move the tip onto the central crosshair by hand on the
 picture, then Save.", at once the lower camera and the XY pad at 0.05 mm
 while the tip is over the crosshair, else "The tip is not over the

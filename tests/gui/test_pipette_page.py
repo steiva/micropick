@@ -1,7 +1,7 @@
 """The Tip step (`pages.calibration_pipette`, REDESIGN §6.2): a tip put on
-from a rack on the deck, then the tip calibration as a run - Start, the
-disc, Calibrate, the fine-tune - whose touch-up arrows follow the lower
-camera."""
+from a rack on the deck, then the tip calibration as a run on a path - Go to
+the disc, Yes, calibrate, the fine-tune - whose touch-up arrows follow the
+lower camera."""
 
 import os
 import sys
@@ -26,8 +26,9 @@ from micropick.gui.pages.calibration_pipette import (            # noqa: E402
 from micropick.gui.readiness import (CALIBRATION_POSITION,       # noqa: E402
                                      tip_calibration_status)
 from micropick.gui.session import Session                        # noqa: E402
-from micropick.gui.widgets.checklist import BLOCKED, OK          # noqa: E402
 from micropick.gui.widgets.jog_panel import view_move            # noqa: E402
+from micropick.gui.widgets.path_steps import (CURRENT, DONE,     # noqa: E402
+                                              LATER)
 from micropick.hardware.protocols import move_to                 # noqa: E402
 
 RACK = "opentrons_96_tiprack_300ul"
@@ -171,13 +172,46 @@ def test_the_rack_waits_for_a_run(app, page):
 
 # -- calibrate the tip -------------------------------------------------------
 
-def test_the_calibration_steps_are_shown_and_dimmed_until_a_tip_is_on(app, page):
-    assert not page.calibration_box.isHidden()
-    assert not page.calibration_box.isEnabled()
-    assert page.start_step.state == BLOCKED
-    assert page.start_button.text() == "Start tip calibration"
+def _states(page):
+    return [page.path.state(key) for key in ("go", "check", "find")]
+
+
+def test_with_no_tip_the_card_is_dimmed_and_takes_no_click(app, page):
+    box = page.calibration_box
+    assert not box.isHidden() and not box.isEnabled()
+    assert box.graphicsEffect().isEnabled()
+    assert box.graphicsEffect().opacity() == pytest.approx(0.55)
+    assert page.calibration.first_tip.text() == "Put a tip on first."
+    assert not page.calibration.first_tip.isHidden()
+    assert _states(page) == [LATER, LATER, LATER]
+    assert page.chip.text() == "Not done"
     _tip_on(app, page)
-    assert page.calibration_box.isEnabled()
+    assert box.isEnabled() and not box.graphicsEffect().isEnabled()
+    assert page.calibration.first_tip.isHidden()
+    assert _states(page) == [CURRENT, LATER, LATER]
+
+
+def test_the_path_has_no_numbers(page):
+    titles = [page.path.title(key) for key in ("go", "check", "find")]
+    assert titles == ["Camera over the disc", "Disc in the picture",
+                      "Find the tip"]
+    assert not any(c.isdigit() for title in titles for c in title)
+
+
+def test_what_stops_a_start_is_said_in_the_current_item(app, page):
+    _tip_on(app, page)
+    assert page.path.current == "go"
+    assert not page.go_button.isEnabled()
+    assert page.checks.text() == page._readiness()[0]
+
+
+def test_the_cards_stand_in_one_column_of_440(app, page):
+    page.resize(1920, 860)
+    page.show()
+    app.processEvents()
+    assert page.calibration_box.width() == 440
+    assert page.tip.box.width() == 440
+    page.hide()
 
 
 def test_liquid_needs_no_calibration(page):
@@ -225,36 +259,34 @@ def ready(app, page, monkeypatch):
 
 
 def _calibrate(app, page):
-    page.start_button.click()
-    assert _until(app, lambda: page.disc_button.isEnabled())
-    page.disc_button.click()
-    page.calibrate_button.click()
+    page.go_button.click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    page.yes_button.click()
     assert _until(app, lambda: not page.session.robot_lease.busy
                   and not page.calibration.running and not page.jog.busy)
 
 
-def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
+def test_two_clicks_calibrate_save_at_once_and_end_the_run(app, page, ready):
     session = page.session
-    assert page.start_step.state != BLOCKED
-    page.start_button.click()
-    # A run: the robot's lease from Start to the end, the pill's name.
+    assert page.chip.text() == "Not done"
+    page.go_button.click()
+    # A run: the robot's lease from Go to the end, the pill's name.
     assert session.robot_lease.holding_run
     assert session.robot_lease.holder == "pipette calibration"
+    assert page.path.current == "go"                 # until the move ends
+    assert page.chip.text() == "In progress"
     # The camera went to the calibration position; the disc is checked.
-    assert _until(app, lambda: page.disc_button.isEnabled())
-    assert page.start_step.state == OK
-    assert not page.calibrate_button.isEnabled()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    assert _states(page) == [DONE, CURRENT, LATER]
     assert page.run_activity() == "waiting"
-    page.disc_button.click()
-    assert page.calibrate_button.isEnabled()
     ready["gate"].clear()
-    page.calibrate_button.click()
-    # Measuring: a spinner and a plain line, nothing to wait for the
-    # operator; what the routine does goes to the log only.
+    page.yes_button.click()
+    # Measuring: a bar that only turns, nothing to wait for the operator;
+    # what the routine does goes to the log only.
     assert _until(app, lambda: page.spinner.isVisibleTo(page))
+    assert _states(page) == [DONE, DONE, CURRENT]
+    assert page.spinner.maximum() == 0
     assert page.run_activity() is None
-    page.calibration._on_message("residual 0.012 mm after 3 frames")
-    assert page.checks.text() == "Calibrating…"
     ready["gate"].set()
     # The lease is let go on the worker's thread, before its end arrives.
     assert _until(app, lambda: not session.robot_lease.busy
@@ -263,19 +295,57 @@ def test_calibrate_saves_at_once_and_ends_the_run(app, page, ready):
     assert ready["start"] == session.settings.tip_cal_start_offset
     assert not page.spinner.isVisibleTo(page)
     assert tip_calibration_status(session)[0]
-    assert not page.calibrated.isHidden()
-    assert page.calibrated.label.text() == "Tip calibrated."
-    assert page.calibrate_step.state == OK
-    assert page.calibrated._actions.count() == 0        # no Check button
-    assert page.redo_button.isEnabled()
+    assert _states(page) == [DONE, DONE, DONE]
+    assert page.path.title("find") == "Tip found"
+    assert page.chip.text() == "Done"
+    assert page.path.link("find").text() == "Redo"
+    assert page.path.link("find").isEnabled()
     # The fine-tune is there at once, in the same card, its pad up.
     assert not page.tune_box.isHidden()
     assert page.touch_jog.isVisibleTo(page)
-    # Done follows the tip that is on: another tip is to calibrate again.
+
+
+def test_yes_calibrate_confirms_then_calibrates_once_each(app, page, ready):
+    block, calls = page.calibration, []
+    there, calibrate = block._disc_there, block._calibrate
+    block._disc_there = lambda: (calls.append("disc"), there())
+    block._calibrate = lambda: (calls.append("calibrate"), calibrate())
+    _calibrate(app, page)
+    assert calls == ["disc", "calibrate"]
+
+
+def test_dropping_the_tip_resets_the_path(app, page, ready):
+    session = page.session
+    _calibrate(app, page)
     page.drop_button.click()
     assert _until(app, lambda: session.tip.attached is False
                   and not page.jog.busy)
-    assert page.calibrated.isHidden()
+    assert _states(page) == [LATER, LATER, LATER]
+    assert page.chip.text() == "Not done"
+    assert page.footer_line() == ("Put a tip on, then calibrate it.", False)
+
+
+def test_coming_back_with_a_valid_calibration_shows_the_path_at_its_end(
+        app, page, ready):
+    _calibrate(app, page)
+    again = PipetteCalibration(page.session)
+    assert [again.path.state(k) for k in ("go", "check", "find")] == [DONE] * 3
+    assert again.chip.text() == "Done"
+    assert again.footer_line() == ("Tip calibrated.", True)
+    again.deleteLater()
+
+
+def test_the_footer_says_where_the_tip_is_in_each_task(app, page):
+    for task in ("auto", "manual"):
+        page.set_task(task)
+        assert page.footer_line() == ("Put a tip on, then calibrate it.",
+                                      False)
+    page.set_task("liquid")
+    assert page.footer_line() == ("Put a tip on.", False)
+    _tip_on(app, page)
+    assert page.footer_line() == ("", False)
+    page.set_task("auto")
+    assert page.footer_line() == ("Calibrate the tip to go on.", False)
 
 
 def test_the_fine_tune_saves_the_offset_once_the_tip_was_moved(
@@ -468,15 +538,17 @@ def test_leaving_the_step_high_moves_nothing(app, page, ready):
                    for c in session.robot.calls[before:])
 
 
-def test_redo_calibration_measures_again(app, page, ready):
+def test_redo_goes_back_through_the_disc(app, page, ready):
     session = page.session
     _calibrate(app, page)
-    page.redo_button.click()
+    page.path.link("find").click()
     assert session.robot_lease.holding_run
-    assert _until(app, lambda: page.disc_button.isEnabled())
-    page.disc_button.click()
-    page.calibrate_button.click()
-    assert _until(app, lambda: not session.robot_lease.busy)
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    assert _states(page) == [DONE, CURRENT, LATER]
+    assert page.path.link("find").isHidden()         # no link while it waits
+    page.yes_button.click()
+    assert _until(app, lambda: not session.robot_lease.busy
+                  and not page.calibration.running)
     assert tip_calibration_status(session)[0]
 
 
@@ -505,15 +577,79 @@ def test_after_a_restart_the_crosshair_is_the_pixel_maps(
     assert _until(app, lambda: page.touch_jog.isVisibleTo(page))
 
 
-def test_stop_at_the_disc_ends_the_run_with_nothing_saved(app, page, ready):
+def _toasts(monkeypatch):
+    said = []
+    monkeypatch.setattr(tip_page, "show_toast",
+                        lambda _where, text, **_kw: said.append(text))
+    return said
+
+
+def test_stop_at_the_disc_ends_the_run_with_nothing_saved(
+        app, page, ready, monkeypatch):
     session = page.session
-    page.start_button.click()
-    assert _until(app, lambda: page.disc_button.isEnabled())
+    said = _toasts(monkeypatch)
+    page.go_button.click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
     session.stop_requested.emit()
-    assert _until(app, lambda: not session.robot_lease.busy)
-    assert _until(app, lambda: "Nothing was saved." in page.checks.text())
+    assert _until(app, lambda: not session.robot_lease.busy
+                  and not page.calibration.running)
+    assert said == ["Stopped. Nothing was saved."]
     assert session.profile.calibration.pipette_offset is None
-    assert page.start_button.isEnabled()
+    assert _states(page) == [CURRENT, LATER, LATER]
+    assert page.go_button.isEnabled()
+    assert page.calibration.failure.isHidden()
+
+
+def test_stop_at_the_disc_goes_to_the_end_while_a_calibration_holds(
+        app, page, ready):
+    session = page.session
+    _calibrate(app, page)
+    offset = session.profile.calibration.pipette_offset
+    page.path.link("find").click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    session.stop_requested.emit()
+    assert _until(app, lambda: not session.robot_lease.busy
+                  and not page.calibration.running)
+    assert session.profile.calibration.pipette_offset is offset
+    assert _states(page) == [DONE, DONE, DONE]
+    assert page.chip.text() == "Done"
+
+
+def test_a_first_stop_while_finding_the_tip_changes_nothing(app, page, ready):
+    session = page.session
+    page.go_button.click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    ready["gate"].clear()
+    page.yes_button.click()
+    assert _until(app, lambda: page.path.current == "find")
+    session.stop_requested.emit()
+    app.processEvents()
+    assert page.path.current == "find" and session.robot_lease.busy
+    ready["gate"].set()
+    assert _until(app, lambda: not session.robot_lease.busy
+                  and not page.calibration.running)
+    assert tip_calibration_status(session)[0]        # it ended and saved
+
+
+def test_a_failure_is_a_red_banner_with_a_sentence(
+        app, page, ready, monkeypatch):
+    def fails(*_a, **_k):
+        raise RuntimeError("the tip was not seen")
+
+    monkeypatch.setattr(tip_page, "calibrate_pipette_offset", fails)
+    page.go_button.click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    page.yes_button.click()
+    assert _until(app, lambda: not page.calibration.running)
+    failure = page.calibration.failure
+    assert not failure.isHidden() and failure.tone == "danger"
+    assert "Nothing was saved." in failure.label.text()
+    assert _states(page) == [CURRENT, LATER, LATER]
+    page.go_button.click()                           # gone with a new start
+    assert failure.isHidden()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    page.session.stop_requested.emit()
+    assert _until(app, lambda: not page.calibration.running)
 
 
 # -- the cards as blocks in another widget ------------------------------------
@@ -558,19 +694,18 @@ def test_the_two_cards_work_embedded_in_another_widget(app, tmp_path,
         _fake_routine(monkeypatch)
         monkeypatch.setattr(calibration, "_readiness", lambda: [])
         calibration.refresh()
-        calibration.start_button.click()
+        calibration.go_button.click()
         # A run under its own holder's name, from Start to the end.
         assert session.robot_lease.holding_run
         assert session.robot_lease.holder == "shake tip calibration"
         assert not tip.take_button.isEnabled()
-        assert _until(app, lambda: calibration.disc_button.isEnabled())
+        assert _until(app, lambda: calibration.yes_button.isEnabled())
         assert calibration.run_activity() == "waiting"
-        calibration.disc_button.click()
-        calibration.calibrate_button.click()
+        calibration.yes_button.click()
         assert _until(app, lambda: not session.robot_lease.busy)
         assert calibration.done
         assert "calibrated" in changes
-        assert not calibration.calibrated_banner.isHidden()
+        assert calibration.chip.text() == "Done"
     finally:
         host.deleteLater()
         session.shutdown()

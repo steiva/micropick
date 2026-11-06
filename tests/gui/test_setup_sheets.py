@@ -18,6 +18,7 @@ from micropick.core.deck import (SLOT_PITCH_Y, nearest_slot,     # noqa: E402
                                  slot_center)
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
+from micropick.gui.theme import COLORS                           # noqa: E402
 from micropick.hardware.protocols import xyz                     # noqa: E402
 
 
@@ -602,14 +603,14 @@ def _calibrated_tip_on(app, window, monkeypatch):
     calibration = sheet.tip_calibration
     monkeypatch.setattr(calibration, "_readiness", lambda: [])
     calibration.refresh()
-    calibration.start_button.click()
+    calibration.go_button.click()
     lease = window.session.robot_lease
     # A run of its own, with the pill.
     assert lease.holding_run and lease.holder == "shake tip calibration"
-    _wait(app, lambda: calibration.disc_button.isEnabled())
+    _wait(app, lambda: calibration.yes_button.isEnabled())
+    assert calibration.path.current == "check"
     assert sheet.run_activity() == "waiting"
-    calibration.disc_button.click()
-    calibration.calibrate_button.click()
+    calibration.yes_button.click()
     _wait(app, lambda: not lease.busy)
     _wait(app, lambda: sheet.cards["holder"].state == "todo")
 
@@ -664,3 +665,49 @@ def test_a_calibrated_tip_on_makes_the_first_three_steps_done(
     sheet.tip_on.drop_button.click()
     _wait(app, lambda: sheet.cards["tip"].state == "todo")
     assert sheet.cards["calibrate"].state == "blocked"
+
+
+@pytest.mark.parametrize("task", ["auto", "manual"])
+def test_the_tip_steps_footer_follows_the_calibration(
+        app, window, calibrates, monkeypatch, task):
+    from micropick.config.labware import resolve_definition
+    session, footer = window.session, window.footer
+    session.load_labware(resolve_definition(RACK), 10)
+    window.open_task_step(task, "tip")
+    page = window.tip_calibration_page
+    _wait(app, lambda: _robot_free(window))
+    assert footer.sentence.text() == "Put a tip on, then calibrate it."
+    assert not footer.next.isEnabled()
+    page.take_button.click()
+    _wait(app, lambda: footer.sentence.text() == "Calibrate the tip to go on."
+          and _robot_free(window))
+    assert not footer.next.isEnabled()
+    monkeypatch.setattr(page.calibration, "_readiness", lambda: [])
+    page.calibration.refresh()
+    page.go_button.click()
+    _wait(app, lambda: page.yes_button.isEnabled())
+    page.yes_button.click()
+    _wait(app, lambda: footer.sentence.text() == "Tip calibrated.")
+    assert footer.next.isEnabled()
+    assert COLORS["ok"] in footer.sentence.styleSheet()
+    _wait(app, lambda: _robot_free(window))
+    # Dropped: not calibrated, and the green goes.
+    page.drop_button.click()
+    _wait(app, lambda: footer.sentence.text()
+          == "Put a tip on, then calibrate it.")
+    assert not footer.next.isEnabled()
+    assert footer.sentence.styleSheet() == ""
+
+
+def test_liquids_tip_step_asks_only_for_a_tip(app, window):
+    from micropick.config.labware import resolve_definition
+    session, footer = window.session, window.footer
+    session.load_labware(resolve_definition(RACK), 10)
+    window.open_task_step("liquid", "tip")
+    page = window.tip_calibration_page
+    _wait(app, lambda: _robot_free(window))
+    assert footer.sentence.text() == "Put a tip on."
+    assert not footer.next.isEnabled()
+    page.take_button.click()
+    _wait(app, lambda: footer.next.isEnabled())
+    assert footer.sentence.isHidden()
