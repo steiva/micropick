@@ -15,8 +15,8 @@ deck - each "Measured today", "Not measured: using the drawing" (skipped,
 a ✓ in yellow) or "Not measured yet" (`Session.well_center_status`) - and,
 for the one selected, four steps:
 
-1. **Tip to a well:** a well, then Move the tip - to its top center as
-   the robot has it (`workflows.well_center.go_to_top`), what the
+1. **Tip to a well:** a well on the plate's map (`WellPicker`), then Move
+   the tip - to its top center as the robot has it (`workflows.well_center.go_to_top`), what the
    measurement is taken against (`Measurement`).
 2. **Center the tip:** the arrows until it is in the middle; It is
    centered.
@@ -60,13 +60,14 @@ from ..session import MEASURED, SKIPPED, Session, SessionError
 from ..theme import COLORS, SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, double_spin_box, heading,
                              muted_label, primary_button, quiet_button,
-                             reserve, scroll_column, secondary_button, select)
+                             reserve, scroll_column, secondary_button)
 from ..theme.icons import pixmap
 from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.jog_pad import StepChip
 from ..widgets.jog_panel import JogPanel
 from ..widgets.step_card import StepCard, wrapped
 from ..widgets.toast import show_toast
+from ..widgets.well_picker import WellPicker
 from ..workers import describe_error
 
 __all__ = ["PlateRow", "WellCenterPage", "TITLE", "status_text"]
@@ -77,6 +78,7 @@ TITLE = "Well center"
 
 PANEL_WIDTH = 440
 MARK_PX = 24
+MAP_PX = 340
 
 INTRO = ("Measure every plate you will use. A plate you skip still works, "
          "with the depth from its drawing.")
@@ -270,15 +272,12 @@ class WellCenterPage(QWidget):
         column.addWidget(self.last_card)
 
         self.well_step = StepCard(panel, 1, "Tip to a well")
-        row = QHBoxLayout()
-        self.well_choice = select(panel)
-        self.well_choice.currentTextChanged.connect(self._well_chosen)
-        row.addWidget(self.well_choice, 1)
+        self.wells = WellPicker("accent", MAP_PX, panel, plate_choice=False)
+        self.wells.changed.connect(self._well_chosen)
+        self.well_step.add(self.wells)
         self.move_button = primary_button("Move the tip", panel)
         self.move_button.clicked.connect(self._go_to_well_top)
-        row.addWidget(self.move_button)
-        self.well_step.add_layout(row)
-        self.well_step.own_button(self.move_button)
+        self.well_step.add_button(self.move_button)
         column.addWidget(self.well_step.box)
 
         self.center_step = StepCard(panel, 2, "Center the tip")
@@ -376,6 +375,8 @@ class WellCenterPage(QWidget):
         if self._selected not in self._rows:
             self._selected = None
             self.select_plate(*self._first_to_do())
+            if self._selected is None:
+                self._fill_wells()
         # Also when nothing was selected and nothing is: the list emptied.
         self.refresh()
 
@@ -420,18 +421,24 @@ class WellCenterPage(QWidget):
         return profile.deck.well_center(*self._selected)
 
     def _fill_wells(self) -> None:
-        definition = self._definition()
-        wells = ([w for column in definition.ordering for w in column]
-                 if definition is not None else [])
+        """The selected plate on the map, on the well last measured, else
+        its first."""
+        plate = next(((s, e, d) for s, e, d in self._plates()
+                      if (s, e.load_name) == self._selected), None)
         center = self._center()
-        self.well_choice.blockSignals(True)
-        self.well_choice.clear()
-        self.well_choice.addItems(wells)
-        if center is not None and center.well in wells:
-            self.well_choice.setCurrentText(center.well)
-        self.well_choice.blockSignals(False)
+        self.wells.blockSignals(True)
+        self.wells.set_plates([] if plate is None else [plate])
+        if plate is not None:
+            self.wells.choose(plate[0], center.well if center is not None
+                              and center.well in plate[2].wells
+                              else plate[2].ordering[0][0])
+        self.wells.blockSignals(False)
 
-    def _well_chosen(self, _well: str) -> None:
+    def _well(self) -> str:
+        chosen = self.wells.chosen()
+        return "" if chosen is None else chosen[3]
+
+    def _well_chosen(self) -> None:
         # Another well: the depth follows its drawing, and the tip is not
         # over it.
         self._depth_for = None
@@ -447,7 +454,7 @@ class WellCenterPage(QWidget):
         self.refresh()
 
     def _go_to_well_top(self) -> None:
-        well, labware_id = self.well_choice.currentText(), self._labware_id()
+        well, labware_id = self._well(), self._labware_id()
         if (self._selected is None or not well or labware_id is None
                 or self.jog.busy):
             return
@@ -471,7 +478,7 @@ class WellCenterPage(QWidget):
 
     def _definition_depth(self) -> float | None:
         definition = self._definition()
-        well = self.well_choice.currentText()
+        well = self._well()
         return (well_center.definition_depth(definition, well)
                 if definition is not None and well else None)
 
@@ -569,9 +576,8 @@ class WellCenterPage(QWidget):
         movable = (chosen and session.robot is not None
                    and not session.robot_lease.busy and not self.jog.busy)
         running = self._run_using()
-        self.well_choice.setEnabled(chosen)
-        self.move_button.setEnabled(movable and bool(
-            self.well_choice.currentText()))
+        self.wells.setEnabled(chosen)
+        self.move_button.setEnabled(movable and bool(self._well()))
         self.centered_button.setEnabled(chosen and self._at == CENTER)
         self.level_button.setEnabled(chosen and self._at == LOWER)
         self.well_depth.setEnabled(chosen and self._at == SAVE)
@@ -612,7 +618,7 @@ class WellCenterPage(QWidget):
     def _show_depth(self) -> None:
         """The plate's depth, else the drawing's for the chosen well. At
         Save, what was typed stays."""
-        key = (self._selected, self.well_choice.currentText())
+        key = (self._selected, self._well())
         if (self._at == SAVE and key == self._depth_for
                 or self.well_depth.hasFocus()):
             return

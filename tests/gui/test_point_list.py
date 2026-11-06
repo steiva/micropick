@@ -9,11 +9,12 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEvent, Qt                       # noqa: E402
+from PySide6.QtCore import QEvent, QPoint, Qt               # noqa: E402
 from PySide6.QtGui import QKeyEvent                         # noqa: E402
 from PySide6.QtTest import QTest                            # noqa: E402
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,   # noqa: E402
-                               QInputDialog, QLineEdit, QTableWidget)
+                               QInputDialog, QLabel, QLineEdit,
+                               QTableWidget)
 
 from micropick.gui.app import Options                       # noqa: E402
 from micropick.gui.pages.manual import ManualPage           # noqa: E402
@@ -207,19 +208,19 @@ def test_a_chosen_row_unfolds_its_actions_under_the_point(points):
     assert row.isAncestorOf(points.actions)
     assert points.actions.y() >= row.head.geometry().bottom()
     assert [b.text() for b in (points.camera_to, points.tip_to,
-                               points.z_from_tip, points.delete)] == [
-        "Camera to", "Tip to", "Z from tip", "Delete"]
+                               points.z_from_tip)] == [
+        "Camera to", "Tip to", "Z from tip"]
     points.choose("trough")
     assert points.row("trough").isAncestorOf(points.actions)
 
 
-def test_a_click_chooses_the_row_and_unfolds_it(points):
+def test_a_click_chooses_the_row_and_unfolds_it_at_once(points):
     chosen = []
     points.chosen.connect(chosen.append)
     QTest.mouseClick(points.row("M2").cells["x"], Qt.MouseButton.LeftButton)
     assert points.chosen_name == "M2" and chosen == ["M2"]
-    _settle()
     assert points.actions.isVisible()
+    assert points.row("M2").isAncestorOf(points.actions)
 
 
 def test_a_click_on_the_chosen_row_lets_it_go(points):
@@ -230,28 +231,41 @@ def test_a_click_on_the_chosen_row_lets_it_go(points):
     assert not points.actions.isVisible()
 
 
-def test_nothing_moves_between_the_two_presses_of_a_double_click(points):
-    """Folding the row above lifts the rows under it, and the second press
-    came down on Tip to: a double click must never move the robot."""
-    points.choose("M1")
-    row = points.row("M2")
-    top = row.mapToGlobal(row.rect().topLeft())
-    QTest.mouseClick(row.cells["x"], Qt.MouseButton.LeftButton)
-    QApplication.processEvents()
-    assert row.mapToGlobal(row.rect().topLeft()) == top
-    assert points.row("M1").isAncestorOf(points.actions)
+INERT = Qt.WidgetAttribute.WA_TransparentForMouseEvents
 
 
-def test_the_actions_take_no_click_just_after_they_unfold(points):
-    """A slow double click, its second press just past the interval."""
+def test_the_actions_of_a_row_that_lifted_take_no_click(points):
+    """Folding the row above lifts the one clicked, and the second press of a
+    double click, a slow one too, came down on Tip to."""
     points.choose("M1")
     QTest.mouseClick(points.row("M2").cells["x"], Qt.MouseButton.LeftButton)
-    QTest.qWait(INTERVAL_MS + 15)
-    inert = Qt.WidgetAttribute.WA_TransparentForMouseEvents
     assert points.row("M2").isAncestorOf(points.actions)
-    assert points.actions.testAttribute(inert)
+    assert points.actions.testAttribute(INERT)
+    QTest.qWait(INTERVAL_MS + 15)
+    assert points.actions.testAttribute(INERT)
     _settle()
-    assert not points.actions.testAttribute(inert)
+    assert not points.actions.testAttribute(INERT)
+
+
+def test_the_actions_of_a_row_that_stayed_take_clicks_at_once(points):
+    points.choose("M2")
+    QTest.mouseClick(points.row("M1").cells["x"], Qt.MouseButton.LeftButton)
+    assert points.row("M1").isAncestorOf(points.actions)
+    assert not points.actions.testAttribute(INERT)
+
+
+def test_a_double_click_on_a_row_that_lifted_edits_its_cell(points):
+    """The second press is on the row's own actions by then."""
+    points.choose("M1")
+    row = points.row("M2")
+    cell = row.cells["y"]
+    x = cell.mapTo(row, cell.rect().center()).x()
+    QTest.mouseClick(cell, Qt.MouseButton.LeftButton)
+    QApplication.processEvents()
+    QTest.mouseDClick(row, Qt.MouseButton.LeftButton,
+                      pos=QPoint(x, points.actions.geometry().center().y()))
+    assert row.editor is not None and row._key == "y"
+    row.close_editor(False)
 
 
 def test_a_point_gone_is_chosen_no_more(points, session):
@@ -263,21 +277,44 @@ def test_a_point_gone_is_chosen_no_more(points, session):
     assert not points.actions.isVisible()
 
 
-def test_delete_takes_a_memo_point_at_once(points, session, monkeypatch):
+def test_the_cross_takes_a_memo_point_at_once(points, session, monkeypatch):
     asked = _answer(monkeypatch)
-    points.choose("M1")
-    points.delete.click()
+    points.row("M1").delete.click()
     assert session.memo_point("M1") is None and asked == []
 
 
-def test_delete_asks_for_a_saved_point(points, session, monkeypatch):
+def test_the_cross_needs_no_row_chosen_and_chooses_none(points, session):
+    points.choose("M2")
+    QTest.mouseClick(points.row("M1").delete, Qt.MouseButton.LeftButton)
+    assert session.memo_point("M1") is None
+    assert points.chosen_name == "M2"
+
+
+def test_the_cross_asks_for_a_saved_point(points, session, monkeypatch):
     asked = _answer(monkeypatch, False, True)
-    points.choose("trough")
-    points.delete.click()
+    points.row("trough").delete.click()
     assert asked[0][0] == "Delete point trough?"
     assert "trough" in session.saved_points()
-    points.delete.click()
+    points.row("trough").delete.click()
     assert "trough" not in session.saved_points()
+
+
+def test_a_line_stands_between_the_memo_and_the_saved_points(points, session):
+    line = points.divider
+    assert line.isVisible()
+    assert points.row("M2").geometry().bottom() < line.y() \
+        < points.row("trough").y()
+    session.delete_memo_point("M1")
+    session.delete_memo_point("M2")
+    assert not line.isVisible()
+
+
+def test_the_columns_line_up_with_their_captions(points):
+    row = points.row("M1")
+    for key, caption in zip("xyz", points.findChildren(QLabel, "caption")[1:]):
+        cell = row.cells[key]
+        assert caption.mapToGlobal(caption.rect().topRight()).x() \
+            == cell.mapToGlobal(cell.rect().topRight()).x()
 
 
 # -- editing -------------------------------------------------------------------

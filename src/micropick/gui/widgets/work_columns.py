@@ -7,8 +7,10 @@ fixed: the picture takes the rest (`FeedRow`), so what a card shows moves no
 column, and no card is ever under 380 px. The picture, 4:3, stops at its height:
 the panel is then centered in what is left.
 
-Each column is a `scroll_column`, its scroll bar's room kept beside the cards,
-so a bar coming moves nothing.
+Each column is a `scroll_column`, and a bar coming moves nothing. The work's
+bar has its room in the gap to Points, not beside it: the cards are as far from
+Points as from the picture. Points' own list scrolls, so its column keeps no
+room: in a window too short for the card, the bar lies over the card's edge.
 
 `FeedRow` asks `width_in` for the panel's width at the row's, and gives it with
 `set_outer_width`, which is what changes the arrangement. The page hears of it
@@ -65,10 +67,11 @@ class WorkColumns(QWidget):
 
         self._work_area = scroll_column(work, ONE_COLUMN)
         self._beside_area = scroll_column(beside, COLUMN)
+        self._beside_area.setFixedWidth(COLUMN)
         self._bar = self._work_area.verticalScrollBar().sizeHint().width()
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(COLUMN_GAP)
+        row.setSpacing(max(0, COLUMN_GAP - self._bar))
         row.addWidget(self._work_area)
         row.addWidget(self._beside_area)
         self._arrange(False)
@@ -85,7 +88,7 @@ class WorkColumns(QWidget):
     def width_in(self, row_width: int) -> int:
         """The panel's width, scroll bars' room included, in a row this wide."""
         if row_width >= TWO_COLUMNS_FROM:
-            return 2 * (COLUMN + self._bar) + COLUMN_GAP
+            return 2 * COLUMN + max(COLUMN_GAP, self._bar)
         return ONE_COLUMN + self._bar
 
     def set_outer_width(self, width: int) -> None:

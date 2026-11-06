@@ -15,10 +15,14 @@ from __future__ import annotations
 import logging
 
 from ..config.labware import (LabwareDefinition, LabwareError,
-                              local_definitions, shared_definitions)
+                              local_definitions, resolve_definition,
+                              shared_definitions)
+from .widgets.mini_deck import DECK_ROWS, DeckTile
 
-__all__ = ["CHIPS", "catalogue", "facts", "in_chip", "kind", "well_depth",
-           "well_volume"]
+__all__ = ["CHIPS", "catalogue", "deck_tiles", "facts", "in_chip", "kind",
+           "well_depth", "well_volume"]
+
+TRASH_SLOT = 12
 
 log = logging.getLogger(__name__)
 
@@ -107,3 +111,34 @@ def catalogue() -> tuple[dict[str, LabwareDefinition],
         stock = {}
     known = {**custom, **{n: d for n, d in stock.items() if n not in custom}}
     return custom, known
+
+
+def deck_tiles(session) -> list[DeckTile]:
+    """Every slot, with what the run holds there, else its platform: a deck
+    where any slot can be chosen."""
+    state = session.run_state
+    held = (state.labware if state is not None
+            and session.robot is not None else {})
+    profile = session.profile
+    tiles = []
+    for row in DECK_ROWS:
+        for slot in row:
+            module = (profile.deck.module_for(slot) if profile is not None
+                      else None)
+            platform = (module.name or "Platform") if module is not None else ""
+            entry = held.get(str(slot))
+            if entry is None:
+                tiles.append(DeckTile(
+                    slot, platform=platform,
+                    kind="trash" if slot == TRASH_SLOT else None))
+                continue
+            try:
+                definition = resolve_definition(entry.load_name)
+            except LabwareError:
+                tiles.append(DeckTile(slot, name=entry.load_name,
+                                      platform=platform))
+                continue
+            tiles.append(DeckTile(slot, name=definition.display_name,
+                                  kind=kind(definition),
+                                  facts=facts(definition), platform=platform))
+    return tiles

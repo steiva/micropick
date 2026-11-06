@@ -8,6 +8,9 @@ plan's) are one color on their plate, under the chosen one.
 
 A well is always chosen while a plate is: one the new plate has, else its
 first, which the card's button says.
+
+Without `plate_choice` the page has chosen the plate (Well center's list), and
+it is the map alone, the well named under the title's row.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ class WellPicker(QWidget):
     changed = Signal()
 
     def __init__(self, color: str, width: int,
-                 parent: QWidget | None = None):
+                 parent: QWidget | None = None, *, plate_choice: bool = True):
         super().__init__(parent)
         self.setObjectName("plain")
         self._color = QColor(COLORS[color])
@@ -52,9 +55,12 @@ class WellPicker(QWidget):
         self.map.setFixedSize(width, round(width * PLATE_MM[1] / PLATE_MM[0]))
         self.map.well_clicked.connect(self._well_clicked)
 
+        self.plate.setVisible(plate_choice)
         row = QHBoxLayout()
-        row.addWidget(self.plate, 1)
+        row.addWidget(self.plate, 1 if plate_choice else 0)
         row.addWidget(self.well_label)
+        if not plate_choice:
+            row.addStretch(1)
         column = QVBoxLayout(self)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(8)
@@ -105,6 +111,8 @@ class WellPicker(QWidget):
         self._show_plate(str(slot))
 
     def _well_clicked(self, well: str) -> None:
+        if well == self._well:
+            return
         self._well = well
         self._show_well()
         self.changed.emit()

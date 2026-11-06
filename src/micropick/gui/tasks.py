@@ -179,6 +179,7 @@ _STEP_NEEDS = {
     "dish_bottom": "Find the dish bottom first.",
     "liquid_plan": "Make the plan first.",
 }
+_TIP_CALIBRATION = Need("step", "tip", "Calibrate the tip first.")
 
 # step -> (needs the robot, earlier steps, Robot setup items). Plan needs
 # a plate on the deck, not the Deck step (`_PLATE_NEEDED`). Tip is
@@ -313,5 +314,9 @@ def step_state(session, task: str, step: str) -> StepState:
     """Whether `step` of `task` is done now, and its first unmet need."""
     need = next((n for n in _needs(session, task, step)
                  if not _met(session, task, n)), None)
+    # With a tip on, what the Tip step still wants is its calibration.
+    if (need is not None and (need.kind, need.key) == ("step", "tip")
+            and session.tip.attached is True):
+        need = _TIP_CALIBRATION
     return StepState(_done(session, task, step), need,
                      optional(task, step, session))

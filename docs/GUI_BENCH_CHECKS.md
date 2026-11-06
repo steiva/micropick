@@ -1352,7 +1352,7 @@ hand.
 
 - [ ] **Calibration position.**
   Four numbered cards; only "It is there" is active. It is there: the
-  mini deck lights up. Click the calibration module's slot: the camera
+  mini deck lights up, the same tiles as Look at's, saying what stands there. Click the calibration module's slot: the camera
   goes over it, the slot is marked, "It is centered" lights up. Center
   the crosshair (a click on the picture with a pixel map, else the
   arrows), It is centered, Save position: "Saved: slot 9 · X … Y … Z …",
@@ -1661,15 +1661,16 @@ tip box and a 384 plate at hand.
   the robot: a click says "Robot busy." and nothing moves.
 
 - [ ] **Points.**
-  One card, Points, that does not fold: one list, ☆ for a memo point and ★
-  for a saved one, Point at crosshair, Tip to crosshair and New points get Z
+  One card, Points, that does not fold: one list, a gray outline star for a
+  memo point and a filled one for a saved one, a thin line between the two
+  kinds, Point at crosshair, Tip to crosshair and New points get Z
   under it. A right click marks M1 where the tip would go down, draws it in
   cyan with a ring round it (red with "!" when below a platform's top),
   chooses it in the list, says "M1 added." and the cards do not move. Turn
   the Points chip off: the points leave the picture, a right click adds M2
-  to the list only; on again: both back. Delete on a chosen row takes that
-  point from the list and the picture; the next right click takes its
-  number. Nothing moves when marking.
+  to the list only; on again: both back. The × at a row's end takes that
+  point from the list and the picture at once; the next right click takes
+  its number. Nothing moves when marking.
 
 - [ ] **The star (#112).**
   ☆ asks a name, the point's own in the field; "M1 kept for later." and it
@@ -1679,8 +1680,8 @@ tip box and a 384 plate at hand.
 
 - [ ] **A double click never moves the robot (#112).**
   Tip on. Choose the top row, then double-click a cell of the row under it,
-  fast and slowly: the box opens or nothing happens, never Tip to or Camera
-  to. Esc in the box puts the value back and stops nothing.
+  fast and slowly: the row's buttons unfold at the first press, the box opens
+  or nothing happens, never Tip to or Camera to. Esc in the box puts the value back and stops nothing.
 
 - [ ] **Undo and Redo of the points (#96).**
   Undo and Redo are on Points' title row, gray with nothing to undo or
@@ -1705,8 +1706,8 @@ tip box and a 384 plate at hand.
 - [ ] **Camera to, Tip to, Point at crosshair (#66).**
   Point at crosshair: a memo point under the crosshair, Z "travel"; ☆ on
   it: its Z is the travel height then.
-  Click a row: Camera to, Tip to, Z from tip and Delete unfold under it;
-  click another: they go there; click it again: they fold. Camera to: the point comes under the crosshair, the
+  Click a row: Camera to, Tip to and Z from tip unfold under it at once;
+  click another: they go there at once; click it again: they fold. Camera to: the point comes under the crosshair, the
   tip stays at the travel height. Without a tip Tip to is gray ("Put a
   tip on first."); with one, Tip to takes the tip down to the point's Z.
   A double click on a row edits it and moves nothing.
@@ -1720,7 +1721,8 @@ tip box and a 384 plate at hand.
 - [ ] **Detect cuboids and Look at.**
   Detect cuboids, on the picture, draws the contours and "N cuboids found ·
   M in size" under the chips; a click on a cuboid only moves the camera there, the tip
-  stays up. Look at: the dropdown shows the whole deck with what is on it;
+  stays up. Look at: the dropdown shows the whole deck with what is on it, and a
+  second click on the button closes it, nothing flashing;
   a slot chosen sends the camera over its center (check slot 8 by eye).
 
 ## Redesign — Manual Work: Aspirate and Dispense (#19)
@@ -1817,7 +1819,9 @@ tip box and a 384 plate at hand.
   pad over it. With none on the deck: "No plate on the deck."
 
 - [ ] **Measure a plate.**
-  Choose a well, Move the tip: the tip goes to its top center as the
+  Click a well on the plate's map (the selected plate, in its real
+  proportions; a click on another well sends the steps back to the first),
+  Move the tip: the tip goes to its top center as the
   robot has it (watch it: no crash into the rim). It is centered and It
   is level take turns with the arrows; Well depth reads "10.67 mm, from
   the plate's drawing" (for a Corning 96). Save: "Well center saved.",

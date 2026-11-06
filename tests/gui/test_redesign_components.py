@@ -8,18 +8,19 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QPointF, Qt, QTimer                 # noqa: E402
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt, QTimer         # noqa: E402
 from PySide6.QtGui import QMouseEvent                                   # noqa: E402
 from PySide6.QtWidgets import QApplication, QWidget                     # noqa: E402
 
 from micropick.gui import theme                                         # noqa: E402
 from micropick.gui.widgets.banner import Banner                         # noqa: E402
+from micropick.gui.widgets.camera_view import CameraView                # noqa: E402
 from micropick.gui.widgets.controls import Segmented, Switch            # noqa: E402
 from micropick.gui.widgets.fold_card import FoldCard, FoldGroup         # noqa: E402
 from micropick.gui.widgets.footer import Footer                         # noqa: E402
 from micropick.gui.widgets.jog_pad import STEPS, JogPad                 # noqa: E402
 from micropick.gui.widgets.mini_deck import (DeckTile,                  # noqa: E402
-                                             MiniDeckDropdown, _Tile)
+                                             MiniDeckDropdown, Tile)
 from micropick.gui.widgets.overlays import (ConfirmDialog,              # noqa: E402
                                             LockOverlay, SheetWindow)
 from micropick.gui.widgets.plate_grid import PlateGrid, PlateTools      # noqa: E402
@@ -269,12 +270,60 @@ def test_mini_deck_lights_only_valid_slots(app):
     chosen = []
     deck.slot_chosen.connect(chosen.append)
     deck.open_popover()
-    tiles = {t.tile.slot: t for t in deck._popover.findChildren(_Tile)}
+    tiles = {t.tile.slot: t for t in deck._popover.findChildren(Tile)}
     assert len(tiles) == 12
     assert tiles[5].isEnabled() and not tiles[8].isEnabled()
     assert not tiles[1].isEnabled()
     tiles[5].click()
     assert chosen == [5]
+
+
+def test_the_deck_looks_the_same_opened_from_the_picture(app):
+    """A button over the picture is restyled, and its height was the tiles'."""
+    plain = MiniDeckDropdown()
+    plain.open_popover()
+    tile = plain._popover.findChildren(Tile)[0]
+    view = CameraView()
+    over = MiniDeckDropdown()
+    view.add_top_row_widget(over)
+    over.open_popover()
+    tiles = over._popover.findChildren(Tile)
+    assert {t.size() for t in tiles} == {tile.size()}
+    assert tile.height() == 74
+    plain._popover.close()
+    over._popover.close()
+    view.deleteLater()
+
+
+def test_a_press_on_its_button_is_not_given_back_to_it(app):
+    """A press outside a popup goes on to what is under it, and the button
+    would open it again; `offscreen` replays nothing, so this says the popup
+    was told not to."""
+    host = QWidget()
+    host.resize(600, 700)
+    deck = MiniDeckDropdown(host)
+    deck.setGeometry(10, 10, 300, 40)
+    host.show()
+    deck.open_popover()
+    popup = deck._popover
+    replay = Qt.WidgetAttribute.WA_NoMouseReplay
+
+    def press(widget):
+        at = QPointF(widget.mapToGlobal(widget.rect().center()))
+        app.sendEvent(popup, QMouseEvent(
+            QEvent.Type.MouseButtonPress, popup.mapFromGlobal(at), at,
+            Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier))
+
+    other = QWidget(host)
+    other.setGeometry(10, 600, 100, 40)
+    press(other)
+    assert not popup.testAttribute(replay)
+    deck.open_popover()
+    popup = deck._popover
+    press(deck)
+    assert popup.testAttribute(replay)
+    host.deleteLater()
 
 
 def test_sheet_done_and_cancel(app):

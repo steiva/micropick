@@ -58,6 +58,18 @@ def secondary_button(text: str, parent: QWidget | None = None) -> QPushButton:
     return button
 
 
+def close_button(tip: str, parent: QWidget | None = None) -> QToolButton:
+    """A × that takes something out: a deck tile's, a point's. It takes no
+    focus."""
+    button = QToolButton(parent)
+    button.setIcon(icon("close", COLORS["text-2"], 16))
+    button.setAutoRaise(True)
+    button.setToolTip(tip)
+    button.setCursor(Qt.CursorShape.PointingHandCursor)
+    button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    return button
+
+
 def tool_button(text: str, name: str | None, slot,
                 parent: QWidget | None = None) -> QPushButton:
     """A secondary button of a tool row (Undo, Redo), its icon `name` if

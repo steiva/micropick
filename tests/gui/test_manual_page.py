@@ -315,8 +315,7 @@ def test_a_point_is_deleted_under_its_row(app, page, session):
     page.view.right_clicked.emit(W / 2 - 100, H / 2)
     _wait(app, page)
     assert [p.name for p in session.memo_points] == ["M1", "M2"]
-    page.points_list.choose("M1")
-    page.delete_point_button.click()
+    page.points_list.row("M1").delete.click()
     assert [p.name for p in session.memo_points] == ["M2"]
     assert len(_points_drawn(page)) == 1
 

@@ -46,8 +46,11 @@ def test_every_point_is_a_chip_a_star_saying_which_kind(session, chips):
     session.add_memo_point(110.0, 100.0, 70.0)
     session.save_memo_point("M2", "Source")
     assert sorted(chips.names) == ["M1", "Source"]
-    assert chips.chip("M1").text() == "☆ M1"
-    assert chips.chip("Source").text() == "★ Source"
+    assert chips.chip("M1").text() == "M1"
+    assert chips.chip("Source").text() == "Source"
+    assert chips.chip("M1").property("saved") is False
+    assert chips.chip("Source").property("saved") is True
+    assert not chips.chip("M1").icon().isNull()
 
 
 def test_a_click_chooses_again_lets_go(session, chips):
@@ -111,5 +114,5 @@ def test_a_long_name_is_cut_whole_under_the_pointer(session, chips):
     session.add_memo_point(100.0, 100.0, 70.0)
     session.save_memo_point("M1", name)
     chip = chips.chip(name)
-    assert chip.toolTip() == name and chip.text() != f"★ {name}"
+    assert chip.toolTip() == name and chip.text() != name
     assert chip.sizeHint().width() <= 360

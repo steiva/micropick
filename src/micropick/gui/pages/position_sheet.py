@@ -75,7 +75,7 @@ from ...hardware.protocols import xyz
 from ..auto_camera import CameraOpener
 from ..camera_moves import (move_over_slot, move_tip_to_pixel, move_to_pixel,
                             pose_slot)
-from ..labware_kinds import catalogue
+from ..labware_kinds import catalogue, deck_tiles
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
@@ -284,6 +284,7 @@ class PositionSheet(SheetWindow):
         session.profile_changed.connect(lambda _p: self._refresh())
         session.robot_busy_changed.connect(lambda _h: self._refresh())
         session.labware_changed.connect(lambda _s: self._refresh())
+        session.labware_changed.connect(lambda _s: self._show_deck())
         session.tip_changed.connect(lambda _t: self._refresh())
 
     # -- opening and closing -------------------------------------------------
@@ -294,6 +295,7 @@ class PositionSheet(SheetWindow):
         self.item = item
         self.title_label.setText(SETUP_TITLES[item])
         self._build(STEPS[item])
+        self._show_deck()
         self.open()
         self.opener.ensure(self.session.upper_camera_label)
         if self._shake_shown():
@@ -643,6 +645,12 @@ class PositionSheet(SheetWindow):
                 return
             if self.step == i:
                 self.step = i + 1
+
+    def _show_deck(self) -> None:
+        tiles = deck_tiles(self.session)
+        for slots in (self.slots, self.tipbox_slots):
+            if slots is not None:
+                slots.set_tiles(tiles)
 
     def _refresh(self) -> None:
         if self._refreshing:

@@ -57,8 +57,8 @@ list (`widgets.point_list`, #112): X, Y and Z are edited by a double click,
 and a memo point lasts until the program closes. ☆ keeps it in the profile
 (`Session.save_memo_point`, #62), a point at the travel height with that
 height as its Z; a saved point's name is renamed by a double click, ★ makes
-it a memo point again and Delete asks first (#66). The chosen row unfolds
-Camera to, Tip to, Z from tip and Delete. Robot setup's positions are not
+it a memo point again and its × asks first (#66). The chosen row unfolds
+Camera to, Tip to and Z from tip. Robot setup's positions are not
 points (#61). Marking moves nothing, it chooses the new point, and a double
 click only edits. The Points chip alone says whether they are drawn: on at
 start, and never turned on by a new point.
@@ -253,7 +253,6 @@ from PySide6.QtGui import QShortcut
 from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
-from ...config.labware import LabwareError, resolve_definition
 from ...core.calibration.pixel_map import PixelMap
 from ...core.deck import nearest_slot, slot_center
 from ...hardware.protocols import xyz
@@ -267,7 +266,7 @@ from ..auto_camera import CameraOpener
 from ..camera_moves import (NO_TIP_CALIBRATION, OUTSIDE_THE_MAP, camera_slot,
                             pose_slot)
 from ..detector import wanted_model
-from ..labware_kinds import facts, kind
+from ..labware_kinds import deck_tiles
 from ..readiness import DISH_POSITION
 from ..session import Session
 from ..theme import COLORS, SPACING
@@ -277,13 +276,13 @@ from ..theme.factory import (card, heading, labeled, laid_out_at_once,
                              tool_button)
 from ..theme.icons import icon
 from ..widgets.camera_view import CameraView
-from ..widgets.controls import Segmented, Switch
+from ..widgets.controls import Segmented, Switch, closed_by
 from ..widgets.feed_row import FeedRow
 from ..widgets.fold_card import ActionCard, FoldCard, FoldGroup
 from ..position_marks import PositionMarks
 from ..widgets.jog_pad import KeycapButton
 from ..widgets.jog_panel import JogPanel
-from ..widgets.mini_deck import DECK_ROWS, DeckTile, MiniDeckDropdown
+from ..widgets.mini_deck import MiniDeckDropdown
 from ..widgets.point_chips import PointChips
 from ..widgets.point_list import PointList, TRAVEL_TEXT, Z_TOP_MM
 from ..widgets.tip_gauge import TipGauge
@@ -848,7 +847,6 @@ class ManualPage(QWidget):
         self.memo_z = self.points_list.z_from_tip
         self.memo_z.setToolTip("Set the chosen point's Z to the tip's Z now.")
         self.memo_z.clicked.connect(self._memo_z_from_tip)
-        self.delete_point_button = self.points_list.delete
 
         divider = QFrame(self)
         divider.setFixedHeight(1)
@@ -1642,6 +1640,7 @@ class ManualPage(QWidget):
         """The sizes against the window, under the link."""
         if self.sizes_popover is None:
             self.sizes_popover = _SizesPopover(self)
+            closed_by(self.sizes_popover, self.sizes_link)
         popover, link = self.sizes_popover, self.sizes_link
         popover.histogram.show_detection(self._cuboids, self._size_window())
         popover.adjustSize()
@@ -1975,25 +1974,7 @@ class ManualPage(QWidget):
 
     def _show_deck(self) -> None:
         """Look at's tiles: every slot, with what the run holds there."""
-        state = self.session.run_state
-        held = (state.labware if state is not None
-                and self.session.robot is not None else {})
-        tiles = []
-        for row in DECK_ROWS:
-            for slot in row:
-                entry = held.get(str(slot))
-                if entry is None:
-                    tiles.append(DeckTile(slot))
-                    continue
-                try:
-                    definition = resolve_definition(entry.load_name)
-                except LabwareError:
-                    tiles.append(DeckTile(slot, name=entry.load_name))
-                    continue
-                tiles.append(DeckTile(slot, name=definition.display_name,
-                                      kind=kind(definition),
-                                      facts=facts(definition)))
-        self.look_at.set_tiles(tiles)
+        self.look_at.set_tiles(deck_tiles(self.session))
 
     # -- the well ------------------------------------------------------------------
 

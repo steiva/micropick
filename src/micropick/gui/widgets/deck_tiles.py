@@ -28,17 +28,18 @@ from PySide6.QtCore import QMimeData, QPoint, QRect, Qt, Signal
 from PySide6.QtGui import (QBrush, QColor, QDrag, QFontMetrics, QPainter,
                            QPixmap)
 from PySide6.QtWidgets import (QApplication, QFrame, QGridLayout,
-                               QHBoxLayout, QLabel, QSizePolicy, QToolButton,
-                               QVBoxLayout, QWidget)
+                               QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout,
+                               QWidget)
 
 from ..theme import COLORS
-from ..theme.icons import icon, pixmap
+from ..theme.factory import close_button
+from ..labware_kinds import TRASH_SLOT
+from ..theme.icons import pixmap
 from .mini_deck import DECK_ROWS, KIND_COLORS, DeckTile
 
 __all__ = ["ASPECT", "DeckTiles", "KIND_ICONS", "SLOT_MIME", "TRASH_SLOT",
            "kind_icon", "set_kind_icon"]
 
-TRASH_SLOT = 12
 # The OT-2 deck's width over its depth, slot 1's front edge to 10's back.
 ASPECT = 40 / 36.5
 TILE_MIN = (150, 96)
@@ -157,12 +158,7 @@ class _Tile(QFrame):
             f"border-radius: 11px; padding: 2px 10px;")
         top.addWidget(self.chip)
         top.addStretch(1)
-        self.close_button = QToolButton(self)
-        self.close_button.setIcon(icon("close", COLORS["text-2"], 16))
-        self.close_button.setAutoRaise(True)
-        self.close_button.setToolTip(f"Remove what is in slot {slot}")
-        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.close_button = close_button(f"Remove what is in slot {slot}", self)
         self.close_button.clicked.connect(
             lambda: owner.remove_clicked.emit(self.slot))
         self.close_button.hide()
