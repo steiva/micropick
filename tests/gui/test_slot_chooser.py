@@ -9,7 +9,8 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication                       # noqa: E402
+from PySide6.QtCore import QRect, Qt                             # noqa: E402
+from PySide6.QtWidgets import QApplication, QWidget              # noqa: E402
 
 from micropick.gui.widgets.mini_deck import (DeckTile,           # noqa: E402
                                              TILE_GAP, MiniDeckDropdown,
@@ -94,3 +95,20 @@ def test_a_wider_panel_keeps_its_gaps(app):
 
 def test_it_fits_a_step_card_in_a_panel_of_420(app):
     assert SlotChooser().sizeHint().width() <= 420 - 2 * 16
+
+
+def test_a_note_leaves_a_two_line_name_whole(app, themed):
+    host = QWidget()
+    tile = Tile(DeckTile(5, name="Corning 96 Well Plate 360 µL Flat",
+                         kind="plate", note="Not measured"), False, host)
+    host.show()
+    app.processEvents()
+    metrics = tile.name.fontMetrics()
+    wanted = metrics.boundingRect(QRect(0, 0, tile.name.width(), 500),
+                                  Qt.TextFlag.TextWordWrap,
+                                  tile.name.text()).height()
+    assert wanted > metrics.height()                       # it does wrap
+    assert tile.name.height() >= wanted
+    assert tile.note.geometry().bottom() < tile.height()
+    host.hide()
+    host.deleteLater()

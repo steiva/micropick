@@ -76,7 +76,7 @@ from .readiness import DISH_POSITION, SHAKE_POSITION  # noqa: E402
 from .tasks import SETUP_POSITIONS, SETUP_TITLES   # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
-           "SOURCE_DISH", "SourcePlate",
+           "SOURCE_DISH", "SourcePlate", "ChosenPlate",
            "MemoPoint", "MEASURED", "SKIPPED", "NOT_MEASURED",
            "DEFAULT_PROFILE_NAME", "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
 
@@ -247,6 +247,15 @@ class DeckProblem:
         return (f"slot {self.slot}: {self.load_name} was loaded with {have}, "
                 f"but the profile puts a module of +{self.expected[2]:g} mm "
                 f"there. A well move will hit the module. Load it again.")
+
+
+@dataclass(frozen=True)
+class ChosenPlate:
+    """The plate chosen on Well center (`Session.chosen_plate`)."""
+
+    slot: str
+    load_name: str
+    labware_id: str
 
 
 @dataclass(frozen=True)
@@ -483,6 +492,7 @@ class Session(QObject):
         self._confirmed: dict[str, str | None] = {}
         # What Manual pick picks from, as chosen (`source`).
         self._source: str | SourcePlate | None = None
+        self._chosen_plate: ChosenPlate | None = None
         # When the robot was last homed from here (`home`), UTC: a tip
         # calibration measured before it is to do again.
         self.homed_at: datetime | None = None
@@ -519,6 +529,34 @@ class Session(QObject):
     def is_confirmed(self, key: str) -> bool:
         run_id = self._robot_session_id()
         return run_id is not None and self._confirmed.get(key) == run_id
+
+    # -- the plate chosen on Well center ---------------------------------------
+    #
+    # Held as a confirmation is, for the robot session, and only while that
+    # very plate stays in its slot: moved, it is loaded again under another
+    # id. It is no need of any step.
+
+    @property
+    def chosen_plate(self) -> ChosenPlate | None:
+        if not self.is_confirmed(_CHOSEN_PLATE):
+            return None
+        plate = self._chosen_plate
+        entry = self.run_state.labware.get(plate.slot)
+        if entry is None or entry.labware_id != plate.labware_id:
+            return None
+        return plate
+
+    def choose_plate(self, slot) -> None:
+        """The plate in `slot`, one of `plates`."""
+        if self._robot_session_id() is None:
+            raise SessionError("No robot session.")
+        plate = next((p for p in self.plates() if p[0] == str(slot)), None)
+        if plate is None:
+            raise SessionError(f"No plate in slot {slot}.")
+        slot, entry, _definition = plate
+        self._chosen_plate = ChosenPlate(slot, entry.load_name,
+                                         entry.labware_id)
+        self.confirm(_CHOSEN_PLATE)
 
     # -- the source ------------------------------------------------------------
     #
@@ -2499,6 +2537,7 @@ class Session(QObject):
 
 
 _SOURCE = "source"
+_CHOSEN_PLATE = "chosen plate"
 
 
 def _skipped_plate(slot, load_name: str) -> str:

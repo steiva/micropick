@@ -11,6 +11,7 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QPoint                                # noqa: E402
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,   # noqa: E402
                                QMessageBox, QScrollArea)
 
@@ -21,11 +22,13 @@ from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.widgets.mini_deck import Tile                 # noqa: E402
 from micropick.gui.widgets.step_card import StepCard             # noqa: E402
 from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 from micropick.workflows import well_center                      # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
+TIPS = "opentrons_96_tiprack_300ul"
 
 
 @pytest.fixture(scope="module")
@@ -109,7 +112,7 @@ def test_the_step_saves_the_jog_from_the_robots_well_top(app, session):
     assert center.offset == pytest.approx([0.4, -0.3, -1.5], abs=0.05)
     assert center.depth_mm == pytest.approx(10.67, abs=0.01)  # the drawing's
     assert session.well_center_status(5, PLATE) == "measured"
-    assert page._rows[("5", PLATE)].value.text() == "Measured today"
+    assert page.plate_status.text() == "Measured today"
     page.deleteLater()
 
 
@@ -144,11 +147,9 @@ def test_the_steps_go_in_order(app, session):
     page.deleteLater()
 
 
-def test_one_card_titled_with_the_plate_holds_the_path(app, session):
+def test_one_card_holds_the_path(app, session):
     """#127: no numbered card, no chip; the map only on the first item."""
     page = _step(app, session)
-    name = resolve_definition(PLATE).display_name
-    assert page.plate_title.text() == f"Slot 5 · {name}"
     assert not page.findChildren(StepCard)
     assert not page.path_card.isHidden()
     assert page.path.current == "well"
@@ -161,7 +162,171 @@ def test_with_no_plate_on_the_deck_there_is_no_path_card(app, session):
     session.unload_labware(5)
     app.processEvents()
     assert page.path_card.isHidden()
-    assert not page.no_plates.isHidden()
+    assert page.plate_status.text() == "No plate on the deck."
+    page.deleteLater()
+
+
+def _lit(page):
+    """The tiles that can be clicked, and what each says under its name."""
+    page.plate_choice.open_popover()
+    popover = page.plate_choice._popover
+    lit = {t.tile.slot: t.note.text() for t in popover.findChildren(Tile)
+           if t.isEnabled()}
+    popover.close()
+    return lit
+
+
+def _click_plate(page, slot):
+    """The operator's click on a tile of the selector."""
+    page.plate_choice.open_popover()
+    tile = next(t for t in page.plate_choice._popover.findChildren(Tile)
+                if t.tile.slot == slot)
+    tile.click()
+
+
+def test_the_selector_stands_over_the_status_and_the_path(app, session):
+    page = _step(app, session)
+    page.resize(1200, 900)
+    page.show()
+    app.processEvents()
+    tops = [w.mapTo(page, QPoint(0, 0)).y()
+            for w in (page.plate_choice, page.plate_status, page.path_card)]
+    assert tops == sorted(tops)
+    page.hide()
+    page.deleteLater()
+
+
+@pytest.mark.parametrize("task", ["manual", "auto", "liquid"])
+def test_every_plate_is_lit_and_other_labware_is_not(app, session, task):
+    session.load_labware(resolve_definition(PLATE), 2)
+    session.load_labware(resolve_definition(TIPS), 10)
+    page = _step(app, session)
+    page.set_task(task)
+    assert set(_lit(page)) == {2, 5}
+    page.deleteLater()
+
+
+def test_tiles_say_measured_or_not_and_the_line_follows_the_plate(
+        app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "C3", depth_mm=10.0)
+    page = _step(app, session)
+    assert _lit(page) == {2: "Not measured", 5: "Measured"}
+    _click_plate(page, 5)
+    assert page.plate_status.text() == "Measured today"
+    _click_plate(page, 2)
+    assert page.plate_status.text() == "Not measured: using the drawing"
+    assert page.plate_choice.slot == 2
+    page.deleteLater()
+
+
+def test_a_click_on_the_selector_chooses_the_plate_for_the_session(
+        app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    _click_plate(page, 5)
+    assert page._selected == ("5", PLATE)
+    assert session.chosen_plate.slot == "5"
+    page.deleteLater()
+
+
+def test_the_page_opens_on_the_first_plate_with_nothing_chosen(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = step_page.WellCenterPage(session)
+    _settle(app, page.jog)
+    page.set_task("manual")
+    assert page._selected == ("2", PLATE)
+    page.deleteLater()
+
+
+def test_auto_opens_on_the_plans_plate_and_the_chosen_one_comes_first(
+        app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    session.load_labware(resolve_definition(PLATE), 3)
+    session.set_routine(Routine(Destination.from_definition(
+        resolve_definition(PLATE), slot=5), {"A1": 1}, name="plan"))
+    page = step_page.WellCenterPage(session)
+    _settle(app, page.jog)
+    page.set_task("auto")
+    assert page._selected == ("5", PLATE)
+    # Only Auto pick goes by the plan.
+    page.set_task("liquid")
+    assert page._selected == ("2", PLATE)
+    session.choose_plate(3)
+    page.set_task("auto")
+    assert page._selected == ("3", PLATE)
+    page.deleteLater()
+
+
+def test_auto_shows_the_plates_with_no_plan(app, session):
+    page = step_page.WellCenterPage(session)
+    _settle(app, page.jog)
+    page.set_task("auto")
+    assert page._selected == ("5", PLATE)
+    assert not page.path_card.isHidden()
+    page.deleteLater()
+
+
+def test_a_chosen_plate_is_kept_coming_back_to_the_step(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    _click_plate(page, 5)
+    page.select_plate(2, PLATE)
+    page.set_task("liquid")
+    assert page._selected == ("5", PLATE)
+    page.deleteLater()
+
+
+def test_a_click_with_no_robot_session_is_refused_and_chooses_nothing(
+        app, session):
+    page = _step(app, session)
+    session.run_state.run_id = None
+    page.plate_choice.slot_chosen.emit(5)
+    assert session.chosen_plate is None
+    assert toast_of(page).text() == "No robot session."
+    page.deleteLater()
+
+
+def test_a_plate_moved_is_forgotten(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    _click_plate(page, 5)
+    session.move_labware(5, 6)
+    app.processEvents()
+    assert session.chosen_plate is None
+    assert page._selected == ("2", PLATE)
+    page.deleteLater()
+
+
+def test_a_plate_taken_off_and_put_back_is_another_plate(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    _click_plate(page, 5)
+    session.unload_labware(5)
+    session.load_labware(resolve_definition(PLATE), 5)
+    app.processEvents()
+    assert session.chosen_plate is None
+    assert page._selected == ("2", PLATE)
+    page.deleteLater()
+
+
+def test_a_new_robot_session_forgets_the_chosen_plate(app, session):
+    page = _step(app, session)
+    _click_plate(page, 5)
+    session.new_run()
+    assert session.chosen_plate is None
+    page.deleteLater()
+
+
+def test_a_plate_measured_before_is_measured_again_and_save_replaces_it(
+        app, session):
+    session.set_well_center(5, PLATE, (0.9, 0.9, -9.0), "C3", depth_mm=10.0)
+    page = _step(app, session)
+    _measure(app, session, page, (0.4, -0.3, -1.5))
+    center = session.profile.deck.well_center(5, PLATE)
+    assert center.offset == pytest.approx((0.4, -0.3, -1.5))
+    assert center.well == "B2"
+    assert page.plate_status.text() == "Measured today"
     page.deleteLater()
 
 
@@ -427,22 +592,6 @@ def test_a_plate_measured_earlier_can_not_be_skipped(app, session):
     page.deleteLater()
 
 
-def test_the_step_lists_the_plates_with_their_state(app, session):
-    session.load_labware(resolve_definition(PLATE), 2)
-    page = _step(app, session)
-    rows = page._rows
-    assert set(rows) == {("2", PLATE), ("5", PLATE)}
-    assert all(r.value.text() == "Not measured yet" for r in rows.values())
-    page.select_plate(2, PLATE)
-    page.skip_button.click()
-    assert session.plate_skipped(2, PLATE)
-    assert rows[("2", PLATE)].value.text() == \
-        "Not measured: using the drawing"
-    # On to the plate still to do.
-    assert page._selected == ("5", PLATE)
-    page.deleteLater()
-
-
 def test_a_robot_held_is_a_refusal_and_nothing_is_said_under_the_tip(
         app, session):
     page = _step(app, session)
@@ -512,22 +661,6 @@ def test_skip_is_only_in_liquid(app, session, task, skip):
     page = _step(app, session)
     page.set_task(task)
     assert page.skip_button.isHidden() is not skip
-    assert set(page._rows) == {("5", PLATE)}
-    page.deleteLater()
-
-
-def test_auto_shows_only_the_plans_plate(app, session):
-    """#64: no Skip, and the plate the plan delivers to, as it changes."""
-    from micropick.core.routine import Destination, Routine
-    session.load_labware(resolve_definition(PLATE), 2)
-    page = _step(app, session)
-    page.set_task("auto")
-    assert page.skip_button.isHidden()
-    assert page._rows == {} and not page.no_plates.isHidden()
-    session.set_routine(Routine(Destination.from_definition(
-        resolve_definition(PLATE), slot=2), {"A1": 1}, name="plan"))
-    assert set(page._rows) == {("2", PLATE)}
-    assert page._selected == ("2", PLATE)
     page.deleteLater()
 
 
@@ -713,16 +846,16 @@ def _saved(session, days_ago=3, depth=10.67):
 
 
 @pytest.mark.parametrize("task", ["manual", "auto", "liquid"])
-def test_a_plate_is_not_measured_yet_once_the_slots_module_changes(
+def test_a_plate_is_not_measured_once_the_slots_module_changes(
         app, session, task):
     _plan_on_5(session)
     page = _step(app, session)
     page.set_task(task)
     _measure(app, session, page, (0.4, -0.3, -1.5))
-    row = page._rows[("5", PLATE)]
-    assert row.value.text() == "Measured today"
+    assert page.plate_status.text() == "Measured today"
     session.set_deck_modules([_platform(64.2)])
-    assert page._rows[("5", PLATE)].value.text() == "Not measured yet"
+    assert page.plate_status.text() == "Not measured: using the drawing"
+    assert _lit(page) == {5: "Not measured"}
     assert "from the plate's drawing" in page.depth_source.text()
     page.deleteLater()
 
@@ -807,6 +940,7 @@ def test_each_plate_shows_its_own_last_bottom(app, session):
     _saved(session)
     page = _step(app, session)
     page.set_task("manual")
+    page.select_plate(5, PLATE)
     assert not page.last_card.isHidden()
     page.select_plate(2, PLATE)
     assert page.last_card.isHidden()

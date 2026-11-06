@@ -33,14 +33,13 @@ nothing. A step done by a confirmation (`Session.confirm`) is confirmed
 by its screen: Dish bottom by Save dish bottom or Use it, the
 Liquid plan by Use this plan, Run by a liquid run that ended, a plate by
 "Skip this plate" (`Session.skip_plate`). Well center counts the plates
-it shows (`well_center_plates`): those on the deck until the Liquid plan
-says which it uses. Run does not need Well center: an unmeasured plate is
-used on purpose, after a warning (REDESIGN §6.8). In Manual pick Well
-center is optional and has no Skip (#63): a plate not measured uses its
-drawing, and the step is done only when every plate is measured. So it
-is in Auto pick (#64), after Plan and only for the plan's plate: it
-needs the plan in use ("Make a plan first."), as a run reads that
-plate's center at Start.
+on the deck (`well_center_plates`), the same in every task, and is done
+while there are some and every one is measured, measurements of earlier
+days included; a new plate takes the mark away. Run does not need Well
+center: an unmeasured plate is used on purpose, after a warning (REDESIGN
+§6.8). In Manual pick and Auto pick Well center is optional and has no
+Skip (#63, #64): a plate not measured uses its drawing. A plan is no need
+of it (#130).
 
 Manual pick's steps follow its source (#88, `Session.source`), so `steps`
 and `optional` take the session. With a plate chosen Dish bottom is not
@@ -54,7 +53,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..workflows.well_center import plan_plate
 from .readiness import (CALIBRATION_POSITION, DISH_POSITION, SHAKE_POSITION,
                         tip_calibration_status)
 
@@ -202,10 +200,8 @@ _NEEDS = {
 _PLATE_NEEDED = {"plan"}
 
 # Earlier steps a step needs in one task only, and what it says then:
-# Auto's Well center measures the plan's plate (#64); Manual's Dish bottom
-# is for the source dish.
-_TASK_NEEDS = {("auto", "well_center"): {"plan": "Make a plan first."},
-               ("manual", "dish_bottom"): {"source": _STEP_NEEDS["source"]}}
+# Manual's Dish bottom is for the source dish.
+_TASK_NEEDS = {("manual", "dish_bottom"): {"source": _STEP_NEEDS["source"]}}
 
 
 def _source_need(session) -> Need:
@@ -273,7 +269,7 @@ def _done(session, task: str, step: str) -> bool:
         # here, not at the top.
         from .session import MEASURED, SKIPPED
         counted = (MEASURED, SKIPPED) if task == "liquid" else (MEASURED,)
-        plates = well_center_plates(session, task)
+        plates = well_center_plates(session)
         return bool(plates) and all(
             session.well_center_status(slot, entry.load_name) in counted
             for slot, entry, _definition in plates)
@@ -285,16 +281,10 @@ def _done(session, task: str, step: str) -> bool:
     return False
 
 
-def well_center_plates(session, task: str) -> list:
-    """The plates the Well center step shows in `task`, as
-    `Session.plates` gives them: in Auto pick the plan's plate, while the
-    plan is in use (the Plan step done), else none."""
-    if task != "auto":
-        return session.plates()
-    if not _done(session, task, "plan"):
-        return []
-    plate = plan_plate(session.routine, session.run_state)
-    return [p for p in session.plates() if (p[0], p[1].load_name) == plate]
+def well_center_plates(session) -> list:
+    """The plates the Well center step offers, as `Session.plates` gives
+    them: all on the deck, in every task."""
+    return session.plates()
 
 
 # Steps a task can go past without, by task: Work is a toolbox, never

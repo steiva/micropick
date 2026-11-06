@@ -259,8 +259,8 @@ def test_manuals_well_center_is_optional_and_done_when_all_are_measured(
     assert tasks.step_state(session, "manual", "well_center").done
 
 
-def test_autos_well_center_needs_a_plan_and_counts_only_its_plate(session):
-    """#64: optional, the plan's plate only."""
+def test_autos_well_center_counts_every_plate_on_the_deck_with_no_plan(
+        session):
     from micropick.config.labware import resolve_definition
     from micropick.config.schema import WellCenter
     _connect(session)
@@ -270,28 +270,28 @@ def test_autos_well_center_needs_a_plan_and_counts_only_its_plate(session):
     session.load_labware(resolve_definition(plate), 6)
     state = tasks.step_state(session, "auto", "well_center")
     assert state.optional and not state.done
-    assert tasks.well_center_plates(session, "auto") == []
-    routine = Routine(Destination.from_definition(
-        resolve_definition(plate), slot=5), {"A1": 1}, name="plan")
-    routine.needs_confirmation = True           # restored, not in use
-    session.set_routine(routine)
-    assert tasks.well_center_plates(session, "auto") == []
-    routine.needs_confirmation = False
-    session.set_routine(routine)
-    assert [(s, e.load_name) for s, e, _d
-            in tasks.well_center_plates(session, "auto")] == [("5", plate)]
+    assert [s for s, _e, _d in tasks.well_center_plates(session)] == ["5", "6"]
     session.profile.deck.well_centers.append(WellCenter(
         slot=5, load_name=plate, offset=(0.1, 0.2, 0.0), well="A1"))
+    assert not tasks.step_state(session, "auto", "well_center").done
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=6, load_name=plate, offset=(0.1, 0.2, 0.0), well="A1"))
     assert tasks.step_state(session, "auto", "well_center").done
+    # A new plate takes the mark away.
+    session.load_labware(resolve_definition(plate), 2)
+    assert not tasks.step_state(session, "auto", "well_center").done
 
 
-def test_autos_well_center_needs_a_plan_after_the_tip():
-    needs = [(n.kind, n.key, n.text)
-             for n in tasks._needs(None, "auto", "well_center")]
-    assert [k for _kind, k, _t in needs] == ["robot", "deck", "tip", "plan"]
-    assert needs[-1] == ("step", "plan", "Make a plan first.")
-    assert "plan" not in [n.key for n in tasks._needs(None, "manual",
-                                                      "well_center")]
+def test_well_center_is_not_done_with_no_plate_on_the_deck(session):
+    _connect(session)
+    session.load_profile("mock")
+    assert not tasks.step_state(session, "auto", "well_center").done
+
+
+def test_a_plan_is_no_need_of_well_center():
+    for task in tasks.TASKS:
+        assert [n.key for n in tasks._needs(None, task, "well_center")] == [
+            "robot", "deck", "tip"]
 
 
 def _plate_on_deck(session):

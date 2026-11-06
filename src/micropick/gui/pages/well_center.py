@@ -10,12 +10,14 @@ On the left, **no camera** (the upper one does not see the tip at a
 well): where the tip is, Z in big numbers as on the Dish bottom step, and
 the jog pad under it - the face of a jog panel that is never shown, whose
 keys go with the pad on screen, as on every page (#57); the operator
-watches the robot. On the right "Well center and depth", the plates on the
-deck - each "Measured today", "Not measured: using the drawing" (skipped,
-a ✓ in yellow) or "Not measured yet" (`Session.well_center_status`) - then
-Last time and Skip, and last, so that nothing stands under what folds, one
-card titled with the selected plate, no chip (its row says it), holding a
-path (`widgets.path_steps`, #127), none with no plate on the deck:
+watches the robot. On the right "Well center and depth", a
+`MiniDeckDropdown` (#130) with every plate on the deck lit, in every task
+(`tasks.well_center_plates`), each tile saying Measured or Not measured;
+one line for the selected plate - "Measured today", "Not measured: using
+the drawing" (`Session.well_center_status`) - then Last time and Skip,
+and last, so that nothing stands under what folds, one card, no title (the
+selector stands over it), no chip (its row says it), holding a path
+(`widgets.path_steps`, #127), none with no plate on the deck:
 
 - **Tip to a well:** a well on the plate's map (`WellPicker`), then Move
   the tip - to its top center as the robot has it (`workflows.well_center.go_to_top`), what the
@@ -35,6 +37,11 @@ A plate opens on the first item, or on Center the tip while a measurement
 begun on it is in hand; a new robot session forgets that. The pad works
 on every item.
 
+A click on the selector chooses the plate for the robot session
+(`Session.chosen_plate`), until that plate is moved or taken off. The page
+opens on it, else in Auto pick on the plan's plate, else on the first on
+the deck (`_opening`). The plate Save goes on to is shown, not chosen.
+
 **Skip this plate, use the drawing** marks it skipped for this robot
 session (`Session.skip_plate`), in Liquid only: elsewhere the step is
 optional and a plate not measured uses its drawing anyway (`set_task`).
@@ -42,12 +49,11 @@ In Manual pick a measured plate also shows "Last time: Z 66.40 mm · 3
 days ago" (`well_center.measured_bottom`) with **Use it**, as Dish bottom
 does: Use it, or Save, confirms that plate's bottom for this robot session
 (`Session.plate_bottom_confirmed`). A measurement made on another module
-height is not the plate's (`DeckConfig.well_center`): "Not measured yet".
+height is not the plate's (`DeckConfig.well_center`): not measured.
 Manual pick from a plate (#88) needs that plate confirmed: the page opens
 on it while it is not, says so, and Next waits (`tasks.step_state`).
-The plates are the task's (`tasks.well_center_plates`: in Auto pick the
-plan's only); the step is done
-when every one is measured, or in Liquid skipped (`tasks.step_state`).
+The step is done while there are plates and every one is measured, or in
+Liquid skipped (`tasks.step_state`).
 
 A plate a run goes into keeps its center: Save is gray while one does
 (`well_center.run_using`). Robot commands go through the jog panel's
@@ -57,36 +63,36 @@ A plate a run goes into keeps its center: Save is gray while one does
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import date
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QSizePolicy,
-                               QSpacerItem, QVBoxLayout, QWidget)
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QHBoxLayout, QLabel, QSizePolicy, QSpacerItem,
+                               QVBoxLayout, QWidget)
 
 from ...workflows import well_center
-from .. import tasks
+from .. import labware_kinds, tasks
 from ..session import MEASURED, SKIPPED, Session, SessionError
-from ..theme import COLORS, SIZES, SPACING, mono_font
+from ..theme import SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, double_spin_box, heading,
                              muted_label, primary_button, quiet_button,
                              reserve, scroll_column, secondary_button)
-from ..theme.icons import pixmap
 from ..widgets.jog_pad import StepChip
 from ..widgets.jog_panel import JogPanel
+from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
 from ..widgets.path_steps import PathItem, PathSteps, path_body
 from ..widgets.step_card import wrapped
 from ..widgets.toast import show_toast
 from ..widgets.well_picker import WellPicker
 from ..workers import describe_error
 
-__all__ = ["PlateRow", "WellCenterPage", "TITLE", "status_text"]
+__all__ = ["WellCenterPage", "TITLE", "status_text"]
 
 log = logging.getLogger(__name__)
 
 TITLE = "Well center"
 
 PANEL_WIDTH = 440
-MARK_PX = 24
 MAP_PX = 340
 
 INTRO = ("Measure every plate you will use. A plate you skip still works, "
@@ -95,7 +101,7 @@ INTRO = ("Measure every plate you will use. A plate you skip still works, "
 INTRO_OPTIONAL = "A plate not measured uses its drawing."
 # Manual pick from a plate: that one is not optional.
 INTRO_SOURCE = "You pick from slot {slot}: measure it, or Use it."
-NOT_MEASURED_YET = "Not measured yet"
+NO_PLATE = "No plate on the deck."
 USING_THE_DRAWING = "Not measured: using the drawing"
 
 # Where the operator is with the selected plate, the path's items: the tip
@@ -119,70 +125,11 @@ def measured_ago(center) -> str:
 
 
 def status_text(status: str, center=None) -> str:
-    """A plate's line in the list: "Measured today", "Measured 3 days
-    ago", "Not measured: using the drawing", "Not measured yet"."""
+    """A plate's line under the selector: "Measured today", "Measured 3
+    days ago", "Not measured: using the drawing"."""
     if status == MEASURED:
         return f"Measured {measured_ago(center)}".rstrip()
-    return USING_THE_DRAWING if status == SKIPPED else NOT_MEASURED_YET
-
-
-class PlateRow(QFrame):
-    """A plate on the deck: a mark, its name and its status; the whole row
-    is clicked, the selected one highlighted."""
-
-    clicked = Signal()
-
-    def __init__(self, name: str, parent: QWidget | None = None):
-        super().__init__(parent)
-        self.setObjectName("plateRow")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.status = None
-        row = QHBoxLayout(self)
-        row.setContentsMargins(12, 8, 12, 8)
-        row.setSpacing(12)
-        self.mark = QLabel(self)
-        self.mark.setFixedSize(MARK_PX, MARK_PX)
-        self.mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        row.addWidget(self.mark)
-        words = QVBoxLayout()
-        words.setSpacing(2)
-        self.name = QLabel(name, self)
-        self.name.setObjectName("setupLabel")
-        self.name.setWordWrap(True)
-        self.value = QLabel(self)
-        words.addWidget(self.name)
-        words.addWidget(self.value)
-        row.addLayout(words, 1)
-
-    def show_status(self, status: str, text: str) -> None:
-        self.status = status
-        self.value.setText(text)
-        if status == MEASURED:
-            self.mark.setPixmap(pixmap("check", COLORS["ok"], 14))
-            self.mark.setStyleSheet(f"background: {COLORS['ok-bg']}; "
-                                    f"border-radius: {MARK_PX // 2}px;")
-            self.value.setStyleSheet(f"color: {COLORS['text-2']};")
-        elif status == SKIPPED:
-            self.mark.setPixmap(pixmap("check", COLORS["warn"], 14))
-            self.mark.setStyleSheet(f"background: {COLORS['warn-bg']}; "
-                                    f"border-radius: {MARK_PX // 2}px;")
-            self.value.setStyleSheet(f"color: {COLORS['warn-text']};")
-        else:
-            self.mark.setPixmap(pixmap("ring", COLORS["faint"], 18))
-            self.mark.setStyleSheet("")
-            self.value.setStyleSheet(f"color: {COLORS['text-2']};")
-
-    def set_selected(self, selected: bool) -> None:
-        if self.property("selected") != selected:
-            self.setProperty("selected", selected)
-            self.style().unpolish(self)
-            self.style().polish(self)
-
-    def mouseReleaseEvent(self, event) -> None:
-        if (event.button() == Qt.MouseButton.LeftButton
-                and self.rect().contains(event.position().toPoint())):
-            self.clicked.emit()
-        super().mouseReleaseEvent(event)
+    return USING_THE_DRAWING
 
 
 class WellCenterPage(QWidget):
@@ -192,9 +139,10 @@ class WellCenterPage(QWidget):
         self._task = "liquid"
         self._measurement = well_center.Measurement()
         self._at = TO_WELL
-        # (slot, load name) of the plate selected, and the rows shown.
+        # (slot, load name) of the plate selected, and its labware id: a
+        # plate taken off and put back has the same key and is another.
         self._selected: tuple[str, str] | None = None
-        self._rows: dict[tuple[str, str], PlateRow] = {}
+        self._selected_id: str | None = None
         # The plate the depth field was last filled for, so a typed value
         # is not written over by the next refresh.
         self._depth_for = None
@@ -215,8 +163,6 @@ class WellCenterPage(QWidget):
         layout.addWidget(scroll_column(self._panel(), PANEL_WIDTH))
 
         session.labware_changed.connect(lambda _s: self._list_plates())
-        # Auto pick's plate is the plan's.
-        session.routine_changed.connect(lambda _r: self._list_plates())
         session.robot_state_changed.connect(self._on_robot)
         session.robot_busy_changed.connect(lambda _h: self.refresh())
         session.profile_changed.connect(lambda _p: self.refresh())
@@ -258,11 +204,12 @@ class WellCenterPage(QWidget):
         self.intro = wrapped(INTRO)
         column.addWidget(self.intro)
 
-        self.plate_list = QVBoxLayout()
-        self.plate_list.setSpacing(2)
-        column.addLayout(self.plate_list)
-        self.no_plates = muted_label("No plate on the deck.", panel)
-        column.addWidget(self.no_plates)
+        self.plate_choice = MiniDeckDropdown(panel, cut=True,
+                                             placeholder="Choose a plate")
+        self.plate_choice.slot_chosen.connect(self._plate_clicked)
+        column.addWidget(self.plate_choice)
+        self.plate_status = muted_label("", panel)
+        column.addWidget(self.plate_status)
 
         self.last_card = card(panel)
         row = QHBoxLayout()
@@ -298,9 +245,6 @@ class WellCenterPage(QWidget):
         """The selected plate's path, the last thing in the column: a body
         folding as a job ends moves nothing."""
         self.path_card = card(panel)
-        self.plate_title = heading("", 2, panel)
-        self.plate_title.setWordWrap(True)
-        self.path_card.layout().addWidget(self.plate_title)
 
         self.wells = WellPicker("accent", MAP_PX, panel, plate_choice=False)
         self.wells.changed.connect(self._well_chosen)
@@ -353,17 +297,21 @@ class WellCenterPage(QWidget):
     # -- the plates ----------------------------------------------------------
 
     def set_task(self, task: str) -> None:
-        """The task the step is shown in: its plates, and Skip in Liquid
-        only."""
+        """The task the step is shown in: Skip in Liquid only, and the
+        plate it opens on."""
         self._task = task
         self.skip_button.setVisible(task == "liquid")
         self._list_plates()
+        self.select_plate(*self._opening())
         to_do = self._source_to_do()
-        if to_do in self._rows:
+        if to_do in self._keys():
             self.select_plate(*to_do)
 
     def _plates(self):
-        return tasks.well_center_plates(self.session, self._task)
+        return tasks.well_center_plates(self.session)
+
+    def _keys(self) -> list[tuple[str, str]]:
+        return [(slot, entry.load_name) for slot, entry, _d in self._plates()]
 
     def _source_plate(self):
         return self.session.source_plate if self._task == "manual" else None
@@ -388,45 +336,73 @@ class WellCenterPage(QWidget):
                            INTRO_SOURCE.format(slot=plate.slot))
 
     def _list_plates(self) -> None:
-        """The rows again, after a change to the deck; the selection is
-        kept while its plate is still there, else the first not done."""
+        """After a change to the deck: the selection is kept while its
+        plate is still there, else the page opens again."""
         self._show_intro()
-        while self.plate_list.count():
-            widget = self.plate_list.takeAt(0).widget()
-            if widget is not None:
-                widget.deleteLater()
-        self._rows = {}
-        for slot, entry, definition in self._plates():
-            key = (slot, entry.load_name)
-            row = PlateRow(f"Slot {slot} · {definition.display_name}", self)
-            row.clicked.connect(lambda k=key: self.select_plate(*k))
-            self.plate_list.addWidget(row)
-            self._rows[key] = row
-        if self._selected not in self._rows:
+        if self._labware_id() != self._selected_id or self._selected is None:
             self._selected = None
-            self.select_plate(*self._first_to_do())
+            self.select_plate(*self._opening())
             if self._selected is None:
                 self._fill_wells()
-        # Also when nothing was selected and nothing is: the list emptied.
+        # Also when nothing was selected and nothing is: the deck emptied.
         self.refresh()
+
+    def _tiles(self) -> list[DeckTile]:
+        """The whole deck, its plates lit and saying how they stand."""
+        lit = {int(key[0]): key for key in self._keys()}
+        tiles = []
+        for tile in labware_kinds.deck_tiles(self.session):
+            key = lit.get(tile.slot)
+            if key is None:
+                tiles.append(replace(tile, valid=False))
+            elif self.session.well_center_status(*key) == MEASURED:
+                tiles.append(replace(tile, note="Measured", note_tone="ok"))
+            else:
+                tiles.append(replace(tile, note="Not measured"))
+        return tiles
+
+    def _opening(self) -> tuple:
+        """The plate chosen; else in Auto pick the plan's; else the first
+        on the deck; else (None, None)."""
+        keys = self._keys()
+        chosen = self.session.chosen_plate
+        if chosen is not None and (chosen.slot, chosen.load_name) in keys:
+            return chosen.slot, chosen.load_name
+        if self._task == "auto":
+            plan = well_center.plan_plate(self.session.routine,
+                                          self.session.run_state)
+            if plan in keys:
+                return plan
+        return (keys or [(None, None)])[0]
 
     def _first_to_do(self) -> tuple:
         """The plate picked from while not confirmed; the first plate not
         measured or skipped; else the first; else (None, None)."""
-        keys = list(self._rows)
+        keys = self._keys()
         source = self._source_to_do()
-        if source in self._rows:
+        if source in keys:
             return source
         todo = [k for k in keys
                 if self.session.well_center_status(*k) not in (MEASURED,
                                                                SKIPPED)]
         return (todo or keys or [(None, None)])[0]
 
+    def _plate_clicked(self, slot: int) -> None:
+        try:
+            self.session.choose_plate(slot)
+        except SessionError as exc:
+            self.jog.refuse(describe_error(exc))
+            self.refresh()
+            return
+        plate = self.session.chosen_plate
+        self.select_plate(plate.slot, plate.load_name)
+
     def select_plate(self, slot, load_name) -> None:
         key = None if slot is None else (str(slot), load_name)
         if key == self._selected:
             return
         self._selected = key
+        self._selected_id = self._labware_id()
         # The steps start again unless the measurement in hand is this
         # plate's.
         self._at = (CENTER if key is not None
@@ -605,14 +581,9 @@ class WellCenterPage(QWidget):
 
     def refresh(self) -> None:
         session = self.session
-        for key, row in self._rows.items():
-            status = session.well_center_status(*key)
-            center = (session.profile.deck.well_center(*key)
-                      if session.profile is not None else None)
-            row.show_status(status, status_text(status, center))
-            row.set_selected(key == self._selected)
-        self.no_plates.setVisible(not self._rows)
-
+        self.plate_choice.set_tiles(self._tiles())
+        self.plate_choice.set_slot(None if self._selected is None
+                                   else int(self._selected[0]))
         # First: a field grayed with the keyboard passes it on, folded not.
         self._show_path()
         chosen = self._selected is not None
@@ -630,6 +601,8 @@ class WellCenterPage(QWidget):
             "" if running is None else well_center.in_use_tip(running))
         status = (session.well_center_status(*self._selected) if chosen
                   else None)
+        self.plate_status.setText(status_text(status, self._center())
+                                  if chosen else NO_PLATE)
         self.skip_button.setEnabled(chosen and status != MEASURED
                                     and status != SKIPPED)
         self._show_last()
@@ -647,11 +620,6 @@ class WellCenterPage(QWidget):
             self.path_card.parentWidget().layout().invalidate()
         if not chosen:
             return
-        slot, _load_name = self._selected
-        definition = self._definition()
-        if definition is not None:
-            self.plate_title.setText(f"Slot {slot} · "
-                                     f"{definition.display_name}")
         self.path.set_done_title(TO_WELL, f"Tip is over {self._well()}")
         self.path.set_current(self._at)
 

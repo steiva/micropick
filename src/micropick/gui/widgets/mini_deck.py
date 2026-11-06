@@ -66,8 +66,9 @@ class Tile(QPushButton):
         self.setChecked(chosen)
         self.setEnabled(tile.valid)
         column = QVBoxLayout(self)
-        column.setContentsMargins(10, 6, 10, 6)
-        column.setSpacing(2)
+        # Tight enough for a two-line name over a note.
+        column.setContentsMargins(10, 4, 10, 4)
+        column.setSpacing(0)
         self.slot_label = QLabel(self)
         self.slot_label.setObjectName("caption")
         self.name = QLabel(self)
