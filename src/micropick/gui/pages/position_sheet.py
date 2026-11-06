@@ -460,15 +460,15 @@ class PositionSheet(SheetWindow):
 
     def _tip_blocks(self) -> tuple[TipOnBlock, TipCalibrationBlock]:
         """The Tip step's two blocks, made once, on this sheet's picture
-        and jog panel; their own headings are the step cards'."""
+        and jog panel; the calibration's heading is the step card's."""
         if self.tip_calibration is None:
             calibration = TipCalibrationBlock(
                 self.session, self.jog, self.view, holder=SHAKE_HOLDER,
                 parent=self)
             tip = TipOnBlock(self.session, self.jog,
                              calibration=calibration, parent=self)
+            calibration.heading.hide()
             for block in (tip, calibration):
-                block.heading.hide()
                 if isinstance(block.box, QFrame):
                     # Inside a step card: no card of its own.
                     block.box.setObjectName("")

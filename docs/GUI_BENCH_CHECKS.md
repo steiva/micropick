@@ -1430,15 +1430,21 @@ tip box and a 384 plate at hand.
   the deck. Add it on the Deck step." Back to Deck opens the Deck step.
 
 - [ ] **Take a tip.**
-  A rack in slot 10: the Select reads "<rack name> · slot 10", the rack's
-  first free tip is ringed and the button reads "Take tip A1". Click A3 on
-  the rack: "Take tip A3", the button keeps its width (also for H12).
-  Take it: the tip comes off A3, a toast and "Tip A3 is on.", Drop in
-  trash and Drop in place, one column of cards.
+  A rack in slot 10: the card reads "No tip on" with an outlined tip, and
+  "<rack name> · slot 10" as plain text under it (a Select with a second
+  rack). The rack's first free tip is ringed and the button reads "Pick up
+  A1". Click A3 on the rack: "Pick up A3", the button keeps its width (also
+  for H12). Pick it up: the tip comes off A3, a toast "Tip A3 is on.", the
+  title "Tip A3 is on" with a filled tip, the rack folds away and the
+  Calibrate card moves up, Drop in trash and Drop in place.
+
+- [ ] **Show rack.**
+  With a tip on, Show rack opens the rack and Hide rack folds it. A click on
+  the rack chooses nothing. Dropped and picked up again, it starts folded.
 
 - [ ] **Drop in trash, Drop in place.**
-  Drop in trash: the tip drops into the bin, A3 is gray and A1 is
-  offered. Take A1, hold a beaker under it, Drop in place: the tip falls
+  Drop in trash: the tip drops into the bin, a toast "Tip dropped.
+  Calibration needs a new one.", A3 is gray and A1 is offered. Pick up A1, hold a beaker under it, Drop in place: the tip falls
   where it is, the gantry does not move, A1 stays gray.
 
 - [ ] **Calibrate the tip.**
@@ -2442,7 +2448,7 @@ On a full HD window, the page in two columns.
   the picture, the width of every card and the other column stay, the card
   clicked keeps its top and is only as tall as what it shows, no flicker. Part
   and All move nothing. Opening the page: nothing jumps as the camera opens. Liquid
-  in tip's From: only what is under it moves. Tip step: Take tip and Drop in trash, the Calibrate card stays. A
+  in tip's From: only what is under it moves. Tip step: Pick up and Drop in trash move the Calibrate card, with the rack folding, and nothing else. A
   liquid run: Pause and Continue, the plates keep their size. Home: the same
   with the robot switched off and on. Plan: A template and New plan, what is
   under the tiles stays. A refusal on Deck or Plan is a red toast at the bottom
@@ -2537,7 +2543,7 @@ screen (§10.10).
 
 - [ ] **The rack.**
   Round tips in the rack's real proportions, no teal: used ones dashed, the
-  next one blue. A click on another tip makes it next, and Take tip takes it.
+  next one blue. A click on another tip makes it next, and Pick up takes it.
   A one-line legend under it.
 
 - [ ] **Disabled buttons.**

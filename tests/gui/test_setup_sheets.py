@@ -651,6 +651,21 @@ def test_the_shake_position_from_a_tip_box_to_save(app, window, calibrates,
     assert _row(window, "shake_position")[0]
 
 
+def test_the_shake_sheet_shows_the_tip_card(
+        app, window, calibrates, monkeypatch):
+    _open(window, "shake_position")
+    sheet = window.position_sheet
+    _calibrated_tip_on(app, window, monkeypatch)
+    tip = sheet.tip_on
+    assert tip.tip_state.isVisibleTo(sheet)
+    assert tip.tip_state.text() == "Tip A1 is on"
+    assert tip.icon.on
+    assert tip.rack_stack.isHidden()
+    tip.rack_fold.click()
+    assert tip.rack_fold.text() == "Hide rack"
+    assert tip.rack_grid.isVisibleTo(sheet)
+
+
 def test_a_calibrated_tip_on_makes_the_first_three_steps_done(
         app, window, calibrates, monkeypatch):
     _open(window, "shake_position")

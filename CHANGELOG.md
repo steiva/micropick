@@ -10,6 +10,9 @@ the third for fixes.
 
 ## Unreleased
 
+- Tip: the card says the tip's state at a glance, a drawn tip and "Tip A2 is on"
+  or "No tip on", the tip box under it. Take tip is now Pick up. With a tip on the
+  rack folds away behind Show rack, and the Calibrate card moves up with it.
 - Nothing shifts: the camera picture and the width of the cards never move, and
   a status line or a warning no longer moves what is around it. What you click
   can move what is under it in its column: a section, or a choice showing other

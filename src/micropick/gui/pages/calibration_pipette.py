@@ -9,17 +9,21 @@ The picture on the left - the upper camera, the lower one while the
 routine measures the tip - and on the right one column of two cards, read
 top to bottom:
 
-**Put a tip on.** A Select of the tip boxes on the deck ("<name> · slot
-10"), the rack (TIP.md §2.3: a well taken here and not put back a dashed
-ring, `Session.used_tips`; the one to take blue and ringed, the first free
-one until another is clicked) and **Take tip A3**, fixed in width so that "H12" does
-not move it. Once one is on: "Tip A3 is on." with Drop in trash and
-Drop in place (the robot's `dropTipInPlace` where the pipette is, nothing
-moved). No Put back: the robot's return to the rack did not work. With
-no tip box on the deck, a warning and Back to Deck. Which tip is on is the robot's answer (`Session.read_tip`), never a note of what
-was asked: no pick-up while a tip is on, no drop while there is none,
-nothing while it could not be read. These go through the page's jog panel
-(`JogPanel.run_job`), as every robot command from a page with one.
+**The Tip card** (TIP.md §3.1) says the tip's state at a glance: a drawn tip,
+filled while one is on, the title ("Tip A2 is on", "No tip on", "Tip state
+unknown."), and under it the tip box ("<name> · slot 10"), a Select with more
+than one. With no tip on the rack (TIP.md §2.3: a well taken here and not put
+back a dashed ring, `Session.used_tips`; the one to take blue and ringed, the
+first free one until another is clicked) and **Pick up A3**, fixed in width so
+that "H12" does not move it. With one on the rack folds away behind Show rack /
+Hide rack, taking no choice while shown, and Drop in trash and Drop in place
+(the robot's `dropTipInPlace` where the pipette is, nothing moved) are shown.
+No Put back: the robot's return to the rack did not work. With no tip box on
+the deck, a warning and Back to Deck. Which tip is on is the robot's answer
+(`Session.read_tip`), never a note of what was asked: no pick-up while a tip is
+on, no drop while there is none, nothing while it could not be read. These go
+through the page's jog panel (`JogPanel.run_job`), as every robot command from
+a page with one.
 
 **Calibrate the tip**, a path (`widgets.path_steps`, TIP.md §3.2) with a chip
 saying Not done, In progress or Done. Dimmed, all its items later, until a tip
@@ -105,8 +109,9 @@ import time
 from datetime import datetime, timezone
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel,
-                               QProgressBar, QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QComboBox, QGraphicsOpacityEffect, QHBoxLayout,
+                               QLabel, QProgressBar, QPushButton, QVBoxLayout,
+                               QWidget)
 
 from ...config.labware import LabwareError, resolve_definition
 from ...config.schema import PipetteOffset
@@ -118,9 +123,9 @@ from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
 from ..session import Session
 from ..theme import SPACING
-from ..theme.factory import (card, choice_stack, heading, muted_label,
-                             primary_button, reserve, scroll_column,
-                             secondary_button, select)
+from ..theme.factory import (card, choice_stack, heading, laid_out_at_once,
+                             muted_label, primary_button, reserve,
+                             scroll_column, secondary_button, select)
 from ..tip_detector import STANDIN_NOTE, load_tip_detector
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
@@ -129,6 +134,7 @@ from ..widgets.jog_panel import JogPanel, check_view_axes
 from ..widgets.path_steps import PathItem, PathSteps
 from ..widgets.plate_grid import PlateGrid, RackLegend
 from ..widgets.step_card import wrapped
+from ..widgets.tip_gauge import TipIcon
 from ..widgets.toast import show_toast
 from ..workers import Worker
 
@@ -152,7 +158,11 @@ TOUCH_UP_STEP_MM = 0.05
 # fine-tune is a few steps of `TOUCH_UP_STEP_MM`.
 TUNE_RANGE_MM = 1.0
 
+# TIP.md §3.1.
+PICK_UP_HEIGHT, DROP_HEIGHT = 40, 36
+
 NO_RACK = "There is no tip box on the deck. Add it on the Deck step."
+TIP_DROPPED = "Tip dropped. Calibration needs a new one."
 CALIBRATED = "Tip calibrated."
 NOTHING_SAVED = "Nothing was saved."
 STOPPED = f"Stopped. {NOTHING_SAVED}"
@@ -182,7 +192,7 @@ class TouchUpAborted(RuntimeError):
 
 
 class TipOnBlock(QObject):
-    """The "Put a tip on" card, for any page or sheet with a session and a
+    """The Tip card, for any page or sheet with a session and a
     jog panel: `box` goes into the host's layout.
 
     Its pick-up and drops go through the host's `jog`
@@ -204,6 +214,8 @@ class TipOnBlock(QObject):
         # The well to take, by rack slot: the first free one until another
         # is clicked.
         self._chosen: dict[str, str] = {}
+        # Show rack clicked, for the tip on now.
+        self._rack_shown = False
         self.box = self._build(parent)
         session.robot_state_changed.connect(lambda _s: self.refresh())
         session.robot_busy_changed.connect(lambda _h: self.refresh())
@@ -215,63 +227,98 @@ class TipOnBlock(QObject):
 
     def _build(self, parent) -> QWidget:
         box = card(parent)
-        # A host whose own step card names it hides this one.
-        self.heading = heading("Put a tip on", 2)
-        box.layout().addWidget(self.heading)
+        box.layout().addWidget(self._build_header(box))
         self.no_rack = Banner(NO_RACK, tone="warn", parent=box)
         self.back_to_deck = self.no_rack.add_action("Back to Deck")
         self.back_to_deck.clicked.connect(
             lambda: self.session.page_requested.emit("labware"))
 
-        self.offer = QWidget(box)
-        offer = QVBoxLayout(self.offer)
-        offer.setContentsMargins(0, 0, 0, 0)
-        self.racks = select(box)
-        # The keys over this page are the gantry's.
-        self.racks.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.racks.currentIndexChanged.connect(lambda _i: self.refresh())
-        offer.addWidget(self.racks)
+        self.rack_view = QWidget(box)
+        view = QVBoxLayout(self.rack_view)
+        view.setContentsMargins(0, 0, 0, 0)
         self.rack_hint = muted_label("Click the tip to take.", box)
-        offer.addWidget(self.rack_hint)
+        view.addWidget(self.rack_hint)
         self.rack_grid = PlateGrid(mini=True, rack=True, parent=box)
         self.rack_grid.well_clicked.connect(self._choose_tip)
-        offer.addWidget(self.rack_grid)
+        view.addWidget(self.rack_grid)
         self.rack_legend = RackLegend(box)
-        offer.addWidget(self.rack_legend)
-        self.take_button = primary_button("Take tip", box)
+        view.addWidget(self.rack_legend)
+        reserve(self.rack_hint, self.rack_grid, self.rack_legend)
+        # The robot's answers change these in the room of the tallest; only
+        # a tip going on or off folds the rack, and moves the card under it.
+        self.warning = QWidget(box)
+        warning = QVBoxLayout(self.warning)
+        warning.setContentsMargins(0, 0, 0, 0)
+        warning.addWidget(self.no_rack)
+        warning.addStretch(1)
+        self.rack_stack = choice_stack(self.rack_view, self.warning, parent=box)
+        box.layout().addWidget(self.rack_stack)
+
+        self.picking = QWidget(box)
+        picking = QHBoxLayout(self.picking)
+        picking.setContentsMargins(0, 0, 0, 0)
+        picking.addStretch(1)
+        self.take_button = primary_button("Pick up", box)
         metrics = self.take_button.fontMetrics()
-        self.take_button.setFixedWidth(
-            metrics.horizontalAdvance("Take tip H12") + 6 * SPACING)
+        self.take_button.setFixedSize(
+            max(metrics.horizontalAdvance(f"Pick up {row}12")
+                for row in "ABCDEFGH") + 6 * SPACING, PICK_UP_HEIGHT)
         self.take_button.clicked.connect(self._take)
-        offer.addWidget(self.take_button)
-        reserve(self.racks, self.rack_hint, self.rack_grid, self.rack_legend,
-                self.take_button)
+        picking.addWidget(self.take_button)
+        reserve(self.take_button)
 
         self.dropping = QWidget(box)
-        dropping = QVBoxLayout(self.dropping)
+        dropping = QHBoxLayout(self.dropping)
         dropping.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
         self.drop_button = secondary_button("Drop in trash", box)
         self.drop_button.clicked.connect(self._drop_in_trash)
         self.drop_here_button = secondary_button("Drop in place", box)
         self.drop_here_button.clicked.connect(self._drop_in_place)
-        row.addWidget(self.drop_button)
-        row.addWidget(self.drop_here_button)
-        row.addStretch(1)
-        dropping.addLayout(row)
+        for button in (self.drop_button, self.drop_here_button):
+            button.setFixedHeight(DROP_HEIGHT)
+            dropping.addWidget(button)
         dropping.addStretch(1)
-        # A tip taken or dropped leaves the card its height: the Calibrate
-        # card under it stays.
-        self.tip_stack = choice_stack(self.offer, self.no_rack, self.dropping,
-                                      parent=box)
-        box.layout().addWidget(self.tip_stack)
-        self.tip_state = wrapped()
-        box.layout().addWidget(self.tip_state)
-        self.tip_note = muted_label("", box)
-        self.tip_note.setWordWrap(True)
-        reserve(self.tip_state, self.tip_note)
-        box.layout().addWidget(self.tip_note)
+        self.actions = choice_stack(self.picking, self.dropping, parent=box)
+        box.layout().addWidget(self.actions)
         return box
+
+    def _build_header(self, box: QWidget) -> QWidget:
+        """The tip's state at a glance: the icon, the title, and under it
+        the tip box, a Select once there is a choice."""
+        header = QWidget(box)
+        header.setObjectName("plain")
+        row = QHBoxLayout(header)
+        row.setContentsMargins(0, 0, 0, 0)
+        self.icon = TipIcon(header)
+        row.addWidget(self.icon, 0, Qt.AlignmentFlag.AlignTop)
+        lines = QVBoxLayout()
+        lines.setContentsMargins(0, 0, 0, 0)
+        title = QHBoxLayout()
+        self.tip_state = heading("", 2, header)
+        title.addWidget(self.tip_state, 1)
+        self.rack_fold = QPushButton("Show rack", header)
+        self.rack_fold.setObjectName("pathLink")
+        self.rack_fold.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.rack_fold.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.rack_fold.clicked.connect(self._toggle_rack)
+        reserve(self.rack_fold)
+        title.addWidget(self.rack_fold)
+        lines.addLayout(title)
+        self.rack_name = QLabel("", header)
+        self.rack_name.setObjectName("tipBox")
+        self.rack_name.setWordWrap(True)
+        self.racks = select(header)
+        # A long name is cut, the card keeps its width.
+        self.racks.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.racks.setMinimumContentsLength(12)
+        # The keys over this page are the gantry's.
+        self.racks.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.racks.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.rack_line = choice_stack(self.rack_name, self.racks, parent=header)
+        lines.addWidget(self.rack_line)
+        row.addLayout(lines, 1)
+        return header
 
     @property
     def done(self) -> bool:
@@ -328,7 +375,6 @@ class TipOnBlock(QObject):
         if rack is None or well is None or self._running():
             return
         slot, session = rack[0], self.session
-        self.tip_note.setText("")
 
         def job(_log):
             session.pick_up_tip(slot, well)
@@ -338,27 +384,43 @@ class TipOnBlock(QObject):
 
     def _drop_in_trash(self) -> None:
         self._tip_job(lambda _log: self.session.drop_tip_in_trash(),
-                      "dropping the tip in the trash")
+                      "dropping the tip in the trash", TIP_DROPPED)
 
     def _drop_in_place(self) -> None:
         self._tip_job(lambda _log: self.session.drop_tip_in_place(),
-                      "dropping the tip in place", moves=False)
+                      "dropping the tip in place", TIP_DROPPED, moves=False)
 
-    def _tip_job(self, job, what: str, done: str = "", *,
+    def _tip_job(self, job, what: str, done: str, *,
                  moves: bool = True) -> None:
         if self._running():
             return
 
         def then(_result):
-            if done:
-                show_toast(self.box, done)
+            show_toast(self.box, done)
             self.refresh()
 
-        if not self.jog.run_job(job, what=what, then=then, moves=moves):
-            self.tip_note.setText(self.session.robot_lease.refusal
-                                  if self.session.robot_lease.busy
-                                  else "Robot busy.")
+        # A lease refused is said by the panel, its own job is not.
+        if (not self.jog.run_job(job, what=what, then=then, moves=moves)
+                and self.jog.busy):
+            self.jog.refuse("Robot busy.")
         self.refresh()
+
+    def _toggle_rack(self) -> None:
+        self._rack_shown = not self._rack_shown
+        self.refresh()
+
+    def _fold_rack(self, folded: bool) -> None:
+        if folded != self.rack_stack.isHidden():
+            with laid_out_at_once(self.box):
+                self.rack_stack.setVisible(not folded)
+
+    def _title(self, connected: bool) -> str:
+        tip = self.session.tip
+        if not connected or tip.attached is None:
+            return "Tip state unknown."
+        if not tip.attached:
+            return "No tip on"
+        return f"Tip {tip.well} is on" if tip.returnable else "A tip is on"
 
     def refresh(self, *_args) -> None:
         session = self.session
@@ -381,13 +443,25 @@ class TipOnBlock(QObject):
             self.racks.blockSignals(False)
 
         on = tip.attached is True
-        offering = connected and not on and bool(racks)
-        self.tip_stack.setCurrentWidget(
-            self.dropping if on else self.no_rack if connected and not racks
-            else self.offer)
-        for widget in (self.racks, self.rack_hint, self.rack_grid,
-                       self.rack_legend, self.take_button):
-            widget.setVisible(offering)
+        have_rack = connected and bool(racks)
+        self._rack_shown = self._rack_shown and on
+        drawn = have_rack and (self._rack_shown or not on)
+        missing = connected and not racks
+        self.no_rack.setVisible(missing)
+        self.rack_stack.setCurrentWidget(
+            self.warning if missing else self.rack_view)
+        self.actions.setCurrentWidget(self.dropping if on else self.picking)
+        self.rack_fold.setVisible(on and have_rack)
+        self.rack_fold.setText("Hide rack" if self._rack_shown else "Show rack")
+        self.rack_hint.setVisible(have_rack and not on)
+        self.rack_grid.setVisible(drawn)
+        self.rack_legend.setVisible(drawn)
+        self.rack_grid.read_only = on
+        self.take_button.setVisible(have_rack and not on)
+        self._fold_rack(on and not drawn)
+        self.rack_name.setText(wanted[0][0] if len(wanted) == 1 else "")
+        self.rack_line.setCurrentWidget(
+            self.racks if len(wanted) > 1 else self.rack_name)
         rack = self._rack()
         if rack is not None:
             slot, definition = rack
@@ -397,25 +471,16 @@ class TipOnBlock(QObject):
             self.rack_grid.set_used(session.used_tips(slot))
         well = self._well_to_take()
         self.rack_grid.set_current(well)
-        self.take_button.setText(f"Take tip {well}" if well else "Take tip")
+        self.take_button.setText(f"Pick up {well}" if well else "Pick up")
         free = not session.robot_lease.busy and not running
         known = connected and free and tip.attached is not None
         self.take_button.setEnabled(known and not on and well is not None)
 
-        if not connected:
-            self.tip_state.setText("")
-        elif tip.attached is None:
-            self.tip_state.setText("Tip state unknown.")
-        elif on:
-            self.tip_state.setText(f"Tip {tip.well} is on." if tip.returnable
-                                   else "A tip is on.")
-        else:
-            self.tip_state.setText("")
-        self.tip_state.setVisible(bool(self.tip_state.text()))
+        self.tip_state.setText(self._title(connected))
+        self.icon.set_on(on and connected)
         for button in (self.drop_button, self.drop_here_button):
             button.setVisible(on)
             button.setEnabled(known and on)
-        self.tip_note.setVisible(bool(self.tip_note.text()))
         self.changed.emit()
 
 
@@ -1077,7 +1142,7 @@ class PipetteCalibration(QWidget):
         self.calibration_box = self.calibration.box
         for name in ("no_rack", "back_to_deck", "racks", "rack_hint",
                      "rack_grid", "take_button", "tip_state", "drop_button",
-                     "drop_here_button", "tip_note"):
+                     "drop_here_button"):
             setattr(self, name, getattr(self.tip, name))
         for name in ("path", "chip", "go_button", "yes_button", "spinner",
                      "checks", "tune_box", "tune_away", "touch_jog",

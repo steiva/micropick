@@ -441,6 +441,7 @@ QLabel#heading1 { font-size: 26px; font-weight: 600; }
 QLabel#heading2 { font-size: 20px; font-weight: 600; }
 QLabel#heading3 { font-size: 16px; font-weight: 600; }
 QLabel#muted { color: @text-3; }
+QLabel#tipBox { color: @text-2; font-size: 13px; }
 QLabel#faint { color: @muted; }
 QLabel#okText { color: @ok; font-weight: 600; }
 QLabel#warnText { color: @warn-text; }

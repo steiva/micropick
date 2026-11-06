@@ -15,6 +15,8 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt                                    # noqa: E402
+from PySide6.QtTest import QTest                                 # noqa: E402
 from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import resolve_definition          # noqa: E402
@@ -25,10 +27,11 @@ from micropick.gui.pages.calibration_pipette import (            # noqa: E402
     PipetteCalibration)
 from micropick.gui.readiness import (CALIBRATION_POSITION,       # noqa: E402
                                      tip_calibration_status)
-from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.session import Session, Tip                   # noqa: E402
 from micropick.gui.widgets.jog_panel import view_move            # noqa: E402
 from micropick.gui.widgets.path_steps import (CURRENT, DONE,     # noqa: E402
                                               LATER)
+from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 from micropick.hardware.protocols import move_to                 # noqa: E402
 
 RACK = "opentrons_96_tiprack_300ul"
@@ -100,19 +103,48 @@ def test_the_tip_boxes_on_the_deck_by_name_and_slot(page):
     assert page.rack_grid.wells and len(page.rack_grid.wells) == 96
 
 
+def test_the_title_and_icon_follow_the_robots_answer(app, page):
+    _rack(page)
+    assert page.tip_state.text() == "No tip on"
+    assert not page.tip.icon.on
+    page.take_button.click()
+    assert _until(app, lambda: page.tip_state.text() == "Tip A1 is on")
+    assert page.tip.icon.on
+    page.session.tip = Tip.unknown()
+    page.tip.refresh()
+    assert page.tip_state.text() == "Tip state unknown."
+    assert not page.tip.icon.on
+
+
+def test_a_tip_from_nowhere_known_is_still_a_tip_on(page):
+    page.session.tip = Tip(attached=True)
+    page.tip.refresh()
+    assert page.tip_state.text() == "A tip is on"
+    assert page.tip.icon.on
+
+
+def test_one_tip_box_is_plain_text_several_a_select(page):
+    name = resolve_definition(RACK).display_name
+    _rack(page, 10)
+    assert page.tip.rack_line.currentWidget() is page.tip.rack_name
+    assert page.tip.rack_name.text() == f"{name} · slot 10"
+    _rack(page, 7)
+    assert page.tip.rack_line.currentWidget() is page.racks
+
+
 def test_a_click_on_the_rack_chooses_the_tip_to_take(app, page):
     _rack(page)
-    assert page.take_button.text() == "Take tip A1"     # the first not used
+    assert page.take_button.text() == "Pick up A1"     # the first not used
     width = page.take_button.width()
     page.rack_grid.well_clicked.emit("F12")
-    assert page.take_button.text() == "Take tip F12"
+    assert page.take_button.text() == "Pick up F12"
     assert page.rack_grid._current == "F12"              # drawn as next
     assert page.take_button.width() == width             # fixed
     page.rack_grid.well_clicked.emit("A3")
     page.take_button.click()
     assert _until(app, lambda: page.session.tip.attached is True)
     assert (page.session.tip.slot, page.session.tip.well) == ("10", "A3")
-    assert _until(app, lambda: page.tip_state.text() == "Tip A3 is on.")
+    assert _until(app, lambda: page.tip_state.text() == "Tip A3 is on")
     assert page.drop_button.text() == "Drop in trash"
     assert page.drop_here_button.text() == "Drop in place"
     assert not page.drop_button.isHidden()
@@ -121,13 +153,140 @@ def test_a_click_on_the_rack_chooses_the_tip_to_take(app, page):
     assert page.take_button.isHidden()
 
 
+def test_pick_up_is_as_wide_for_any_tip(page):
+    _rack(page)
+    width = page.take_button.width()
+    for well in ("A1", "H12"):
+        page.rack_grid.well_clicked.emit(well)
+        assert page.take_button.width() == width
+    assert page.take_button.fontMetrics().horizontalAdvance(
+        "Pick up H12") < width
+
+
+def test_the_rack_folds_away_with_a_tip_on(app, page):
+    fold = page.tip.rack_fold
+    _rack(page)
+    assert fold.isHidden()                           # no tip on: always shown
+    assert not page.rack_grid.isHidden()
+    _tip_on(app, page)
+    assert not fold.isHidden() and fold.text() == "Show rack"
+    assert page.tip.rack_stack.isHidden()
+    fold.click()
+    assert fold.text() == "Hide rack"
+    assert not page.tip.rack_stack.isHidden()
+    assert not page.rack_grid.isHidden()
+    fold.click()
+    assert fold.text() == "Show rack"
+    assert page.tip.rack_stack.isHidden()
+
+
+def test_the_rack_is_folded_again_at_the_next_tip(app, page):
+    _tip_on(app, page, "A1")
+    page.tip.rack_fold.click()
+    page.drop_here_button.click()
+    assert _until(app, lambda: page.session.tip.attached is False
+                  and not page.jog.busy)
+    assert page.tip.rack_fold.isHidden()
+    assert not page.tip.rack_stack.isHidden()
+    page.take_button.click()
+    assert _until(app, lambda: page.session.tip.attached is True
+                  and not page.jog.busy)
+    assert page.tip.rack_stack.isHidden()
+    assert page.tip.rack_fold.text() == "Show rack"
+
+
+def test_the_rack_shown_with_a_tip_on_takes_no_choice(app, page):
+    _tip_on(app, page, "A1")
+    page.resize(1920, 860)
+    page.show()
+    page.tip.rack_fold.click()
+    app.processEvents()
+    grid = page.rack_grid
+    assert grid._current == "B1"
+    point = grid.well_rect("F12").center().toPoint()
+    QTest.mouseClick(grid, Qt.MouseButton.LeftButton, pos=point)
+    app.processEvents()
+    assert grid._current == "B1"
+    page.hide()
+
+
+def test_a_tip_on_with_no_tip_box_has_no_rack_to_show(app, page):
+    page.session.tip = Tip(attached=True)
+    page.tip.refresh()
+    assert page.tip.rack_fold.isHidden()
+    assert page.tip.rack_stack.isHidden()
+    assert not page.drop_button.isHidden()
+
+
+def test_a_tip_taken_says_so_in_a_toast(app, page):
+    page.show()
+    _tip_on(app, page, "A3")
+    assert _until(app, lambda: toast_of(page) is not None
+                  and toast_of(page).text() == "Tip A3 is on.")
+    page.hide()
+
+
+@pytest.mark.parametrize("button", ["drop_button", "drop_here_button"])
+def test_a_tip_dropped_says_calibration_needs_a_new_one(app, page, button):
+    page.show()
+    _tip_on(app, page, "A3")
+    getattr(page, button).click()
+    assert _until(app, lambda: page.session.tip.attached is False
+                  and not page.jog.busy)
+    assert _until(app, lambda: toast_of(page).text()
+                  == "Tip dropped. Calibration needs a new one.")
+    page.hide()
+
+
+def test_the_drops_are_gray_while_the_robot_is_busy(app, page):
+    _tip_on(app, page)
+    assert page.drop_button.isEnabled() and page.drop_here_button.isEnabled()
+    lease = page.session.robot_lease.claim("a test")
+    assert _until(app, lambda: not page.drop_button.isEnabled())
+    assert not page.drop_here_button.isEnabled()
+    lease.release()
+    assert _until(app, lambda: page.drop_button.isEnabled())
+
+
+def test_a_refused_drop_is_a_toast(app, page):
+    page.show()
+    _tip_on(app, page)
+    lease = page.session.robot_lease.claim("a test")
+    page.tip._drop_in_trash()
+    assert toast_of(page).text() == page.session.robot_lease.refusal
+    assert page.session.tip.attached is True
+    lease.release()
+    page.hide()
+
+
+def test_a_drop_while_the_panel_works_is_refused_in_a_toast(app, page):
+    page.show()
+    _tip_on(app, page)
+    gate = threading.Event()
+    assert page.jog.run_job(lambda _log: gate.wait(5), what="a test")
+    page.tip._drop_in_trash()
+    assert toast_of(page).text() == "Robot busy."
+    gate.set()
+    assert _until(app, lambda: not page.jog.busy)
+    assert page.session.tip.attached is True
+    page.hide()
+
+
+def test_no_robot_is_no_filled_tip(page):
+    page.session.tip = Tip(attached=True)
+    page.session.robot = None
+    page.tip.refresh()
+    assert page.tip_state.text() == "Tip state unknown."
+    assert not page.tip.icon.on
+
+
 def test_drop_in_trash_uses_the_tip(app, page):
     _tip_on(app, page, "A3")
     page.drop_button.click()
     assert _until(app, lambda: page.session.tip.attached is False
                   and not page.jog.busy)
     assert page.session.used_tips(10) == {"A3"}
-    assert page.take_button.text() == "Take tip A1"
+    assert page.take_button.text() == "Pick up A1"
 
 
 def test_drop_in_place_lets_go_of_the_tip_without_moving(app, page):
@@ -264,6 +423,18 @@ def _calibrate(app, page):
     page.yes_button.click()
     assert _until(app, lambda: not page.session.robot_lease.busy
                   and not page.calibration.running and not page.jog.busy)
+
+
+def test_the_drops_are_gray_while_a_run_waits_at_the_disc(app, page, ready):
+    page.go_button.click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    assert page.run_activity() == "waiting"
+    assert not page.drop_button.isEnabled()
+    assert not page.drop_here_button.isEnabled()
+    page.session.stop_requested.emit()
+    assert _until(app, lambda: not page.session.robot_lease.busy
+                  and not page.calibration.running and not page.jog.busy)
+    assert page.drop_button.isEnabled()
 
 
 def test_two_clicks_calibrate_save_at_once_and_end_the_run(app, page, ready):
@@ -684,7 +855,7 @@ def test_the_two_cards_work_embedded_in_another_widget(app, tmp_path,
         assert not tip.done and not calibration.done
         assert not calibration.box.isEnabled()
         session.load_labware(resolve_definition(RACK), 10)
-        assert tip.take_button.text() == "Take tip A1"
+        assert tip.take_button.text() == "Pick up A1"
         tip.take_button.click()
         assert _until(app, lambda: tip.done and not jog.busy)
         assert "tip" in changes

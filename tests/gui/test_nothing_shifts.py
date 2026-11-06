@@ -32,6 +32,7 @@ from micropick.gui.widgets.fold_card import FoldCard             # noqa: E402
 from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
+RACK = "opentrons_96_tiprack_300ul"
 FULL_HD = (1920, 860)
 
 
@@ -219,15 +220,64 @@ def test_a_banner_of_a_liquid_run_keeps_the_plates_where_they_are(
     page.deleteLater()
 
 
-def test_a_tip_taken_leaves_the_calibrate_card_where_it_is(
-        app, themed, session, stands_still):
+def _tip_page(app, session):
     page = PipetteCalibration(session)
     page.resize(*FULL_HD)
     page.show()
     _opened(app, page)
+    return page
+
+
+def test_the_select_shows_which_slot_a_tip_box_is_in(app, themed, session):
+    session.load_labware(resolve_definition(RACK), 10)
+    session.load_labware(resolve_definition(RACK), 7)
+    page = _tip_page(app, session)
+    racks = page.racks
+    # What a Select keeps for its text: the chevron and the padding out.
+    room = racks.width() - 45
+    assert racks.fontMetrics().horizontalAdvance(racks.itemText(1)) < room
+    page.close()
+    page.deleteLater()
+
+
+def test_the_warning_with_no_tip_box_is_as_tall_as_its_words(
+        app, themed, session):
+    page = _tip_page(app, session)
+    banner = page.no_rack
+    assert banner.isVisibleTo(page)
+    assert banner.height() < page.tip.rack_stack.height() / 2
+    page.close()
+    page.deleteLater()
+
+
+def test_what_the_robot_says_leaves_the_calibrate_card_where_it_is(
+        app, themed, session, stands_still):
+    page = _tip_page(app, session)
     block = page.tip
-    stands_still(page, lambda: block.tip_stack.setCurrentWidget(block.dropping))
-    stands_still(page, lambda: block.tip_stack.setCurrentWidget(block.no_rack))
+    stands_still(page, lambda: block.rack_stack.setCurrentWidget(block.rack_view))
+    stands_still(page, lambda: block.actions.setCurrentWidget(block.dropping))
+    page.close()
+    page.deleteLater()
+
+
+def test_the_rack_folding_moves_only_what_is_under_it(
+        app, themed, session):
+    """A tip going on is the second thing a job's end moves (#121)."""
+    session.load_labware(resolve_definition(RACK), 10)
+    page = _tip_page(app, session)
+    block = page.tip
+    frame, top = page.view.geometry(), block.box.geometry().top()
+    under = page.calibration_box.geometry().top()
+    block.take_button.click()
+    end = time.monotonic() + 5
+    while not block.done and time.monotonic() < end:
+        app.processEvents()
+    _opened(app, page)
+    assert block.done
+    assert page.calibration_box.geometry().top() < under
+    assert page.view.geometry() == frame
+    assert block.box.geometry().top() == top
+    assert block.box.width() == page.calibration_box.width() == 440
     page.close()
     page.deleteLater()
 

@@ -18,7 +18,39 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from ..theme import COLORS, mono_font
 
-__all__ = ["TipGauge"]
+__all__ = ["TipGauge", "TipIcon"]
+
+
+class TipIcon(QWidget):
+    """A tip, drawn: filled while one is on, an outline while none is
+    (TIP.md §3.1). `on` says which."""
+
+    W, H = 20, 36
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setFixedSize(self.W, self.H)
+        self.on = False
+
+    def set_on(self, on: bool) -> None:
+        self.on = on
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        outline = QPainterPath(QPointF(2, 2))
+        for x, y in ((18, 2), (12, 34), (8, 34)):
+            outline.lineTo(x, y)
+        outline.closeSubpath()
+        ink = QColor(COLORS["accent" if self.on else "muted"])
+        if self.on:
+            painter.fillPath(outline, ink)
+        pen = QPen(ink, 2)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawPath(outline)
+        painter.end()
 
 
 class _TipDrawing(QWidget):

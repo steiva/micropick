@@ -125,8 +125,9 @@ template's name row, and a choice showing other controls, which is as tall as wh
 it shows, no room kept for a choice not made (From, Where and the height fields on
 Manual pick's Run, Liquid in tip's From). Show and hide those inside
 `theme.factory.laid_out_at_once`, so nothing is painted at the old height (a
-`FoldCard` does so itself). Aspirate and Dispense folding and opening (#114) move
-what is under them, the one thing a job's end moves.
+`FoldCard` does so itself). Two things a job's end moves: Aspirate and Dispense
+folding and opening (#114) move what is under them, and so does the Tip card's rack
+folding away when a tip goes on (#121).
 
 A status line or a warning moves nothing: a message is the toast, and what comes
 and goes by itself has its place kept, `theme.factory.reserve` for a line or a
@@ -761,13 +762,17 @@ measures each device that works on the first load and takes the faster
 change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
 verify, manual adjustment, the start offset dx, dy). The Tip step
-(`pages.calibration_pipette`, TIP.md) is one column of two cards. Put a tip on:
-a Select of the deck's tip boxes, the rack (`PlateGrid(rack=True)`: the SBS
+(`pages.calibration_pipette`, TIP.md) is one column of two cards. The Tip card,
+the same on the shake position's sheet, says the state at a glance: a drawn tip
+(`TipIcon`, filled while one is on), the title ("Tip A2 is on", "No tip on", "Tip
+state unknown."), under it the tip box and its slot, a Select with more than one
+and plain text with one. With no tip on the rack (`PlateGrid(rack=True)`: the SBS
 footprint in a dark box, round tips, each in the rack, used, a dashed ring,
 `Session.used_tips`, or next, blue; a click makes a tip next; `RackLegend`
-under it), Take tip A3; then "Tip A3 is on." with
-Drop in trash and Drop in place (`dropTipInPlace`, nothing moved; no
-Put back: it did not work); no tip box, a warning with Back to Deck.
+under it), Pick up A3 of a fixed width; with one on the rack folds away behind
+Show rack / Hide rack, taking no choice while shown, and Drop in trash and Drop in
+place (`dropTipInPlace`, nothing moved; no Put back: it did not work); no tip box,
+a warning with Back to Deck.
 Calibrate the tip is a `widgets.path_steps.PathSteps` path with a chip (Not done,
 In progress, Done), dimmed with "Put a tip on first." until a tip is on, where it
 stands read at each refresh from the tip, the run's phase and
