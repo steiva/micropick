@@ -165,18 +165,13 @@ move by drag goes through `Session.move_labware`, which loads again so a
 platform's height attaches. Auto pick is Deck → Tip → Dish bottom → Plan
 → Well center → Run (no Tip liquid step: it is Picking's card), and a task opens
 on its first step not done that is not optional. Manual pick is Deck →
-Tip → Source → Well center → Dish bottom → Run, its steps following the
-source (#88, `pages.source`, `Session.source`: a tile for the source dish
-and one per plate, nothing preselected, in memory for the robot session,
-lost with a new session and when that plate is moved or taken off, as its
-labware id tells; `tasks.steps(task, session)`, `tasks.optional`). With a
-plate chosen there is no Dish bottom step, Well center is required for
-that plate only and done once it is confirmed
-(`Session.plate_bottom_confirmed`, the page opening on it), and Run waits
-for that; with the source dish, Dish bottom and Well center are as they
-were and Run waits for Dish bottom. The StepBar follows the choice
-(`MainWindow._refresh`), and a step taken away gives way to the first not
-done. Finish by hand chooses the source dish: the run picked from it. The last step of every
+Tip → Well center → Dish bottom → Run, the same steps whatever is chosen (#131,
+`tasks.steps(task)`): Well center and Dish bottom are optional there
+(`tasks.optional`), Dish bottom still dimmed under its banner without the position
+over the dish, Next working, and Run needs only the Deck and the Tip. An optional
+step's number has a dashed ring in the StepBar until it is done, the current step's
+too, in the room the chip has (#129, `tasks.MARKED_OPTIONAL`, a list of its own:
+Manual's Run can be passed and has no ring). Finish by hand opens Run. The last step of every
 task is titled Run on screen (#65: Auto's `picking`, the Picking page;
 Manual's `work`, `pages.manual`; Liquid's `run`); the run statuses and Start
 picking keep their words. Plan needs a plate on the deck (a "plate" need, "Put a plate
@@ -437,16 +432,15 @@ MANUAL.md §4.2) holds its settings in the open, no Change: From By clicking / A
 point / In a well, what that asks, Amount, Speed, the height (a point has its
 own) and the lifting row, enabled once a source is chosen, the TipGauge its
 answer. In a well is a `widgets.well_picker.WellPicker`: the mini deck, the
-Source step's plate first until one is clicked, the plate in real proportions, a
+plate chosen on Well center first until one is clicked, the plate in real proportions, a
 well chosen by a click, one always chosen while a plate is. By clicking (#60, By
 hand before)
 takes from under the camera's crosshair (the picture's center through
 the pixel map, plus the measured tip offset); no spot is clicked: a
 click moves the camera, with Snap to found cuboids onto a cuboid's
 center (beside every cuboid, to the point). Its height is Z (with From tip, the
-tip's Z now) | Above the bottom, the bottom that of the slot the spot is in, whatever the source
-chosen (#90, `ManualPage._slot_bottom`): a plate confirmed in this robot
-session gives its measured bottom, the source dish's slot the dish bottom
+tip's Z now) | Above the bottom, the bottom that of the slot the spot is in
+(#90, `ManualPage._slot_bottom`): a measured plate gives its measured bottom, the source dish's slot the dish bottom
 when confirmed (`Session.is_confirmed("dish_bottom")`), anywhere else Above
 is gray and Z is used; the default where there is one, the summary and the
 field's tooltip naming it ("0.5 mm above the bottom of slot 5"). Over a plate in Above the bottom a
@@ -465,9 +459,8 @@ free: one job remembers the camera's pose, the tip to the spot at the
 travel height (`Motion.tip_to`), down, aspirate, the camera back to that
 pose; with Aspirate as soon as I click, a click aims and does it. In a well
 the height is above the plate's measured bottom (rim less depth, reached as
-the liquid engine reaches it, `Motion.to_measured_bottom`) once it is
-confirmed in this robot session (`Session.plate_bottom_confirmed`), else
-above the drawing's; x and y are the measured center either way. The
+the liquid engine reaches it, `Motion.to_measured_bottom`) and x and y are its
+measured center once it is measured, else the drawing's. The
 summary and the field's tooltip say which ("0.5 mm above the measured bottom").
 Aspirate and Dispense each say how the tip leaves, on their own, in the page's
 memory, on a row folded to its words, "After aspirating: lift right away"
@@ -518,9 +511,8 @@ Under X, Y, Z on this page only, the one exception to nothing under them, is
 the height line (#95, `ManualPage._heights_here`), for the slot the camera
 is over (`camera_moves.camera_slot`: no pixel map or tip calibration needed),
 following it: "Slot 8 · top 85.10 · bottom 67.77 · measured"
-(`well_center.plate_heights`). Measured is a plate confirmed in this robot
-session (`Session.plate_bottom_confirmed`), what In a well and By clicking go by;
-any other plate reads "drawing", a measurement not confirmed included. A slot
+(`well_center.plate_heights`). Measured is a plate measured, what In a well and By clicking go by; any other
+plate reads "drawing". A slot
 with no plate has no line, its row kept (`set_height_line("")`) so what is
 under it does not move. The source dish's slot says only "Slot 8 · bottom 66.00
 · measured", once `dish_bottom` is confirmed; before a plate's drawing there,
@@ -635,32 +627,40 @@ to its end makes the step done (`confirm("liquid_run")`).
 
 A plate's measured well
 center (`WellCenter`) is one per slot and plate type, set on the Well
-center step, one page in every task (`pages.well_center`,
-REDESIGN §6.7, `set_task`: the plates on the deck,
-`tasks.well_center_plates`, "Measured today" / "Not measured: using the
-drawing" / "Not measured yet"; the jog pad under the tip's X Y Z, with
-its Keys; in Liquid only Skip this plate, use the drawing -
-`Session.skip_plate`, for the robot session only - under the list and Last
-time; last, so that nothing stands under what folds, one card titled with the
-selected plate, no chip, none with no plate, its `PathSteps` path (#127): Tip to
+center step, one page in every task (`pages.well_center`, REDESIGN §6.7; #128;
+`set_task` only tells it which plate to open on): the jog pad under the tip's
+X Y Z, with its Keys, and beside them one intro line, a `MiniDeckDropdown` with every
+plate on the deck lit and nothing else (`tasks.well_center_plates`), each tile
+saying Measured or Not measured, one line for the selected plate ("Measured
+today", "Not measured: using the drawing"), then Last time; last, so that nothing
+stands under what folds, one card, no title, no chip, none with no plate, its
+`PathSteps` path (#127): Tip to
 a well (the plate's map, `WellPicker(plate_choice=False)`, the plate being the
-list's, Move the tip; done "Tip is over A1", the measurement's well, with Redo,
+selector's, Move the tip; done "Tip is over A1", the measurement's well, with Redo,
 the one link and the way to another well: the map back, the measurement
 forgotten, nothing moved), Center the tip (It is centered), Lower to the top of
 the well (It is level), Well depth (from the drawing, Save, never done). A plate
 opens on the first item, or on Center the tip while its measurement is in hand. The
 column keeps the room the map leaves as it folds (`map_room`): the operator may
-have scrolled down to Move the tip); Liquid handling only
-reads it. In Liquid the step is required and done when every plate is
-measured or skipped (`Session.well_center_status`); in Manual pick
-(#63, unless it picks from a plate, #88) it is optional
-(`tasks.optional`: Next always enabled, the task never opens on it), has
-no Skip - a plate not measured uses its drawing - and is done when every
-plate is measured. Manual pick's Run has no Well center card. So it is in Auto pick
-(after Plan, #64), where it shows only the plan's plate
-(`workflows.well_center.plan_plate`, the one a deposit reads) and, without
-the plan in use, is dimmed under "Make a plan first." with Go to Plan. Manual pick's Aspirate and Dispense in a well and a
-picking deposit add its x and y, Liquid handling's steps all of it. It is the plate's, wherever it
+have scrolled down to Move the tip. A click on the selector chooses the plate
+(`Session.chosen_plate`: for the robot session, gone when that plate is moved or
+taken off, as its labware id tells; no need of any step). The page opens on it,
+else in Auto pick on the plan's plate (`workflows.well_center.plan_plate`, the one
+a deposit reads), else on the first on the deck; Save goes on to the next plate,
+shown, not chosen. Manual pick's In a well opens on the chosen plate too, a click
+there choosing another.
+
+The step is optional in every task (`tasks.optional`: Next always enabled, the
+task never opens on it; #130, #132), a plan no need of it, and done while there
+are plates on the deck and every one is measured (`Session.well_center_status`),
+measurements of earlier days included, so a new plate takes the mark away. A plate
+not measured uses its drawing, a plate measured its measurement, in every task,
+with nothing to confirm and nothing to skip (#133): no robot session has to see a
+plate measured, and a plate moved since is left to the refusal under the bottom and
+the height line. A liquid plan going to a measured bottom on a plate not measured
+is that plan's problem to say. Manual pick's Run has no Well center card. A picking
+deposit adds its x and y, Manual pick's wells and Liquid handling's steps all of it.
+It is the plate's, wherever it
 was measured, and every page reads it the same way:
 `workflows.well_center` holds the measurement both pages take
 (`Measurement`, `go_to_top`), the deposit's offset (`deposit_offset`) and
@@ -670,13 +670,10 @@ depth changed (`well_center.run_using`).
 A measurement belongs to the height of the module in its slot when taken
 (`WellCenter.module_height_mm`, 0 for none; a record from before has none
 and is accepted): on another height `DeckConfig.well_center`, the one place
-every reader asks, does not give it, so the plate reads "Not measured yet"
-in every task and nothing uses it. In Manual pick the page shows a measured
-plate's "Last time: Z 66.40 mm · 3 days ago" (`well_center.measured_bottom`:
-the drawing's well top on the module, the measured rim, less the depth) with
-Use it, as Dish bottom does; Use it or Save confirms that plate's bottom for
-the robot session (`Session.plate_bottom_confirmed`). Liquid and Auto pick
-show no Use it and count a measured plate as before.
+every reader asks, does not give it, so the plate reads "Not measured: using the
+drawing" in every task and nothing uses it. A measured plate shows "Last time:
+Z 66.40 mm · 3 days ago" (`well_center.measured_bottom`: the drawing's well top on
+the module, the measured rim, less the depth), as information, in every task.
 
 ### Words on screen
 
@@ -690,7 +687,8 @@ the robot. While the robot does not answer, Home says "Connecting to the
 robot…" ("This can take a few minutes after it is switched on.": it is
 slow to boot, not lost), and "Homing…" while it homes. The dish the
 cuboids are picked from is the **source dish** on screen, never "dish
-with cuboids". A changed run id is the robot restarted: labware, the tip and
+with cuboids". What a plate not measured uses, the labware definition, is its
+**drawing** on screen. A changed run id is the robot restarted: labware, the tip and
 what was confirmed are forgotten (`Session.robot_seen`). A session is shown by the name it was
 given when created here (`config.robot_sessions`, default date, time and
 profile), else by when the robot started it - never by its id. "run" on

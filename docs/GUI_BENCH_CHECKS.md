@@ -1092,10 +1092,10 @@ robot on.
   "Go to Camera calibration" opens it as Home › Auto pick › Camera
   calibration; a click on Auto pick comes back to Tip.
 
-- [ ] **Auto pick, then Manual pick, opens on Work.**
-  With the deck checked, the tip calibrated, the source dish chosen and
-  the dish bottom taken (Save dish bottom or Use it), Home › Manual pick
-  shows Deck, Tip, Source and Dish bottom ✓ and the Work page.
+- [ ] **Auto pick, then Manual pick, opens on Run.**
+  With the deck checked, the tip calibrated and the dish bottom taken (Save
+  dish bottom or Use it), Home › Manual pick shows Deck, Tip and Dish bottom ✓
+  and the Run page.
 
 - [ ] **Esc still stops, Park parks, Light switches the lights.**
   Esc during a jog stops it; a second Esc within 10 s holds the robot.
@@ -1730,8 +1730,8 @@ tip box and a 384 plate at hand.
 - [ ] **Aspirate's settings line.**
   Manual pick › Run, From In a well, a plate not measured: the Aspirate
   card reads "0.5 mm above the drawing's bottom · 10 µl · 50 µl/s" (the
-  profile's pickup offset, volume and flow rate). Confirm that plate on
-  Well center (Save, or Use it): "0.5 mm above the measured bottom · …",
+  profile's pickup offset, volume and flow rate). Measure that plate on
+  Well center: "0.5 mm above the measured bottom · …",
   and choosing another plate follows it; By hand at a Z: "Z 66.6 mm · …". Change unfolds
   the height, Volume and Speed, and the line follows them. No
   step numbers on the cards, no moved-cuboids counter, no Finish.
@@ -1739,7 +1739,7 @@ tip box and a 384 plate at hand.
 - [ ] **By hand: under the crosshair (#60).**
   From: By hand, a tip on: Aspirate is enabled at once, no click needed,
   and no hint to click a spot. With the crosshair over a slot with no
-  bottom confirmed in this robot session Change shows Height Z | Above
+  measured bottom Change shows Height Z | Above
   the bottom with Above gray and Z chosen; over the source dish's slot
   after Dish bottom (or Use it) Above is enabled and chosen.
   Put the crosshair on liquid, Aspirate: the tip goes over the crosshair's
@@ -1752,7 +1752,7 @@ tip box and a 384 plate at hand.
   comes back over the spot.
 
 - [ ] **By hand from a 24 well plate (#90).**
-  A 24 well plate on the deck, confirmed on Well center (Save, or Use it),
+  A 24 well plate on the deck, measured on Well center,
   a tip on, a little liquid in a well. Manual pick › Run, By hand, the
   crosshair in a well, off its center: the line reads "0.5 mm above the
   bottom of slot 5" (the plate's slot), and it follows when the camera
@@ -1772,8 +1772,8 @@ tip box and a 384 plate at hand.
 - [ ] **In a well, At a point.**
   In a well: Plate and Well; Aspirate goes to the well's bottom + the
   height (watch it, it must not hit the bottom): the measured bottom
-  (rim less depth) on a plate confirmed in this robot session, else the
-  drawing's. Check the 0.5 mm on a confirmed plate: the rim is set by eye
+  (rim less depth) on a measured plate, else the
+  drawing's. Check the 0.5 mm on a measured plate: the rim is set by eye
   and the depth is the drawing's. At a point: the points
   list (drawn on the picture only now), × deletes; Aspirate goes to the
   chosen point at its Z. Aspirate is gray until a well or a point is
@@ -1807,26 +1807,26 @@ tip box and a 384 plate at hand.
   Dispense is back on the profile's flow rate.
 
 - [ ] **Well center.**
-  Work has no Well center card (#63: it is Manual pick's step before).
+  Run has no Well center card (#63: it is Manual pick's step before).
   A plate measured there: Aspirate and Dispense in a well go to the
-  measured center, confirmed or not; the height follows the confirmation.
+  measured center and its measured bottom, with nothing to confirm.
 
-## Redesign — Well center step and skipped plates (#21)
+## Redesign — Well center step (#21)
 
-- [ ] **The list.**
-  Two plates on the deck, Liquid › Well center: both "Not measured yet"
-  (gray ring), the first selected. The upper camera on the left, the jog
-  pad over it. With none on the deck: "No plate on the deck."
+- [ ] **The page.**
+  Two plates on the deck, Liquid › Well center: the first selected on the mini
+  deck, "Not measured: using the drawing". No camera: the tip's X Y Z on the
+  left, the jog pad under it. With none on the deck: "No plate on the deck."
 
 - [ ] **Measure a plate.**
-  One card titled with the selected plate, a path with no numbers. Click a
+  One card with no title, a path with no numbers. Click a
   well on the plate's map (the selected plate, in its real proportions),
   Move the tip: the tip goes to its top center as the robot has it (watch
   it: no crash into the rim), the map folds to "Tip is over B2" and the path
   is on Center the tip. It is centered and It is level take turns with the
   arrows; Well depth reads "10.67 mm, from the plate's drawing" (for a
-  Corning 96). Save: "Well center saved.", the row reads "Measured today"
-  with a green ✓, the next plate is selected. Liquid's steps on that plate
+  Corning 96). Save: "Well center saved.", the plate's tile says Measured and its line
+  "Measured today", the next plate is selected. Liquid's steps on that plate
   now go to the measured center.
 
 - [ ] **Redo (#127).**
@@ -1835,18 +1835,12 @@ tip box and a 384 plate at hand.
 
 - [ ] **A short window (#127).**
   Three plates, a window too short for the column: scroll down to Move the
-  tip and press it. As the map folds, Skip, the plates and the card stay
-  where they were.
+  tip and press it. As the map folds, the selector, the plate's line and the
+  card stay where they were.
 
 - [ ] **Coming back to a plate (#127).**
   Move the tip on one plate, click another (first item), click back: Center
   the tip, still "Tip is over" the same well.
-
-- [ ] **Skip.**
-  Skip this plate, use the drawing: "Not measured: using the drawing", a
-  yellow ✓; the step is ✓ once every plate is measured or skipped. Home
-  the robot (a new robot session): the skipped plate reads "Not measured
-  yet" again; a measured one stays measured.
 
 - [ ] **A run's plate.**
   During a liquid run into a plate, its Save is gray, the tooltip naming
@@ -1860,7 +1854,7 @@ tip box and a 384 plate at hand.
 - [ ] **The movement keys (#57).**
   On Well center the arrows and PgUp / PgDn move the tip one step of the
   pad's, as rebound in Settings' Keys (no restart). Then on Dish bottom
-  (while lowering), Manual pick's Work, Picking, the Tip step's fine-tune
+  (while lowering), Manual pick's Run, Picking, the Tip step's fine-tune
   and Robot setup's position and camera calibration sheets: each moves
   the robot by one step, never two. On Home and Liquid's Plan and Run
   they move nothing.
@@ -2017,89 +2011,27 @@ plate at hand.
   Fill 20 µl, then run Picking: each deposit and return gives back only
   the cuboids' volume; at the end the tip still holds about 20 µl.
 
-## Well center step in Manual pick (#63)
-
-- [ ] **The step.**
-  Manual pick's steps: Deck, Tip, Source, Well center, Dish bottom, Run.
-  With the source dish chosen and Dish bottom done the task opens on Run,
-  not on Well center. Well center
-  lists the plates on the deck, with no Skip this plate; "A plate not
-  measured uses its drawing." Next is enabled with nothing measured.
-
-- [ ] **Done.**
-  Measure every plate: the step's chip is checked. A plate skipped in
-  Liquid in this robot session does not count in Manual pick: its chip
-  stays open until that plate is measured.
-
-- [ ] **Liquid unchanged.**
-  Liquid › Well center still has Skip this plate, and Next stays gray
-  until every plate is measured or skipped.
-
-## Manual pick's Source step (#88)
-
-- [ ] **Nothing is chosen.**
-  A new start, a 24 well plate on the deck: Manual pick opens on Source
-  (after Deck and Tip), a tile for the source dish and one for the plate,
-  each with its slot, none outlined, Next gray. Run says "Choose the
-  source first." with Go to Source.
-
-- [ ] **From a plate.**
-  Click the plate's tile: Dish bottom leaves the step bar. Well center
-  opens on that plate, "You pick from slot 5: measure it, or Use it.", Next
-  gray beside "Measure the plate in slot 5." A second plate on the deck
-  stays optional. Run says "Measure <plate> in slot 5 first." until Save or
-  Use it; no step asks for the position over the dish.
-
-- [ ] **From the source dish.**
-  Click Source dish: Dish bottom is back, with its Over the dish need. Well
-  center is optional, and Run says "Find the dish bottom first."
-
-- [ ] **The choice goes.**
-  Plate chosen, drag it to another slot on Deck, or take it off: Source
-  loses its ✓, no tile is outlined and Dish bottom is back. Likewise after
-  Home and connect (a new robot session).
-
-- [ ] **Auto pick is not touched.**
-  Confirming the plate in Manual pick leaves Auto pick's Dish bottom not
-  done.
-
-- [ ] **Finish by hand.**
-  A run left short, Finish by hand: Work is not dimmed, Source ✓ on the
-  source dish.
-
-## A measurement and its module; Use it (#87, #92)
+## A measurement and its module (#87, #92)
 
 - [ ] **The module changes.**
   Measure a plate in a slot, then in Robot setup's platforms put another
   module height in that slot (or take the module away). In Manual pick,
-  Auto pick (the plan's plate) and Liquid its row reads "Not measured
-  yet", its depth is the drawing's, and a deposit, a Manual well and a
-  Liquid step go to the drawing's center. Put the old height back: the
-  row reads "Measured" again.
+  Auto pick and Liquid it reads "Not measured: using the drawing", its depth
+  is the drawing's, and a deposit, a Manual well and a Liquid step go to the
+  drawing's center. Put the old height back: "Measured" again.
 
-- [ ] **Last time and Use it.**
-  Manual pick › Well center, a plate measured on an earlier day, in a new
-  robot session: "Last time: Z 66.40 mm" and when, with Use it. Take the
-  tip to the plate's real bottom by hand: Z there agrees with the line
-  (the Z is built from the drawing, the module and the measurement).
-  Use it: it grays. Save on a new measurement grays it too. A new robot
-  session: Use it is back. A plate never measured has no such card, and
-  neither Liquid nor Auto pick shows one.
+- [ ] **Last time.**
+  Well center, a plate measured on an earlier day, in a new robot session:
+  "Last time: Z 66.40 mm" and when, no button. Take the tip to the plate's
+  real bottom by hand: Z there agrees with the line (the Z is built from the
+  drawing, the module and the measurement). A plate never measured has no such
+  card. The same in all three tasks.
 
 ## Well center step in Auto pick (#64)
 
 - [ ] **The step.**
-  Auto pick's steps: Deck, Tip, Dish bottom, Plan, Well center, Picking.
-  With the plan in use the task opens on Picking, not on Well center.
-
-- [ ] **No plan.**
-  Edit plan on Plan, then Well center: dimmed under "Make a plan first."
-  with Go to Plan, which goes there. Next is enabled.
-
-- [ ] **The plan's plate only.**
-  Two plates on the deck, a plan into slot 5: Well center lists only
-  slot 5's, with no Skip this plate. Measure it: the chip is checked.
-  A plan into the other plate: the list follows it.
+  Auto pick's steps: Deck, Tip, Dish bottom, Plan, Well center, Run.
+  With the plan in use the task opens on Run, not on Well center.
 
 - [ ] **The deposit.**
   With slot 5's well center measured, run Picking into a small well: the
@@ -2109,8 +2041,7 @@ plate at hand.
 
 - [ ] **The step bar.**
   Auto pick: Deck, Tip, Dish bottom, Plan, Well center, Run. Manual pick:
-  Deck, Tip, Source, Well center, Dish bottom, Run (no Dish bottom with
-  a plate chosen). Liquid: Deck, Tip, Well center, Plan, Run. No step is called Picking or Work.
+  Deck, Tip, Well center, Dish bottom, Run. Liquid: Deck, Tip, Well center, Plan, Run. No step is called Picking or Work.
 
 - [ ] **The run keeps its words.**
   Auto's Run is the Picking page: Start picking, and the footer and the
@@ -2139,7 +2070,7 @@ is only seen here.
 ## Liquid Plan and Run (#67)
 
 These replace the checks of the page of groups (#22, #23). Set up: a 6-well
-plate and a 96-well plate on the deck, both measured or skipped on Well center,
+plate and a 96-well plate on the deck, both measured on Well center,
 a waste to use as the trash, a tip on. A failure in the wells themselves points
 at the compile step (`core.liquid_plan`); one on screen only, at the pages.
 
@@ -2173,7 +2104,7 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   by side on Run; only the wells differ.
 
 - [ ] **A wash, drawn beside the cuboid.**
-  On a plate measured on Well center, not skipped. A tip of 200 µl and the trash
+  On a plate measured on Well center. A tip of 200 µl and the trash
   a well of the waste, Top, +5 mm. Step 1: Move liquid from the wells with
   cuboids to the Trash, 100 µl, Take speed 10, Put speed 200, Take it at Bottom
   +2.5 mm, Aside X −2 mm, Lift slowly on; the drawing says "Bottom measured
@@ -2188,7 +2119,7 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   every well, that auto empty did not.
 
 - [ ] **A plate not measured.**
-  With a plate neither measured nor skipped, its tile says "Not measured"
+  With a plate not measured, its tile says "Not measured"
   (yellow) and choosing it shows the warning. Measure now opens the Well center
   step; Use anyway hides it for that plate, and Amount says "Bottom from the
   plate drawing".
@@ -2324,9 +2255,6 @@ on screen only.
   field the picking volume. Aspirate, then D: that volume is given back,
   not all of the tip.
 
-- [ ] **Source's heading.**
-  Manual pick's Source step reads "Where do you pick from?".
-
 ## Manual pick: the plate's heights on the picture (#95)
 
 A wrong number here is the one to look for: read the line, then touch. The
@@ -2345,8 +2273,9 @@ platform height, or a Well center measured badly.
 - [ ] **Measured or drawing.**
   Measure the plate in slot 8 on Well center, back to Run: the line ends
   "measured", and the Z of the tip at the rim is its top. Start a new robot
-  session, the plate loaded again: "drawing", the drawing's numbers, until
-  Use it on Well center; Aspirate In a well goes by the same.
+  session, the plate loaded again: still "measured", with nothing to confirm.
+  A plate not measured reads "drawing", the drawing's numbers; Aspirate In a
+  well goes by the same.
 
 - [ ] **The source dish.**
   Look at the source dish's slot with no plate there, Dish bottom not done:
@@ -2507,7 +2436,7 @@ the robot does is as they say.
   point below a platform is red.
 - [ ] **Plates.**
   In a well: the mini deck offers the plates only; a long name is cut. Aspirate
-  starts on the Source step's plate. A click on a well chooses it, its name
+  starts on the plate chosen on Well center. A click on a well chooses it, its name
   beside the mini deck. On Dispense, after a plan: the plan's plate, its wells in
   one color, no legend, any other well choosable, and no sign of what Picking
   filled. Finish by hand opens Dispense on In a well on the first well left short.
@@ -2583,3 +2512,75 @@ step, is under "Redesign — Tip step" above.
 - [ ] **Disabled buttons.**
   On every screen a gray button reads as its normal self, faded: the Footer's
   Next, Drop in trash during a run, a red one.
+
+## One Well center page, optional steps (#128)
+
+Set up: a 96 well plate and a 24 well plate on the deck, a tip box too.
+
+- [ ] **The selector.**
+  Well center, in each task: the mini deck at the top, the two plates lit, the
+  tip box and the empty slots not choosable, each plate's tile saying Measured
+  or Not measured. One line for the selected plate, then Last time on a measured
+  plate, then the path. No plate list, no card title, no Skip, no Use it, and the
+  same line "A plate not measured uses its drawing." in all three tasks.
+
+- [ ] **Which plate it opens on.**
+  A new robot session, nothing chosen: the first plate on the deck. Auto pick
+  with a plan into the other plate: that plate. Click a plate, go to another step
+  and come back: that plate, in every task. Save goes on to the next plate, and
+  coming back opens on the one clicked, not on that one. Drag the chosen plate to
+  another slot or take it off: the choice is gone. Likewise after Home and connect.
+
+- [ ] **No plan needed.**
+  Auto pick with no plan in use: Well center is not dimmed, and a plate can be
+  measured.
+
+- [ ] **Nothing obliged.**
+  Liquid, nothing measured: Next is enabled, and the task opens on the first
+  step needed, never on Well center. A plan with a step at the measured bottom
+  of a plate not measured: "The bottom of slot 5 is not measured: measure it on
+  the Well center step.", and Next stays gray on Plan.
+
+- [ ] **The done mark.**
+  Measure one plate: no ✓. Measure the other: ✓ in the StepBar. Close the program
+  and start it again: still ✓, the measurements being of an earlier day. Put a
+  third plate on the deck: the ✓ goes. No plate on the deck: no ✓.
+
+- [ ] **Measuring again.**
+  Measure a measured plate again: Save replaces it, Last time follows, and the
+  new one is what the height line reads. During a run into that plate Save is gray.
+
+- [ ] **Manual pick's steps.**
+  Deck, Tip, Well center, Dish bottom, Run, whatever is done; there is no Source.
+  With Deck and Tip done the task opens on Run, which is not dimmed, with nothing
+  measured and no dish bottom.
+
+- [ ] **Dish bottom, optional.**
+  Robot setup with no position over the dish: Manual pick's Dish bottom is dimmed
+  under its banner, Next enabled.
+
+- [ ] **The plate chosen, on Run.**
+  Choose the 24 well plate on Well center: Aspirate In a well opens on it. Click
+  the other plate there: it follows, and Well center's choice stays as it was.
+
+- [ ] **A stored measurement is used.**
+  A plate measured on an earlier day, a new robot session, straight to Manual
+  pick's Run: the height line ends "measured" and In a well says "the measured
+  bottom", nothing confirmed. Compare the Z at the bottom with the measured one.
+  Moved in its slot since, nothing warns: the refusal under the bottom and the
+  height line are what is left, so measure again.
+
+- [ ] **Finish by hand.**
+  A run left short, Finish by hand: Manual pick's Run on Dispense, In a well on
+  the first well left short, nothing asked.
+
+- [ ] **The ring.**
+  Well center's number in every task and Dish bottom's in Manual pick have a
+  dashed ring while not done, gray, blue on the current step; no other step has
+  one, Manual pick's Run included. The ✓ replaces it. Going from a ring to a ✓
+  moves nothing in the StepBar.
+
+- [ ] **The ring from a distance.**
+  From two meters, on the bench's monitor: an optional step reads as different
+  from the others, and the ring as a ring, not as a smudge on the number. A dashed
+  ring also means a used tip on the Tip step's rack: note if the two are confused.

@@ -35,14 +35,20 @@ the third for fixes.
 - Manual pick: Aspirate has a Here, and Here says its key in both cards. A
   and D do what the button does with Here chosen, the retract choice
   included.
-- Manual pick has a Source step: pick from the source dish or from a plate
-  on the deck. From a plate there is no Dish bottom step; the plate's Well
-  center is measured or taken with Use it, and Run waits for that.
+- One Well center page in every task: choose any plate on the mini deck,
+  measure the plates you want, and a plate not measured uses its drawing. The
+  step is optional everywhere, and no plan is needed first. A stored measurement
+  is used by itself, with nothing to confirm, so a plate moved since it was
+  measured has to be measured again.
+- Manual pick's steps are always Deck, Tip, Well center, Dish bottom, Run. Well
+  center and Dish bottom are optional there, and Run needs only the Deck and the
+  Tip. The plate chosen on Well center opens In a well.
+- An optional step's number has a dashed ring until the step is done.
 - Manual pick: Aspirate and Dispense In a well go to a height above the
-  plate's measured bottom once it is confirmed in this robot session, else
+  plate's measured bottom once it is measured, else
   above the drawing's, and the settings line says which.
 - Manual pick: By hand's Above the bottom follows the slot under the
-  crosshair, a confirmed plate's bottom or the source dish's, and the
+  crosshair, a measured plate's bottom or the source dish's, and the
   settings line names the slot. Anywhere else only Z is offered. Over a
   plate, a spot not in a well is refused and nothing moves.
 - A new window (the redesign, `docs/redesign/REDESIGN.md`). The tabs, the
@@ -81,7 +87,7 @@ the third for fixes.
   progress and how many wells are done. One step at a time asks after each
   step whether to go on, repeat it or finish; All steps in a row does not.
   After a stop, Continue goes on from the next well.
-- Liquid: a plate's well center is measured (or skipped) on its own step.
+- Liquid: a plate's well center is measured on its own step.
 - Liquid programs saved before plans are listed gray as "Made with an older
   version" and do not open on the Plan step; make them again as a plan.
   Notebooks can still read them. A wash is a two-step plan.
@@ -122,10 +128,10 @@ the third for fixes.
   (`workflows.motion`), which keeps the travel height and the top of Z
   for every page and run.
 - A plate's measurement belongs to the height of the module in its slot:
-  on another height the plate reads "Not measured yet" in every task and
-  its measurement is not used. A deck.json written before still loads, its
-  measurements accepted. In Manual pick the Well center step shows a
-  measured plate's last bottom with Use it.
+  on another height the plate reads "Not measured: using the drawing" in
+  every task and its measurement is not used. A deck.json written before still
+  loads, its measurements accepted. The Well center step shows a measured
+  plate's last bottom.
 
 ## 0.4.0 - 2026-10-19
 

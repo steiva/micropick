@@ -1024,8 +1024,7 @@ class ManualPage(QWidget):
 
     def _slot_bottom(self, spot) -> SlotBottom | None:
         """The bottom of the slot `spot` is in: a measured plate's, else
-        the source dish's when it is confirmed, else None. Whatever the
-        source chosen."""
+        the source dish's when it is confirmed, else None."""
         session = self.session
         slot = nearest_slot(spot[0], spot[1])
         plate = self._plate_in(slot)

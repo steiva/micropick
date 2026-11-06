@@ -185,6 +185,10 @@ everywhere it appears. Prototype names are in parentheses.
     `ok-bg`); the current step is an accent dot on `selected-bg`.
   - Any step can be clicked. A step whose needs are not done opens dimmed,
     with one banner (§4).
+  - An optional step's number has a dashed ring while it is not done, the
+    current step's too (`muted`, `accent` when current), in the room the chip
+    has: it takes no width. The ✓ replaces it. Marked: Well center in every
+    task, Dish bottom in Manual pick (§4).
 - **Footer.** Right-aligned **Back** (outlined) and **Next** (primary, the
   word "Next" only). Next is enabled when the step is done or optional. There
   is no message text in the footer. On Picking the footer carries the run
@@ -206,8 +210,8 @@ everywhere it appears. Prototype names are in parentheses.
   - Valid targets (plates, or any slot for "Look at") are highlighted; the
     rest are dimmed.
   - Each tile may carry a status note ("Measured" / "Not measured").
-  - Used in: Plan (plate), Liquid Plan (plate), Manual (Look at), anywhere a
-    plate or slot is picked.
+  - Used in: Plan (plate), Liquid Plan (plate), Well center (plate), Manual
+    (Look at), anywhere a plate or slot is picked.
 - **PlateGrid.**
   - Wells with row letters and column numbers.
   - Click a well to toggle it; click a row letter or column number to toggle
@@ -298,13 +302,18 @@ Users do not need several profiles.
 
 | Task | Steps |
 |---|---|
-| Auto pick | Deck → Tip → **Dish bottom** → Plan → Picking (#39) |
-| Manual pick | Deck → Tip → **Dish bottom** → Work |
+| Auto pick | Deck → Tip → **Dish bottom** → Plan → **Well center** → Run (#39, #64) |
+| Manual pick | Deck → Tip → **Well center** → **Dish bottom** → Run (#131) |
 | Liquid | Deck → Tip → **Well center** → Plan → Run |
 
 - **Deck, Tip and Dish bottom are shared** between tasks: the same screens and
   the same state. Doing Auto and then switching to Manual shows Deck, Tip and
-  Dish bottom already ✓, and Manual opens on Work.
+  Dish bottom already ✓, and Manual opens on Run.
+- **Well center is optional in every task, Dish bottom in Manual pick.** A
+  task's steps never change with what is chosen. Next is enabled on an optional
+  step, and a task never opens on one. Manual pick's Dish bottom is dimmed under
+  its banner without the position over the dish, Next still working, and its Run
+  needs only Deck and Tip.
 - **Liquid's Tip step has no calibration** (liquid does not use the camera).
   The step is done when any tip is on.
 - **"Done" is computed from session state, never stored as "visited".** Reuse
@@ -318,8 +327,9 @@ Users do not need several profiles.
   - **Plan** is done when a plan has been confirmed with "Use this plan".
   - **Dish bottom** is done when it was measured or "Use it" (last value) was
     pressed in this session.
-  - **Well center** is done when every plate used by the plan is either
-    measured or explicitly skipped ("use the drawing").
+  - **Well center** is done while there are plates on the deck and every one
+    is measured, measurements of earlier days included; a new plate takes the
+    mark away.
 - **Needs, and opening a step early:** a step may need earlier steps or
   Robot-setup items (Tip needs the camera calibration; Picking needs Deck,
   Tip, Plan, Dish bottom, the position over the dish and the shake position).
@@ -523,29 +533,34 @@ only during step 2.
 
 **Waiting for the user:** superseded by §12.5 (no light pulse).
 
-### 6.6 Manual pick: Work (Manual step 4) — existing `manual` page logic
+### 6.6 Manual pick: Run (Manual step 5) — existing `manual` page logic
 
 Replaced by `MANUAL.md`.
 
-### 6.7 Well center (Liquid step 3) — from Liquid's / Manual's "well center"
+### 6.7 Well center (every task, optional)
 
-Purpose: for each plate the plan uses, measure the real well center and the
-bottom (needed when aspirating near the bottom).
+Purpose: for the plates the operator chooses, measure the real well center and
+the bottom (needed when aspirating near the bottom). One page in every task: a
+plate not measured uses its drawing, a plate measured its measurement, with
+nothing to confirm.
 
-**Left:** camera over a well, with X/Y/Z and a JogPad.
+**Left:** no camera (the upper one does not see the tip at a well): where the
+tip is, Z in big numbers, and the JogPad under it.
 
 **Right:**
-- Title "Well center and depth". One line: "Measure every plate you will use.
-  A plate you skip still works, with the depth from its drawing."
-- **List of the plates on the deck,** with status:
-  - "Measured today" (green ✓);
-  - "Not measured: using the drawing" (✓ with yellow text);
-  - "Not measured yet" (empty ring).
-- **Skip this plate, use the drawing:** marks it skipped (✓, yellow text). It
-  stands above the path, under the plate list and Last time, so that nothing
-  stands under the path and the end of a job moves nothing.
-- **One card, titled with the selected plate** ("Slot 2 · Corning 96", no status
-  chip; none with no plate on the deck), holding a path without numbers (#127,
+- Title "Well center and depth". One line: "A plate not measured uses its
+  drawing."
+- **MiniDeckDropdown** (§3) with every plate on the deck lit, tip boxes and other
+  labware not offered, each tile saying "Measured" or "Not measured". A click
+  chooses the plate for the robot session, until that plate is moved or taken
+  off; Manual pick's In a well opens on it. The page opens on the plate chosen,
+  else in Auto pick on the plan's plate, else on the first on the deck.
+- **One line for the selected plate:** "Measured today", "Measured 3 days ago"
+  or "Not measured: using the drawing".
+- **Last time,** on a measured plate: "Last time: Z 66.40 mm · 3 days ago", as
+  information.
+- **One card, no title, no status chip** (the selector stands over it; none
+  with no plate on the deck), holding a path without numbers (#127,
   as the Tip step's, TIP.md §2.2). Only the current item has a body; a done item
   is folded to its result:
 
@@ -564,7 +579,10 @@ bottom (needed when aspirating near the bottom).
 
   The `LiquidCenter.dc.html` prototype still shows numbers.
 
-The step is done when every plate the plan uses is measured or skipped.
+Save replaces the plate's measurement and goes on to the next plate, shown, not
+chosen; it is gray while a run goes into that plate. A measurement made on another
+module height is not the plate's: not measured. The step is done while there are
+plates on the deck and every one is measured (§4).
 
 ### 6.8 Liquid Plan (Liquid step 4)
 
@@ -608,7 +626,7 @@ Replaced by `LIQUID.md`.
    a backup copy on disk).
 6. **Templates as named files** for routines and liquid programs, with a
    save-changes vs save-as distinction.
-7. **Well center per plate with a "skipped" state,** and a well-depth entry
+7. **Well center per plate,** and a well-depth entry
    that defaults from the labware definition.
 8. **Dish bottom:** "use last value" in this session, and the measurement
    steps (moved from Picking).
@@ -743,8 +761,8 @@ section and anything above disagree, this section wins.
    `core.liquid.Program`) are both "Plan" on screen. A **Template** is a
    named file of either: `Outputs/templates/plate-plans/` and
    `Outputs/templates/liquid-plans/`. Existing plan presets move there.
-10. **Skipped plate (§6.7)** is remembered for the robot session only, in
-    memory, like the Deck confirmation and Dish bottom's "Use it".
+10. **The plate chosen on Well center (§6.7)** is remembered for the robot
+    session only, in memory, like Dish bottom's "Use it".
 11. **Open questions §11.2–11.4.** Home tiles use the prototype's draft
     copy. Liquid Run is built as §6.9 sketches it. A mini plate shows a
     number in a well only when more than one cuboid goes per well.

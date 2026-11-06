@@ -15,10 +15,10 @@ comes before Put into. A step's sections are `sections`.
 left area, the place choice; the plate from the `MiniDeckDropdown`,
 its wells clicked, the wells of other steps dim, and under it the rule of how
 sources pair with destinations (`core.liquid_plan.pairing`), warn-colored with
-what would work. A plate not measured (nor skipped on the Well center step)
-shows a warning with **Measure now** and **Use anyway**: it is not blocked,
-the robot then uses the plate's drawing. For Amount, Extras, How, a Wait and a
-Wait for me, their fields (`widgets.plan_forms`) in the middle of the room
+what would work. A plate not measured shows a warning with **Measure now**
+and **Use anyway**: it is not blocked, the robot then uses the plate's
+drawing. For Amount, Extras, How, a Wait and a Wait for me, their fields
+(`widgets.plan_forms`) in the middle of the room
 under the title, a height drawn (`widgets.well_heights`) following its fields,
 a Wait's large time and how a Wait for me's message will read following theirs.
 With no card open: the whole plan's wells in each step's color and a legend;

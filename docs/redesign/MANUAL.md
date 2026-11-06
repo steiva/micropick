@@ -77,7 +77,7 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
 
 ```
 ┌ TopBar 64 ─ ⌂ Home › Manual pick ............ Light  Lock  Park  Retract | ⚙ Settings ┐
-├ StepBar 56 ─ ✓Deck ─ ✓Tip ─ ✓Source ─ ✓Well center ─ (5) Run ─────────────────────────┤
+├ StepBar 56 ─ ✓Deck ─ ✓Tip ─ ✓Well center ─ ✓Dish bottom ─ (5) Run ────────────────────┤
 │ ┌──────────── camera picture (4:3) ─────────────┐ ┌ column 1, 400 ┐ ┌ column 2, 400 ┐ │
 │ │ [tip · XYZ · step]      [Look at][Detect]     │ │ In place      │ │ Points        │ │
 │ │                         [layers][📷]          │ │ ① Aspirate    │ │  list         │ │
@@ -321,8 +321,8 @@ without any move.
      - the switch **Aspirate as soon as I click**.
    - **At a point:** the points as chips (★ or ☆ and the name), from the same
      list as §2.5. The selected chip has the `accent` border.
-   - **In a well:** a MiniDeckDropdown with the plate (default: the Source
-     step's plate), then the plate drawn in **real SBS proportions** (max
+   - **In a well:** a MiniDeckDropdown with the plate (default: the plate
+     chosen on Well center), then the plate drawn in **real SBS proportions** (max
      320 px wide; `LIQUID.md` R5). One well is chosen by click; selected in
      `tips` with a `text` ring.
 2. **Fields:**
@@ -411,7 +411,7 @@ folded away.
 | Scenario | What shows |
 |---|---|
 | Aspirate: click the picture | tip 0 µl, Aspirate open on *By clicking*, Snap on |
-| Aspirate: from a point | Aspirate open on *At a point*, chip *Source* selected |
+| Aspirate: from a point | Aspirate open on *At a point*, a chip selected |
 | Aspirate: lifting settings open | lifting row open: *After a wait*, Wait 5.0 s, Lift slowly on |
 | Dispense: into a well | tip 10 µl, Dispense open on *In a well*, A3 chosen, A1 and A2 filled today |
 | Dispense: the tip is empty | Dispense open; header button disabled; summary in `warn-text` |
