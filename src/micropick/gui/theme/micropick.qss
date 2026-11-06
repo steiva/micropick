@@ -115,7 +115,7 @@ QPushButton[compact="true"] {
 }
 
 /* Icon and word on a bar (Light, Lock, Park, Settings). Filled while on. */
-QToolButton#barButton {
+QPushButton#barButton {
     border: none;
     border-radius: 8px;
     padding: 0 12px;
@@ -125,14 +125,14 @@ QToolButton#barButton {
     background: transparent;
     font-weight: 500;
 }
-QToolButton#barButton:hover { background: @hover; color: @text; }
-QToolButton#barButton:checked {
+QPushButton#barButton:hover { background: @hover; color: @text; }
+QPushButton#barButton:checked {
     background: @text;
     color: @on-accent;
     font-weight: 600;
 }
-QToolButton#barButton[busy="true"] { background: @accent-bg; color: @accent; }
-QToolButton#barButton:disabled { color: @text-2-off; }
+QPushButton#barButton[busy="true"] { background: @accent-bg; color: @accent; }
+QPushButton#barButton:disabled { color: @text-2-off; }
 
 QPushButton#crumb {
     border: none;

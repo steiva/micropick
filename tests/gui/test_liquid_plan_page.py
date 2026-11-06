@@ -1501,6 +1501,15 @@ def _save_as(page, name):
     page.save_name_button.click()
 
 
+def test_the_steps_stand_under_the_trash_row_while_no_template_is_listed(
+        app, page):
+    page.first_step_button.click()
+    app.processEvents()
+    gap = (page.step_list.mapTo(page, QPoint(0, 0)).y()
+           - page.trash_row.mapTo(page, QPoint(0, page.trash_row.height())).y())
+    assert gap < 60
+
+
 def _listed(page):
     page.template_tile.click()
     assert page.template_box.isVisibleTo(page)

@@ -777,7 +777,6 @@ class LiquidPlanPage(QWidget):
             tiles.addWidget(tile)
         column.addLayout(tiles)
         self.template_box = self._template_box(panel)
-        reserve(self.template_box)
         column.addWidget(self.template_box)
 
         self.trash_row = QPushButton(panel)

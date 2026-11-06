@@ -116,6 +116,25 @@ def test_top_bar_path_status_stop_and_toggles(app):
     assert bar.park.text() == "Park"
 
 
+def test_a_bar_button_keeps_its_width_while_busy(app):
+    bar = TopBar()
+    bar.resize(1400, 52)
+    bar.show()
+    app.processEvents()
+    places = [bar.light.geometry(), bar.lock.geometry(), bar.park.geometry(),
+              bar.retract.geometry()]
+    bar.set_parking(True)
+    bar.set_retracting(True)
+    app.processEvents()
+    assert bar.park.icon().isNull() and bar.retract.icon().isNull()
+    assert places == [bar.light.geometry(), bar.lock.geometry(),
+                      bar.park.geometry(), bar.retract.geometry()]
+    bar.set_parking(False)
+    bar.set_retracting(False)
+    assert not bar.park.icon().isNull() and not bar.retract.icon().isNull()
+    bar.close()
+
+
 def test_step_bar_marks_done_and_current_and_reports_a_click(app):
     bar = StepBar(["Deck", "Tip", "Plan"])
     bar.set_state(1, [True, False, False])
