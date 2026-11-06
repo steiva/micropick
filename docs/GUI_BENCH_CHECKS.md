@@ -2536,7 +2536,10 @@ screen (§10.10).
   bottom right, the same corners and chip style. A page's own buttons and the
   histogram stay where they were.
 
-## Tip (#119, #120, #122, #124)
+## Tip (#119 to #124)
+
+The screen as a whole (TIP.md §5). What the Tip card and the path do, step by
+step, is under "Redesign — Tip step" above.
 
 - [ ] **The picture and the column.**
   At 1920×1080 the picture is 4:3, undistorted (the disc is round), and the
@@ -2544,6 +2547,15 @@ screen (§10.10).
   the position sheets the same; Manual pick's two columns keep their width,
   the picture taking the rest; Picking's panel as before. A switch of cameras
   moves nothing.
+
+- [ ] **Two clicks.**
+  With a tip on, a full calibration is two clicks: Go to the disc, Yes,
+  calibrate. Nothing else is asked until Tip found. Controls are folded on
+  the step and gone during the run.
+
+- [ ] **The path.**
+  No numbers on the path, only the current item has a body, and no red mark
+  anywhere unless something failed.
 
 - [ ] **The rack.**
   Round tips in the rack's real proportions, no teal: used ones dashed, the

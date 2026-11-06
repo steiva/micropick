@@ -99,7 +99,8 @@ nothing, and the box gives way before the panel, still 4:3. The panel's content
 keeps its designed width (one 440 px column; two 400 px columns on Manual pick)
 and is centered in the rest, its cards never stretched (TIP.md §2.1). Picking
 keeps the old rule, the panel taking the rest within 1-2x its designed width
-(`side_grows`), until it is redesigned. Pages carry no title;
+(`side_grows`), until it is redesigned; Liquid's Plan and the camera sheet
+have no `FeedRow` and stay as they are for now. Pages carry no title;
 the TopBar's breadcrumb is the title.
 
 Manual pick's Run (#113, MANUAL.md §1) is the picture, then
@@ -132,8 +133,8 @@ folding away when a tip goes on (#121).
 A status line or a warning moves nothing: a message is the toast, and what comes
 and goes by itself has its place kept, `theme.factory.reserve` for a line or a
 field, and `choice_stack` for what the robot or a run changes, one page at a time in the
-room of the tallest (the Tip step's rack or drop buttons, a liquid run's
-banners): a card must not leave from under the operator's hand. A test says it
+room of the tallest (the Tip card's rack or warning, its Pick up or drop
+buttons, a liquid run's banners): a card must not leave from under the operator's hand. A test says it
 with `stands_still` (`tests/gui/conftest.py`), and for a choice that the frame
 and the card's own top stay (`tests/gui/test_nothing_shifts.py`).
 
@@ -330,8 +331,8 @@ every page: it claims the robot's lease first (`Session.robot_lease`,
 A claim while it is held is refused ("Robot busy."), never queued. Reads
 (the pose, the tip record, the lights state) and the lights switch take
 none. A run - picking, liquid, the camera sweep, the pipette calibration -
-holds it from Start to its end, pauses and needs operator included; the
-pipette calibration lends it to the touch-up's panel (`JogPanel.lend`).
+holds it from Start to its end, pauses and needs operator included; Picking
+lends it to its jog panel while paused or waiting (`JogPanel.lend`).
 While anything holds it, every jog panel and every button that would move
 the robot is greyed out, the holder named in the tooltip. Home and connect
 (a new robot session) is refused while it is held; closing the window during
@@ -698,9 +699,9 @@ chooser which plate of its type it goes on, even when only one fits, and
 with none says "Put a <type> on the deck." with Go to Deck. Save as
 template makes a new file under a name not in use, Save changes to
 template writes over the open one, no "are you sure". The run's own file (`Outputs/routines`) is never shown. Stored
-poses are set with **Save position** (the shake position's too); the pipette
-calibration's way back is **Go to saved position**, the Picking page's
-**Camera to dish center**.
+poses are set with **Save position** (the shake position's too); a position
+sheet's way back is **Go to saved position**, the Tip step's **Go to the
+disc**, the Picking page's **Camera to dish center**.
 
 ### For biologists: stop, guard, say what to do
 
@@ -795,7 +796,9 @@ the tip, Redo brings it back), opens Controls, the lower camera and the XY pad a
 0.05 mm. Save gray until a step, a short job, not a run; Cancel saves nothing and
 leaves the tip where it is; left with a step not saved, Save / Discard is asked.
 A step counts while the tip is in line with the crosshair: raised straight up it
-can still be saved, moved elsewhere it is dropped, its pose no offset. While the picture is the lower camera's, the page's own pad goes
+can still be saved, moved elsewhere it is dropped, its pose no offset. Controls
+start folded on the step, the path's buttons moving the robot, and are gone
+during a run. While the picture is the lower camera's, the page's own pad goes
 through `TipTarget.axes` too (`JogPanel.set_view_axes`), so an arrow
 moves the tip its way on that turned, mirrored picture. Leaving the
 step raises a tip below the travel height (`Motion.raise_tip` through
