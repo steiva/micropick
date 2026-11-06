@@ -63,9 +63,11 @@ def _gap(left, right, frame):
 
 
 def test_the_gap_to_points_is_the_gap_to_the_picture(app, frame):
+    """Or the scroll bar's room, where a bar is wider than the gap (macOS)."""
     _at(app, frame, 1880)
+    assert _gap(frame.view, frame.first, frame) == GAP
     assert _gap(frame.first, frame.points, frame) \
-        == _gap(frame.view, frame.first, frame) == GAP
+        == max(GAP, frame.columns.bar_room)
 
 
 def test_points_ends_at_the_end_of_the_row(app, frame):
