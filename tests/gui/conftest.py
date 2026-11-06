@@ -83,7 +83,9 @@ def _places(root) -> dict:
 def stands_still(app):
     """`stands_still(root, act)`: fails naming what `act` moved under `root`
     (#106). What appears or goes is not asked about, only what stayed. What
-    the operator chooses may move what is under it: see test_nothing_shifts."""
+    the operator chooses may move what is under it: see test_nothing_shifts.
+    `but` is a widget whose inside may move: a path's items, as one folds;
+    it must stay itself."""
 
     def settle():
         # A scroll column measures itself on a timer of its own.
@@ -92,12 +94,15 @@ def stands_still(app):
             app.processEvents()
             time.sleep(0.005)
 
-    def check(root, act):
+    def check(root, act, but=None):
         settle()
         before = _places(root)
         act()
         settle()
         after = _places(root)
+        if but is not None:
+            before = {w: at for w, at in before.items()
+                      if not but.isAncestorOf(w)}
         moved = [f"{type(w).__name__} {w.objectName() or getattr(w, 'text', str)()!r}"
                  f" {before[w].toTuple()} -> {after[w].toTuple()}"
                  for w in before if w in after and before[w] != after[w]]

@@ -17,13 +17,14 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QSizePolicy,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QPushButton,
+                               QSizePolicy, QVBoxLayout, QWidget)
 
-from ..theme import COLORS
+from ..theme import COLORS, SPACING
 from ..theme.factory import laid_out_at_once
+from .step_card import wrapped
 
-__all__ = ["DONE", "CURRENT", "LATER", "PathItem", "PathSteps"]
+__all__ = ["DONE", "CURRENT", "LATER", "PathItem", "PathSteps", "path_body"]
 
 DONE, CURRENT, LATER = "done", "current", "later"
 
@@ -43,6 +44,23 @@ class PathItem:
     done_title: str
     body_widget: QWidget | None = None
     link_text: str | None = None
+
+
+def path_body(sentence: str, *widgets: QWidget) -> QWidget:
+    """A path item's body: its sentence if it has one, then what it offers, a
+    button at its own width at the left."""
+    body = QWidget()
+    body.setObjectName("plain")
+    column = QVBoxLayout(body)
+    column.setContentsMargins(0, 0, 0, 0)
+    column.setSpacing(SPACING)
+    if sentence:
+        column.addWidget(wrapped(sentence))
+    for widget in widgets:
+        column.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft
+                         if isinstance(widget, QPushButton)
+                         else Qt.AlignmentFlag(0))
+    return body
 
 
 class _Node(QWidget):
@@ -155,6 +173,13 @@ class _Row:
         if self.link is not None:
             self.link.setVisible(state == DONE)
         if item.body_widget is not None:
+            # Else the keyboard passes to the next field, and the robot's
+            # keys with it.
+            focus = QApplication.focusWidget()
+            if state != CURRENT and focus is not None and (
+                    focus is item.body_widget
+                    or item.body_widget.isAncestorOf(focus)):
+                focus.clearFocus()
             item.body_widget.setVisible(state == CURRENT)
         self.content.setContentsMargins(
             0, 0, 0, 0 if last else UNDER_CURRENT_PX if state == CURRENT
@@ -192,6 +217,22 @@ class PathSteps(QWidget):
     def current(self) -> str | None:
         return next((key for key, row in self._rows.items()
                      if row.state == CURRENT), None)
+
+    def body_height(self, key: str) -> int:
+        """How tall the item's body is at the path's width, shown or not. A
+        wrapped sentence's `sizeHint` is for a shape of its own choosing."""
+        body = self._rows[key].item.body_widget
+        layout = body.layout()
+        if layout is None or not layout.hasHeightForWidth():
+            return body.sizeHint().height()
+        return layout.totalHeightForWidth(self.width() - NODE_PX - GAP_PX)
+
+    def set_done_title(self, key: str, title: str) -> None:
+        """What the item reads once done, for a result known only then."""
+        row = self._rows[key]
+        row.item.done_title = title
+        if row.state == DONE:
+            row.title.setText(title)
 
     def set_hidden(self, key: str, hidden: bool) -> None:
         """An item that does not apply now: not on the path, the line ending

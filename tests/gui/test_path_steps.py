@@ -10,7 +10,8 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QWidget      # noqa: E402
+from PySide6.QtWidgets import (QApplication, QLabel, QLineEdit,  # noqa: E402
+                               QVBoxLayout, QWidget)
 
 from micropick.gui.widgets.path_steps import (CURRENT, DONE, LATER,  # noqa: E402
                                               PathItem, PathSteps)
@@ -142,3 +143,35 @@ def test_the_rows_show_the_card_behind_them(themed):
     inside = widget.mapTo(frame, QPoint(widget.width() - 4, 4))
     assert image.pixelColor(inside) == QColor(COLORS["card"])
     frame.deleteLater()
+
+
+def test_a_done_title_can_be_said_later(path):
+    """#127: "Tip is over A1", the well known only once it is chosen."""
+    path.set_current("go")
+    path.set_done_title("go", "Camera is over slot 5")
+    assert path.title("go") == "Camera over the disc"      # not done yet
+    path.set_current("check")
+    assert path.title("go") == "Camera is over slot 5"
+    path.set_done_title("go", "Camera is over slot 6")     # done: at once
+    assert path.title("go") == "Camera is over slot 6"
+
+
+def test_a_body_folding_takes_the_keyboard_with_it(app):
+    """Else it passes to the next field, and the robot's keys with it."""
+    field, other = QLineEdit(), QLineEdit()
+    holder = QWidget()
+    column = QVBoxLayout(holder)
+    widget = PathSteps([PathItem("a", "A", "A done", field),
+                        PathItem("b", "B", "B done")])
+    column.addWidget(widget)
+    column.addWidget(other)
+    holder.show()
+    holder.activateWindow()
+    widget.set_current("a")
+    field.setFocus()
+    app.processEvents()
+    assert QApplication.focusWidget() is field
+    widget.set_current("b")
+    app.processEvents()
+    assert QApplication.focusWidget() is None
+    holder.deleteLater()

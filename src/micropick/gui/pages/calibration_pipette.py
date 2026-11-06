@@ -138,9 +138,8 @@ from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.feed_row import FeedRow
 from ..widgets.jog_panel import JogPanel, check_view_axes
-from ..widgets.path_steps import PathItem, PathSteps
+from ..widgets.path_steps import PathItem, PathSteps, path_body
 from ..widgets.plate_grid import PlateGrid, RackLegend
-from ..widgets.step_card import wrapped
 from ..widgets.tip_gauge import TipIcon
 from ..widgets.toast import show_toast
 from ..workers import Worker
@@ -598,15 +597,15 @@ class TipCalibrationBlock(QObject):
         self.spinner.setFixedHeight(6)
         self.path = PathSteps([
             PathItem(GO, "Camera over the disc", "Camera is over the disc",
-                     _body("Put the crosshair disc on the calibration module. "
+                     path_body("Put the crosshair disc on the calibration module. "
                            "The camera then goes to it.",
                            self.go_button, self.checks)),
             PathItem(CHECK, "Disc in the picture", "Disc is in the picture",
-                     _body("Is the disc with the crosshair in the picture? If "
+                     path_body("Is the disc with the crosshair in the picture? If "
                            "not, put it on the calibration module now.",
                            self.yes_button)),
             PathItem(FIND, "Find the tip", "Tip found",
-                     _body("The robot finds the tip under the camera by "
+                     path_body("The robot finds the tip under the camera by "
                            "itself.", self.spinner), link_text="Redo"),
             PathItem(FINE, FINE_TITLE, FINE_TITLE,
                      self._fine_body(box, parent)),
@@ -633,7 +632,7 @@ class TipCalibrationBlock(QObject):
         self.adjust_button.clicked.connect(self._adjust)
         self.tune_away = muted_label(TIP_AWAY, box)
         reserve(self.tune_away)
-        self.offer_box = _body("Optional. If the tip is not on the central "
+        self.offer_box = path_body("Optional. If the tip is not on the central "
                                "crosshair, move it there by hand.",
                                self.adjust_button, self.tune_away)
 
@@ -655,7 +654,7 @@ class TipCalibrationBlock(QObject):
                                   xy_only=True, parent=box)
         self.touch_jog.show_position_on(self.view)
         self.touch_jog.hide()
-        self.adjust_box = _body("Move the tip onto the central crosshair with "
+        self.adjust_box = path_body("Move the tip onto the central crosshair with "
                                 "Controls on the picture, then save.",
                                 buttons, self.touch_jog)
         self.adjust_box.hide()
@@ -1149,22 +1148,6 @@ class TipCalibrationBlock(QObject):
         spec = profile.cameras.get(label) if profile and label else None
         return (tuple(int(v) for v in spec.default_resolution)
                 if spec is not None else None)
-
-
-def _body(sentence: str, *widgets: QWidget) -> QWidget:
-    """A path item's body: its sentence, then what it offers, a button at its
-    own width at the left."""
-    body = QWidget()
-    body.setObjectName("plain")
-    column = QVBoxLayout(body)
-    column.setContentsMargins(0, 0, 0, 0)
-    column.setSpacing(SPACING)
-    column.addWidget(wrapped(sentence))
-    for widget in widgets:
-        column.addWidget(widget, 0, Qt.AlignmentFlag.AlignLeft
-                         if isinstance(widget, QPushButton)
-                         else Qt.AlignmentFlag(0))
-    return body
 
 
 def _to_calibration(name: str) -> property:

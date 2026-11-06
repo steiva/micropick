@@ -11,7 +11,8 @@ pytest.importorskip("PySide6", reason="the gui extra is not installed")
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMessageBox          # noqa: E402
+from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,   # noqa: E402
+                               QMessageBox, QScrollArea)
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.config.schema import DeckModule, WellCenter       # noqa: E402
@@ -20,6 +21,7 @@ from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid as liquid_page            # noqa: E402
 from micropick.gui.pages import well_center as step_page         # noqa: E402
 from micropick.gui.session import Session                        # noqa: E402
+from micropick.gui.widgets.step_card import StepCard             # noqa: E402
 from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 from micropick.workflows import well_center                      # noqa: E402
 
@@ -135,10 +137,264 @@ def test_the_steps_go_in_order(app, session):
     assert not page.save_button.isEnabled()
     page.level_button.click()
     assert page.save_button.isEnabled()
-    # Another well: the tip is not over it.
-    page.wells.map.well_clicked.emit("C3")
+    # Another well: back through Redo, the tip not over it.
+    page.path.link("well").click()
     assert not page.save_button.isEnabled()
     assert not page.centered_button.isEnabled()
+    page.deleteLater()
+
+
+def test_one_card_titled_with_the_plate_holds_the_path(app, session):
+    """#127: no numbered card, no chip; the map only on the first item."""
+    page = _step(app, session)
+    name = resolve_definition(PLATE).display_name
+    assert page.plate_title.text() == f"Slot 5 · {name}"
+    assert not page.findChildren(StepCard)
+    assert not page.path_card.isHidden()
+    assert page.path.current == "well"
+    assert page.wells.isVisibleTo(page.path)
+    page.deleteLater()
+
+
+def test_with_no_plate_on_the_deck_there_is_no_path_card(app, session):
+    page = _step(app, session)
+    session.unload_labware(5)
+    app.processEvents()
+    assert page.path_card.isHidden()
+    assert not page.no_plates.isHidden()
+    page.deleteLater()
+
+
+def _bodies(page):
+    return {"well": page.move_button, "center": page.centered_button,
+            "lower": page.level_button, "depth": page.save_button}
+
+
+def test_only_the_current_item_has_a_body(app, session):
+    page = _step(app, session)
+
+    def shows(key):
+        assert page.path.current == key
+        assert {k for k, b in _bodies(page).items()
+                if b.isVisibleTo(page.path)} == {key}
+
+    shows("well")
+    page.move_button.click()
+    _settle(app, page.jog)
+    shows("center")
+    page.centered_button.click()
+    shows("lower")
+    page.level_button.click()
+    shows("depth")
+    assert page.well_depth.isVisibleTo(page.path)
+    assert page.depth_source.isVisibleTo(page.path)
+    assert not page.wells.isVisibleTo(page.path)
+    page.deleteLater()
+
+
+def test_done_items_read_as_results_the_well_named(app, session):
+    page = _step(app, session)
+    _go_to_top(app, page)
+    assert page.path.title("well") == "Tip is over B2"
+    assert page.path.title("center") == "Center the tip"
+    page.centered_button.click()
+    assert page.path.title("center") == "Tip is centered"
+    page.level_button.click()
+    assert page.path.title("lower") == "Tip is level with the top"
+    assert page.path.title("depth") == "Well depth"
+    page.deleteLater()
+
+
+def test_a_well_clicked_during_the_move_is_not_the_well_named(app, session):
+    """The tip goes where Move the tip said, so the map follows it."""
+    page = _step(app, session)
+    page.show()
+    _settle(app, page.jog)
+    claimed = []
+    real = page.jog.run_job
+
+    def run_job(job, **kw):
+        claimed.append(job)
+        page.wells.map.well_clicked.emit("C3")     # while it moves
+        return real(job, **kw)
+
+    page.jog.run_job = run_job
+    page.move_button.click()
+    _settle(app, page.jog)
+    assert claimed
+    assert page.path.title("well") == "Tip is over B2"
+    assert page._well() == "B2"
+    page.hide()
+    page.deleteLater()
+
+
+def test_redo_goes_back_to_the_map_and_moves_nothing(app, session):
+    page = _step(app, session)
+    _go_to_top(app, page)
+    page.centered_button.click()
+    pose = tuple(page.jog.pose)
+    jobs = []
+    page.jog.run_job = lambda *a, **k: jobs.append(a)
+    page.path.link("well").click()
+    assert page.path.current == "well"
+    assert page.wells.isVisibleTo(page.path)
+    assert page._well() == "B2"                       # the well stays chosen
+    assert page._measurement.for_plate(5, PLATE) is None
+    assert jobs == [] and not session.robot_lease.busy
+    assert tuple(page.jog.pose) == pose
+    page.deleteLater()
+
+
+def test_redo_lets_the_depth_follow_the_drawing_again(app, session):
+    page = _step(app, session)
+    _go_to_top(app, page)
+    page.centered_button.click()
+    page.level_button.click()
+    page.well_depth.setValue(3.0)
+    page.path.link("well").click()
+    assert page.well_depth.value() == pytest.approx(10.67, abs=0.01)
+    page.deleteLater()
+
+
+def test_redo_is_the_only_link_on_the_path(app, session):
+    page = _step(app, session)
+    assert not page.path.link("well").isVisibleTo(page.path)    # not done yet
+    _go_to_top(app, page)
+    assert page.path.link("well").isVisibleTo(page.path)
+    assert all(page.path.link(k) is None
+               for k in ("center", "lower", "depth"))
+    page.deleteLater()
+
+
+@pytest.mark.parametrize("presses", [0, 1, 2, 3])
+def test_the_pad_works_on_every_item(app, session, presses):
+    page = _step(app, session)
+    page.show()
+    _settle(app, page.jog)
+    if presses:
+        _go_to_top(app, page)
+    if presses > 1:
+        page.centered_button.click()
+    if presses > 2:
+        page.level_button.click()
+    before = page.jog.pose[0]
+    page.pad.buttons["x+"].click()
+    _settle(app, page.jog)
+    assert page.jog.pose[0] > before
+    page.hide()
+    page.deleteLater()
+
+
+def test_a_measured_or_skipped_plate_opens_on_the_first_item(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "C3", depth_mm=10.0)
+    session.skip_plate(2, PLATE)
+    page = step_page.WellCenterPage(session)
+    _settle(app, page.jog)
+    for slot in (5, 2):
+        page.select_plate(slot, PLATE)
+        assert page.path.current == "well"
+    page.deleteLater()
+
+
+def test_a_plate_begun_reopens_on_center_the_tip_over_its_well(app, session):
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    _go_to_top(app, page)
+    page.centered_button.click()
+    page.select_plate(2, PLATE)
+    assert page.path.current == "well"
+    page.select_plate(5, PLATE)
+    assert page.path.current == "center"
+    assert page.path.title("well") == "Tip is over B2"
+    assert page._well() == "B2"
+    page.deleteLater()
+
+
+def test_a_move_ending_on_another_plate_leaves_no_path_without_a_measurement(
+        app, session):
+    """The one measurement in hand passes to the plate moved to."""
+    session.load_labware(resolve_definition(PLATE), 2)
+    page = _step(app, session)
+    _go_to_top(app, page)                             # slot 5, on Center
+    page.select_plate(2, PLATE)
+    real = page.jog.run_job
+
+    def run_job(job, **kw):
+        started = real(job, **kw)
+        page.select_plate(5, PLATE)                   # back, during the move
+        return started
+
+    page.jog.run_job = run_job
+    page.move_button.click()
+    _settle(app, page.jog)
+    assert page._measurement.for_plate(2, PLATE) is not None
+    assert page.path.current == "well"
+    page.deleteLater()
+
+
+def test_a_new_robot_session_puts_the_path_back_on_its_first_item(
+        app, session):
+    page = _step(app, session)
+    _go_to_top(app, page)
+    session.new_run()
+    app.processEvents()
+    _settle(app, page.jog)
+    assert page.path.current == "well"
+    assert page._measurement.for_plate(5, PLATE) is None
+    page.deleteLater()
+
+
+def test_a_folding_body_leaves_the_keyboard_to_the_robot(app, session):
+    """Typing in the depth field, then Redo: no other field gets the keys."""
+    page = _step(app, session)
+    page.show()
+    page.activateWindow()
+    _settle(app, page.jog)
+    _go_to_top(app, page)
+    page.centered_button.click()
+    page.level_button.click()
+    page.well_depth.setFocus()
+    app.processEvents()
+    assert QApplication.focusWidget() is not None
+    page.path.link("well").click()
+    app.processEvents()
+    assert not isinstance(QApplication.focusWidget(), QAbstractSpinBox)
+    assert QApplication.focusWidget() is None
+    page.hide()
+    page.deleteLater()
+
+
+@pytest.mark.parametrize("task", ["liquid", "manual"])
+@pytest.mark.parametrize("height", [620, 1400])
+def test_the_end_of_move_the_tip_moves_nothing_above_the_path(
+        app, session, stands_still, task, height):
+    """Scrolled down to reach the button too: a column that shrank would
+    bring everything down with it."""
+    session.load_labware(resolve_definition(PLATE), 2)
+    session.load_labware(resolve_definition(PLATE), 3)
+    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "B2", depth_mm=10.0)
+    page = step_page.WellCenterPage(session)
+    page.set_task(task)
+    page.select_plate(5, PLATE)
+    page.resize(1100, height)
+    page.show()
+    _settle(app, page.jog)
+    column = page.findChild(QScrollArea, "column")
+    bar = column.verticalScrollBar()
+    app.processEvents()
+    bar.setValue(bar.maximum())
+    tall = bar.maximum() > 0
+
+    def move():
+        page.move_button.click()
+        _settle(app, page.jog)
+
+    stands_still(column, move, but=page.path)
+    assert page.path.current == "center"
+    # No bar for empty room in a window it all fits in.
+    assert (bar.maximum() > 0) == tall
+    page.hide()
     page.deleteLater()
 
 
@@ -158,14 +414,6 @@ def test_the_map_opens_on_the_well_last_measured(app, session):
     _settle(app, page.jog)
     page.select_plate(5, PLATE)
     assert page._well() == "C3"
-    page.deleteLater()
-
-
-def test_a_click_on_the_well_in_hand_keeps_the_step(app, session):
-    page = _step(app, session)
-    _go_to_top(app, page)
-    page.wells.map.well_clicked.emit("B2")
-    assert page.centered_button.isEnabled()
     page.deleteLater()
 
 

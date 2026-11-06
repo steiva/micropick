@@ -541,16 +541,28 @@ bottom (needed when aspirating near the bottom).
   - "Measured today" (green ✓);
   - "Not measured: using the drawing" (✓ with yellow text);
   - "Not measured yet" (empty ring).
-- **Steps for the selected plate:**
-  1. **Tip to a well:** a well on the plate's map → Move the tip.
-  2. **Center the tip:** arrows until the tip is in the middle → It is
-     centered.
-  3. **Lower to the top of the well:** until the tip end is level with the top
-     of the plate → It is level.
-  4. **Well depth:** a field defaulting to the labware drawing ("10.67 mm,
-     from the plate's drawing") → **Save**. The robot computes the bottom as
-     top minus depth.
-- **Skip this plate, use the drawing:** marks it skipped (✓, yellow text).
+- **Skip this plate, use the drawing:** marks it skipped (✓, yellow text). It
+  stands above the path, under the plate list and Last time, so that nothing
+  stands under the path and the end of a job moves nothing.
+- **One card, titled with the selected plate** ("Slot 2 · Corning 96", no status
+  chip; none with no plate on the deck), holding a path without numbers (#127,
+  as the Tip step's, TIP.md §2.2). Only the current item has a body; a done item
+  is folded to its result:
+
+  | Item | Body | Done |
+  |---|---|---|
+  | **Tip to a well** | a well on the plate's map → Move the tip | "Tip is over A1", with **Redo** |
+  | **Center the tip** | arrows until the tip is in the middle → It is centered | "Tip is centered" |
+  | **Lower to the top of the well** | until the tip end is level with the top of the plate → It is level | "Tip is level with the top" |
+  | **Well depth** | a field defaulting to the labware drawing ("10.67 mm, from the plate's drawing") → **Save**, on to the next plate | never done |
+
+  The robot computes the bottom as top minus depth. **Redo** is the one link: back
+  to the map, the measurement begun forgotten, nothing moved; it is the way to
+  another well. The pad works on every item. A plate opens on the first item, or
+  on Center the tip while a measurement begun on it is in hand; a new robot
+  session puts the path back on its first item.
+
+  The `LiquidCenter.dc.html` prototype still shows numbers.
 
 The step is done when every plate the plan uses is measured or skipped.
 

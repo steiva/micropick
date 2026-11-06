@@ -12,19 +12,28 @@ the jog pad under it - the face of a jog panel that is never shown, whose
 keys go with the pad on screen, as on every page (#57); the operator
 watches the robot. On the right "Well center and depth", the plates on the
 deck - each "Measured today", "Not measured: using the drawing" (skipped,
-a ✓ in yellow) or "Not measured yet" (`Session.well_center_status`) - and,
-for the one selected, four steps:
+a ✓ in yellow) or "Not measured yet" (`Session.well_center_status`) - then
+Last time and Skip, and last, so that nothing stands under what folds, one
+card titled with the selected plate, no chip (its row says it), holding a
+path (`widgets.path_steps`, #127), none with no plate on the deck:
 
-1. **Tip to a well:** a well on the plate's map (`WellPicker`), then Move
-   the tip - to its top center as the robot has it (`workflows.well_center.go_to_top`), what the
-   measurement is taken against (`Measurement`).
-2. **Center the tip:** the arrows until it is in the middle; It is
-   centered.
-3. **Lower to the top of the well:** until the tip end is level with the
-   top of the plate; It is level.
-4. **Well depth:** the drawing's for that well unless the plate's was
-   set; **Save** stores where the tip is less the robot's well top, and
-   that depth. The bottom is the top less the depth.
+- **Tip to a well:** a well on the plate's map (`WellPicker`), then Move
+  the tip - to its top center as the robot has it (`workflows.well_center.go_to_top`), what the
+  measurement is taken against (`Measurement`). Done: "Tip is over A1",
+  with **Redo**, the one way back: the map again and the measurement
+  forgotten, nothing moved. So it is the way to another well.
+- **Center the tip:** the arrows until it is in the middle; It is
+  centered. Done: "Tip is centered".
+- **Lower to the top of the well:** until the tip end is level with the
+  top of the plate; It is level. Done: "Tip is level with the top".
+- **Well depth:** the drawing's for that well unless the plate's was
+  set; **Save** stores where the tip is less the robot's well top, and
+  that depth, and goes on to the next plate: never done. The bottom is the
+  top less the depth.
+
+A plate opens on the first item, or on Center the tip while a measurement
+begun on it is in hand; a new robot session forgets that. The pad works
+on every item.
 
 **Skip this plate, use the drawing** marks it skipped for this robot
 session (`Session.skip_plate`), in Liquid only: elsewhere the step is
@@ -51,8 +60,8 @@ import logging
 from datetime import date
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QSizePolicy,
+                               QSpacerItem, QVBoxLayout, QWidget)
 
 from ...workflows import well_center
 from .. import tasks
@@ -62,10 +71,10 @@ from ..theme.factory import (caption, card, double_spin_box, heading,
                              muted_label, primary_button, quiet_button,
                              reserve, scroll_column, secondary_button)
 from ..theme.icons import pixmap
-from ..widgets.checklist import BLOCKED, OK, TODO
 from ..widgets.jog_pad import StepChip
 from ..widgets.jog_panel import JogPanel
-from ..widgets.step_card import StepCard, wrapped
+from ..widgets.path_steps import PathItem, PathSteps, path_body
+from ..widgets.step_card import wrapped
 from ..widgets.toast import show_toast
 from ..widgets.well_picker import WellPicker
 from ..workers import describe_error
@@ -89,9 +98,9 @@ INTRO_SOURCE = "You pick from slot {slot}: measure it, or Use it."
 NOT_MEASURED_YET = "Not measured yet"
 USING_THE_DRAWING = "Not measured: using the drawing"
 
-# Where the operator is with the selected plate: the tip to a well,
-# centering it, lowering it, the depth and Save.
-TO_WELL, CENTER, LOWER, SAVE = 0, 1, 2, 3
+# Where the operator is with the selected plate, the path's items: the tip
+# to a well, centering it, lowering it, the depth and Save.
+TO_WELL, CENTER, LOWER, SAVE = "well", "center", "lower", "depth"
 
 
 def measured_ago(center) -> str:
@@ -271,33 +280,41 @@ class WellCenterPage(QWidget):
         reserve(self.last_card)
         column.addWidget(self.last_card)
 
-        self.well_step = StepCard(panel, 1, "Tip to a well")
+        self.skip_button = quiet_button("Skip this plate, use the drawing",
+                                        panel)
+        self.skip_button.clicked.connect(self._skip)
+        column.addWidget(self.skip_button)
+
+        column.addWidget(self._path_card(panel))
+        # What the map leaves as it folds: the operator may have scrolled
+        # down to Move the tip, and a column that shrinks at the job's end
+        # brings everything in it down.
+        self.map_room = QSpacerItem(0, 0)
+        column.addItem(self.map_room)
+        column.addStretch(1)
+        return panel
+
+    def _path_card(self, panel: QWidget) -> QWidget:
+        """The selected plate's path, the last thing in the column: a body
+        folding as a job ends moves nothing."""
+        self.path_card = card(panel)
+        self.plate_title = heading("", 2, panel)
+        self.plate_title.setWordWrap(True)
+        self.path_card.layout().addWidget(self.plate_title)
+
         self.wells = WellPicker("accent", MAP_PX, panel, plate_choice=False)
         self.wells.changed.connect(self._well_chosen)
-        self.well_step.add(self.wells)
         self.move_button = primary_button("Move the tip", panel)
         self.move_button.clicked.connect(self._go_to_well_top)
-        self.well_step.add_button(self.move_button)
-        column.addWidget(self.well_step.box)
-
-        self.center_step = StepCard(panel, 2, "Center the tip")
-        self.center_step.add(wrapped(
-            "Use the arrows until the tip is in the middle of the well."))
         self.centered_button = primary_button("It is centered", panel)
         self.centered_button.clicked.connect(lambda: self._to(LOWER))
-        self.center_step.add_button(self.centered_button)
-        column.addWidget(self.center_step.box)
-
-        self.lower_step = StepCard(panel, 3, "Lower to the top of the well")
-        self.lower_step.add(wrapped(
-            "Lower until the tip end is level with the top of the plate."))
         self.level_button = primary_button("It is level", panel)
         self.level_button.clicked.connect(lambda: self._to(SAVE))
-        self.lower_step.add_button(self.level_button)
-        column.addWidget(self.lower_step.box)
 
-        self.depth_step = StepCard(panel, 4, "Well depth")
-        row = QHBoxLayout()
+        depth_row = QWidget(panel)
+        depth_row.setObjectName("plain")
+        row = QHBoxLayout(depth_row)
+        row.setContentsMargins(0, 0, 0, 0)
         self.well_depth = double_spin_box(panel)
         self.well_depth.setRange(0.1, 200.0)
         self.well_depth.setDecimals(2)
@@ -307,18 +324,31 @@ class WellCenterPage(QWidget):
         self.save_button = primary_button("Save", panel)
         self.save_button.clicked.connect(self._save)
         row.addWidget(self.save_button)
-        self.depth_step.add_layout(row)
-        self.depth_step.own_button(self.save_button)
         self.depth_source = caption("", panel)
-        self.depth_step.add(self.depth_source)
-        column.addWidget(self.depth_step.box)
 
-        self.skip_button = quiet_button("Skip this plate, use the drawing",
-                                        panel)
-        self.skip_button.clicked.connect(self._skip)
-        column.addWidget(self.skip_button)
-        column.addStretch(1)
-        return panel
+        # A body folds as its button is pressed: the keyboard stays the
+        # robot's.
+        for button in (self.move_button, self.centered_button,
+                       self.level_button, self.save_button):
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        self.path = PathSteps([
+            PathItem(TO_WELL, "Tip to a well", "",
+                     path_body("", self.wells, self.move_button),
+                     link_text="Redo"),
+            PathItem(CENTER, "Center the tip", "Tip is centered",
+                     path_body("Use the arrows until the tip is in the middle "
+                               "of the well.", self.centered_button)),
+            PathItem(LOWER, "Lower to the top of the well",
+                     "Tip is level with the top",
+                     path_body("Lower until the tip end is level with the top "
+                               "of the plate.", self.level_button)),
+            PathItem(SAVE, "Well depth", "Well depth",
+                     path_body("", depth_row, self.depth_source)),
+        ], self.path_card)
+        self.path.link_clicked.connect(lambda _key: self._redo())
+        self.path_card.layout().addWidget(self.path)
+        return self.path_card
 
     # -- the plates ----------------------------------------------------------
 
@@ -421,15 +451,17 @@ class WellCenterPage(QWidget):
         return profile.deck.well_center(*self._selected)
 
     def _fill_wells(self) -> None:
-        """The selected plate on the map, on the well last measured, else
-        its first."""
+        """The selected plate on the map, on the well of the measurement in
+        hand, else the well last measured, else its first."""
         plate = next(((s, e, d) for s, e, d in self._plates()
                       if (s, e.load_name) == self._selected), None)
         center = self._center()
         self.wells.blockSignals(True)
         self.wells.set_plates([] if plate is None else [plate])
         if plate is not None:
-            self.wells.choose(plate[0], center.well if center is not None
+            nominal = self._measurement.for_plate(*self._selected)
+            self.wells.choose(plate[0], nominal.well if nominal is not None
+                              else center.well if center is not None
                               and center.well in plate[2].wells
                               else plate[2].ordering[0][0])
         self.wells.blockSignals(False)
@@ -439,18 +471,22 @@ class WellCenterPage(QWidget):
         return "" if chosen is None else chosen[3]
 
     def _well_chosen(self) -> None:
-        # Another well: the depth follows its drawing, and the tip is not
-        # over it.
+        # Another well, on the first item only: the depth follows its
+        # drawing.
         self._depth_for = None
-        if self._at != TO_WELL:
-            self._at = TO_WELL
-            self._measurement.forget()
         self.refresh()
 
     # -- the steps -----------------------------------------------------------
 
-    def _to(self, at: int) -> None:
+    def _to(self, at: str) -> None:
         self._at = at
+        self.refresh()
+
+    def _redo(self) -> None:
+        """Back to the map, the measurement begun forgotten; nothing moves."""
+        self._measurement.forget()
+        self._at = TO_WELL
+        self._depth_for = None
         self.refresh()
 
     def _go_to_well_top(self) -> None:
@@ -469,6 +505,11 @@ class WellCenterPage(QWidget):
             self._measurement.started(slot, load_name, well, pose)
             if self._selected == (slot, load_name):
                 self._at = CENTER
+                # A click on the map during the move: the tip is over this.
+                self._fill_wells()
+            else:
+                # The one measurement in hand is now that plate's.
+                self._at = TO_WELL
             self.refresh()
             return ""
 
@@ -572,11 +613,12 @@ class WellCenterPage(QWidget):
             row.set_selected(key == self._selected)
         self.no_plates.setVisible(not self._rows)
 
+        # First: a field grayed with the keyboard passes it on, folded not.
+        self._show_path()
         chosen = self._selected is not None
         movable = (chosen and session.robot is not None
                    and not session.robot_lease.busy and not self.jog.busy)
         running = self._run_using()
-        self.wells.setEnabled(chosen)
         self.move_button.setEnabled(movable and bool(self._well()))
         self.centered_button.setEnabled(chosen and self._at == CENTER)
         self.level_button.setEnabled(chosen and self._at == LOWER)
@@ -590,13 +632,28 @@ class WellCenterPage(QWidget):
                   else None)
         self.skip_button.setEnabled(chosen and status != MEASURED
                                     and status != SKIPPED)
-        for number, step in enumerate((self.well_step, self.center_step,
-                                       self.lower_step, self.depth_step)):
-            step.set_state(OK if number < self._at else
-                           TODO if number == self._at and chosen else
-                           BLOCKED)
         self._show_last()
         self._show_depth()
+
+    def _show_path(self) -> None:
+        """The selected plate's card; none with no plate."""
+        chosen = self._selected is not None
+        self.path_card.setVisible(chosen)
+        room = (max(0, self.path.body_height(TO_WELL)
+                    - self.path.body_height(self._at)) if chosen else 0)
+        if room != self.map_room.sizeHint().height():
+            self.map_room.changeSize(0, room, QSizePolicy.Policy.Fixed,
+                                     QSizePolicy.Policy.Fixed)
+            self.path_card.parentWidget().layout().invalidate()
+        if not chosen:
+            return
+        slot, _load_name = self._selected
+        definition = self._definition()
+        if definition is not None:
+            self.plate_title.setText(f"Slot {slot} · "
+                                     f"{definition.display_name}")
+        self.path.set_done_title(TO_WELL, f"Tip is over {self._well()}")
+        self.path.set_current(self._at)
 
     def _show_last(self) -> None:
         """The selected plate's measured bottom with Use it, in Manual pick

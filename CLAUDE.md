@@ -639,10 +639,18 @@ center step, one page in every task (`pages.well_center`,
 REDESIGN §6.7, `set_task`: the plates on the deck,
 `tasks.well_center_plates`, "Measured today" / "Not measured: using the
 drawing" / "Not measured yet"; the jog pad under the tip's X Y Z, with
-its Keys; a well on the plate's map (`WellPicker(plate_choice=False)`, the
-plate being the list's), Move the tip, It is centered, It is level, the well depth from
-the drawing, Save; in Liquid only Skip this plate, use the drawing -
-`Session.skip_plate`, for the robot session only); Liquid handling only
+its Keys; in Liquid only Skip this plate, use the drawing -
+`Session.skip_plate`, for the robot session only - under the list and Last
+time; last, so that nothing stands under what folds, one card titled with the
+selected plate, no chip, none with no plate, its `PathSteps` path (#127): Tip to
+a well (the plate's map, `WellPicker(plate_choice=False)`, the plate being the
+list's, Move the tip; done "Tip is over A1", the measurement's well, with Redo,
+the one link and the way to another well: the map back, the measurement
+forgotten, nothing moved), Center the tip (It is centered), Lower to the top of
+the well (It is level), Well depth (from the drawing, Save, never done). A plate
+opens on the first item, or on Center the tip while its measurement is in hand. The
+column keeps the room the map leaves as it folds (`map_room`): the operator may
+have scrolled down to Move the tip); Liquid handling only
 reads it. In Liquid the step is required and done when every plate is
 measured or skipped (`Session.well_center_status`); in Manual pick
 (#63, unless it picks from a plate, #88) it is optional

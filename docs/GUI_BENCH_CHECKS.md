@@ -1819,14 +1819,28 @@ tip box and a 384 plate at hand.
   pad over it. With none on the deck: "No plate on the deck."
 
 - [ ] **Measure a plate.**
-  Click a well on the plate's map (the selected plate, in its real
-  proportions; a click on another well sends the steps back to the first),
-  Move the tip: the tip goes to its top center as the
-  robot has it (watch it: no crash into the rim). It is centered and It
-  is level take turns with the arrows; Well depth reads "10.67 mm, from
-  the plate's drawing" (for a Corning 96). Save: "Well center saved.",
-  the row reads "Measured today" with a green ✓, the next plate is
-  selected. Liquid's steps on that plate now go to the measured center.
+  One card titled with the selected plate, a path with no numbers. Click a
+  well on the plate's map (the selected plate, in its real proportions),
+  Move the tip: the tip goes to its top center as the robot has it (watch
+  it: no crash into the rim), the map folds to "Tip is over B2" and the path
+  is on Center the tip. It is centered and It is level take turns with the
+  arrows; Well depth reads "10.67 mm, from the plate's drawing" (for a
+  Corning 96). Save: "Well center saved.", the row reads "Measured today"
+  with a green ✓, the next plate is selected. Liquid's steps on that plate
+  now go to the measured center.
+
+- [ ] **Redo (#127).**
+  On any later item, Redo beside "Tip is over B2": the map is back, the robot
+  does not move, and Move the tip starts the measurement again.
+
+- [ ] **A short window (#127).**
+  Three plates, a window too short for the column: scroll down to Move the
+  tip and press it. As the map folds, Skip, the plates and the card stay
+  where they were.
+
+- [ ] **Coming back to a plate (#127).**
+  Move the tip on one plate, click another (first item), click back: Center
+  the tip, still "Tip is over" the same well.
 
 - [ ] **Skip.**
   Skip this plate, use the drawing: "Not measured: using the drawing", a
