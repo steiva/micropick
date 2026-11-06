@@ -376,6 +376,11 @@ class _ScrollColumn(QScrollArea):
         self._fit_timer.timeout.connect(self._fit_height)
         inner.installEventFilter(self)
 
+    @property
+    def bar_room(self) -> int:
+        """What is kept for the scroll bar at the column's right."""
+        return self.verticalScrollBar().sizeHint().width()
+
     def set_outer_width(self, width: int) -> None:
         """Change the column's width, scrollbar included.
 
@@ -383,7 +388,7 @@ class _ScrollColumn(QScrollArea):
         page that gives its panel whatever the picture leaves over calls
         this on resize, and the labels are measured again at the new width.
         """
-        inner = max(1, int(width) - self.verticalScrollBar().sizeHint().width())
+        inner = max(1, int(width) - self.bar_room)
         if inner == self._inner_width:
             return
         self._inner_width = inner

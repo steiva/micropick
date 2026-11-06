@@ -96,7 +96,7 @@ log = logging.getLogger(__name__)
 
 TITLE = SETUP_TITLES["camera_calibration"]
 
-PANEL_WIDTH = 420
+PANEL_WIDTH = 440
 
 # The steps, in order; `CameraCalibrationSheet.step` is one of them.
 STEPS = ("place", "slot", "center", "calibrate", "result")

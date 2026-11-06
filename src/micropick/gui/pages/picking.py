@@ -338,8 +338,8 @@ class PickingPage(QWidget):
         layout.setContentsMargins(SPACING * 2, SPACING * 2, SPACING * 2,
                                   SPACING * 2)
         layout.setSpacing(SPACING)
-        layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH)),
-                         1)
+        layout.addWidget(FeedRow(self.view, scroll_column(panel, PANEL_WIDTH),
+                                 side_grows=True), 1)
         self._done_card()
 
         self._view_timer = QTimer(self)

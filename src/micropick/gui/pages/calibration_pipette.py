@@ -132,7 +132,7 @@ TITLE = "Tip"
 
 log = logging.getLogger(__name__)
 
-PANEL_WIDTH = 420
+PANEL_WIDTH = 440
 
 # The profile position the calibration starts at: Robot setup's
 # calibration position. The notebook's name, kept: a profile taught from

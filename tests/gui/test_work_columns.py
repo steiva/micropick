@@ -65,7 +65,7 @@ def test_points_stands_the_full_height_of_its_column(app, frame):
 def test_the_picture_takes_the_rest_of_the_width(app, frame):
     _at(app, frame, 1880)
     assert frame.view.width() + GAP + frame.columns.width() == 1880
-    assert frame.view.height() == 850
+    assert frame.view.height() == round(frame.view.width() * 3 / 4)
 
 
 def test_a_narrow_window_has_one_column_of_420_points_folded_last(app, frame):
@@ -109,7 +109,7 @@ def test_no_card_is_under_380_at_the_narrowest_window(app, frame):
 def test_a_plain_panel_still_gets_what_the_picture_leaves(app):
     side = QWidget()
     side.setMinimumWidth(300)
-    row = FeedRow(CameraView(), side)
+    row = FeedRow(CameraView(), side, side_grows=True)
     _at(app, row, 1200, 600)
     assert side.width() == 1200 - 8 - 800
     row.close()

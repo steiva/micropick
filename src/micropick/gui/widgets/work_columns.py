@@ -4,7 +4,8 @@ Two columns of `COLUMN` px, the work's cards and Points at their full height,
 from a window of about 1600 px; under that one column of `ONE_COLUMN` px, with
 Points a card after the work's, folded by default (MANUAL.md §1). The widths are
 fixed: the picture takes the rest (`FeedRow`), so what a card shows moves no
-column, and no card is ever under 380 px.
+column, and no card is ever under 380 px. The picture, 4:3, stops at its height:
+the panel is then centered in what is left.
 
 Each column is a `scroll_column`, its scroll bar's room kept beside the cards,
 so a bar coming moves nothing.
@@ -75,6 +76,11 @@ class WorkColumns(QWidget):
     @property
     def two_columns(self) -> bool:
         return bool(self._two)
+
+    @property
+    def bar_room(self) -> int:
+        """What is kept for a scroll bar at the panel's right."""
+        return self._bar
 
     def width_in(self, row_width: int) -> int:
         """The panel's width, scroll bars' room included, in a row this wide."""

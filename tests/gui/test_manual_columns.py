@@ -144,7 +144,7 @@ def test_the_frame_at_full_hd(app, page):
     assert (picture.x(), picture.y()) == (20, 16)
     # A scroll column's viewport stands a pixel inside it.
     assert x[0] - picture.x() - page.view.width() - 1 == 16
-    assert page.view.height() == 860 - 32
+    assert page.view.height() == round(page.view.width() * 3 / 4)
     # Points stands the column's height, the page's bottom margin under it.
     bottom = points.mapTo(page, points.rect().bottomLeft()).y()
     assert bottom == 860 - 16 - 1 - 1

@@ -97,7 +97,7 @@ __all__ = ["Built", "PositionSheet", "SHAKE_HOLDER", "STEPS", "Step",
 
 log = logging.getLogger(__name__)
 
-PANEL_WIDTH = 420
+PANEL_WIDTH = 440
 
 CANT_SEE = "The camera can't see this. Watch the robot itself."
 SLOT_HINT = "Click the slot. The camera moves there."
