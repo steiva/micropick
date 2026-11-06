@@ -342,6 +342,7 @@ def calibrate_pipette_offset(
         detector: TipDetector, pixel_map: PixelMap, *,
         target: TipTarget | None = None,
         current_offset: tuple[float, float],
+        height: float | None = None,
         frames: int = 5, settle_s: float = 0.8,
         verify: bool = True, max_correction_mm: float = 40.0,
         tip_type: str | None = None, profile=None,
@@ -353,6 +354,8 @@ def calibrate_pipette_offset(
     current_offset is the starting estimate. It must be close enough to put the
     tip inside the lower camera's field; on a new installation measure it with
     a ruler first.
+
+    height is the Z the tip is measured at, target.module_height if not given.
 
     profile, if given, is written to and saved: the offset, and the homography
     that came with it. Both are products of this one measurement, so keeping
@@ -395,6 +398,7 @@ def calibrate_pipette_offset(
 
     target = target or TipTarget()
     approach = np.asarray(target.approach_offset, dtype=float)
+    height = target.module_height if height is None else float(height)
 
     # --- lights on, and known to be on --------------------------------------
     # The upper camera finds the crosshair by the rail lights, and a picking
@@ -429,8 +433,7 @@ def calibrate_pipette_offset(
 
     # --- drive the tip there, offset to one side so it does not hide it -----
     aim = target_xy + np.asarray(current_offset, dtype=float) + approach
-    move_to(robot, (aim[0], aim[1], target.module_height),
-            min_z_height=target.module_height - 0.1)
+    move_to(robot, (aim[0], aim[1], height), min_z_height=height - 0.1)
     time.sleep(settle_s)
 
     # --- lower camera: how far is the tip from the crosshair ---------------

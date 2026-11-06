@@ -93,7 +93,7 @@ arrows whenever the picture is the lower camera's (the tip over the
 crosshair with the fine-tune off in Settings). The offset is where the
 tip is less the crosshair, as the routine reads it from its final pose.
 "Over the crosshair" is the pose within `TUNE_RANGE_MM` of the crosshair
-plus the saved offset, at the module height: the pose says it, whatever
+plus the saved offset, at Settings' height: the pose says it, whatever
 moved the tip since.
 
 **The routine ends with the tip over the crosshair**, so the fine-tune
@@ -735,6 +735,14 @@ class TipCalibrationBlock(QObject):
             problems.append("The upper and lower camera are the same camera.")
         if self._start_offset() == (0.0, 0.0):
             problems.append("The start offset in Settings is not set.")
+        elif profile is not None and self._stored_position() is not None:
+            # About where the tip goes down: the disc is under the camera.
+            x, y = self._stored_position()[:2]
+            dx, dy = self._start_offset()
+            why = session.motion.refused(
+                (x + dx, y + dy, session.settings.tip_cal_height_mm))
+            if why:
+                problems.append(f"Not reachable: {why}.")
         return problems
 
     def _tip_type(self) -> str | None:
@@ -770,6 +778,7 @@ class TipCalibrationBlock(QObject):
         stored = self._stored_position()
         current = self._start_offset()
         frames, verify = settings.tip_cal_frames, settings.tip_cal_verify
+        height = settings.tip_cal_height_mm
         tip_type = self._tip_type()
         mock = session.mock
         device = settings.inference_device
@@ -799,7 +808,8 @@ class TipCalibrationBlock(QObject):
             try:
                 result = calibrate_pipette_offset(
                     robot, over, under, detector, pmap, target=target,
-                    current_offset=current, frames=frames, verify=verify,
+                    current_offset=current, height=height, frames=frames,
+                    verify=verify,
                     tip_type=tip_type, profile=profile,
                     manual_touch_up=None, robot_session=robot_session,
                     tip_pickup=tip_pickup, log=log)
@@ -893,12 +903,11 @@ class TipCalibrationBlock(QObject):
 
     def _over_crosshair(self) -> bool:
         """The tip is over the crosshair, by the pose last read: in line with
-        it, at the module height."""
+        it, at the calibration's height."""
         if not self._in_line_with_crosshair():
             return False
-        module = float(
-            self.session.profile.calibration.tip_target.module_height)
-        return abs(self._pose[2] - module) <= TUNE_RANGE_MM
+        height = self.session.settings.tip_cal_height_mm
+        return abs(self._pose[2] - height) <= TUNE_RANGE_MM
 
     def _tuning(self) -> bool:
         """The fine-tune can be done: calibrated, the fine-tune on in

@@ -780,7 +780,8 @@ measures each device that works on the first load and takes the faster
 (`core.vision.yolo`). `core.vision.onnx_yolo` gives ultralytics' own boxes:
 change its letterbox or NMS only together with a parity check.
 So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
-verify, manual adjustment, the start offset dx, dy). The Tip step
+verify, manual adjustment, the start offset dx, dy, the height the tip is
+measured at, refused at the start below a deck module's top). The Tip step
 (`pages.calibration_pipette`, TIP.md) is one column of two cards. The Tip card,
 the same on the shake position's sheet, says the state at a glance: a drawn tip
 (`TipIcon`, filled while one is on), the title ("Tip A2 is on", "No tip on", "Tip

@@ -79,6 +79,9 @@ class AppSettings(BaseModel):
     # with a ruler, in mm. The bench's pipette mount, like the marker.
     tip_cal_start_dx: float = Field(default=16.0, ge=-300.0, le=300.0)
     tip_cal_start_dy: float = Field(default=60.0, ge=-300.0, le=300.0)
+    # The Z the tip goes down to over the disc to be measured: where the
+    # lower camera sees it sharp. The bench's, like the start offset.
+    tip_cal_height_mm: float = Field(default=67.1, ge=0.0, le=150.0)
     # What runs the machine learning models: "auto" measures the CPU and
     # any GPU on the first load and takes the faster, "cpu" and "gpu" ask
     # for one (`core.vision.yolo`). A computer's, like its graphics card.

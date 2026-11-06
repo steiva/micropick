@@ -10,6 +10,9 @@ the third for fixes.
 
 ## Unreleased
 
+- Settings: Tip calibration has a Height, the Z the tip goes to over the disc to
+  be measured (67.1 mm at the start). Below the platform's top the calibration
+  does not start and says why.
 - Tip: the fine-tune is now the path's last item, Adjust by hand, with Save and
   Cancel; it no longer comes up by itself. Controls start folded on the step, the
   keys still bound. A step not saved is dropped once the tip is moved elsewhere,

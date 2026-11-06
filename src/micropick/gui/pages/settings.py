@@ -364,6 +364,12 @@ class SettingsPage(QWidget):
             offset_row.addWidget(QLabel(name))
             offset_row.addWidget(spin)
         offset_row.addStretch(1)
+        self.tip_height = double_spin_box(self)
+        self.tip_height.setRange(0.0, 150.0)
+        self.tip_height.setDecimals(2)
+        self.tip_height.setSingleStep(0.1)
+        self.tip_height.setSuffix(" mm")
+        self.tip_height.valueChanged.connect(lambda _v: self._edited())
         grid = QGridLayout()
         for row, (label, widget, hint) in enumerate((
                 ("Tip type", self.tip_type,
@@ -372,7 +378,9 @@ class SettingsPage(QWidget):
                  "Frames averaged per reading."),
                 ("Start offset", offset,
                  "Approximate camera-to-tip offset, used while the profile "
-                 "has no measured one."))):
+                 "has no measured one."),
+                ("Height", self.tip_height,
+                 "Z the tip goes to over the disc to be measured."))):
             grid.addWidget(QLabel(label), 2 * row, 0)
             if widget in (self.tip_type, offset):  # the whole width
                 grid.addWidget(widget, 2 * row, 1)
@@ -444,13 +452,14 @@ class SettingsPage(QWidget):
 
     def _show_tip(self, settings: AppSettings) -> None:
         widgets = (self.tip_frames, self.tip_verify, self.tip_touch_up,
-                   self.tip_dx, self.tip_dy)
+                   self.tip_dx, self.tip_dy, self.tip_height)
         for widget in widgets:
             widget.blockSignals(True)
         self.tip_type.setText(settings.tip_cal_tip_type)
         self.tip_frames.setValue(settings.tip_cal_frames)
         self.tip_dx.setValue(settings.tip_cal_start_dx)
         self.tip_dy.setValue(settings.tip_cal_start_dy)
+        self.tip_height.setValue(settings.tip_cal_height_mm)
         self.tip_verify.setChecked(settings.tip_cal_verify)
         self.tip_touch_up.setChecked(settings.tip_cal_touch_up)
         for widget in widgets:
@@ -651,6 +660,7 @@ class SettingsPage(QWidget):
                            tip_cal_touch_up=self.tip_touch_up.isChecked(),
                            tip_cal_start_dx=round(self.tip_dx.value(), 3),
                            tip_cal_start_dy=round(self.tip_dy.value(), 3),
+                           tip_cal_height_mm=round(self.tip_height.value(), 2),
                            inference_device=self.inference_device.currentData(),
                            keys=self._typed_keys())
 

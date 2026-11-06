@@ -383,7 +383,7 @@ def test_liquid_needs_no_calibration(page):
 @pytest.fixture
 def ready(app, page, monkeypatch):
     """A tip on, a calibration position, and the routine replaced by one
-    that puts the tip on the crosshair at the module height and saves an
+    that puts the tip on the crosshair at Settings' height and saves an
     offset for this tip. `ready["gate"]` cleared holds it measuring."""
     session = page.session
     _tip_on(app, page)
@@ -391,15 +391,14 @@ def ready(app, page, monkeypatch):
     seen = {"gate": threading.Event()}
     seen["gate"].set()
 
-    def calibrate(robot, over, under, detector, pmap, *, profile, target,
+    def calibrate(robot, over, under, detector, pmap, *, profile, height,
                   current_offset, manual_touch_up, robot_session,
                   tip_pickup, **_kw):
         seen["start"] = current_offset
         seen["touch_up"] = manual_touch_up
         seen["gate"].wait(10)
         x, y, _z = tip_page.xyz(robot)
-        move_to(robot, (x, y, target.module_height),
-                force_direct=True)
+        move_to(robot, (x, y, height), force_direct=True)
         offset = PipetteOffset(dx=1.5, dy=-2.5, robot_session=robot_session,
                                tip_pickup=tip_pickup, method="auto")
         profile.calibration.pipette_offset = offset
@@ -747,7 +746,7 @@ def test_after_a_restart_the_crosshair_is_the_pixel_maps(
     gx, gy = pmap.to_robot(pmap.config.cu, pmap.config.cv, (150.0, 150.0))
     assert page.calibration._crosshair_xy() == pytest.approx((gx, gy))
     # The tip over it plus the offset: Adjust by hand can be used.
-    module = page.session.profile.calibration.tip_target.module_height
+    module = page.session.settings.tip_cal_height_mm
     motion = page.session.motion
     assert page.jog.run_job(lambda log: motion.tip_to(
         (gx + 1.5, gy - 2.5), module, log=log))
