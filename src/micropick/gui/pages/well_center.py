@@ -42,12 +42,11 @@ A click on the selector chooses the plate for the robot session
 opens on it, else in Auto pick on the plan's plate, else on the first on
 the deck (`_opening`). The plate Save goes on to is shown, not chosen.
 
-The step is optional in every task: a plate not measured uses its drawing.
-In Manual pick a measured plate also shows "Last time: Z 66.40 mm · 3
-days ago" (`well_center.measured_bottom`) with **Use it**, as Dish bottom
-does: Use it, or Save, confirms that plate's bottom for this robot session
-(`Session.plate_bottom_confirmed`). A measurement made on another module
-height is not the plate's (`DeckConfig.well_center`): not measured.
+The step is optional in every task: a plate not measured uses its drawing,
+a plate measured its measurement, with nothing to confirm (#133). A measured
+plate also shows "Last time: Z 66.40 mm · 3 days ago"
+(`well_center.measured_bottom`), as information. A measurement made on another
+module height is not the plate's (`DeckConfig.well_center`): not measured.
 The step is done while there are plates and every one is measured
 (`tasks.step_state`).
 
@@ -72,7 +71,7 @@ from ..session import MEASURED, Session, SessionError
 from ..theme import SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, double_spin_box, heading,
                              muted_label, primary_button, reserve,
-                             scroll_column, secondary_button)
+                             scroll_column)
 from ..widgets.jog_pad import StepChip
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
@@ -203,18 +202,13 @@ class WellCenterPage(QWidget):
         column.addWidget(self.plate_status)
 
         self.last_card = card(panel)
-        row = QHBoxLayout()
         words = QVBoxLayout()
         words.setSpacing(2)
         self.last_value = heading("", 3, panel)
         self.last_when = muted_label("", panel)
         words.addWidget(self.last_value)
         words.addWidget(self.last_when)
-        row.addLayout(words, 1)
-        self.use_button = secondary_button("Use it", panel)
-        self.use_button.clicked.connect(self._use_last)
-        row.addWidget(self.use_button)
-        self.last_card.layout().addLayout(row)
+        self.last_card.layout().addLayout(words)
         reserve(self.last_card)
         column.addWidget(self.last_card)
 
@@ -482,16 +476,6 @@ class WellCenterPage(QWidget):
         self.select_plate(*self._first_to_do())
         self.refresh()
 
-    def _use_last(self) -> None:
-        if self._selected is None:
-            return
-        try:
-            self.session.use_plate_bottom(*self._selected)
-        except SessionError as exc:
-            self.jog.refuse(describe_error(exc))
-            return
-        show_toast(self, "Using the last measurement.")
-
     def _run_using(self) -> str | None:
         if self._selected is None:
             return None
@@ -565,11 +549,9 @@ class WellCenterPage(QWidget):
         self.path.set_current(self._at)
 
     def _show_last(self) -> None:
-        """The selected plate's measured bottom with Use it, in Manual pick
-        only."""
+        """The selected plate's measured bottom, as information."""
         center, definition = self._center(), self._definition()
-        shown = (self._task == "manual" and center is not None
-                 and definition is not None)
+        shown = center is not None and definition is not None
         self.last_card.setVisible(shown)
         if not shown:
             return
@@ -578,8 +560,6 @@ class WellCenterPage(QWidget):
             self.session.profile.deck.module_height(center.slot))
         self.last_value.setText(f"Last time: Z {bottom:.2f} mm")
         self.last_when.setText(measured_ago(center))
-        self.use_button.setEnabled(
-            not self.session.plate_bottom_confirmed(*self._selected))
 
     def _show_depth(self) -> None:
         """The plate's depth, else the drawing's for the chosen well. At

@@ -843,16 +843,27 @@ def test_a_deposit_does_not_read_a_measurement_of_another_height(session):
     assert well_center.for_plan(*read) is None
 
 
-def test_manual_shows_the_last_measured_bottom_with_use_it(app, session):
+@pytest.mark.parametrize("task", ["manual", "auto", "liquid"])
+def test_every_task_shows_the_last_measured_bottom(app, session, task):
+    _plan_on_5(session)
     _saved(session)
     page = _step(app, session)
-    page.set_task("manual")
+    page.set_task(task)
     assert not page.last_card.isHidden()
     # Corning 96: its well top 3.55 + 10.67 on the deck, the rim 1.5 under
     # it, the bottom 10.67 under that.
     assert page.last_value.text() == "Last time: Z 2.05 mm"
     assert page.last_when.text() == "3 days ago"
-    assert page.use_button.isEnabled()
+    page.deleteLater()
+
+
+@pytest.mark.parametrize("task", ["manual", "auto", "liquid"])
+def test_a_measured_plate_has_nothing_to_use_or_confirm(app, session, task):
+    _plan_on_5(session)
+    _saved(session)
+    page = _step(app, session)
+    page.set_task(task)
+    assert "Use it" not in [b.text() for b in page.findChildren(QPushButton)]
     page.deleteLater()
 
 
@@ -866,45 +877,27 @@ def test_the_last_bottom_counts_the_height_of_the_slots_module(app, session):
     page.deleteLater()
 
 
-def test_use_it_confirms_the_selected_plate_and_a_new_session_forgets(
-        app, session):
-    _saved(session)
+def test_save_shows_the_last_measured_bottom(app, session):
     page = _step(app, session)
-    page.set_task("manual")
-    page.use_button.click()
-    assert session.plate_bottom_confirmed(5, PLATE)
-    assert not page.use_button.isEnabled()
-    session.new_run()
-    session.load_labware(resolve_definition(PLATE), 5)
-    assert not session.plate_bottom_confirmed(5, PLATE)
-    assert page.use_button.isEnabled()
-    page.deleteLater()
-
-
-def test_save_confirms_the_plate_on_the_page(app, session):
-    page = _step(app, session)
-    page.set_task("manual")
     assert page.last_card.isHidden()
     _measure(app, session, page, (0.4, -0.3, -1.5))
-    assert session.plate_bottom_confirmed(5, PLATE)
     assert not page.last_card.isHidden()
-    assert not page.use_button.isEnabled()
     page.deleteLater()
 
 
-def test_a_plate_with_no_stored_measurement_has_no_use_it(app, session):
-    page = _step(app, session)
-    page.set_task("manual")
-    assert page.last_card.isHidden()
-    page.deleteLater()
-
-
-@pytest.mark.parametrize("task", ["liquid", "auto"])
-def test_no_use_it_in_liquid_or_auto(app, session, task):
-    _plan_on_5(session)
+def test_a_measurement_outlives_the_robot_session(app, session):
     _saved(session)
     page = _step(app, session)
-    page.set_task(task)
+    session.new_run()
+    session.load_labware(resolve_definition(PLATE), 5)
+    page.select_plate(5, PLATE)
+    assert page.plate_status.text() == "Measured 3 days ago"
+    assert not page.last_card.isHidden()
+    page.deleteLater()
+
+
+def test_a_plate_with_no_stored_measurement_has_no_last_time(app, session):
+    page = _step(app, session)
     assert page.last_card.isHidden()
     page.deleteLater()
 
@@ -913,7 +906,6 @@ def test_each_plate_shows_its_own_last_bottom(app, session):
     session.load_labware(resolve_definition(PLATE), 2)
     _saved(session)
     page = _step(app, session)
-    page.set_task("manual")
     page.select_plate(5, PLATE)
     assert not page.last_card.isHidden()
     page.select_plate(2, PLATE)

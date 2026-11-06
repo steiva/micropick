@@ -38,10 +38,8 @@ Under X, Y and Z, and on no other page, is the **height line** (#95): the
 slot the camera is over (`camera_moves.camera_slot`, so before a tip
 calibration too), "Slot 8 · top 85.10 · bottom 67.77 · measured", for the
 operator choosing a Z. Measured is what this page itself goes by: a plate
-measured and confirmed in this robot session, as In a well and By clicking; any
-other plate is its drawing, a measurement not confirmed included, since a
-line saying measured over a height no aspirate uses would mislead. No plate,
-no line; the source dish has only a bottom, once confirmed, and in the
+measured, as In a well and By clicking; any other plate is its drawing. No
+plate, no line; the source dish has only a bottom, once confirmed, and in the
 dish's slot it goes before a drawing, as `_slot_bottom`.
 
 Memo points
@@ -116,9 +114,8 @@ script. The card's body holds only settings, in the open (MANUAL.md §4.2): what
 From asks, Amount, Speed and the height, then the lifting row. The height is
 above the bottom of where the tip goes down: by clicking the slot's (below); in
 a well the plate's measured bottom (rim less depth,
-`Motion.to_measured_bottom`) once confirmed in this robot session
-(`Session.plate_bottom_confirmed`), else the drawing's, and the summary and the
-field's tooltip say which (#89). From:
+`Motion.to_measured_bottom`) once it is measured, else the drawing's, and the
+summary and the field's tooltip say which (#89, #133). From:
 
 * **By clicking** - the spot under the camera's crosshair (#60): the
   picture's center through the pixel map, plus the measured tip offset.
@@ -128,10 +125,9 @@ field's tooltip say which (#89). From:
   to the point). The size window on Snap's row opens the sizes in a popover
   (`_SizesPopover`). The height is a Z, From tip the tip's now, or a height
   above the bottom of the slot the spot is in (#90), whatever the source
-  chosen: a plate confirmed in this robot session gives its measured bottom,
-  the source dish's slot the dish bottom when that is confirmed
-  (`Session.is_confirmed`), and anywhere else only Z is offered: an older
-  bottom is not one to lower a tip to. It is the default where there is one,
+  chosen: a measured plate gives its measured bottom, the source dish's slot
+  the dish bottom when that is confirmed (`Session.is_confirmed`), and
+  anywhere else only Z is offered. It is the default where there is one,
   and the summary names the slot. Over a plate a spot not in a well is refused
   (`well_center.in_a_well`), and so is a click aiming where there is no
   bottom; a Z is the operator's, in a well or not. Aspirate remembers the
@@ -217,9 +213,8 @@ The well center
 Dispense into a well goes from the plate's measured well center where
 there is one (`config.schema.WellCenter`, per slot and plate type): its x
 and y are added to the profile's well offsets, as a picking run adds them
-to its deposit. Its height counts once the plate is confirmed in this
-robot session (see Aspirate); until then the level keeps the robot's own
-heights. It is measured on the step before, Well center
+to its deposit, and its height counts (see Aspirate); a plate not measured
+keeps the robot's own heights. It is measured on the step before, Well center
 (`pages.well_center`, #63).
 
 Every robot command goes through the jog panel's worker (`run_job`), so a
@@ -1028,15 +1023,15 @@ class ManualPage(QWidget):
         return self._slot_bottom(self._crosshair_spot(self.jog.pose[:2]))
 
     def _slot_bottom(self, spot) -> SlotBottom | None:
-        """The bottom of the slot `spot` is in: a plate's confirmed in this
-        robot session, else the source dish's when it is confirmed, else
-        None. Whatever the source chosen."""
+        """The bottom of the slot `spot` is in: a measured plate's, else
+        the source dish's when it is confirmed, else None. Whatever the
+        source chosen."""
         session = self.session
         slot = nearest_slot(spot[0], spot[1])
         plate = self._plate_in(slot)
-        if plate is not None and self._plate_confirmed(plate):
+        center = self._plate_center(plate)
+        if center is not None:
             held, entry, definition = plate
-            center = self._well_center(held, definition.load_name)
             shift = entry.offset or (0.0, 0.0, 0.0)
             return SlotBottom(
                 slot, well_center.measured_bottom(
@@ -1056,9 +1051,12 @@ class ManualPage(QWidget):
                 return plate
         return None
 
-    def _plate_confirmed(self, plate) -> bool:
+    def _plate_center(self, plate):
+        """The measurement of a plate of `_plate_in`, None for none."""
+        if plate is None:
+            return None
         held, _entry, definition = plate
-        return self.session.plate_bottom_confirmed(held, definition.load_name)
+        return self._well_center(held, definition.load_name)
 
     def _dish_bottom_in(self, slot) -> float | None:
         """The source dish's bottom, if the dish is in `slot` and its bottom
@@ -1094,22 +1092,21 @@ class ManualPage(QWidget):
                 f"{'measured' if heights.measured else 'drawing'}")
 
     def _heights_in(self, slot) -> SlotHeights | None:
-        """The heights known in `slot`, None for none: a plate confirmed in
-        this robot session, else the source dish's bottom when confirmed,
-        else a plate's drawing."""
+        """The heights known in `slot`, None for none: a measured plate's,
+        else the source dish's bottom when confirmed, else a plate's
+        drawing."""
         session = self.session
         if session.profile is None:
             return None
         plate = self._plate_in(slot)
-        measured = plate is not None and self._plate_confirmed(plate)
+        center = self._plate_center(plate)
+        measured = center is not None
         dish = self._dish_bottom_in(slot)
         if dish is not None and not measured:
             return SlotHeights(None, dish, True)
         if plate is None:
             return None
         held, _entry, definition = plate
-        center = (self._well_center(held, definition.load_name)
-                  if measured else None)
         top, bottom = well_center.plate_heights(
             center, definition, session.profile.deck.module_height(held))
         return SlotHeights(top, bottom, measured)
@@ -1199,12 +1196,10 @@ class ManualPage(QWidget):
 
     def _measured_bottom(self, slot, definition, well: str):
         """(rim, depth) of the plate's measured bottom, from the robot's
-        well top; None for the drawing's: a plate not measured, or measured
-        but not confirmed in this robot session."""
-        load_name = definition.load_name
-        if not self.session.plate_bottom_confirmed(slot, load_name):
+        well top; None for the drawing's: a plate not measured."""
+        center = self._well_center(slot, definition.load_name)
+        if center is None:
             return None
-        center = self._well_center(slot, load_name)
         depth = (center.depth_mm if center.depth_mm is not None
                  else well_center.definition_depth(definition, well))
         return None if depth is None else (float(center.offset[2]),
@@ -1335,7 +1330,7 @@ class ManualPage(QWidget):
         bottom = self._slot_bottom(spot)
         if bottom is None:
             slot = nearest_slot(spot[0], spot[1])
-            raise ValueError(f"No bottom is confirmed in slot {slot}.")
+            raise ValueError(f"No bottom is known in slot {slot}.")
         if not bottom.in_a_well(spot):
             raise ValueError("The spot is not in a well.")
         return bottom.z + float(self.above_bottom.value())

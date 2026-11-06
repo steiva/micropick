@@ -1605,8 +1605,7 @@ class Session(QObject):
         """Save where the wells of the plate in `slot` really are (see
         `WellCenter`), replacing any earlier measurement of it, on the
         height of the module there now. The depth set for it before is
-        kept; `depth_mm` is used when there was none. Measured, its bottom
-        is confirmed for this robot session."""
+        kept; `depth_mm` is used when there was none."""
         if self.profile is None:
             raise SessionError("no profile to save the well center into")
         deck = self.profile.deck
@@ -1626,7 +1625,6 @@ class Session(QObject):
         log.info("well center of %s in slot %s: %s", load_name, slot,
                  center.describe())
         self.profile_changed.emit(self.profile)
-        self.confirm(_plate_bottom(slot, load_name))
 
     def set_well_depth(self, slot, load_name: str, depth_mm: float) -> None:
         """The depth of the measured plate's wells, for its measured
@@ -1643,24 +1641,8 @@ class Session(QObject):
         log.info("well depth of %s in slot %s: %g mm", load_name, slot, depth)
         self.profile_changed.emit(self.profile)
 
-    def use_plate_bottom(self, slot, load_name: str) -> None:
-        """Use it: the plate's measured bottom, taken as it is for this
-        robot session. Refused with no measurement of it."""
-        if (self.profile is None
-                or self.profile.deck.well_center(slot, load_name) is None):
-            raise SessionError("This plate is not measured.")
-        log.info("bottom of %s in slot %s taken as it is", load_name, slot)
-        self.confirm(_plate_bottom(slot, load_name))
-
-    def plate_bottom_confirmed(self, slot, load_name: str) -> bool:
-        """Whether the plate's measurement was saved or taken as it is in
-        this robot session, and is still the plate's."""
-        return (self.is_confirmed(_plate_bottom(slot, load_name))
-                and self.well_center_status(slot, load_name) == MEASURED)
-
     def well_center_status(self, slot, load_name: str) -> str:
-        """MEASURED or NOT_MEASURED. A measurement is the plate's whatever
-        was said in this robot session."""
+        """MEASURED or NOT_MEASURED."""
         profile = self.profile
         if (profile is not None
                 and profile.deck.well_center(slot, load_name) is not None):
@@ -2471,8 +2453,3 @@ class Session(QObject):
 
 
 _CHOSEN_PLATE = "chosen plate"
-
-
-def _plate_bottom(slot, load_name: str) -> str:
-    """The confirmation of the measured bottom of the plate in `slot`."""
-    return f"plate-bottom:{int(slot)}:{load_name}"

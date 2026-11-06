@@ -907,8 +907,8 @@ PLATE = "corning_96_wellplate_360ul_flat"
 
 
 def _measured_plate(app, page, session):
-    """A plate in slot 5, measured and so confirmed: 0.4, -0.3 off the
-    drawing's center, the rim 1 mm under it, 9 mm deep."""
+    """A plate in slot 5, measured: 0.4, -0.3 off the drawing's center, the
+    rim 1 mm under it, 9 mm deep."""
     session.load_labware(resolve_definition(PLATE), 5)
     session.profile.picking.well_offset_x = 0.0
     session.profile.picking.well_offset_y = 0.0
@@ -920,7 +920,7 @@ def _measured_plate(app, page, session):
     _wait(app, page)
 
 
-def test_aspirate_in_a_confirmed_plate_reaches_the_rim_less_depth_plus_height(
+def test_aspirate_in_a_measured_plate_reaches_the_rim_less_depth_plus_height(
         app, page, session):
     _measured_plate(app, page, session)
     at = _aspirated_at(session)
@@ -943,7 +943,7 @@ def test_aspirate_prepares_the_plunger_over_the_rim_not_in_the_well(
     assert names[well + 1] == "prepare_to_aspirate"
 
 
-def test_dispense_in_a_confirmed_plate_reaches_the_deposit_height(
+def test_dispense_in_a_measured_plate_reaches_the_deposit_height(
         app, page, session):
     _measured_plate(app, page, session)
     session.profile.picking.deposit_offset_z = 1.5
@@ -965,18 +965,20 @@ def _well_moves(session):
     return [c for c in session.robot.calls if c[0] == "move_to_well"]
 
 
-def test_a_plate_measured_but_not_confirmed_takes_the_drawings_bottom(
+def test_a_plate_measured_in_an_earlier_session_takes_its_measured_bottom(
         app, page, session):
     _measured_plate(app, page, session)
-    session.new_run()                        # measured, not said so here
+    session.new_run()                        # nothing pressed in this one
     session.load_labware(resolve_definition(PLATE), 5)
     page.source_wells.map.well_clicked.emit("A7")
     _wait(app, page)
+    assert "above the measured bottom" in page.aspirate_card.summary.full
+    at = _aspirated_at(session)
+    z = _pose(session)[2]              # the mock stays here: over the rim
     page.aspirate_button.click()
     _wait(app, page)
-    assert _well_moves(session)[-1][3] == "bottom"
-    # The x and y are the measured center, confirmed or not.
-    assert session.robot.well_offset == pytest.approx((0.4, -0.3, 0.5))
+    assert session.robot.well_offset == pytest.approx((0.4, -0.3, 1.0))
+    assert at[-1][2] == pytest.approx(z - 2.0 - 9.0 + 0.5, abs=0.01)
 
 
 def test_a_plate_not_measured_takes_the_drawings_bottom(app, page, session):
@@ -994,7 +996,7 @@ def test_a_plate_not_measured_takes_the_drawings_bottom(app, page, session):
     assert session.robot.well_offset == pytest.approx((0.0, 0.0, 0.5))
 
 
-def test_the_summary_names_the_bottom_and_follows_the_confirmation(
+def test_the_summary_names_the_bottom_and_follows_the_measurement(
         app, page, session):
     session.load_labware(resolve_definition(PLATE), 5)
     page.source.buttons[2].click()
@@ -1072,7 +1074,7 @@ def _dish_in_slot_8(session):
     session.confirm("dish_bottom")
 
 
-def test_by_hand_over_a_confirmed_plate_goes_above_its_bottom(
+def test_by_hand_over_a_measured_plate_goes_above_its_bottom(
         app, page, session):
     _by_hand_on_a_plate(app, page, session)
     assert page.height_mode.current() == 1               # the default then
@@ -1100,7 +1102,7 @@ def test_by_hand_the_bottom_follows_the_spot_from_slot_to_slot(
         "By clicking · 0.5 mm above the bottom of slot 5 · ")
 
 
-def test_by_hand_over_a_slot_with_nothing_confirmed_is_a_z(app, page, session):
+def test_by_hand_over_a_slot_with_no_bottom_is_a_z(app, page, session):
     _by_hand_on_a_plate(app, page, session)
     above = page.height_mode.buttons[1]
     assert above.isEnabled()
@@ -1120,10 +1122,19 @@ def test_by_hand_the_dish_bottom_is_only_the_dishs_slots(app, page, session):
     assert not page.height_mode.buttons[1].isEnabled()
 
 
-def test_by_hand_a_plate_not_confirmed_offers_only_z(app, page, session):
+def test_by_hand_a_plate_measured_in_an_earlier_session_has_its_bottom(
+        app, page, session):
     _by_hand_on_a_plate(app, page, session)
-    session.new_run()                        # measured, not said so here
+    session.new_run()                        # nothing pressed in this one
     session.load_labware(resolve_definition(PLATE), 5)
+    _aim_at(app, page, session, *A1)         # a new session homed the robot
+    assert page.height_mode.buttons[1].isEnabled()
+    assert page.height_mode.current() == 1
+
+
+def test_by_hand_a_plate_not_measured_offers_only_z(app, page, session):
+    _by_hand_on_a_plate(app, page, session)
+    session.forget_well_center(5, PLATE)
     app.processEvents()
     assert not page.height_mode.buttons[1].isEnabled()
     assert page.height_mode.current() == 0
@@ -1174,7 +1185,7 @@ def test_by_hand_a_click_into_a_slot_without_a_bottom_is_refused(
     page.aspirate_on_click.setChecked(True)
     before = _pose(session)
     _left_click(app, page, W / 2 - 20.0 / K, H / 2)      # over slot 4
-    assert toast_of(page).text() == "No bottom is confirmed in slot 4."
+    assert toast_of(page).text() == "No bottom is known in slot 4."
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
 
@@ -1357,7 +1368,7 @@ def test_the_height_line_stands_the_plate_on_its_module(app, page, session):
         "Slot 5 · top 78.42 · bottom 67.75 · drawing"
 
 
-def test_the_height_line_gives_a_confirmed_plate_as_measured(
+def test_the_height_line_gives_a_measured_plate_as_measured(
         app, page, session):
     _calibrated_on_screen(app, page, session)
     _measured_plate(app, page, session)
@@ -1366,19 +1377,31 @@ def test_the_height_line_gives_a_confirmed_plate_as_measured(
         "Slot 5 · top 13.22 · bottom 4.22 · measured"
 
 
-def test_the_height_line_says_drawing_for_a_measurement_not_confirmed(
+def test_the_height_line_reads_a_measurement_of_an_earlier_session(
         app, page, session):
-    """As In a well goes: above the drawing's bottom until it is confirmed."""
+    """As In a well goes: a stored measurement, with nothing pressed."""
     _calibrated_on_screen(app, page, session)
     _measured_plate(app, page, session)
-    session.new_run()                        # measured, not said so here
+    session.new_run()                        # nothing pressed in this one
     session.load_labware(resolve_definition(PLATE), 5)
     _camera_over(app, page, session, 5)
     assert page.view.height_line == \
-        "Slot 5 · top 14.22 · bottom 3.55 · drawing"
+        "Slot 5 · top 13.22 · bottom 4.22 · measured"
 
 
-def test_the_height_line_turns_measured_as_the_plate_is_confirmed(
+def test_the_height_line_says_drawing_for_a_measurement_on_another_height(
+        app, page, session):
+    _calibrated_on_screen(app, page, session)
+    _measured_plate(app, page, session)
+    session.set_deck_modules([DeckModule(slots=[5], offset=[0, 0, 64.2])])
+    session.new_run()
+    session.load_labware(resolve_definition(PLATE), 5)
+    _camera_over(app, page, session, 5)
+    assert page.view.height_line == \
+        "Slot 5 · top 78.42 · bottom 67.75 · drawing"
+
+
+def test_the_height_line_turns_measured_as_the_plate_is_measured(
         app, page, session):
     _calibrated_on_screen(app, page, session)
     session.load_labware(resolve_definition(PLATE), 5)
@@ -1617,14 +1640,15 @@ def test_tip_to_within_1_mm_under_a_measured_bottom_goes(app, page, session):
     _tip_to_goes(app, page, session, MEASURED_BOTTOM - 0.95)
 
 
-def test_a_measurement_not_confirmed_is_checked_as_the_drawing(
+def test_a_measurement_of_an_earlier_session_is_what_a_target_is_checked_by(
         app, page, session):
     _measured_plate(app, page, session)
-    session.new_run()                        # measured, not said so here
+    session.new_run()                        # nothing pressed in this one
     session.load_labware(resolve_definition(PLATE), 5)
     _over_the_deck(app, page, session)
-    _point_in_slot(app, page, session, 5, DRAWN_BOTTOM - 1.95)
-    _tip_to_goes(app, page, session, DRAWN_BOTTOM - 1.95)
+    _point_in_slot(app, page, session, 5, MEASURED_BOTTOM - 1.02)
+    _tip_to_refused(app, page, session,
+                    "Z 3.2 is below the measured bottom in slot 5")
 
 
 def test_the_bottom_stands_on_the_slots_module(app, page, session):
