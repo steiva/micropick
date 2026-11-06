@@ -7,6 +7,10 @@ main program's (`gui.keys`, as bound in Settings) and this page's own
 (`OWN_KEYS`), and none works while a field has the keyboard. Esc is Stop: the
 first asks the job to stop at its next safe point, a second within 10 s holds
 the robot (`OpentronsAPI.hold`) until the job has ended.
+
+A worker's `finished` is connected to a bound method, never a lambda: a lambda
+has no receiver, so Qt runs it on the worker's thread, and a widget touched
+there takes the program down (`gui.workers.base`).
 """
 
 from __future__ import annotations
@@ -15,13 +19,14 @@ import logging
 import re
 import time
 from datetime import datetime
+from pathlib import Path
 
 import cv2
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QDialog,
-                               QDialogButtonBox, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem,
+                               QDialogButtonBox, QFileDialog, QHBoxLayout,
+                               QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QMainWindow, QMessageBox, QVBoxLayout, QWidget)
 
 from .. import paths
@@ -62,8 +67,7 @@ SECOND_STOP_S = 10.0
 FREQUENT = ("opentrons_96_tiprack_300ul", "corning_96_wellplate_360ul_flat",
             "corning_24_wellplate_3.4ml_flat",
             "corning_384_wellplate_112ul_flat", "vwr_96_tiprack_200ul_xl")
-# Letters a Windows folder name cannot hold.
-NOT_IN_A_FOLDER = re.compile(r'[<>:"/\\|?*]')
+DEFAULT_FOLDER = "slices"
 OWN_KEYS = (("B", "Blow out", "_blow_out"),
             ("R", "Return over the aspirate point", "_return"),
             ("G", "Go to the well", "_go_to_well"),
@@ -145,6 +149,7 @@ class SliceWindow(QMainWindow):
         self._looking = None
         self._reading = None
         self._lighting = None
+        self._then = None
         self._deck_shown = None
         self._tip_was_on = False
         self._stopped_at: float | None = None
@@ -354,10 +359,14 @@ class SliceWindow(QMainWindow):
         box = card(self)
         column = box.layout()
         column.addWidget(heading("Frames", 3, box))
-        self.folder = QLineEdit(self.state.folder, box)
-        self.folder.setPlaceholderText("Experiment folder")
-        self.folder.returnPressed.connect(self.folder.clearFocus)
-        column.addWidget(self.folder)
+        self.folder_line = muted_label("", box)
+        self.folder_line.setWordWrap(True)
+        column.addWidget(self.folder_line)
+        self.folder_button = secondary_button("Choose folder", box)
+        self.folder_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.folder_button.clicked.connect(self._choose_folder)
+        column.addWidget(self.folder_button)
+        self._show_folder()
         self.frame_button = secondary_button("Save frame (S)", box)
         self.frame_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.frame_button.clicked.connect(self._save_frame)
@@ -383,9 +392,10 @@ class SliceWindow(QMainWindow):
             self.refuse(self.rig.lease.refusal)
             return False
         worker = Worker(fn, lease=lease, what=what, **kwargs)
-        worker.finished.connect(lambda result: self._job_done(result, then))
+        worker.finished.connect(self._job_done)
         worker.failed.connect(self._job_failed)
         self._worker = worker
+        self._then = then
         self._stopped_at = None
         worker.start()
         self._refresh()
@@ -393,12 +403,14 @@ class SliceWindow(QMainWindow):
 
     def _job_ended(self) -> None:
         self._worker = None
+        self._then = None
         self._stopped_at = None
         api = self.rig.api
         if api is not None:
             api.hold.clear()
 
-    def _job_done(self, result, then) -> None:
+    def _job_done(self, result) -> None:
+        then = self._then
         self._job_ended()
         if isinstance(result, Reached):
             self._pose = tuple(result.pose)
@@ -496,7 +508,7 @@ class SliceWindow(QMainWindow):
             return
         self._robot_word = "Homing…"
         worker = Worker(self.rig.new_session, lease=lease, what="homing")
-        worker.finished.connect(lambda result: self._homed(result))
+        worker.finished.connect(self._homed)
         worker.failed.connect(self._job_failed)
         self._worker = worker
         worker.start()
@@ -504,18 +516,18 @@ class SliceWindow(QMainWindow):
 
     def _homed(self, result) -> None:
         self._robot_word = "Connected."
-        self._job_done(result, None)
+        self._job_done(result)
 
     def _toggle_lights(self) -> None:
         worker = Worker(self.rig.toggle_lights, background=True,
                         what="switching the lights")
-        worker.finished.connect(lambda _result: self._lights_done())
+        worker.finished.connect(self._lights_done)
         worker.failed.connect(self._lights_failed)
         self._lighting = worker
         worker.start()
         self._refresh()
 
-    def _lights_done(self) -> None:
+    def _lights_done(self, _result=None) -> None:
         self._lighting = None
         self._refresh()
 
@@ -574,7 +586,6 @@ class SliceWindow(QMainWindow):
         state.volume_ul = self.volume.value()
         state.flow_rate = self.flow.value()
         state.well_offset = tuple(f.value() for f in self.offsets)
-        state.folder = self.folder.text().strip()
 
     def _aspirate(self) -> None:
         self._keep_fields()
@@ -631,11 +642,6 @@ class SliceWindow(QMainWindow):
                   spacing_mm=calibration.SPACING_MM)
 
     def _save_frame(self) -> None:
-        self._keep_fields()
-        name = self.state.folder
-        if NOT_IN_A_FOLDER.search(name):
-            self.refuse('A folder name cannot have < > : " / \\ | ? *')
-            return
         ok, frame = self.camera.read() if self.camera else (False, None)
         if not ok:
             self.refuse("No picture to save.")
@@ -644,7 +650,7 @@ class SliceWindow(QMainWindow):
         where = ""
         if self._pose is not None:
             where = "_X{:.2f}_Y{:.2f}_Z{:.2f}".format(*self._pose)
-        folder = paths.images_dir() / (name or "slices")
+        folder = self._frames_folder()
         path = folder / f"frame_{stamp}{where}.png"
         frame = frame.copy()
 
@@ -654,12 +660,32 @@ class SliceWindow(QMainWindow):
             if not ok:
                 raise OSError("the frame could not be encoded")
             path.write_bytes(data.tobytes())
+            return path.name
 
         worker = Worker(write, background=True, what="saving a frame")
-        worker.finished.connect(lambda _r: self.tell(f"Saved {path.name}"))
+        worker.finished.connect(self._frame_saved)
         worker.failed.connect(self.refuse)
         self._saving = worker
         worker.start()
+
+    def _frame_saved(self, name: str) -> None:
+        self.tell(f"Saved {name}")
+
+    def _frames_folder(self) -> Path:
+        """The folder chosen. A name from before the choice was one is under
+        the images folder, as it was."""
+        return paths.images_dir() / (self.state.folder or DEFAULT_FOLDER)
+
+    def _show_folder(self) -> None:
+        self.folder_line.setText(str(self._frames_folder()))
+
+    def _choose_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(
+            self, "Choose a folder", str(self._frames_folder()))
+        if folder:
+            self.state.folder = folder
+            self.rig._save()
+            self._show_folder()
 
     # -- the camera ----------------------------------------------------------
 
@@ -693,17 +719,18 @@ class SliceWindow(QMainWindow):
         def opened():
             if old is not None:
                 old.close()
-            return (open_mock_microscope(self.rig.api) if self.rig.mock
-                    else open_microscope(name))
+            return name, (open_mock_microscope(self.rig.api) if self.rig.mock
+                          else open_microscope(name))
 
         worker = Worker(opened, background=True, what="opening the camera")
-        worker.finished.connect(lambda camera: self._camera_open(name, camera))
+        worker.finished.connect(self._camera_open)
         worker.failed.connect(self._camera_failed)
         self._opening = worker
         worker.start()
 
-    def _camera_open(self, name: str, camera) -> None:
+    def _camera_open(self, opened: tuple) -> None:
         self._opening = None
+        name, camera = opened
         self.camera, self.device = camera, name
         self.state.device = name
         self.view.set_camera(camera)
