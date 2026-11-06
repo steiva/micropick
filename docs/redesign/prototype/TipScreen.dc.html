@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>micropick: Tip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0F1114}
+a{color:#8DB8FF}a:hover{color:#B5D0FF}
+.app{width:1920px;height:1080px;background:#0F1114;color:#E8EAED;font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.top{height:64px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px;background:#14171B;border-bottom:1px solid #22262C}
+.ibtn{min-width:44px;height:44px;padding:0 14px;box-sizing:border-box;border-radius:10px;border:none;background:transparent;color:#C9CED6;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font:500 15px 'Inter',sans-serif}
+.ibtn:hover{background:#1E2228;color:#E8EAED}
+.crumb{display:inline-flex;align-items:center;gap:8px;height:44px;padding:0 10px;border-radius:10px;color:#B3B9C2;font:600 16px 'Inter',sans-serif;text-decoration:none}
+.cap{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:#8A919B;font-weight:600}
+.mono{font-family:'JetBrains Mono',monospace}
+.btn{height:44px;padding:0 20px;box-sizing:border-box;border-radius:10px;font:600 15px 'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;text-decoration:none;border:1px solid #2E333B;background:transparent;color:#E8EAED;white-space:nowrap}
+.btn:hover{background:#1E2228;color:#E8EAED}
+.btn-p{background:#6CA6FF;border-color:#6CA6FF;color:#0B1220}
+.btn-p:hover{background:#8DB8FF;color:#0B1220}
+.steps{height:56px;flex:none;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:1px solid #22262C;background:#111317}
+.st{display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 14px;border-radius:10px;color:#B3B9C2;font-size:16px;font-weight:500}
+.num{width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;box-sizing:border-box;flex:none}
+.line{width:28px;height:1px;background:#2E333B}
+.over{height:36px;padding:0 12px;border-radius:9px;background:rgba(12,14,17,.84);border:1px solid rgba(255,255,255,.08);color:#E8EAED;font:600 13px 'Inter',sans-serif;display:inline-flex;align-items:center;gap:8px;box-sizing:border-box}
+button.over{cursor:pointer}
+.card{display:flex;flex-direction:column;border-radius:14px;background:#171A1F;border:1px solid #23272E;flex:none}
+.mbtn{height:36px;padding:0 12px;border-radius:9px;border:1px solid #2E333B;background:transparent;color:#C9CED6;font:600 13px 'Inter',sans-serif;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.mbtn:hover{background:#1E2228;color:#E8EAED}
+.link{border:none;background:transparent;color:#8DB8FF;font:600 14px 'Inter',sans-serif;cursor:pointer;padding:0;height:32px}
+.link:hover{color:#B5D0FF}
+.w{border-radius:50%;aspect-ratio:1;justify-self:center;align-self:center;box-sizing:border-box;padding:0}
+.jog{width:48px;height:44px;border-radius:9px;border:1px solid #2E333B;background:#1B1E24;color:#E8EAED;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font:600 14px 'Inter',sans-serif;padding:0}
+.jog:hover{background:#262B33}
+.toast{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;background:#16261E;color:#3DD68C;font-weight:600;font-size:15px;border:1px solid #1F3A2B;z-index:9}
+</style>
+</helmet>
+<div class="app">
+  <header class="top">
+    <a class="crumb" href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path></svg>Home</a>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B626C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>
+    <span class="crumb" aria-current="page" style="color:#E8EAED">Auto pick</span>
+    <div style="flex:1"></div>
+    <sc-if value="{{showPill}}" hint-placeholder-val="{{ false }}">
+      <span style="display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 14px; border-radius:999px; background:{{pillBg}}; color:{{pillFg}}; font:600 14px 'Inter',sans-serif; margin-right:4px"><span style="width:8px; height:8px; border-radius:50%; background:currentColor"></span>{{pillText}}</span>
+      <button class="ibtn" type="button" onClick="{{stop}}" style="background:#E5484D; color:#fff; font-weight:700; margin-right:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg>Stop</button>
+    </sc-if>
+    <button class="ibtn" type="button" style="background:#E8EAED; color:#0F1114; font-weight:700"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"></path></svg>Light</button>
+    <button class="ibtn" type="button" style="opacity:{{robotOp}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>Lock</button>
+    <button class="ibtn" type="button" style="opacity:{{robotOp}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M8 16l8-8"></path><path d="M11 8h5v5"></path></svg>Park</button>
+    <button class="ibtn" type="button" style="opacity:{{robotOp}}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path><path d="M5 21h14"></path></svg>Retract</button>
+    <span style="width:1px; height:28px; background:#2A2E35; margin:0 6px"></span>
+    <button class="ibtn" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"></path></svg>Settings</button>
+  </header>
+
+  <nav class="steps" aria-label="Steps">
+    <span class="st"><span class="num" style="background:#16261E; color:#3DD68C">✓</span>Deck</span><span class="line"></span>
+    <span class="st" style="background:#1A2130; color:#E8EAED"><span class="num" style="background:#6CA6FF; color:#0B1220">2</span>Tip</span><span class="line"></span>
+    <span class="st"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">3</span>Dish bottom</span><span class="line"></span>
+    <span class="st"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">4</span>Plan</span><span class="line"></span>
+    <span class="st"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">5</span>Well center</span><span class="line"></span>
+    <span class="st"><span class="num" style="border:1.5px solid #4A515B; color:#B3B9C2">6</span>Run</span>
+  </nav>
+
+  <div style="flex:1; display:flex; min-height:0; gap:16px; padding:16px 20px; box-sizing:border-box">
+
+    <!-- CAMERA (lower camera, looking up through the disc): keeps the frame's 4:3 shape, never stretched -->
+    <section style="position:relative; flex:none; height:100%; aspect-ratio:4 / 3; border-radius:14px; overflow:hidden; background:#050607; border:1px solid #22262C">
+      <svg viewBox="0 20 800 600" preserveAspectRatio="xMidYMid meet" style="position:absolute; inset:0; width:100%; height:100%" role="img" aria-label="Lower camera picture of the calibration disc">
+        <rect width="800" height="640" fill="#08090a"></rect>
+        <circle cx="400" cy="320" r="300" fill="#2a2d31" stroke="#55595f" stroke-width="6"></circle>
+        <rect x="250" y="150" width="300" height="360" rx="14" fill="#1a1c1f" opacity=".9"></rect>
+        <g stroke="#e8e8e8" stroke-width="2" opacity=".85">
+          <line x1="400" y1="70" x2="400" y2="130"></line><line x1="370" y1="100" x2="430" y2="100"></line>
+          <line x1="400" y1="510" x2="400" y2="570"></line><line x1="370" y1="540" x2="430" y2="540"></line>
+          <line x1="160" y1="290" x2="160" y2="350"></line><line x1="130" y1="320" x2="190" y2="320"></line>
+          <line x1="640" y1="290" x2="640" y2="350"></line><line x1="610" y1="320" x2="670" y2="320"></line>
+          <line x1="400" y1="285" x2="400" y2="355"></line><line x1="365" y1="320" x2="435" y2="320"></line>
+        </g>
+        <circle cx="{{tipX}}" cy="{{tipY}}" r="16" fill="#d9d9d9" opacity="{{tipShow}}"></circle>
+        <circle cx="{{tipX}}" cy="{{tipY}}" r="8" fill="#9a9a9a" opacity="{{tipShow}}"></circle>
+        <circle cx="400" cy="320" r="58" fill="none" stroke="#6CA6FF" stroke-width="3" stroke-dasharray="10 8" opacity="{{scanShow}}"></circle>
+        <circle cx="{{tipX}}" cy="{{tipY}}" r="26" fill="none" stroke="#3DD68C" stroke-width="3" opacity="{{foundShow}}"></circle>
+      </svg>
+
+      <div style="position:absolute; left:14px; top:14px; display:flex; align-items:center; gap:12px; padding:10px 14px; border-radius:12px; background:rgba(12,14,17,.84); border:1px solid rgba(255,255,255,.08)">
+        <span class="mono" style="font-size:13px; color:#C9CED6; line-height:1.6">X 298.51<br>Y 223.37<br>Z 67.10</span>
+        <span style="width:1px; height:34px; background:#2E333B"></span>
+        <div style="display:flex; flex-direction:column; gap:3px">
+          <span class="cap">Step</span>
+          <span class="mono" style="font-size:18px; font-weight:600; color:#8DB8FF">0.05 mm</span>
+        </div>
+      </div>
+
+      <div style="position:absolute; right:14px; top:14px; display:flex; gap:6px">
+        <button class="over" type="button" aria-pressed="true" style="height:32px; font-size:12px; background:#E8EAED; color:#0F1114">Crosshair</button>
+        <button class="over" type="button" aria-pressed="false" style="height:32px; font-size:12px; color:#C9CED6">Points</button>
+        <button class="over" type="button" aria-label="Save a picture" style="height:32px; width:32px; padding:0; justify-content:center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg></button>
+      </div>
+
+      <sc-if value="{{hasCamNote}}" hint-placeholder-val="{{ false }}">
+        <span class="over" style="position:absolute; left:50%; top:16px; transform:translateX(-50%); height:40px; font-size:14px; color:{{camNoteColor}}">{{camNote}}</span>
+      </sc-if>
+
+      <span class="over" style="position:absolute; left:14px; bottom:14px; font-weight:500; color:#B3B9C2; gap:14px"><span><b style="color:#E8EAED">Wheel</b> zoom</span><span><b style="color:#E8EAED">Middle-drag</b> pan</span><span><b style="color:#E8EAED">Double-click</b> fit</span></span>
+
+      <sc-if value="{{showControls}}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute; right:14px; bottom:14px; width:340px; box-sizing:border-box; display:flex; flex-direction:column; gap:12px; padding:10px 12px 12px; border-radius:14px; background:rgba(16,18,22,.92); border:1px solid rgba(255,255,255,.08)">
+          <div style="display:flex; align-items:center; gap:8px">
+            <span style="flex:1; display:flex; align-items:center; gap:8px; height:36px; padding:0 4px; font:600 15px 'Inter',sans-serif"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8A919B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>Controls</span>
+            <button class="mbtn" type="button">Undo step</button>
+            <button class="mbtn" type="button">Keys</button>
+          </div>
+          <div style="display:flex; align-items:center; gap:4px">
+            <span style="font-size:13px; color:#8A919B; width:44px">Step</span>
+            <button class="jog" type="button" aria-label="Smaller step" style="width:34px; height:36px">‹</button>
+            <button type="button" class="mono" style="flex:1; height:36px; border-radius:9px; border:none; background:transparent; color:#C9CED6; font-size:14px; font-weight:600">0.02</button>
+            <button type="button" class="mono" style="flex:1; height:36px; border-radius:9px; border:none; background:#6CA6FF; color:#0B1220; font-size:14px; font-weight:600">0.05</button>
+            <button type="button" class="mono" style="flex:1; height:36px; border-radius:9px; border:none; background:transparent; color:#C9CED6; font-size:14px; font-weight:600">0.1</button>
+            <button class="jog" type="button" aria-label="Larger step" style="width:34px; height:36px">›</button>
+            <span style="font-size:13px; color:#8A919B; padding-left:4px">mm</span>
+          </div>
+          <div style="display:flex; justify-content:center">
+            <div style="display:grid; grid-template-columns:repeat(3, 48px); grid-template-rows:repeat(3, 44px); gap:4px" role="group" aria-label="Move in X and Y">
+              <span></span>
+              <button class="jog" type="button" onClick="{{nudge}}" aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 15 6-6 6 6"></path></svg></button>
+              <span></span>
+              <button class="jog" type="button" onClick="{{nudge}}" aria-label="Left"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6"></path></svg></button>
+              <span style="display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#8A919B">XY</span>
+              <button class="jog" type="button" onClick="{{nudge}}" aria-label="Right"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg></button>
+              <span></span>
+              <button class="jog" type="button" onClick="{{nudge}}" aria-label="Forward"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+              <span></span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </section>
+
+    <!-- RIGHT: one narrow column, centered in the width the picture leaves -->
+    <aside style="flex:1; min-width:0; display:flex; justify-content:center; min-height:0">
+     <div style="width:440px; max-width:100%; display:flex; flex-direction:column; gap:12px; min-height:0; overflow-y:auto">
+
+      <!-- TIP ON THE PIPETTE -->
+      <section class="card">
+        <div style="display:flex; align-items:center; gap:12px; padding:14px 14px 14px 16px">
+          <svg width="18" height="40" viewBox="0 0 22 52" aria-hidden="true">
+            <path d="M3 2h16l-5 46h-6z" fill="{{tipIconFill}}" stroke="{{tipIconStroke}}" stroke-width="2" stroke-linejoin="round"></path>
+          </svg>
+          <div style="flex:1; display:flex; flex-direction:column; gap:3px; min-width:0">
+            <span style="font-size:17px; font-weight:600">{{tipTitle}}</span>
+            <span style="font-size:13px; color:#B3B9C2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">VWR 96 Tip Rack 200 µL XL · slot 10</span>
+          </div>
+          <sc-if value="{{tipOn}}" hint-placeholder-val="{{ true }}">
+            <button class="link" type="button" onClick="{{toggleRack}}" aria-expanded="{{rackOpen}}">{{rackLink}}</button>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{showRack}}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-direction:column; gap:10px; padding:0 16px 16px">
+            <div style="width:100%; aspect-ratio:127.76 / 85.48; box-sizing:border-box; padding:5%; border-radius:12px; background:#111317; border:1px solid #2E333B; display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); grid-template-rows:repeat(8, minmax(0, 1fr)); gap:1.4%">
+              <sc-for list="{{rack}}" as="w" hint-placeholder-count="96"><button class="w" type="button" aria-label="{{w.id}}" onClick="{{w.pick}}" style="height:80%; width:auto; background:{{w.bg}}; border:{{w.bd}}; cursor:{{w.cursor}}"></button></sc-for>
+            </div>
+            <div style="display:flex; gap:14px; font-size:12px; color:#8A919B">
+              <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; background:#4A515B"></span>in the rack</span>
+              <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; border:1.5px dashed #4A515B; box-sizing:border-box"></span>used</span>
+              <span style="display:flex; align-items:center; gap:6px"><span style="width:10px; height:10px; border-radius:50%; background:#6CA6FF"></span>next</span>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="display:flex; align-items:center; gap:8px; padding:0 16px 16px">
+          <sc-if value="{{tipOn}}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; gap:8px">
+              <button class="mbtn" type="button" onClick="{{dropTrash}}" style="opacity:{{tipBtnOp}}">Drop in trash</button>
+              <button class="mbtn" type="button" onClick="{{dropTrash}}" style="opacity:{{tipBtnOp}}">Put it back</button>
+            </div>
+          </sc-if>
+          <div style="flex:1"></div>
+          <sc-if value="{{showPick}}" hint-placeholder-val="{{ false }}">
+            <button class="btn btn-p" type="button" onClick="{{pickUp}}" style="height:40px">Pick up {{nextTip}}</button>
+          </sc-if>
+        </div>
+      </section>
+
+      <!-- CALIBRATE: a path, not numbered boxes -->
+      <section class="card" style="opacity:{{calOp}}">
+        <div style="display:flex; align-items:center; gap:12px; padding:16px 16px 6px">
+          <span style="flex:1; font-size:17px; font-weight:600">Calibrate the tip</span>
+          <span style="display:inline-flex; align-items:center; height:26px; padding:0 10px; border-radius:999px; background:{{calChipBg}}; color:{{calChipFg}}; font-size:12px; font-weight:600">{{calChip}}</span>
+        </div>
+        <sc-if value="{{locked}}" hint-placeholder-val="{{ false }}">
+          <span style="padding:0 16px 6px; font-size:14px; color:#B3B9C2">Put a tip on first.</span>
+        </sc-if>
+
+        <div style="display:flex; flex-direction:column; padding:10px 16px 16px">
+          <sc-for list="{{path}}" as="s" hint-placeholder-count="4">
+            <div style="display:flex; gap:14px">
+              <!-- node and the line to the next one -->
+              <div style="width:22px; flex:none; display:flex; flex-direction:column; align-items:center">
+                <span style="width:22px; height:22px; margin-top:1px; border-radius:50%; box-sizing:border-box; background:{{s.nodeBg}}; border:{{s.nodeBd}}; display:flex; align-items:center; justify-content:center; flex:none">
+                  <sc-if value="{{s.done}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3DD68C" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg></sc-if>
+                  <sc-if value="{{s.current}}" hint-placeholder-val="{{ false }}"><span style="width:8px; height:8px; border-radius:50%; background:#6CA6FF"></span></sc-if>
+                </span>
+                <span style="flex:1; width:2px; min-height:14px; margin:4px 0; border-radius:2px; background:{{s.lineBg}}; opacity:{{s.lineOp}}"></span>
+              </div>
+
+              <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; padding-bottom:{{s.padB}}px">
+                <div style="display:flex; align-items:baseline; gap:10px; min-height:24px">
+                  <span style="flex:1; font-size:15px; font-weight:{{s.weight}}; color:{{s.titleColor}}">{{s.title}}</span>
+                  <sc-if value="{{s.hasRedo}}" hint-placeholder-val="{{ false }}"><button class="link" type="button" onClick="{{s.redo}}" style="height:22px; font-size:13px">{{s.redoLabel}}</button></sc-if>
+                </div>
+
+                <sc-if value="{{s.isGo}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:12px">
+                    <span style="font-size:14px; color:#B3B9C2; line-height:1.5">Put the crosshair disc on the calibration module. The camera then goes to it.</span>
+                    <div><button class="btn btn-p" type="button" onClick="{{goToDisc}}">Go to the disc</button></div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{s.isCheck}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:12px">
+                    <span style="font-size:14px; color:#B3B9C2; line-height:1.5">Is the disc with the crosshair in the picture? If not, put it on the calibration module now.</span>
+                    <div><button class="btn btn-p" type="button" onClick="{{calibrate}}">Yes, calibrate</button></div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{s.isFind}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:10px">
+                    <span style="font-size:14px; color:#B3B9C2; line-height:1.5">The robot finds the tip under the camera by itself.</span>
+                    <div style="height:6px; border-radius:999px; background:#22262C; overflow:hidden"><div style="width:58%; height:100%; border-radius:999px; background:#6CA6FF"></div></div>
+                    <span class="mono" style="font-size:13px; color:#8A919B">About 14 s left</span>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{s.isFineOffer}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:10px">
+                    <span style="font-size:14px; color:#B3B9C2; line-height:1.5">Optional. If the tip is not on the central crosshair, move it there by hand.</span>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap"><button class="mbtn" type="button" onClick="{{startTune}}">Adjust by hand</button><button class="mbtn" type="button" onClick="{{checkCross}}">Check: tip to crosshair</button></div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{s.isFineOpen}}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:10px">
+                    <span style="font-size:14px; color:#B3B9C2; line-height:1.5">Move the tip onto the central crosshair with Controls on the picture, then save.</span>
+                    <div style="display:flex; gap:8px">
+                      <button class="btn btn-p" type="button" onClick="{{saveTune}}" style="height:40px; opacity:{{saveOp}}">Save</button>
+                      <button class="mbtn" type="button" onClick="{{cancelTune}}" style="height:40px">Cancel</button>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+     </div>
+    </aside>
+  </div>
+
+  <sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+    <div class="toast"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"></path></svg>{{toast}}</div>
+  </sc-if>
+
+  <footer style="height:72px; flex:none; display:flex; align-items:center; gap:12px; padding:0 20px; border-top:1px solid #22262C; background:#14171B">
+    <span style="font-size:14px; color:{{footColor}}">{{footText}}</span>
+    <div style="flex:1"></div>
+    <button class="btn" type="button">Back</button>
+    <a class="btn btn-p" href="#" style="opacity:{{nextOp}}">Next<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></a>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","options":["No tip yet","Tip on, go to the disc","Is the disc there?","Finding the tip","Calibrated","Adjusting by hand"],"default":"Tip on, go to the disc"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { init: false, phase: 'go', tip: 'A2', next: 'A3', rackOpen: false, moved: false, flash: '' };
+  }
+  renderVals() {
+    let st = this.state;
+    if (!st.init) {
+      const M = {
+        'No tip yet': { phase: 'notip', tip: null },
+        'Tip on, go to the disc': { phase: 'go' },
+        'Is the disc there?': { phase: 'check' },
+        'Finding the tip': { phase: 'find' },
+        'Calibrated': { phase: 'done' },
+        'Adjusting by hand': { phase: 'tune', moved: true }
+      };
+      st = Object.assign({}, st, M[this.props.scenario ?? 'Tip on, go to the disc'] || {});
+    }
+    const set = (p) => this.setState(Object.assign({}, st, p, { init: true }));
+    const ph = st.phase;
+    const tipOn = !!st.tip;
+    const busy = ph === 'find';
+
+    // rack: A1 used earlier, the tip on the pipette came from A2
+    const used = ['A1'];
+    if (st.tip) used.push(st.tip);
+    const rack = [];
+    'ABCDEFGH'.split('').forEach((r) => { for (let c = 1; c <= 12; c++) {
+      const id = r + c, isUsed = used.indexOf(id) >= 0, isNext = id === st.next && !tipOn;
+      rack.push({ id: id,
+        bg: isNext ? '#6CA6FF' : (isUsed ? 'transparent' : '#4A515B'),
+        bd: isNext ? '2px solid #E8EAED' : (isUsed ? '1.5px dashed #4A515B' : '1.5px solid transparent'),
+        cursor: isUsed || tipOn ? 'default' : 'pointer',
+        pick: () => { if (!isUsed && !tipOn) set({ next: id }); } });
+    } });
+
+    // the path (no numbers): each item is done, current, or later
+    const order = ['go', 'check', 'find', 'fine'];
+    const at = { notip: -1, go: 0, check: 1, find: 2, done: 3, tune: 3 }[ph];
+    const TITLE = {
+      go: ['Camera over the disc', 'Camera is over the disc'],
+      check: ['Disc in the picture', 'Disc is in the picture'],
+      find: ['Find the tip', 'Tip found'],
+      fine: ['Adjust by hand · optional', 'Adjust by hand · optional']
+    };
+    const path = order.map((k, i) => {
+      const done = at > i, current = at === i, later = !done && !current;
+      const last = i === order.length - 1;
+      return {
+        title: done ? TITLE[k][1] : TITLE[k][0],
+        done: done, current: current,
+        nodeBg: done ? '#16261E' : (current ? '#1A2130' : 'transparent'),
+        nodeBd: done ? '1.5px solid #1F3A2B' : (current ? '2px solid #6CA6FF' : '2px solid #3A4049'),
+        lineBg: done ? '#2E5A44' : '#2A2E35', lineOp: last ? 0 : 1,
+        titleColor: later ? '#6F7781' : '#E8EAED', weight: current ? 600 : 500,
+        padB: last ? 0 : (current ? 22 : 14),
+        hasRedo: done && (k === 'go' || k === 'find'),
+        redoLabel: k === 'go' ? 'Go again' : 'Calibrate again',
+        redo: () => set(k === 'go' ? { phase: 'check', flash: 'Camera is over the disc.' } : { phase: 'find', moved: false }),
+        isGo: current && k === 'go', isCheck: current && k === 'check', isFind: current && k === 'find',
+        isFineOffer: current && k === 'fine' && ph === 'done', isFineOpen: current && k === 'fine' && ph === 'tune'
+      };
+    });
+
+    const calChip = { notip: 'Not done', go: 'Not done', check: 'Not done', find: 'In progress', done: 'Done', tune: 'Done' }[ph];
+    const doneLike = ph === 'done' || ph === 'tune';
+    return {
+      showPill: ph === 'check' || ph === 'find',
+      pillText: ph === 'find' ? 'Calibrating the tip' : 'Waiting for you',
+      pillBg: ph === 'find' ? '#1A2130' : '#2A2213', pillFg: ph === 'find' ? '#8DB8FF' : '#F5D48A',
+      stop: () => set({ phase: 'check', flash: 'Stopped. Nothing was saved.' }),
+      robotOp: busy ? 0.4 : 1,
+      tipX: ph === 'tune' && st.moved ? 400 : 418, tipY: ph === 'tune' && st.moved ? 320 : 309,
+      tipShow: doneLike ? 1 : 0, scanShow: busy ? 1 : 0, foundShow: doneLike ? 1 : 0,
+      hasCamNote: busy || ph === 'done',
+      camNote: busy ? 'Looking for the tip…' : 'Tip found',
+      camNoteColor: busy ? '#8DB8FF' : '#3DD68C',
+      showControls: ph === 'tune',
+      nudge: () => set({ moved: true }),
+      // tip card
+      tipOn: tipOn, tipTitle: tipOn ? 'Tip ' + st.tip + ' is on' : 'No tip on',
+      tipIconFill: tipOn ? '#6CA6FF' : 'none', tipIconStroke: tipOn ? '#6CA6FF' : '#8A919B',
+      showRack: !tipOn || st.rackOpen, rackOpen: st.rackOpen,
+      rackLink: st.rackOpen ? 'Hide rack' : 'Show rack',
+      toggleRack: () => set({ rackOpen: !st.rackOpen }),
+      tipBtnOp: busy ? 0.4 : 1,
+      showPick: !tipOn, nextTip: st.next, rack: rack,
+      pickUp: () => set({ tip: st.next, next: 'A' + (parseInt(st.next.slice(1), 10) + 1), phase: 'go', flash: 'Tip ' + st.next + ' is on.' }),
+      dropTrash: () => { if (busy) return; set({ tip: null, phase: 'notip', rackOpen: false, flash: 'Tip dropped. Calibration needs a new one.' }); },
+      // calibration
+      calOp: tipOn ? 1 : 0.55, locked: !tipOn,
+      calChip: calChip,
+      calChipBg: doneLike ? '#16261E' : (busy ? '#1A2130' : '#22262C'), calChipFg: doneLike ? '#3DD68C' : (busy ? '#8DB8FF' : '#B3B9C2'),
+      path: path,
+      goToDisc: () => set({ phase: 'check', flash: 'Camera is over the disc.' }),
+      calibrate: () => set({ phase: 'find' }),
+      startTune: () => set({ phase: 'tune', moved: false }),
+      checkCross: () => set({ flash: 'The tip is at the crosshair. Look at the picture.' }),
+      saveTune: () => { if (st.moved) set({ phase: 'done', flash: 'Saved. The tip is on the crosshair.' }); },
+      saveOp: st.moved ? 1 : 0.4,
+      cancelTune: () => set({ phase: 'done', moved: false }),
+      footText: doneLike ? 'Tip calibrated.' : (tipOn ? 'Calibrate the tip to go on.' : 'Put a tip on, then calibrate it.'),
+      footColor: doneLike ? '#3DD68C' : '#B3B9C2',
+      nextOp: doneLike ? 1 : 0.4,
+      hasToast: !!st.flash, toast: st.flash
+    };
+  }
+}
+</script>
+</body>
+</html>

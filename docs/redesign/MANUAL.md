@@ -78,7 +78,7 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
 ```
 ┌ TopBar 64 ─ ⌂ Home › Manual pick ............ Light  Lock  Park  Retract | ⚙ Settings ┐
 ├ StepBar 56 ─ ✓Deck ─ ✓Tip ─ ✓Source ─ ✓Well center ─ (5) Run ─────────────────────────┤
-│ ┌──────────── camera picture (flex) ────────────┐ ┌ column 1, 400 ┐ ┌ column 2, 400 ┐ │
+│ ┌──────────── camera picture (4:3) ─────────────┐ ┌ column 1, 400 ┐ ┌ column 2, 400 ┐ │
 │ │ [tip · XYZ · step]      [Look at][Detect]     │ │ In place      │ │ Points        │ │
 │ │                         [layers][📷]          │ │ ① Aspirate    │ │  list         │ │
 │ │                         [23 cuboids found]    │ │ ② Dispense    │ │  …            │ │
@@ -90,9 +90,10 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
 
 - **Body:** padding 16 px vertical and 20 px horizontal; gaps of 16 px
   between the picture and the columns.
-- **The picture takes the rest of the width and the full body height.** It
-  is drawn with the existing `FeedRow` and `CameraView`; the picture keeps
-  its 4:3 frame shape and fills the box, letterboxed in `bg`.
+- **The picture is 4:3, as on every screen (`TIP.md` §2.1), in the width the
+  columns leave.** The columns keep their width, so at 1920×1080 it is about
+  1048 × 786, not the full body height. It is drawn with the existing
+  `FeedRow` and `CameraView`, letterboxed in `bg`.
 - **Column 1 (400 px), the work:**
   - **In place** card;
   - **Aspirate** FoldCard;

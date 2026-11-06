@@ -13,7 +13,7 @@ need the canvas runtime (`support.js`). Read them as source:
 | Main.dc.html | Home | 4 |
 | Profile.dc.html | Robot setup + all sheets (camera, calibration, platforms, positions), Reset | 5 |
 | AutoDeck.dc.html | Deck (shared step) | 6.1 |
-| AutoTip.dc.html | Tip + calibration (shared step) | 6.2 |
+| TipScreen.dc.html | Tip + calibration (shared step) | 6.2 |
 | AutoPlan.dc.html | Auto plan | 6.3 |
 | AutoBottom.dc.html | Dish bottom (shared step) | 6.4 |
 | AutoPicking.dc.html | Picking (tweak `situation`: ready, running, paused, waiting, done, no tip) | 6.5 |

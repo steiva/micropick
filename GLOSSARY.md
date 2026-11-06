@@ -84,6 +84,14 @@ _Avoid_: dish with cuboids, picking dish
 What Manual pick picks from, chosen on its Source step: the source dish or a plate on the deck. Chosen for the robot session; a plate moved or taken off the deck is not the source any more. Auto pick always picks from the source dish.
 _Avoid_: pick source, origin
 
+**Adjust by hand**:
+After a tip calibration, the operator moving the tip onto the central crosshair and saving where it ended up. Optional.
+_Avoid_: fine-tune, touch-up (on screen)
+
+**Drop in place**:
+Letting go of the tip where the pipette is, nothing moved. The tip does not go back into its rack.
+_Avoid_: put back
+
 **Reset setup**:
 Clearing the robot setup to start it again, after the user confirms. The deck and the picking settings are kept.
 
@@ -99,6 +107,10 @@ _Avoid_: mode, workflow
 
 **Step**:
 One screen of a task (a plan step is something else). A step is done when the state it sets up holds now, never because it was visited. Deck, Tip and Dish bottom are the same steps, with the same state, in every task that has them.
+
+**Path item**:
+One line of a path on screen: a thing the operator goes through once, in order, shown done, current or later, never numbered. Not a step of a task and not a plan step.
+_Avoid_: step (for this)
 
 **Run step**:
 The last step of every task, where the work itself is done. In Manual pick it holds no run: each action there is a short job.

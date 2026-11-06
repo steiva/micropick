@@ -59,6 +59,10 @@ Audience: Claude Code (implementation) and Ivan (review).
 
    Color always comes with an icon or a word, because users look at the screen
    from the side, standing.
+
+   Changed by `TIP.md` §2.4: one accent for what to do now, green only for
+   done, red also for error banners, disabled buttons as the normal one at
+   0.4.
 5. **Lead, don't lock.**
    - Steps are never locked; the user may open any step.
    - What is not ready yet is dimmed and says why in one line, with a button
@@ -154,6 +158,8 @@ This is a fixed **dark** theme. It does not follow the OS light/dark setting
 | Design reference size | 1440×900 (superseded by §12.6: 1920×1080) |
 
 ## 3. Shared components
+
+StepCard and the CameraView layout: changed by `TIP.md` §2.
 
 Build these first (phase 1). Each is a widget in `gui/widgets/` and is used
 everywhere it appears. Prototype names are in parentheses.
@@ -422,37 +428,7 @@ Every task screen uses TopBar + StepBar + content + Footer. Content is
 
 ### 6.2 Tip (shared step 2) — existing `calibration_pipette` page logic
 
-**Left: camera** with X/Y/Z only, and a JogPad.
-
-**Right, card "Put a tip on":**
-- **Tip box:** a Select of the tip boxes on the deck, e.g. "VWR tips, 200 µl ·
-  slot 10". The slot is known from the deck.
-- "Click the tip to take." and the 8×12 rack (used wells grey, chosen well
-  ringed).
-- **Take tip A3**, a fixed-width button that does not resize for "F12".
-- Once on: "Tip A3 is on." with **Drop in trash** and "Put back".
-- No tip box on the deck: a warn banner "There is no tip box on the deck. Add
-  it on the Deck step." with **Back to Deck**.
-
-**Right, card "Calibrate the tip"** (confirmed flow). Its steps are visible
-from the start and dimmed until a tip is on:
-1. **Start**: "The camera goes to the calibration position." → **Start tip
-   calibration**. The robot moves; the user must not be placing the disc
-   while it moves, so the disc is checked in step 2.
-2. **Disc on the calibration module**: "Check on the picture that the
-   crosshair disc is there. If not, put it on now." → "The disc is there".
-3. **Calibrate**: "The robot finds the tip under the camera by itself.
-   About 30 s." → Calibrate. This is the existing automatic routine: upper
-   camera finds the crosshair, the tip goes there with an offset, the lower
-   camera sees tip and crosshair and corrects.
-4. **Fine-tune by hand** (optional): nudge with the JogPad, then **Save** or
-   **Skip**.
-
-When done: green "Tip calibrated." with "Check: tip to crosshair" (the old
-Manual "Targets" check, moved here).
-
-**Removed:** dx/dy coarse offset (moves to Settings), the "Details" button,
-"A1 is the top-left corner", and the camera name chips.
+Replaced by `TIP.md`.
 
 ### 6.3 Plan (Auto step 3) — existing `routine` page logic
 
