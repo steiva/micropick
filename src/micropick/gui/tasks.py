@@ -4,7 +4,7 @@ A **task** is one of the three kinds of work started from Home, and a
 order of **steps** (REDESIGN §4, GLOSSARY):
 
     Auto pick    Deck → Tip → Dish bottom → Plan → Well center → Run
-    Manual pick  Deck → Tip → Source → Well center → Dish bottom → Run
+    Manual pick  Deck → Tip → Well center → Dish bottom → Run
     Liquid       Deck → Tip → Well center → Plan → Run
 
 The last step of every task is titled Run (the Run step, #65); in code
@@ -41,12 +41,11 @@ center: an unmeasured plate is used on purpose, after a warning (REDESIGN
 Skip (#63, #64): a plate not measured uses its drawing. A plan is no need
 of it (#130).
 
-Manual pick's steps follow its source (#88, `Session.source`), so `steps`
-and `optional` take the session. With a plate chosen Dish bottom is not
-one of them, Well center is required, for that plate only, and done once
-that plate is confirmed (`Session.plate_bottom_confirmed`). With the
-source dish, or nothing chosen, both are as above. Run needs the source
-confirmed, whichever it is (`_source_need`).
+Manual pick's steps are the same whatever is chosen (#131). Well center
+and Dish bottom are optional there, Dish bottom staying dimmed under its
+banner without the position over the dish, and Run needs only the Deck and
+the Tip. The plate chosen on Well center (`Session.chosen_plate`) is no
+need of any step.
 """
 
 from __future__ import annotations
@@ -65,7 +64,7 @@ __all__ = ["TASKS", "SETUP", "SETUP_TITLES", "MARKED_OPTIONAL", "OPTIONAL",
 TASKS = {
     "auto": ("Auto pick", ("deck", "tip", "dish_bottom", "plan",
                            "well_center", "picking")),
-    "manual": ("Manual pick", ("deck", "tip", "source", "well_center",
+    "manual": ("Manual pick", ("deck", "tip", "well_center",
                                "dish_bottom", "work")),
     "liquid": ("Liquid", ("deck", "tip", "well_center", "liquid_plan",
                           "run")),
@@ -73,23 +72,14 @@ TASKS = {
 
 _TITLES = {
     "deck": "Deck", "tip": "Tip", "plan": "Plan",
-    "source": "Source", "dish_bottom": "Dish bottom",
+    "dish_bottom": "Dish bottom",
     "picking": "Run", "work": "Run",
     "well_center": "Well center", "liquid_plan": "Plan", "run": "Run",
 }
 
 
-def _source_plate(session, task: str):
-    """The plate Manual pick picks from, else None."""
-    return session.source_plate if task == "manual" else None
-
-
-def steps(task: str, session=None) -> list[str]:
-    """The task's steps; with `session`, those it has now."""
-    out = list(TASKS[task][1])
-    if session is not None and _source_plate(session, task) is not None:
-        out.remove("dish_bottom")
-    return out
+def steps(task: str) -> list[str]:
+    return list(TASKS[task][1])
 
 
 def title(step: str) -> str:
@@ -173,7 +163,6 @@ _STEP_NEEDS = {
     "deck": "Check the deck first.",
     "tip": "Put a tip on first.",
     "plan": "Make the plan first.",
-    "source": "Choose the source first.",
     "dish_bottom": "Find the dish bottom first.",
     "liquid_plan": "Make the plan first.",
 }
@@ -190,7 +179,6 @@ _NEEDS = {
     "dish_bottom": (True, ("tip",), ("dish_position",)),
     "picking": (True, ("deck", "tip", "dish_bottom", "plan"),
                 ("shake_position", "dish_position")),
-    "source": (True, ("deck",), ()),
     "work": (True, ("deck", "tip"), ()),
     "well_center": (True, ("deck", "tip"), ()),
     "liquid_plan": (False, ("deck",), ()),
@@ -199,32 +187,12 @@ _NEEDS = {
 
 _PLATE_NEEDED = {"plan"}
 
-# Earlier steps a step needs in one task only, and what it says then:
-# Manual's Dish bottom is for the source dish.
-_TASK_NEEDS = {("manual", "dish_bottom"): {"source": _STEP_NEEDS["source"]}}
-
-
-def _source_need(session) -> Need:
-    """What Manual pick's Run needs: the source chosen, and confirmed."""
-    if session.source is None:
-        return Need("step", "source", _STEP_NEEDS["source"])
-    plate = session.source_plate
-    if plate is None:
-        return Need("step", "dish_bottom", _STEP_NEEDS["dish_bottom"])
-    return Need("step", "well_center",
-                f"Measure {plate.name} in slot {plate.slot} first.")
-
-
 def _needs(session, task: str, step: str) -> list[Need]:
     robot, earlier, setup = _NEEDS[step]
     if task == "liquid" and step == "tip":
         setup = ()
-    own = _TASK_NEEDS.get((task, step), {})
     out = [_ROBOT] if robot else []
     out += [Need("step", s, _STEP_NEEDS[s]) for s in earlier]
-    out += [Need("step", s, text) for s, text in own.items()]
-    if step == "work":
-        out.append(_source_need(session))
     if step in _PLATE_NEEDED:
         out.append(_PLATE)
     out += [Need("setup", k, SETUP[k][0]) for k in setup]
@@ -254,17 +222,12 @@ def _done(session, task: str, step: str) -> bool:
         # A plan restored from the last run is confirmed with Use this plan.
         routine = session.routine
         return routine is not None and not routine.needs_confirmation
-    if step == "source":
-        return session.source is not None
     if step == "dish_bottom":
         return session.is_confirmed("dish_bottom")
     if step == "picking":
         routine = session.routine
         return routine is not None and routine.is_done()
     if step == "well_center":
-        plate = _source_plate(session, task)
-        if plate is not None:
-            return session.plate_bottom_confirmed(plate.slot, plate.load_name)
         # Measured, or in Liquid skipped. The session imports this module:
         # here, not at the top.
         from .session import MEASURED, SKIPPED
@@ -289,8 +252,9 @@ def well_center_plates(session) -> list:
 
 # Steps a task can go past without, by task: Work is a toolbox, never
 # "done"; Well center is optional everywhere but Liquid, a plate not
-# measured using its drawing. Unless Manual pick picks from a plate.
-OPTIONAL = {"auto": {"well_center"}, "manual": {"well_center", "work"}}
+# measured using its drawing; Manual pick may not use the dish at all.
+OPTIONAL = {"auto": {"well_center"},
+            "manual": {"well_center", "dish_bottom", "work"}}
 
 
 # Steps whose number is in a dashed ring until done. A list of its own:
@@ -304,10 +268,7 @@ def marked_optional(task: str, step: str) -> bool:
     return step in MARKED_OPTIONAL[task]
 
 
-def optional(task: str, step: str, session=None) -> bool:
-    if (step == "well_center" and session is not None
-            and _source_plate(session, task) is not None):
-        return False
+def optional(task: str, step: str) -> bool:
     return step in OPTIONAL.get(task, ())
 
 
@@ -320,4 +281,4 @@ def step_state(session, task: str, step: str) -> StepState:
             and session.tip.attached is True):
         need = _TIP_CALIBRATION
     return StepState(_done(session, task, step), need,
-                     optional(task, step, session))
+                     optional(task, step))

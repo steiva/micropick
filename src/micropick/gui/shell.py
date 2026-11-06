@@ -53,7 +53,7 @@ from . import keys, log_bridge, tasks
 from .pages import (calibration_camera, calibration_pipette, camera_sheet,
                     dish_bottom, home, labware, liquid, liquid_plan, manual,
                     picking, platforms_sheet, position_sheet, robot_setup, routine,
-                    settings, source, well_center)
+                    settings, well_center)
 from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
@@ -81,7 +81,6 @@ PAGES = (
     ("tip_calibration", calibration_pipette.TITLE,
      calibration_pipette.PipetteCalibration),
     ("routine", routine.TITLE, routine.RoutinePage),
-    ("source", source.TITLE, source.SourcePage),
     ("dish_bottom", dish_bottom.TITLE, dish_bottom.DishBottomPage),
     ("picking", picking.TITLE, picking.PickingPage),
     ("well_center", well_center.TITLE, well_center.WellCenterPage),
@@ -94,7 +93,7 @@ PAGES = (
 # The page each step shows.
 STEP_PAGES = {
     "deck": "labware", "tip": "tip_calibration", "plan": "routine",
-    "source": "source", "dish_bottom": "dish_bottom",
+    "dish_bottom": "dish_bottom",
     "picking": "picking", "work": "manual",
     "well_center": "well_center", "liquid_plan": "liquid_plan", "run": "liquid",
 }
@@ -495,7 +494,7 @@ class MainWindow(QMainWindow):
 
     def _list_steps(self) -> None:
         """The StepBar, for the steps the task has now."""
-        self._steps = tasks.steps(self.task, self.session)
+        self._steps = tasks.steps(self.task)
         self.step_bar.set_steps(
             [tasks.title(s) for s in self._steps],
             [tasks.marked_optional(self.task, s) for s in self._steps])
@@ -506,7 +505,7 @@ class MainWindow(QMainWindow):
         self._set_task(task)
         steps = self._steps
         first = next((s for s in steps
-                      if not tasks.optional(task, s, self.session)
+                      if not tasks.optional(task, s)
                       and not tasks.step_state(self.session, task, s).done),
                      steps[-1])
         self.show_step(first)
@@ -634,13 +633,7 @@ class MainWindow(QMainWindow):
         self._show_lock_button()
         if self.task is None or self.step is None:
             return
-        steps = tasks.steps(self.task, self.session)
-        if steps != self._steps:
-            self._list_steps()
-        if self.step not in steps:
-            # The source changed under a step it takes away.
-            self.open_task(self.task)
-            return
+        steps = self._steps
         states = [tasks.step_state(self.session, self.task, s)
                   for s in steps]
         index = steps.index(self.step)

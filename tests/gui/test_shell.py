@@ -14,7 +14,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QPushButton        # noqa: E402
 
 from micropick.gui.app import Options                          # noqa: E402
-from micropick.gui.session import SOURCE_DISH                  # noqa: E402
 from micropick.gui.shell import MainWindow                     # noqa: E402
 
 
@@ -246,16 +245,46 @@ def test_switching_from_auto_to_manual_keeps_the_shared_steps(app, window):
     window.home.tiles["auto"].clicked.emit()
     assert window.step == "dish_bottom"            # the first not done
     window.session.confirm("dish_bottom")
-    window.session.choose_source(SOURCE_DISH)
     window.top.home_clicked.emit()
     window.home.tiles["manual"].clicked.emit()
     assert window.top.path == ["Manual pick"]
     assert window.step == "work"                   # Well center optional
     assert window.current_page() is window.manual_page
     assert _chips(window) == [("Deck", True), ("Tip", True),
-                              ("Source", True), ("Well center", False),
+                              ("Well center", False),
                               ("Dish bottom", True), ("Run", False)]
     assert window.footer.isVisible() and not window.footer.next.isVisible()
+
+
+def test_manual_pick_opens_on_run_with_only_the_deck_and_the_tip(app, window):
+    _connect(app, window)
+    _tip_calibrated(window)
+    window.home.tiles["manual"].clicked.emit()
+    assert window.step == "work"
+    assert [title for title, _done in _chips(window)] == [
+        "Deck", "Tip", "Well center", "Dish bottom", "Run"]
+    assert window.manual_page.isEnabled() and not window.dim.isVisible()
+
+
+def test_next_passes_well_center_and_a_dimmed_dish_bottom(app, window):
+    _connect(app, window)
+    _tip_calibrated(window)
+    window.open_task_step("manual", "well_center")
+    window.footer.next.click()
+    assert window.step == "dish_bottom"
+    assert window.banner.label.text() == (
+        "Set the position over the dish first.")
+    assert not window.dish_bottom_page.isEnabled()
+    window.footer.next.click()
+    assert window.step == "work"
+
+
+def test_finish_by_hand_opens_run_with_the_robot_lost(app, window):
+    from micropick.gui.session import RunState
+    _connect(app, window)
+    window.session._lose_run(RunState(), restarted=True)
+    window.picking_page._finish_by_hand()
+    assert (window.task, window.step) == ("manual", "work")
 
 
 def test_no_profile_is_named_or_chosen(app, window):
@@ -290,15 +319,14 @@ def test_dish_bottom_is_its_own_page_and_done_by_use_it_not_by_next(
     window.session.profile.positions["observe"] = (200.0, 150.0, 120.0)
     window.session.profile.calibration.dish_bottom_set_at = datetime.now(
         timezone.utc)
-    window.session.choose_source(SOURCE_DISH)
-    window.home.tiles["manual"].clicked.emit()     # opens on Dish bottom
+    window.home.tiles["auto"].clicked.emit()       # opens on Dish bottom
     page = window.dish_bottom_page
     assert window.current_page() is page
-    assert window.top.path == ["Manual pick"]
+    assert window.top.path == ["Auto pick"]
     assert not window.footer.next.isEnabled()
     page.use_button.click()
     assert window.footer.next.isEnabled()
-    assert _chips(window)[4] == ("Dish bottom", True)
+    assert _chips(window)[2] == ("Dish bottom", True)
 
 
 def test_dish_bottom_shows_the_z_a_raise_from_the_tip_step_ends_at(

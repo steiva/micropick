@@ -22,7 +22,7 @@ from micropick.core.deck import slot_center                      # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.detector import Detection                     # noqa: E402
 from micropick.gui.pages.manual import ManualPage                # noqa: E402
-from micropick.gui.session import SOURCE_DISH, Session           # noqa: E402
+from micropick.gui.session import Session                        # noqa: E402
 from micropick.gui.widgets.point_list import BAD                 # noqa: E402
 from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 
@@ -1096,15 +1096,6 @@ def test_by_hand_the_bottom_follows_the_spot_from_slot_to_slot(
     _wait(app, page)
     assert at[0][2] == pytest.approx(66.5, abs=0.05)
     _aim_at(app, page, session, *A1)
-    assert page.aspirate_card.summary.full.startswith(
-        "By clicking · 0.5 mm above the bottom of slot 5 · ")
-
-
-def test_by_hand_the_bottom_does_not_depend_on_the_source_chosen(
-        app, page, session):
-    _by_hand_on_a_plate(app, page, session)
-    session.choose_source(SOURCE_DISH)
-    app.processEvents()
     assert page.aspirate_card.summary.full.startswith(
         "By clicking · 0.5 mm above the bottom of slot 5 · ")
 
@@ -2428,13 +2419,37 @@ def test_at_a_point_are_chips_of_the_points_list(app, page, session):
     assert page.aspirate_card.summary.full.startswith("M1 · Z 70 mm")
 
 
-def test_aspirate_opens_on_the_source_steps_plate(app, page, session):
+def test_in_a_well_opens_on_the_plate_chosen_on_well_center(app, page, session):
     _plate(session, 2)
     _plate(session, 5)
-    session.choose_source("5")
+    session.choose_plate(5)
     page.show()
     app.processEvents()
     assert page.source_wells.chosen()[0] == "5"
+
+
+def test_the_plate_chosen_gives_way_to_a_click_on_run(app, page, session):
+    _plate(session, 2)
+    _plate(session, 5)
+    session.choose_plate(5)
+    page.show()
+    app.processEvents()
+    page.source_wells.plate.slot_chosen.emit(2)
+    page.hide()
+    page.show()
+    app.processEvents()
+    assert page.source_wells.chosen()[0] == "2"
+    assert session.chosen_plate.slot == "5"        # Run's click binds nothing
+
+
+def test_with_no_plate_chosen_in_a_well_opens_on_the_first_plate(
+        app, page, session):
+    _plate(session, 2)
+    _plate(session, 5)
+    page.show()
+    app.processEvents()
+    assert session.chosen_plate is None
+    assert page.source_wells.chosen()[0] == "2"
 
 
 def _plate(session, slot):

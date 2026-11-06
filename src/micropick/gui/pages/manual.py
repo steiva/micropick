@@ -141,7 +141,7 @@ field's tooltip say which (#89). From:
   click aims and does all that.
 * **At a point** - a memo or saved point as a chip (`PointChips`), at its own
   Z, so no height here.
-* **In a well** - a plate the robot session holds, the Source step's first
+* **In a well** - a plate the robot session holds, the plate chosen on Well center first
   (`WellPicker`), and its well, a click on the plate in real proportions.
 
 Aspirate is enabled once there is a source - By clicking always has one, so
@@ -1983,8 +1983,8 @@ class ManualPage(QWidget):
         deck map with them."""
         self._show_deck()
         plates = self.session.plates()
-        source = self.session.source_plate
-        self.source_wells.set_default(None if source is None else source.slot)
+        chosen = self.session.chosen_plate
+        self.source_wells.set_default(None if chosen is None else chosen.slot)
         for picker in (self.source_wells, self.target_wells):
             picker.set_plates(plates)
 
@@ -2160,7 +2160,7 @@ class ManualPage(QWidget):
         # a jog pad over a blank rectangle.
         self.opener.ensure(self.session.upper_camera_label)
         self._show_camera()
-        # The Source step and a plan made elsewhere say nothing to this page;
+        # Well center and a plan made elsewhere say nothing to this page;
         # nor does the size window dragged on Picking.
         self._show_plan()
         self._show_size_window()

@@ -169,7 +169,7 @@ from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
 from ..detector import wanted_model
 from ..readiness import DISH_POSITION, SHAKE_POSITION, readiness_checks
-from ..session import SOURCE_DISH, Session
+from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (compact, danger_button, heading,
                              muted_label, primary_button, quiet_button,
@@ -538,9 +538,6 @@ class PickingPage(QWidget):
 
     def _finish_by_hand(self) -> None:
         self.done_card.hide()
-        # The run picked from the source dish: Work does not ask again.
-        if self.session.robot is not None:
-            self.session.choose_source(SOURCE_DISH)
         self.session.task_requested.emit("manual", "work")
 
     def _on_routine_changed(self, routine) -> None:

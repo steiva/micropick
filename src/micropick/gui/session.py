@@ -76,7 +76,7 @@ from .readiness import DISH_POSITION, SHAKE_POSITION  # noqa: E402
 from .tasks import SETUP_POSITIONS, SETUP_TITLES   # noqa: E402
 
 __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
-           "SOURCE_DISH", "SourcePlate", "ChosenPlate",
+           "ChosenPlate",
            "MemoPoint", "MEASURED", "SKIPPED", "NOT_MEASURED",
            "DEFAULT_PROFILE_NAME", "MOCK_PROFILE_NAME", "REUSABLE_STATUSES"]
 
@@ -94,9 +94,6 @@ DEFAULT_PROFILE_NAME = "default"
 # A plate's well center (`Session.well_center_status`): measured, its
 # drawing used on purpose for this robot session, or neither yet.
 MEASURED, SKIPPED, NOT_MEASURED = "measured", "skipped", "not measured"
-
-# What Manual pick picks from when it is not a plate (`Session.source`).
-SOURCE_DISH = "dish"
 
 # Labware that holds no destination. A tip rack has wells and an ordering
 # like a plate, and delivering a cuboid into one is a mistake nothing
@@ -256,16 +253,6 @@ class ChosenPlate:
     slot: str
     load_name: str
     labware_id: str
-
-
-@dataclass(frozen=True)
-class SourcePlate:
-    """A plate Manual pick picks from (`Session.source`)."""
-
-    slot: str
-    load_name: str
-    labware_id: str
-    name: str                                   # on screen
 
 
 @dataclass
@@ -490,8 +477,6 @@ class Session(QObject):
         # What the operator confirmed in this robot session (`confirm`):
         # key -> the robot session it was confirmed in.
         self._confirmed: dict[str, str | None] = {}
-        # What Manual pick picks from, as chosen (`source`).
-        self._source: str | SourcePlate | None = None
         self._chosen_plate: ChosenPlate | None = None
         # When the robot was last homed from here (`home`), UTC: a tip
         # calibration measured before it is to do again.
@@ -557,44 +542,6 @@ class Session(QObject):
         self._chosen_plate = ChosenPlate(slot, entry.load_name,
                                          entry.labware_id)
         self.confirm(_CHOSEN_PLATE)
-
-    # -- the source ------------------------------------------------------------
-    #
-    # What Manual pick picks from (#88). Nothing is chosen until the operator
-    # says, and the choice holds as a confirmation does; a plate's only while
-    # that very plate stays in its slot: moved, it is loaded again under
-    # another id.
-
-    @property
-    def source(self) -> str | SourcePlate | None:
-        """SOURCE_DISH, a `SourcePlate`, or None while nothing is chosen."""
-        if not self.is_confirmed(_SOURCE):
-            return None
-        if isinstance(self._source, SourcePlate):
-            entry = self.run_state.labware.get(self._source.slot)
-            if entry is None or entry.labware_id != self._source.labware_id:
-                return None
-        return self._source
-
-    @property
-    def source_plate(self) -> SourcePlate | None:
-        source = self.source
-        return source if isinstance(source, SourcePlate) else None
-
-    def choose_source(self, source: str) -> None:
-        """SOURCE_DISH, or the slot of a plate on the deck."""
-        if self._robot_session_id() is None:
-            raise SessionError("No robot session.")
-        if source != SOURCE_DISH:
-            plate = next((p for p in self.plates() if p[0] == source), None)
-            if plate is None:
-                raise SessionError(f"No plate in slot {source}.")
-            slot, entry, definition = plate
-            source = SourcePlate(slot, entry.load_name, entry.labware_id,
-                                 definition.display_name)
-        self._source = source
-        log.info("source: %s", source)
-        self.confirm(_SOURCE)
 
     # -- memo points ---------------------------------------------------------
 
@@ -2536,7 +2483,6 @@ class Session(QObject):
         log.info("session closed")
 
 
-_SOURCE = "source"
 _CHOSEN_PLATE = "chosen plate"
 
 

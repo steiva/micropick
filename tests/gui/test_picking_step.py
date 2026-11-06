@@ -358,8 +358,6 @@ def test_wells_left_empty_are_finished_by_hand_on_manual_work(
     app.processEvents()
     assert (window.task, window.step) == ("manual", "work")
     assert window.current_page() is window.manual_page
-    # The run picked from the source dish: Work is not dimmed asking.
-    assert window.session.source == "dish"
     manual = window.manual_page
     assert window.session.routine is routine       # the plan carried over
     assert manual.dispense_card.is_open()
