@@ -549,3 +549,18 @@ QToolButton#sectionToggle {
     background: transparent;
 }
 QToolButton#sectionToggle:checked { background: transparent; }
+
+/* A path (`widgets.path_steps`): an item's title, and a link on a done one. */
+QLabel#pathTitle { font-size: 15px; font-weight: 500; color: @text; }
+QLabel#pathTitle[state="current"] { font-weight: 600; }
+QLabel#pathTitle[state="later"] { color: @path-later; }
+QPushButton#pathLink {
+    background: transparent;
+    border: none;
+    color: @accent-hover;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0;
+}
+QPushButton#pathLink:hover { color: @info-text; }
+QPushButton#pathLink:disabled { color: @faint; }

@@ -29,12 +29,16 @@ COLORS: dict[str, str] = {
     "line": "#22262C",            # dividers, panel borders
     "card-border": "#23272E",
     "control-border": "#2E333B",  # buttons, inputs
+    "path-ring": "#3A4049",       # a path's later node
+    "path-line": "#2A2E35",
+    "path-line-done": "#2E5A44",
     # Text, strongest first.
     "text": "#E8EAED",
     "text-2": "#C9CED6",          # secondary text, icon buttons
     "text-3": "#B3B9C2",          # descriptions
     "muted": "#8A919B",           # CAPS captions, units
     "faint": "#5B626C",           # chevrons, empty slots
+    "path-later": "#6F7781",      # a path item not reached
     # Meaning.
     "accent": "#6CA6FF",          # action, current step, focus
     "accent-hover": "#8DB8FF",
@@ -43,6 +47,7 @@ COLORS: dict[str, str] = {
     "info-text": "#C9DCFF",
     "ok": "#3DD68C",              # done, saved
     "ok-bg": "#16261E",
+    "ok-border": "#1F3A2B",
     "warn": "#F5B841",            # waiting, needs a choice
     "warn-bg": "#2A2213",
     "warn-text": "#F5D48A",
