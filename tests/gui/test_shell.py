@@ -279,6 +279,19 @@ def test_next_passes_well_center_and_a_dimmed_dish_bottom(app, window):
     assert window.step == "work"
 
 
+def test_liquid_opens_past_well_center_with_nothing_measured(app, window):
+    from micropick.config.labware import resolve_definition
+    _connect(app, window)
+    _tip_calibrated(window)
+    window.session.load_labware(
+        resolve_definition("corning_96_wellplate_360ul_flat"), 5)
+    window.home.tiles["liquid"].clicked.emit()
+    assert window.step == "liquid_plan"
+    window.step_bar.clicked.emit(2)                # Well center
+    assert window.step == "well_center"
+    assert window.footer.next.isEnabled()
+
+
 def test_finish_by_hand_opens_run_with_the_robot_lost(app, window):
     from micropick.gui.session import RunState
     _connect(app, window)

@@ -31,14 +31,13 @@ Deck is done by fact (#39): the robot connected, something on the deck
 and no deck problem - no confirmation, so a change to the deck clears
 nothing. A step done by a confirmation (`Session.confirm`) is confirmed
 by its screen: Dish bottom by Save dish bottom or Use it, the
-Liquid plan by Use this plan, Run by a liquid run that ended, a plate by
-"Skip this plate" (`Session.skip_plate`). Well center counts the plates
-on the deck (`well_center_plates`), the same in every task, and is done
-while there are some and every one is measured, measurements of earlier
-days included; a new plate takes the mark away. Run does not need Well
-center: an unmeasured plate is used on purpose, after a warning (REDESIGN
-§6.8). In Manual pick and Auto pick Well center is optional and has no
-Skip (#63, #64): a plate not measured uses its drawing. A plan is no need
+Liquid plan by Use this plan, Run by a liquid run that ended. Well center
+counts the plates on the deck (`well_center_plates`), the same in every
+task, and is done while there are some and every one is measured,
+measurements of earlier days included; a new plate takes the mark away.
+Run does not need Well center: an unmeasured plate is used on purpose,
+after a warning (REDESIGN §6.8). Well center is optional in every task
+(#63, #64, #132): a plate not measured uses its drawing. A plan is no need
 of it (#130).
 
 Manual pick's steps are the same whatever is chosen (#131). Well center
@@ -228,13 +227,11 @@ def _done(session, task: str, step: str) -> bool:
         routine = session.routine
         return routine is not None and routine.is_done()
     if step == "well_center":
-        # Measured, or in Liquid skipped. The session imports this module:
-        # here, not at the top.
-        from .session import MEASURED, SKIPPED
-        counted = (MEASURED, SKIPPED) if task == "liquid" else (MEASURED,)
+        # The session imports this module: here, not at the top.
+        from .session import MEASURED
         plates = well_center_plates(session)
         return bool(plates) and all(
-            session.well_center_status(slot, entry.load_name) in counted
+            session.well_center_status(slot, entry.load_name) == MEASURED
             for slot, entry, _definition in plates)
     if step == "liquid_plan":
         return not session.liquid_plan_problems()
@@ -251,10 +248,11 @@ def well_center_plates(session) -> list:
 
 
 # Steps a task can go past without, by task: Work is a toolbox, never
-# "done"; Well center is optional everywhere but Liquid, a plate not
-# measured using its drawing; Manual pick may not use the dish at all.
+# "done"; Well center is optional everywhere, a plate not measured using
+# its drawing; Manual pick may not use the dish at all.
 OPTIONAL = {"auto": {"well_center"},
-            "manual": {"well_center", "dish_bottom", "work"}}
+            "manual": {"well_center", "dish_bottom", "work"},
+            "liquid": {"well_center"}}
 
 
 # Steps whose number is in a dashed ring until done. A list of its own:
@@ -269,7 +267,7 @@ def marked_optional(task: str, step: str) -> bool:
 
 
 def optional(task: str, step: str) -> bool:
-    return step in OPTIONAL.get(task, ())
+    return step in OPTIONAL[task]
 
 
 def step_state(session, task: str, step: str) -> StepState:

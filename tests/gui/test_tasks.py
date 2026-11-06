@@ -216,12 +216,14 @@ def test_work_is_an_optional_step_never_done(session):
     assert work.need.key == "tip"
 
 
-def test_well_center_is_done_when_every_plate_is_measured_or_skipped(session):
+def test_liquids_well_center_is_optional_and_done_when_all_are_measured(
+        session):
     from micropick.config.labware import resolve_definition
     from micropick.config.schema import WellCenter
     _connect(session)
     session.load_profile("mock")
     assert not tasks.step_state(session, "liquid", "well_center").done
+    assert tasks.step_state(session, "liquid", "well_center").optional
     session.load_labware(resolve_definition("corning_96_wellplate_360ul_flat"),
                          5)
     session.load_labware(resolve_definition("corning_96_wellplate_360ul_flat"),
@@ -231,15 +233,14 @@ def test_well_center_is_done_when_every_plate_is_measured_or_skipped(session):
         slot=5, load_name="corning_96_wellplate_360ul_flat",
         offset=(0.1, 0.2, 0.0), well="A1"))
     assert not tasks.step_state(session, "liquid", "well_center").done
-    session.skip_plate(6, "corning_96_wellplate_360ul_flat")
+    session.profile.deck.well_centers.append(WellCenter(
+        slot=6, load_name="corning_96_wellplate_360ul_flat",
+        offset=(0.1, 0.2, 0.0), well="A1"))
     assert tasks.step_state(session, "liquid", "well_center").done
-    session.new_run()                     # skipping holds for one session
-    assert not tasks.step_state(session, "liquid", "well_center").done
 
 
 def test_manuals_well_center_is_optional_and_done_when_all_are_measured(
         session):
-    """#63: no Skip there, so only a measurement makes it done."""
     from micropick.config.labware import resolve_definition
     from micropick.config.schema import WellCenter
     _connect(session)
@@ -249,8 +250,6 @@ def test_manuals_well_center_is_optional_and_done_when_all_are_measured(
     session.load_labware(resolve_definition(plate), 6)
     state = tasks.step_state(session, "manual", "well_center")
     assert state.optional and not state.done
-    assert not tasks.step_state(session, "liquid", "well_center").optional
-    session.skip_plate(6, plate)                # Liquid's, not Manual's
     session.profile.deck.well_centers.append(WellCenter(
         slot=5, load_name=plate, offset=(0.1, 0.2, 0.0), well="A1"))
     assert not tasks.step_state(session, "manual", "well_center").done

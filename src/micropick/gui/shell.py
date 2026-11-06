@@ -516,8 +516,7 @@ class MainWindow(QMainWindow):
         self.show_step(step)
 
     def show_step(self, step: str) -> None:
-        # Liquid's Tip step has no calibration; its Well center has Skip,
-        # elsewhere optional.
+        # Liquid's Tip step has no calibration; Well center opens by task.
         self.well_center_page.set_task(self.task)
         self.tip_calibration_page.set_task(self.task)
         self._show(STEP_PAGES[step], [tasks.TASKS[self.task][0]],

@@ -14,9 +14,9 @@ watches the robot. On the right "Well center and depth", a
 `MiniDeckDropdown` (#130) with every plate on the deck lit, in every task
 (`tasks.well_center_plates`), each tile saying Measured or Not measured;
 one line for the selected plate - "Measured today", "Not measured: using
-the drawing" (`Session.well_center_status`) - then Last time and Skip,
-and last, so that nothing stands under what folds, one card, no title (the
-selector stands over it), no chip (its row says it), holding a path
+the drawing" (`Session.well_center_status`) - then Last time, and last, so
+that nothing stands under what folds, one card, no title (the selector
+stands over it), no chip (its row says it), holding a path
 (`widgets.path_steps`, #127), none with no plate on the deck:
 
 - **Tip to a well:** a well on the plate's map (`WellPicker`), then Move
@@ -42,16 +42,14 @@ A click on the selector chooses the plate for the robot session
 opens on it, else in Auto pick on the plan's plate, else on the first on
 the deck (`_opening`). The plate Save goes on to is shown, not chosen.
 
-**Skip this plate, use the drawing** marks it skipped for this robot
-session (`Session.skip_plate`), in Liquid only: elsewhere the step is
-optional and a plate not measured uses its drawing anyway (`set_task`).
+The step is optional in every task: a plate not measured uses its drawing.
 In Manual pick a measured plate also shows "Last time: Z 66.40 mm · 3
 days ago" (`well_center.measured_bottom`) with **Use it**, as Dish bottom
 does: Use it, or Save, confirms that plate's bottom for this robot session
 (`Session.plate_bottom_confirmed`). A measurement made on another module
 height is not the plate's (`DeckConfig.well_center`): not measured.
-The step is done while there are plates and every one is measured, or in
-Liquid skipped (`tasks.step_state`).
+The step is done while there are plates and every one is measured
+(`tasks.step_state`).
 
 A plate a run goes into keeps its center: Save is gray while one does
 (`well_center.run_using`). Robot commands go through the jog panel's
@@ -70,11 +68,11 @@ from PySide6.QtWidgets import (QHBoxLayout, QLabel, QSizePolicy, QSpacerItem,
 
 from ...workflows import well_center
 from .. import labware_kinds, tasks
-from ..session import MEASURED, SKIPPED, Session, SessionError
+from ..session import MEASURED, Session, SessionError
 from ..theme import SIZES, SPACING, mono_font
 from ..theme.factory import (caption, card, double_spin_box, heading,
-                             muted_label, primary_button, quiet_button,
-                             reserve, scroll_column, secondary_button)
+                             muted_label, primary_button, reserve,
+                             scroll_column, secondary_button)
 from ..widgets.jog_pad import StepChip
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
@@ -93,10 +91,7 @@ TITLE = "Well center"
 PANEL_WIDTH = 440
 MAP_PX = 340
 
-INTRO = ("Measure every plate you will use. A plate you skip still works, "
-         "with the depth from its drawing.")
-# Where there is no Skip: the step is optional.
-INTRO_OPTIONAL = "A plate not measured uses its drawing."
+INTRO = "A plate not measured uses its drawing."
 NO_PLATE = "No plate on the deck."
 USING_THE_DRAWING = "Not measured: using the drawing"
 
@@ -223,11 +218,6 @@ class WellCenterPage(QWidget):
         reserve(self.last_card)
         column.addWidget(self.last_card)
 
-        self.skip_button = quiet_button("Skip this plate, use the drawing",
-                                        panel)
-        self.skip_button.clicked.connect(self._skip)
-        column.addWidget(self.skip_button)
-
         column.addWidget(self._path_card(panel))
         # What the map leaves as it folds: the operator may have scrolled
         # down to Move the tip, and a column that shrinks at the job's end
@@ -293,10 +283,8 @@ class WellCenterPage(QWidget):
     # -- the plates ----------------------------------------------------------
 
     def set_task(self, task: str) -> None:
-        """The task the step is shown in: Skip in Liquid only, and the
-        plate it opens on."""
+        """The task the step is shown in: the plate it opens on."""
         self._task = task
-        self.skip_button.setVisible(task == "liquid")
         self._list_plates()
         self.select_plate(*self._opening())
 
@@ -306,14 +294,9 @@ class WellCenterPage(QWidget):
     def _keys(self) -> list[tuple[str, str]]:
         return [(slot, entry.load_name) for slot, entry, _d in self._plates()]
 
-    def _show_intro(self) -> None:
-        self.intro.setText(INTRO if self._task == "liquid"
-                           else INTRO_OPTIONAL)
-
     def _list_plates(self) -> None:
         """After a change to the deck: the selection is kept while its
         plate is still there, else the page opens again."""
-        self._show_intro()
         if self._labware_id() != self._selected_id or self._selected is None:
             self._selected = None
             self.select_plate(*self._opening())
@@ -351,12 +334,11 @@ class WellCenterPage(QWidget):
         return (keys or [(None, None)])[0]
 
     def _first_to_do(self) -> tuple:
-        """The first plate not measured or skipped; else the first; else
-        (None, None)."""
+        """The first plate not measured; else the first; else (None,
+        None)."""
         keys = self._keys()
         todo = [k for k in keys
-                if self.session.well_center_status(*k) not in (MEASURED,
-                                                               SKIPPED)]
+                if self.session.well_center_status(*k) != MEASURED]
         return (todo or keys or [(None, None)])[0]
 
     def _plate_clicked(self, slot: int) -> None:
@@ -500,17 +482,6 @@ class WellCenterPage(QWidget):
         self.select_plate(*self._first_to_do())
         self.refresh()
 
-    def _skip(self) -> None:
-        if self._selected is None:
-            return
-        try:
-            self.session.skip_plate(*self._selected)
-        except SessionError as exc:
-            self.jog.refuse(describe_error(exc))
-            return
-        show_toast(self, "Using the drawing.")
-        self.select_plate(*self._first_to_do())
-
     def _use_last(self) -> None:
         if self._selected is None:
             return
@@ -575,8 +546,6 @@ class WellCenterPage(QWidget):
                   else None)
         self.plate_status.setText(status_text(status, self._center())
                                   if chosen else NO_PLATE)
-        self.skip_button.setEnabled(chosen and status != MEASURED
-                                    and status != SKIPPED)
         self._show_last()
         self._show_depth()
 

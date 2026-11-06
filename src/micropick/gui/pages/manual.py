@@ -141,7 +141,8 @@ field's tooltip say which (#89). From:
   click aims and does all that.
 * **At a point** - a memo or saved point as a chip (`PointChips`), at its own
   Z, so no height here.
-* **In a well** - a plate the robot session holds, the plate chosen on Well center first
+* **In a well** - a plate the robot session holds, the plate chosen on Well
+  center first
   (`WellPicker`), and its well, a click on the plate in real proportions.
 
 Aspirate is enabled once there is a source - By clicking always has one, so

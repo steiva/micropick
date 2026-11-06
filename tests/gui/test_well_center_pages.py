@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint                                # noqa: E402
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication,   # noqa: E402
-                               QMessageBox, QScrollArea)
+                               QMessageBox, QPushButton, QScrollArea)
 
 from micropick.config.labware import resolve_definition          # noqa: E402
 from micropick.config.schema import DeckModule, WellCenter       # noqa: E402
@@ -450,10 +450,9 @@ def test_the_pad_works_on_every_item(app, session, presses):
     page.deleteLater()
 
 
-def test_a_measured_or_skipped_plate_opens_on_the_first_item(app, session):
+def test_a_plate_measured_or_not_opens_on_the_first_item(app, session):
     session.load_labware(resolve_definition(PLATE), 2)
     session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "C3", depth_mm=10.0)
-    session.skip_plate(2, PLATE)
     page = step_page.WellCenterPage(session)
     _settle(app, page.jog)
     for slot in (5, 2):
@@ -582,16 +581,6 @@ def test_the_map_opens_on_the_well_last_measured(app, session):
     page.deleteLater()
 
 
-def test_a_plate_measured_earlier_can_not_be_skipped(app, session):
-    # #80: a stored center is used, so Skip, which says the drawing, is gray.
-    session.set_well_center(5, PLATE, (0.1, 0.2, -1.0), "B2", depth_mm=10.0)
-    page = _step(app, session)
-    page.select_plate(5, PLATE)
-    assert page.skip_button.isVisibleTo(page)
-    assert not page.skip_button.isEnabled()
-    page.deleteLater()
-
-
 def test_a_robot_held_is_a_refusal_and_nothing_is_said_under_the_tip(
         app, session):
     page = _step(app, session)
@@ -643,24 +632,14 @@ def test_keys_puts_the_keys_bound_on_the_pads_buttons(app, session):
     page.deleteLater()
 
 
-def test_skip_is_done_for_the_well_center_step(app, session):
-    from micropick.gui import tasks
-    page = _step(app, session)
-    assert not tasks.step_state(session, "liquid", "well_center").done
-    page.skip_button.click()
-    assert tasks.step_state(session, "liquid", "well_center").done
-    assert not page.skip_button.isEnabled()
-    page.deleteLater()
-
-
-@pytest.mark.parametrize("task, skip", [("liquid", True),
-                                        ("manual", False)])
-def test_skip_is_only_in_liquid(app, session, task, skip):
-    """#63: optional in Manual pick, where a plate not measured uses its
-    drawing; Liquid asks about every plate."""
+@pytest.mark.parametrize("task", ["auto", "manual", "liquid"])
+def test_every_task_says_the_same_of_a_plate_not_measured(app, session, task):
     page = _step(app, session)
     page.set_task(task)
-    assert page.skip_button.isHidden() is not skip
+    assert page.intro.text() == "A plate not measured uses its drawing."
+    assert page.plate_status.text() == "Not measured: using the drawing"
+    assert "Skip this plate, use the drawing" not in [
+        button.text() for button in page.findChildren(QPushButton)]
     page.deleteLater()
 
 
@@ -775,7 +754,7 @@ def test_a_center_a_run_uses_is_not_replaced_under_it(app, session):
     page.deleteLater()
 
 
-def test_liquids_well_center_step_is_this_page_and_skip_marks_it_done(
+def test_liquids_well_center_step_is_this_page_and_next_passes_it(
         app, tmp_path, monkeypatch):
     from micropick.gui import tasks
     from micropick.gui.shell import MainWindow
@@ -795,16 +774,14 @@ def test_liquids_well_center_step_is_this_page_and_skip_marks_it_done(
         session.tip_changed.emit(session.tip)
         app.processEvents()
         assert page.isEnabled()
-        page.skip_button.click()
-        app.processEvents()
-        assert tasks.step_state(session, "liquid", "well_center").done
+        assert not tasks.step_state(session, "liquid", "well_center").done
         assert w.footer.next.isEnabled()
     finally:
         session.shutdown()
         w.deleteLater()
 
 
-def test_manuals_well_center_step_is_this_page_without_skip(
+def test_manuals_well_center_step_is_this_page(
         app, tmp_path, monkeypatch):
     """#63: optional, so Next is enabled with nothing measured."""
     from micropick.gui.shell import MainWindow
@@ -818,10 +795,7 @@ def test_manuals_well_center_step_is_this_page_without_skip(
         w.open_task_step("manual", "well_center")
         page = w.stack.currentWidget()
         assert isinstance(page, step_page.WellCenterPage)
-        assert page.skip_button.isHidden()
         assert w.footer.next.isEnabled()
-        w.open_task_step("liquid", "well_center")
-        assert not page.skip_button.isHidden()
     finally:
         session.shutdown()
         w.deleteLater()

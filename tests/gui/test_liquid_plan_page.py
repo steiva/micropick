@@ -395,8 +395,6 @@ def test_an_unmeasured_plate_warns_with_measure_now_and_use_anyway(app, window,
     assert not page.not_measured.isVisibleTo(page)
     _choose_plate(page, 2)                         # another plate warns
     assert page.not_measured.isVisibleTo(page)
-    window.session.skip_plate(2, SIX)              # skipped: no warning
-    assert not page.not_measured.isVisibleTo(page)
     page.measure_button.click()
     assert window.step == "well_center"
 
