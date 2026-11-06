@@ -32,6 +32,10 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
   installer update the installed program. A built app keeps its data in `Documents\micropick`
   (or `MICROPICK_ROOT`), not beside the exe (`paths.root`).
 
+- Slice picking: `slices.bat` (a desktop shortcut points to it),
+  `micropick-slices` or `python -m micropick.slices` (`--mock` for no
+  hardware). Not in the Windows build.
+
 ## Versions
 
 One source: `src/micropick/_version.py` (pyproject reads it). A release:
@@ -898,6 +902,28 @@ page's Keys card (`AppSettings.keys`, only the changed ones stored). The
 jog panel and Manual pick's Run bind from it, rebind on save, and the pad
 names the keys as bound. A new robot key is an action there, never a
 hard-coded QShortcut.
+
+### Slice picking is a program of its own
+
+`micropick.slices` is one window for a **fixed** microscope (a Digital
+Microscope, 1600x1200, frames mirrored as they were in the notebook it
+replaces): the tool moves in the picture, the opposite of the gantry camera,
+so no `PixelMap`, `camera_moves` or tip offset. It imports the robot's rules
+(`Motion`, `JogController`, `RobotLease`, `hardware`) and the look (`gui.theme`,
+`CameraView`, `JogPad`, `TipGauge`, `WellPicker`, `gui.keys`), never `gui.session`
+or `JogPanel`; `slices.rig.Rig` is its session, and it keeps its state in
+`slices.json` beside `settings.json`, in no profile. It and the main program
+are not run together: a new robot session in one is a robot restarted for the other.
+
+Its map (`slices.calibration`) is affine, the robot's pose for a pixel, fitted
+from the V of `blade_template.png` at four points about where the tool stands, at
+its height. A pair is the pose read and the pixel found there, never sorted into
+place; a point not found stops it and the tool goes back; nothing is stored unless
+`judge` and `verify` pass, a map of another device or resolution is not used. Each
+limit is a constant, kept because the notebook's bad fits sent a click to X -706.
+A click is the one move not at the travel height (`Motion.slide_to`): straight
+across at the tool's height, refused unless the tool is in the picture
+(`click_refusal`), so it never crosses the deck.
 
 ### Words on screen: short and neutral
 
