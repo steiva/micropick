@@ -23,7 +23,8 @@ from ..config.labware import LabwareError, resolve_definition
 from ..config.schema import DeckModule
 from ..hardware import labware, robot_clock, tips
 from ..hardware.camera import CameraManager
-from ..hardware.protocols import prepare_to_aspirate, require_ok, xyz
+from ..hardware.protocols import (lights_on, prepare_to_aspirate, require_ok,
+                                  set_lights, xyz)
 from ..hardware.robot_lease import RobotLease
 from ..workflows import manual as moves
 from ..workflows.jog import JogController, Reached
@@ -129,6 +130,7 @@ class Rig:
         self.run_id: str | None = None
         self.labware: dict = {}
         self.tip = Tip(attached=None)
+        self.lights: bool | None = None
         self.aspirated_at: tuple | None = None
         self._blown_out = False
         self._lock = threading.Lock()
@@ -156,6 +158,7 @@ class Rig:
         if self.ready and (not usable or run.get("id") != self.run_id):
             log.info("the robot's session changed: starting over")
             self.forget()
+        self.lights = lights_on(self.api)
         if self.ready:
             return "ready"
         if not usable or self.lease.busy:
@@ -216,6 +219,16 @@ class Rig:
 
     def _reached(self, said: str | None = None) -> Reached:
         return Reached(self.pose(), said)
+
+    def toggle_lights(self) -> None:
+        """From what the robot reports, not from what the button showed.
+        Moves nothing, so no lease."""
+        found = lights_on(self.api)
+        if found is None:
+            raise SliceRefused("The lights cannot be read.")
+        set_lights(self.api, not found)
+        self.lights = lights_on(self.api)
+        log.info("lights %s", "on" if self.lights else "off")
 
     # -- platforms and labware -----------------------------------------------
 

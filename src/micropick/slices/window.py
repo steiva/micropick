@@ -144,6 +144,7 @@ class SliceWindow(QMainWindow):
         self._opening = None
         self._looking = None
         self._reading = None
+        self._lighting = None
         self._deck_shown = None
         self._tip_was_on = False
         self._stopped_at: float | None = None
@@ -159,6 +160,11 @@ class SliceWindow(QMainWindow):
 
         self.gauge = TipGauge(capacity_ul=300.0)
         self.view.add_top_left_widget(self.gauge)
+        self.light_button = secondary_button("Light")
+        self.light_button.setCheckable(True)
+        self.light_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.light_button.clicked.connect(self._toggle_lights)
+        self.view.add_top_widget(self.light_button)
         self.stop_button = danger_button("STOP")
         self.stop_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.stop_button.clicked.connect(self._stop)
@@ -470,6 +476,7 @@ class SliceWindow(QMainWindow):
             return
         self._robot_word = "Connecting to the robot…"
         self.rig.forget()
+        self.rig.lights = None
         self._pose = None
         self._refresh()
 
@@ -498,6 +505,23 @@ class SliceWindow(QMainWindow):
     def _homed(self, result) -> None:
         self._robot_word = "Connected."
         self._job_done(result, None)
+
+    def _toggle_lights(self) -> None:
+        worker = Worker(self.rig.toggle_lights, background=True,
+                        what="switching the lights")
+        worker.finished.connect(lambda _result: self._lights_done())
+        worker.failed.connect(self._lights_failed)
+        self._lighting = worker
+        worker.start()
+        self._refresh()
+
+    def _lights_done(self) -> None:
+        self._lighting = None
+        self._refresh()
+
+    def _lights_failed(self, reason: str) -> None:
+        self.refuse(reason)
+        self._lights_done()
 
     # -- deck and tip --------------------------------------------------------
 
@@ -835,6 +859,10 @@ class SliceWindow(QMainWindow):
         self.home_button.setEnabled(rig.api is not None
                                     and not rig.lease.busy)
         self.stop_button.setEnabled(self._worker is not None)
+        # The robot's answer, not the click: it is what the button shows.
+        self.light_button.setChecked(rig.lights is True)
+        self.light_button.setEnabled(rig.lights is not None
+                                     and self._lighting is None)
         self.pad.set_enabled_reason(free, "" if free else reason)
 
         self._show_deck()
@@ -883,7 +911,8 @@ class SliceWindow(QMainWindow):
         self._keep_fields()
         self.rig._save()
         self._monitor.stop()
-        for worker in (self._looking, self._reading, self._opening):
+        for worker in (self._looking, self._reading, self._opening,
+                       self._lighting):
             if worker is not None:
                 worker.wait(3000)
         if self.camera is not None:

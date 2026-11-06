@@ -925,6 +925,10 @@ A click is the one move not at the travel height (`Motion.slide_to`): straight
 across at the tool's height, refused unless the tool is in the picture
 (`click_refusal`), so it never crosses the deck.
 
+Light over the picture switches the rail lights, as the main program's: no lease,
+from what the robot reports, the button showing the robot's answer (`Rig.lights`,
+read at each look), gray while not known.
+
 ### Words on screen: short and neutral
 
 An explanation on screen is one short sentence of what a control does or
