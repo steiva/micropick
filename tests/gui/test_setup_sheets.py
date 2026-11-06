@@ -521,6 +521,9 @@ def test_the_shake_position_carries_its_prerequisites(app, window):
     _open(window, "shake_position")
     sheet = window.position_sheet
     assert window.top.path == ["Robot setup", "Shake position"]
+    # Controls fold on the Tip page only: here the pad lowers the tip.
+    assert not sheet.jog.pad.folded
+    assert window.tip_calibration_page.jog.pad.folded
     assert [title for title, _ in _steps(sheet)] == [
         "1. Put a tip box on the deck", "2. Put a tip on",
         "3. Calibrate the tip", "4. Put the source dish in its holder",

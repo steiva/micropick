@@ -113,7 +113,8 @@ def test_the_fold_is_the_screens_and_survives_leaving_it(app, window):
 def test_the_tip_steps_two_pads_are_one_screens_fold(window):
     """Its fine-tune pad takes the main pad's place on the same picture."""
     block = window.tip_calibration_page.calibration
+    assert block.jog.pad.folded and block.touch_jog.pad.folded   # at the start
     block.jog.pad.fold_button.click()
-    assert block.touch_jog.pad.folded
+    assert not block.touch_jog.pad.folded
     block.touch_jog.pad.fold_button.click()
-    assert not block.jog.pad.folded
+    assert block.jog.pad.folded

@@ -23,8 +23,8 @@ It folds the pad into that corner, the header alone left over the picture
 Keys stays in that header, so its list shows folded too. The fold is the
 screen's: a page is built once and its pad stays with it, so it holds for
 as long as the program runs and no other page's follows (§10.20); the Tip
-step's two pads, on one picture, share theirs. Picking folds its own from
-the start.
+step's two pads, on one picture, share theirs. Picking and the Tip step
+fold their own from the start.
 
 The pad's own containers are `plain` (transparent): qdarktheme fills a bare
 QWidget with the window's color, an opaque block on the translucent plate.

@@ -287,7 +287,8 @@ header there - the title is the fold toggle, its arrow before it, apart
 from Undo step and Keys, which stay (`JogPad.set_folded`, the keys still
 bound). The fold is the screen's for as long as the program runs: a page
 is built once and keeps its pad, so no state of its own and no other
-page's follows; Picking starts folded, the others open, and the Tip step's
+page's follows; Picking and the Tip step start folded, the others open (a sheet
+hosting the Tip blocks keeps its own pad), and the Tip step's
 two pads share one (`fold_changed`). It only says what was pressed - the panel moves as before (lease, envelope,
 `run_job`), the pad grayed with the reason while the robot is not free.
 While the pad is on screen, folded or not, its step is the status plate's
@@ -787,12 +788,14 @@ while an earlier calibration holds; during Find the tip the routine has no point
 to stop at. What stops a start is said in the current item, a failure in a red
 banner. The footer's sentence is the page's `footer_line` ("Tip calibrated."
 green). Done, Find the tip reads Tip found with the link Redo, which goes back
-through the disc (no Check button); then the optional fine-tune, no
-fold: "Optional: move the tip onto the central crosshair by hand on the
-picture, then Save.", at once the lower camera and the XY pad at 0.05 mm
-while the tip is over the crosshair, else "The tip is not over the
-crosshair."; Save gray until a step, a short job, not a run; left with
-a step not saved, Save / Discard is asked. While the picture is the lower camera's, the page's own pad goes
+through the disc (no Check button); then, with the manual adjustment on in
+Settings, the path's last item, Adjust by hand · optional: **Adjust by hand**,
+gray with "The tip is not over the crosshair." while it is not (leaving raises
+the tip, Redo brings it back), opens Controls, the lower camera and the XY pad at
+0.05 mm. Save gray until a step, a short job, not a run; Cancel saves nothing and
+leaves the tip where it is; left with a step not saved, Save / Discard is asked.
+A step counts while the tip is in line with the crosshair: raised straight up it
+can still be saved, moved elsewhere it is dropped, its pose no offset. While the picture is the lower camera's, the page's own pad goes
 through `TipTarget.axes` too (`JogPanel.set_view_axes`), so an arrow
 moves the tip its way on that turned, mirrored picture. Leaving the
 step raises a tip below the travel height (`Motion.raise_tip` through

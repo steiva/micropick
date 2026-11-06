@@ -1459,13 +1459,17 @@ tip box and a 384 plate at hand.
   No numbers on the path, no red mark unless something failed.
 
 - [ ] **Fine-tune by hand.**
-  In the Calibrate card under the path, no fold: at
-  once the lower camera and the pad (XY only, 0.05 mm), Save gray. The
+  After a calibration Adjust by hand · optional is the path's current item,
+  Controls still folded, the step on the status plate, the keys moving the
+  tip. Adjust by hand: Controls open (XY only, 0.05 mm), Save gray, Cancel. The
   left arrow (and the left key) moves the tip left on the picture, not
-  up. One step: Save lights; Save: "Fine-tune saved.", gray again, no
-  pill. Another step, then Next or Home: "Save the changes?" over what is
-  shown next; Discard keeps the saved offset. Move the tip away: "The tip
-  is not over the crosshair.", no pad.
+  up. One step: Save lights; Save: "Fine-tune saved.", Adjust by hand again, no
+  pill. Adjust, a step, Cancel: nothing saved, the tip stays. Adjust, a step,
+  then Next or Home: "Save the changes?" over what is shown next; Discard keeps
+  the saved offset. Adjust, a step, Park: the step is gone, nothing is asked.
+  Coming back: Adjust by hand gray, "The tip is not over the crosshair.", until
+  Redo. Manual adjustment off in Settings: the path ends on Tip found. The shake
+  position's sheet keeps its pad open.
 
 - [ ] **Arrows over the lower camera.**
   With the manual adjustment off in Settings, after a calibration the

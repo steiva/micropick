@@ -10,6 +10,10 @@ the third for fixes.
 
 ## Unreleased
 
+- Tip: the fine-tune is now the path's last item, Adjust by hand, with Save and
+  Cancel; it no longer comes up by itself. Controls start folded on the step, the
+  keys still bound. A step not saved is dropped once the tip is moved elsewhere,
+  where it used to be saved as a wrong offset.
 - Tip: the card says the tip's state at a glance, a drawn tip and "Tip A2 is on"
   or "No tip on", the tip box under it. Take tip is now Pick up. With a tip on the
   rack folds away behind Show rack, and the Calibrate card moves up with it.

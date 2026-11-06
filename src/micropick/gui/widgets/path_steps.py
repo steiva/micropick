@@ -197,6 +197,8 @@ class PathSteps(QWidget):
         """An item that does not apply now: not on the path, the line ending
         at the one before it."""
         row = self._rows[key]
+        if row.hidden == hidden:
+            return
         row.hidden = hidden
         row.box.setVisible(not hidden)
         self._show({k: r.state for k, r in self._rows.items()})

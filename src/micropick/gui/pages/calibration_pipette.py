@@ -45,17 +45,24 @@ What stops a start is said in the item, a failure in a red banner under the
 path. Liquid's Tip step has no calibration (`set_task`): it is done once a tip
 is on. The footer's sentence is `PipetteCalibration.footer_line`.
 
-In the same card, optional (when Settings has the manual adjustment on),
-the fine-tune by hand: at once after Calibrate, the lower camera and the
-pad at `TOUCH_UP_STEP_MM`, XY only, while the tip is over the crosshair,
-where the calibration leaves it - else "The tip is not over the
-crosshair.". No fold: it is one sentence and Save. Left with a step not
-saved, the step asks Save / Discard (`unsaved`). With no calibration since the
-program started (the tip calibrated in an earlier start, same tip and
-robot session), the crosshair is the pixel map's at the middle of the
-picture from the calibration position. Its Save is gray until a step was
-taken, and stores the offset the tip is at now (`method` "auto+manual")
-as a short job, not a run.
+The path's last item, optional (only with the manual adjustment on in
+Settings; else the path ends on Tip found), is the fine-tune: **Adjust by
+hand**, gray with "The tip is not over the crosshair." while it is not, as
+after coming back to the step - leaving raises the tip, and Redo brings it
+back. Adjusting is the lower camera and the pad open at `TOUCH_UP_STEP_MM`,
+XY only. Left with a step not saved, the step asks Save / Discard
+(`unsaved`). With no calibration since the program started (the tip
+calibrated in an earlier start, same tip and robot session), the crosshair
+is the pixel map's at the middle of the picture from the calibration
+position. Its Save is gray until a step was taken, and stores the offset the
+tip is at now (`method` "auto+manual") as a short job, not a run; Cancel
+saves nothing and leaves the tip where it is. A step taken means nothing
+once the tip is off the crosshair in XY; raised straight up, as leaving
+does before Save / Discard is asked, it still holds.
+
+Controls start folded on the page (TIP.md §3.3), the jog, Undo step and the
+keys all there: the path's buttons move the robot. That is the page's rule, a
+sheet hosting the blocks keeps its own pad.
 
 **The calibration is one run.** Start claims the robot's lease as a run
 (STOP and "Calibrating the tip" in the top bar) and one worker goes
@@ -165,6 +172,7 @@ NO_RACK = "There is no tip box on the deck. Add it on the Deck step."
 TIP_DROPPED = "Tip dropped. Calibration needs a new one."
 CALIBRATED = "Tip calibrated."
 NOTHING_SAVED = "Nothing was saved."
+TIP_AWAY = "The tip is not over the crosshair."
 STOPPED = f"Stopped. {NOTHING_SAVED}"
 FIRST_A_TIP = "Put a tip on first."
 # What the run shows while it goes on: a plain state, the routine's own
@@ -184,7 +192,8 @@ RUN_HOLDER = "pipette calibration"
 MOVING, DISC, MEASURING = "moving", "disc", "measuring"
 
 # The path's items, and its end.
-GO, CHECK, FIND, END = "go", "check", "find", "end"
+GO, CHECK, FIND, FINE, END = "go", "check", "find", "fine", "end"
+FINE_TITLE = "Adjust by hand · optional"
 
 
 class TouchUpAborted(RuntimeError):
@@ -529,6 +538,8 @@ class TipCalibrationBlock(QObject):
         self._crosshair: tuple[float, float] | None = None
         # Where the gantry is, by whichever panel read it last.
         self._pose: tuple[float, float, float] | None = None
+        # Adjust by hand was clicked, and neither saved nor canceled yet.
+        self._adjusting = False
         # A fine-tune step was taken since the tip was put on the crosshair.
         self._nudged = False
         self.opener = CameraOpener(session, self)
@@ -597,6 +608,8 @@ class TipCalibrationBlock(QObject):
             PathItem(FIND, "Find the tip", "Tip found",
                      _body("The robot finds the tip under the camera by "
                            "itself.", self.spinner), link_text="Redo"),
+            PathItem(FINE, FINE_TITLE, FINE_TITLE,
+                     self._fine_body(box, parent)),
         ], box)
         self.path.link_clicked.connect(lambda _key: self._start())
         column.addWidget(self.path)
@@ -609,31 +622,51 @@ class TipCalibrationBlock(QObject):
         self.end_note.setWordWrap(True)
         column.addWidget(self.end_note)
 
-        self.tune_box = QWidget(box)
-        self.tune_box.setObjectName("plain")
-        tune = QVBoxLayout(self.tune_box)
-        tune.setContentsMargins(0, SPACING, 0, 0)
-        tune.addWidget(wrapped(
-            "Optional: move the tip onto the central crosshair by hand on "
-            "the picture, then Save."))
-        self.tune_away = wrapped("The tip is not over the crosshair.")
-        tune.addWidget(self.tune_away)
-        # XY only: a Z step here pushes the tip into the disc. Its pad is
-        # over the picture; the panel itself shows nothing.
-        self.touch_jog = JogPanel(self.session, shortcut_host=parent,
-                                  xy_only=True, parent=self.tune_box)
-        self.touch_jog.show_position_on(self.view)
-        self.touch_jog.hide()
-        tune.addWidget(self.touch_jog)
-        self.tune_save_button = primary_button("Save", box)
-        self.tune_save_button.clicked.connect(self._save_tune)
-        tune.addWidget(self.tune_save_button, 0, Qt.AlignmentFlag.AlignLeft)
-        column.addWidget(self.tune_box)
-
         self._dim = QGraphicsOpacityEffect(box)
         self._dim.setOpacity(NO_TIP_OPACITY)
         box.setGraphicsEffect(self._dim)
         return box
+
+    def _fine_body(self, box: QWidget, host) -> QWidget:
+        """The fine item's body: Adjust by hand offered, or adjusting."""
+        self.adjust_button = primary_button("Adjust by hand", box)
+        self.adjust_button.clicked.connect(self._adjust)
+        self.tune_away = muted_label(TIP_AWAY, box)
+        reserve(self.tune_away)
+        self.offer_box = _body("Optional. If the tip is not on the central "
+                               "crosshair, move it there by hand.",
+                               self.adjust_button, self.tune_away)
+
+        self.tune_save_button = primary_button("Save", box)
+        self.tune_save_button.clicked.connect(self._save_tune)
+        self.tune_cancel_button = secondary_button("Cancel", box)
+        self.tune_cancel_button.clicked.connect(self._cancel_tune)
+        buttons = QWidget(box)
+        buttons.setObjectName("plain")
+        row = QHBoxLayout(buttons)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(SPACING)
+        row.addWidget(self.tune_save_button)
+        row.addWidget(self.tune_cancel_button)
+        row.addStretch(1)
+        # XY only: a Z step here pushes the tip into the disc. Its pad is
+        # over the picture; the panel itself shows nothing.
+        self.touch_jog = JogPanel(self.session, shortcut_host=host,
+                                  xy_only=True, parent=box)
+        self.touch_jog.show_position_on(self.view)
+        self.touch_jog.hide()
+        self.adjust_box = _body("Move the tip onto the central crosshair with "
+                                "Controls on the picture, then save.",
+                                buttons, self.touch_jog)
+        self.adjust_box.hide()
+
+        body = QWidget(box)
+        body.setObjectName("plain")
+        column = QVBoxLayout(body)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.addWidget(self.offer_box)
+        column.addWidget(self.adjust_box)
+        return body
 
     @property
     def done(self) -> bool:
@@ -788,6 +821,7 @@ class TipCalibrationBlock(QObject):
             self.refresh()
             return
         self._outcome = self._failure = ""
+        self._adjusting = self._nudged = False
         self._disc_seen = False
         self._phase = MOVING
         worker = Worker(job, what="calibrating the pipette", lease=lease)
@@ -842,30 +876,59 @@ class TipCalibrationBlock(QObject):
     def _on_nudge(self) -> None:
         # Only a step of the fine-tune's own: the panel's other jobs (a
         # read, a move from elsewhere) are nothing to save.
-        if self._tuning():
+        if self._adjusting and self._tuning():
             self._nudged = True
         self.refresh()
 
-    def _over_crosshair(self) -> bool:
-        """The tip is over the crosshair, by the pose last read: within
-        `TUNE_RANGE_MM` of it plus the saved offset, at the module height."""
+    def _in_line_with_crosshair(self) -> bool:
+        """By the pose last read, the tip is within `TUNE_RANGE_MM` of the
+        crosshair plus the saved offset in XY, at whatever height."""
         profile = self.session.profile
         offset = profile.calibration.pipette_offset if profile else None
         crosshair = self._crosshair_xy()
         if self._pose is None or offset is None or crosshair is None:
             return False
-        x, y, z = self._pose
-        module = float(profile.calibration.tip_target.module_height)
-        return (math.hypot(x - crosshair[0] - offset.dx,
-                           y - crosshair[1] - offset.dy) <= TUNE_RANGE_MM
-                and abs(z - module) <= TUNE_RANGE_MM)
+        x, y, _z = self._pose
+        return math.hypot(x - crosshair[0] - offset.dx,
+                          y - crosshair[1] - offset.dy) <= TUNE_RANGE_MM
+
+    def _over_crosshair(self) -> bool:
+        """The tip is over the crosshair, by the pose last read: in line with
+        it, at the module height."""
+        if not self._in_line_with_crosshair():
+            return False
+        module = float(
+            self.session.profile.calibration.tip_target.module_height)
+        return abs(self._pose[2] - module) <= TUNE_RANGE_MM
 
     def _tuning(self) -> bool:
-        """The fine-tune's pad is up: calibrated, the fine-tune on in
+        """The fine-tune can be done: calibrated, the fine-tune on in
         Settings, nothing running, the tip over the crosshair - at once
         after Calibrate, which leaves it there."""
         return (self.session.settings.tip_cal_touch_up and not self.running
                 and self.done and self._over_crosshair())
+
+    def _adjust(self) -> None:
+        """Adjust by hand: the fine-tune's pad up and open."""
+        if self._tuning():
+            self._adjusting = True
+            self.touch_jog.pad.set_folded(False)
+            self.refresh()
+
+    def _cancel_tune(self) -> None:
+        """Nothing saved; the tip stays where it is."""
+        self._adjusting = self._nudged = False
+        self.refresh()
+
+    def _follow_tuning(self, tuning: bool) -> None:
+        """A step not saved holds while the tip it moved is on, in line with
+        the crosshair; adjusting holds while the fine-tune can go on, or such
+        a step is left to answer for."""
+        if not (self.done and self.session.settings.tip_cal_touch_up
+                and self._in_line_with_crosshair()):
+            self._nudged = False
+        if not tuning and not self._nudged:
+            self._adjusting = False
 
     def _save_tune(self) -> None:
         """The offset the tip is at now, read and saved: a short job."""
@@ -887,7 +950,7 @@ class TipCalibrationBlock(QObject):
             profile.save_calibration(backup=False)
             log.info("pipette offset fine-tuned: dx %+.3f dy %+.3f mm",
                      offset.dx, offset.dy)
-            self._nudged = False
+            self._adjusting = self._nudged = False
             self.session.profile_changed.emit(profile)
             show_toast(self.box, "Fine-tune saved.")
             self.refresh()
@@ -958,17 +1021,19 @@ class TipCalibrationBlock(QObject):
         self.session.run_activity_changed.emit()
         running = self.running
         tuning = self._tuning()
+        self._follow_tuning(tuning)
+        adjusting = self._adjusting and tuning
         # The host's jog panel only while nothing runs and the fine-tune's
         # pad is down: hidden, its keys are given up - one pad, one set.
-        self.touch_jog.setVisible(tuning)
-        self.jog.setVisible(not running and not tuning)
-        if tuning:
+        self.touch_jog.setVisible(adjusting)
+        self.jog.setVisible(not running and not adjusting)
+        if adjusting:
             profile = self.session.profile
             # The lower camera is turned and mirrored: through TipTarget.axes
             # the arrows move the tip the way they point on its picture.
             self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
             self.touch_jog.set_step(TOUCH_UP_STEP_MM)
-        self._show(running, tuning)
+        self._show(running, tuning, adjusting)
         # The upper camera finds the disc; the lower one sees the tip.
         lower = (self._phase == MEASURING
                  or not running and self.done and self._over_crosshair())
@@ -990,7 +1055,7 @@ class TipCalibrationBlock(QObject):
         if self.running:
             return {MOVING: GO, DISC: CHECK, MEASURING: FIND}[self._phase]
         if measured:
-            return END
+            return FINE if self.session.settings.tip_cal_touch_up else END
         return GO if on else None
 
     def _show_path(self, place: str | None) -> None:
@@ -1013,7 +1078,7 @@ class TipCalibrationBlock(QObject):
             self.chip.style().unpolish(self.chip)
             self.chip.style().polish(self.chip)
 
-    def _show(self, running: bool, tuning: bool) -> None:
+    def _show(self, running: bool, tuning: bool, adjusting: bool) -> None:
         session = self.session
         on = session.tip.attached is True
         # Dimmed until a tip is on; never while its own run goes on.
@@ -1025,6 +1090,7 @@ class TipCalibrationBlock(QObject):
         problems = [] if running else self._readiness()
         phase = self._phase
         place = self._place(on, measured)
+        self.path.set_hidden(FINE, not session.settings.tip_cal_touch_up)
         self._show_path(place)
         self._show_chip(running, measured)
 
@@ -1041,18 +1107,20 @@ class TipCalibrationBlock(QObject):
         note = "\n".join(lines)
         self.checks.setText(MOVING_LINE if phase == MOVING else note)
         self.checks.setVisible(bool(self.checks.text()))
-        self.end_note.setText(note if place == END else "")
+        self.end_note.setText(note if place in (FINE, END) else "")
         self.end_note.setVisible(bool(self.end_note.text()))
         self.failure.set_text(self._failure)
         self.failure.setVisible(bool(self._failure) and not dimmed)
 
-        result = measured and not running
-        self.tune_box.setVisible(result
-                                 and session.settings.tip_cal_touch_up)
+        with laid_out_at_once(self.box):
+            self.offer_box.setVisible(not self._adjusting)
+            self.adjust_box.setVisible(self._adjusting)
+        self.adjust_button.setEnabled(tuning and free)
         self.tune_away.setVisible(not tuning)
         self.tune_save_button.setEnabled(
-            tuning and self._nudged and not self.touch_jog.busy
+            adjusting and self._nudged and not self.touch_jog.busy
             and not session.robot_lease.busy)
+        self.tune_save_button.setToolTip("" if tuning else TIP_AWAY)
 
     # -- cameras -------------------------------------------------------------
 
@@ -1119,6 +1187,8 @@ class PipetteCalibration(QWidget):
         self.jog.show_position_on(self.view)
         self.calibration = TipCalibrationBlock(session, self.jog, self.view,
                                                parent=self)
+        # The path's buttons move the robot here. Both pads: they share it.
+        self.jog.pad.set_folded(True)
         self.tip = TipOnBlock(session, self.jog, calibration=self.calibration,
                               parent=self)
         # One column: the steps read top to bottom.
@@ -1145,8 +1215,8 @@ class PipetteCalibration(QWidget):
                      "drop_here_button"):
             setattr(self, name, getattr(self.tip, name))
         for name in ("path", "chip", "go_button", "yes_button", "spinner",
-                     "checks", "tune_box", "tune_away", "touch_jog",
-                     "tune_save_button"):
+                     "checks", "adjust_button", "tune_away", "touch_jog",
+                     "tune_save_button", "tune_cancel_button"):
             setattr(self, name, getattr(self.calibration, name))
         self._refresh()
 
@@ -1185,8 +1255,7 @@ class PipetteCalibration(QWidget):
         self.calibration._save_tune()
 
     def discard_unsaved(self) -> None:
-        self.calibration._nudged = False
-        self.calibration.refresh()
+        self.calibration._cancel_tune()
 
     def _refresh(self, *_args) -> None:
         self.calibration.refresh()
