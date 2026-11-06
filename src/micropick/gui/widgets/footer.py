@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 from ..theme import COLORS, SIZES
 from ..theme.factory import primary_button, secondary_button
 from ..theme.icons import icon
+from ..theme.tokens import faded
 
 __all__ = ["STATUS_TONES", "Footer"]
 
@@ -65,7 +66,7 @@ class Footer(QFrame):
         self.next.setMinimumWidth(120)
         self.next.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self.next.setIcon(icon("next", COLORS["on-accent"], 16,
-                               disabled=COLORS["faint"]))
+                               disabled=faded(COLORS["on-accent"])))
         self.next.clicked.connect(self.next_clicked)
         self.finish = primary_button("Finish", self)
         self.finish.setMinimumWidth(120)

@@ -13,8 +13,8 @@ a light variant would have had to keep on another background.
 
 from __future__ import annotations
 
-__all__ = ["COLORS", "GROUP_COLORS", "MONO_FALLBACKS", "MONO_FONT", "SIZES",
-           "UI_FALLBACKS", "UI_FONT"]
+__all__ = ["COLORS", "DISABLED_OPACITY", "GROUP_COLORS", "MONO_FALLBACKS",
+           "MONO_FONT", "SIZES", "UI_FALLBACKS", "UI_FONT", "faded"]
 
 COLORS: dict[str, str] = {
     # Surfaces, darkest first.
@@ -43,6 +43,7 @@ COLORS: dict[str, str] = {
     "accent": "#6CA6FF",          # action, current step, focus
     "accent-hover": "#8DB8FF",
     "on-accent": "#0B1220",
+    "on-danger": "#FFFFFF",
     "accent-bg": "#17233A",       # busy pill, info banner
     "info-text": "#C9DCFF",
     "ok": "#3DD68C",              # done, saved
@@ -68,6 +69,19 @@ COLORS: dict[str, str] = {
     "dish-bg": "#2C1A24",
     "point": "#4FC9E0",           # memo points
 }
+
+# A disabled button is the normal one at this opacity over the card (TIP.md
+# §2.4). A style sheet has no opacity, so `@<token>-off` is the color worked out.
+DISABLED_OPACITY = 0.4
+
+
+def faded(color: str, over: str = COLORS["card"]) -> str:
+    """`color` at `DISABLED_OPACITY` over `over`, as a hex."""
+    channels = [DISABLED_OPACITY * int(color[i:i + 2], 16)
+                + (1 - DISABLED_OPACITY) * int(over[i:i + 2], 16)
+                for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(c):02X}" for c in channels)
+
 
 # Liquid groups, in order; the list repeats past its end.
 GROUP_COLORS: tuple[str, ...] = (

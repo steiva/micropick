@@ -26,7 +26,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtWidgets import QApplication
 
-from .tokens import (COLORS, MONO_FALLBACKS, MONO_FONT, OVERLAY_BG,
+from .tokens import (COLORS, MONO_FALLBACKS, MONO_FONT, OVERLAY_BG, faded,
                      OVERLAY_BORDER, SIZES, UI_FALLBACKS, UI_FONT)
 
 __all__ = ["COLORS", "OVERLAY_BG", "OVERLAY_BORDER", "RADIUS", "SIZES",
@@ -126,7 +126,9 @@ def stylesheet() -> str:
     text = _QSS.read_text(encoding="utf-8")
     # The one file a stylesheet points at: a Select's arrow (§3), drawn
     # because the native one touched the border.
-    values = {**COLORS, "chevron": f'"{_CHEVRON.as_posix()}"'}
+    values = {**COLORS, **{f"{name}-off": faded(color)
+                           for name, color in COLORS.items()},
+              "chevron": f'"{_CHEVRON.as_posix()}"'}
     return _TOKEN.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 

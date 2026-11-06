@@ -39,10 +39,11 @@ QPushButton#primary {
 }
 QPushButton#primary:hover { background: @accent-hover; border-color: @accent-hover; }
 QPushButton#primary:pressed { background: @accent; }
+/* Disabled: the normal button at 0.4 over the card (`@token-off`). */
 QPushButton#primary:disabled {
-    background: @selected-bg;
-    border-color: @selected-bg;
-    color: @faint;
+    background: @accent-off;
+    border-color: @accent-off;
+    color: @on-accent-off;
 }
 
 QPushButton#secondary,
@@ -59,8 +60,18 @@ QPushButton#secondary:checked {
     color: @on-accent;
 }
 QPushButton#secondary:disabled,
-QPushButton#dangerText:disabled { color: @faint; border-color: @line; }
+QPushButton#dangerText:disabled {
+    background: transparent;
+    border-color: @control-border-off;
+    color: @text-off;
+}
+QPushButton#secondary:checked:disabled {
+    background: @text-off;
+    border-color: @text-off;
+    color: @on-accent-off;
+}
 QPushButton#dangerText { color: @danger-text; }
+QPushButton#dangerText:disabled { color: @danger-text-off; }
 
 /* A text button with no border: "Save anyway". */
 QPushButton#quiet {
@@ -70,20 +81,30 @@ QPushButton#quiet {
     font-weight: 500;
 }
 QPushButton#quiet:hover { background: @hover; color: @text; }
-QPushButton#quiet:disabled { color: @faint; }
+QPushButton#quiet:disabled { background: transparent; color: @text-2-off; }
 
 QPushButton#danger {
     background: @danger;
     border: 1px solid @danger;
-    color: #FFFFFF;
+    color: @on-danger;
 }
 QPushButton#danger:hover { background: @danger-hover; border-color: @danger-hover; }
+QPushButton#danger:disabled {
+    background: @danger-off;
+    border-color: @danger-off;
+    color: @on-danger-off;
+}
 
 /* The yellow of Resume while paused. */
 QPushButton#secondary[tone="warn"] {
     background: @warn-bg;
     border-color: @warn;
     color: @warn-text;
+}
+QPushButton#secondary[tone="warn"]:disabled {
+    background: @warn-bg-off;
+    border-color: @warn-off;
+    color: @warn-text-off;
 }
 
 QPushButton[compact="true"] {
@@ -111,7 +132,7 @@ QToolButton#barButton:checked {
     font-weight: 600;
 }
 QToolButton#barButton[busy="true"] { background: @accent-bg; color: @accent; }
-QToolButton#barButton:disabled { color: @faint; }
+QToolButton#barButton:disabled { color: @text-2-off; }
 
 QPushButton#crumb {
     border: none;
@@ -490,7 +511,7 @@ QPushButton#tile {
 }
 QPushButton#tile:hover { background: @hover; }
 QPushButton#tile:checked { background: @selected-bg; border-color: @accent; }
-QPushButton#tile:disabled { color: @faint; border-color: @line; }
+QPushButton#tile:disabled { color: @text-off; border-color: @control-border-off; }
 
 QFrame#segmented {
     background: @bar;
@@ -563,6 +584,6 @@ QPushButton#pathLink {
     padding: 0;
 }
 QPushButton#pathLink:hover { color: @info-text; }
-QPushButton#pathLink:disabled { color: @faint; }
+QPushButton#pathLink:disabled { color: @accent-hover-off; }
 
 QLabel#rackLegend { font-size: 12px; color: @muted; }
