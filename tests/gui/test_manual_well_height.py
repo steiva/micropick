@@ -1,5 +1,6 @@
 """Dispense's well height on Manual pick's Run (#137): Top, Middle or Bottom and
-a signed Offset, in words, starting at the deposit offset and kept by the page.
+a signed Offset, in words, starting at the deposit offset and kept by the page;
+and Tip to beside its sentence (#138), the same target with nothing dispensed.
 
 The mock's `move_to_well` stays where it is; here it goes where the robot's
 would, from the numbers of the plate's drawing, so a test reads the Z reached.
@@ -244,3 +245,120 @@ def test_height_and_offset_show_only_with_in_a_well(app, page, session):
     assert page.well_height_row.isVisibleTo(page.dispense_card)
     page.target.buttons[1].click()                       # At a point
     assert not page.well_height_row.isVisibleTo(page.dispense_card)
+
+
+# -- Tip to (#138) -----------------------------------------------------------
+
+
+def _at_a_point(page, session, z=30.0):
+    point = session.add_memo_point(150.0, 120.0, z)
+    page.target.buttons[1].click()
+    page.target_points.choose(point.name)
+    return point
+
+
+def _liquid_calls(session):
+    return [c for c in session.robot.calls if c[0].endswith("_in_place")]
+
+
+def test_the_button_names_the_chosen_well_and_point(app, page, session):
+    _ready(app, page, session)
+    assert page.tip_to_target.text() == "Tip to A7"
+    point = _at_a_point(page, session)
+    assert page.tip_to_target.text() == f"Tip to {point.name}"
+
+
+def test_at_a_point_the_card_shows_its_z(app, page, session):
+    _ready(app, page, session)
+    _at_a_point(page, session, z=30.5)
+    assert page.height_sentence.text() == "Z 30.5 mm"
+    assert page.height_sentence.isVisibleTo(page.dispense_card)
+    page.target_points.choose(session.add_memo_point(150.0, 120.0, None).name)
+    assert page.height_sentence.text() == "travel height"
+
+
+def test_it_reaches_the_well_at_its_height_and_leaves_the_tip(
+        app, page, session):
+    _ready(app, page, session, measured=True)
+    page.dispense_retract.choice.buttons[LIFT.index("Right away")].click()
+    _height(page, "Top", -1.0)
+    liquid, held = len(_liquid_calls(session)), session.in_tip
+    page.tip_to_target.click()
+    _wait(app, page)
+    assert _pose(session)[2] == pytest.approx(12.22, abs=0.01)
+    assert len(_liquid_calls(session)) == liquid
+    assert session.in_tip == held
+    assert toast_of(page).text() == "Tip at A7."
+
+
+def test_it_reaches_a_point_at_its_z(app, page, session):
+    _ready(app, page, session)
+    point = _at_a_point(page, session)
+    page.tip_to_target.click()
+    _wait(app, page)
+    assert _pose(session) == pytest.approx((150.0, 120.0, 30.0), abs=0.05)
+    assert toast_of(page).text() == f"Tip at {point.name}."
+
+
+def test_it_works_with_an_empty_tip(app, page, session):
+    _ready(app, page, session)
+    session.dispense(50.0)
+    _wait(app, page)
+    assert session.in_tip == 0.0
+    assert page.tip_to_target.isEnabled()
+    _height(page, "Bottom", 1.0)
+    page.tip_to_target.click()
+    _wait(app, page)
+    assert _pose(session)[2] == pytest.approx(BOTTOM + 1.0, abs=0.01)
+
+
+def test_gray_with_no_tip_on(app, page, session):
+    session.load_labware(resolve_definition(PLATE), 5)
+    page.target.buttons[0].click()
+    page.target_wells.map.well_clicked.emit("A7")
+    _wait(app, page)
+    assert not page.tip_to_target.isEnabled()
+    assert page.tip_to_target.toolTip() == "Put a tip on first."
+
+
+def test_gray_while_the_robot_is_busy(app, page, session):
+    _ready(app, page, session)
+    assert page.tip_to_target.isEnabled()
+    lease = session.robot_lease.claim("a picking run", run=True)
+    app.processEvents()
+    assert not page.tip_to_target.isEnabled()
+    assert "a picking run" in page.tip_to_target.toolTip()
+    lease.release()
+    app.processEvents()
+    assert page.tip_to_target.isEnabled()
+
+
+def test_a_target_refused_is_refused_in_dispenses_words(app, page, session):
+    _ready(app, page, session, measured=True)
+    _height(page, "Bottom", -1.5)
+    moved = _moves(session)
+    page.dispense_button.click()
+    _wait(app, page)
+    said = toast_of(page).text()
+    assert said.startswith("Not reachable: ")
+    toast_of(page).hide()
+    page.tip_to_target.click()
+    _wait(app, page)
+    assert toast_of(page).text() == said
+    assert _moves(session) == moved
+
+
+def test_dispense_in_place_after_it_dispenses_there_with_no_move(
+        app, page, session):
+    _ready(app, page, session)
+    _height(page, "Top", 0.0)
+    page.tip_to_target.click()
+    _wait(app, page)
+    at, moved = _pose(session), _moves(session)
+    page.in_place_amount.setValue(4.0)
+    page.in_place_rate.setValue(7.0)
+    page._dispense_in_place()
+    _wait(app, page)
+    assert _liquid_calls(session)[-1] == ("dispense_in_place", 4.0, 7.0)
+    assert _pose(session) == at
+    assert _moves(session) == moved

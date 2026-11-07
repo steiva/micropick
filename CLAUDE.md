@@ -495,7 +495,10 @@ by `height_words` under them and in the summary, "measured" with a measured
 bottom; Bottom plus `picking.deposit_offset_z` at start, only read, then the
 page's memory; a measured plate by its rim and depth, the numbers of
 `well_center.plate_heights`, else the drawing; under the bottom refused as a
-target's Z, above the travel height held there) / At a point, then Part | All
+target's Z, above the travel height held there) / At a point, its Z said where
+a well's height is, then, beside that sentence, **Tip to** (#138, "Tip to A7",
+`ManualPage._to_target` as Dispense: the tip left there, nothing dispensed, no
+lift, an empty tip too, gray with no tip on or the robot busy), then Part | All
 (#99: Part chosen at start, its volume `picking.vol`), its own speed (#97, from
 `picking.flow_rate` at start, in the page's memory) and the lifting row, its
 button saying what it does ("Dispense into A7", "Dispense 10 µl"), gray and only

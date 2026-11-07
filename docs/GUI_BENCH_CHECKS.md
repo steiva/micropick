@@ -1799,6 +1799,12 @@ tip box and a 384 plate at hand.
   A plate not measured: the same by the drawing. Bottom −3: refused in red, nothing
   moves. Top +5: over the well. Picking's deposit offset is unchanged afterwards.
 
+- [ ] **Tip to in the Dispense card (#138).**
+  Dispense on In a well, Top −1, After dispensing: lift right away. Tip to A7: the
+  tip stops 1 mm under the top and stays, the gauge unchanged, "Tip at A7.". Jog
+  it, then Dispense in place: it dispenses there. At a point: "Tip to M1", the
+  point's Z beside it. With an empty tip it works; with no tip it is gray.
+
 - [ ] **Aspirate and Dispense fold (#114).**
   Manual pick's Run, tip empty: Aspirate open and primary, Dispense folded, outlined
   and gray, "The tip is empty. Aspirate first." in yellow and whole. A press on the

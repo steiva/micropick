@@ -179,7 +179,13 @@ row:
   measured plate the rim and depth say the heights, the numbers of the height
   line; else the drawing. Under the bottom is `moves.under_the_bottom`'s to
   refuse, over the well is allowed, and above the travel height is held there.
-* **At a point** - a memo or saved point, as a chip, at its own Z.
+* **At a point** - a memo or saved point, as a chip, at its own Z, said where
+  a well's height is.
+
+Beside that sentence, **Tip to** (#138) takes the tip to the same target
+(`_to_target`, so refused in the same words) and leaves it there: nothing
+dispensed, no lift whatever After dispensing says, no camera back, with an
+empty tip too. The operator can then jog and use Dispense in place.
 
 Its button says what it does - "Dispense into A7", "Dispense 10 µl" - and,
 gray while the tip is empty, only "Dispense".
@@ -389,6 +395,12 @@ def _point_words(point) -> tuple[str, str]:
     """A point as a summary says it: it has its own height."""
     return (point.name,
             "travel height" if point.z is None else f"Z {point.z:g} mm")
+
+
+def _target_name(target) -> str:
+    """The well or the point of `_target`."""
+    kind, what = target
+    return what[3] if kind == "well" else what.name
 
 
 def _in_place_button(text: str, color: str, parent: QWidget) -> KeycapButton:
@@ -824,13 +836,20 @@ class ManualPage(QWidget):
         self.well_offset.valueChanged.connect(lambda _v: self._refresh())
         self.well_height_row = QWidget(self)
         self.well_height_row.setObjectName("plain")
-        column = QVBoxLayout(self.well_height_row)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.addLayout(_fields(labeled("Height", self.well_ref, self),
+        fields = QVBoxLayout(self.well_height_row)
+        fields.setContentsMargins(0, 0, 0, 0)
+        fields.addLayout(_fields(labeled("Height", self.well_ref, self),
                                  labeled("Offset, mm", self.well_offset, self)))
-        self.height_sentence = muted_label("", self)
-        column.addWidget(self.height_sentence)
         body.addWidget(self.well_height_row)
+
+        self.height_sentence = muted_label("", self)
+        self.tip_to_target = secondary_button("Tip to", self)
+        self.tip_to_target.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tip_to_target.clicked.connect(self._tip_to_target)
+        row = QHBoxLayout()
+        row.addWidget(self.height_sentence, 1)
+        row.addWidget(self.tip_to_target)
+        body.addLayout(row)
 
         self.amount = _small(Segmented(list(AMOUNT), parent=self))
         self.amount.changed.connect(lambda _i: self._target_changed())
@@ -1000,9 +1019,7 @@ class ManualPage(QWidget):
     def _show_dispense_summary(self) -> None:
         """The header's summary: where, how much, how; the height's
         sentence."""
-        target = self._target()
-        self.height_sentence.setText(self._well_height_words(
-            target[1] if target is not None and target[0] == "well" else None))
+        self.height_sentence.setText(self._target_height_words())
         if self.session.in_tip <= 0:
             self.dispense_card.set_summary(TIP_EMPTY, warn=True)
             return
@@ -1038,6 +1055,14 @@ class ManualPage(QWidget):
         if kind == "point":
             return _point_words(what)
         return _well_words(what), self._well_height_words(what)
+
+    def _target_height_words(self) -> str:
+        """Beside Tip to: the well height, or the chosen point's Z."""
+        target = self._target()
+        if WHERE[self.target.current()] == "In a well":
+            return self._well_height_words(
+                None if target is None else target[1])
+        return "" if target is None else _point_words(target[1])[1]
 
     def _well_height(self) -> Height:
         return Height(ref=WELL_HEIGHT[self.well_ref.current()].lower(),
@@ -1590,6 +1615,29 @@ class ManualPage(QWidget):
             return said
 
         if not self.jog.run_job(job, then=then):
+            self.jog.refuse(self.session.robot_lease.refusal)
+
+    def _tip_to_target(self) -> None:
+        """Tip to: the tip to Dispense's target, and nothing else."""
+        target = self._target()
+        if target is None:
+            return
+        problem = self._tip_problem("move")
+        if problem:
+            self.jog.refuse(problem)
+            return
+        try:
+            go = self._to_target(target)
+        except ValueError as exc:
+            self.jog.refuse(str(exc))
+            return
+        name = _target_name(target)
+
+        def job(log):
+            go(log)
+            return f"Tip at {name}."
+
+        if not self.jog.run_job(job):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
@@ -2193,11 +2241,23 @@ class ManualPage(QWidget):
         self.dispense_button.setText(self._dispense_text(target))
         self.dispense_button.setEnabled(has_robot and target is not None
                                         and self.session.in_tip > 0 and free)
+        self._show_tip_to(target, ready)
         set_primary(self.aspirate_button, self.session.in_tip <= 0)
         set_primary(self.dispense_button, self.session.in_tip > 0)
         self._show_aspirate_summary()
         self._show_dispense_summary()
         self.view.set_status(self._status_lines(busy, problems))
+
+    def _show_tip_to(self, target, ready: bool) -> None:
+        """Tip to, named for `target`; gray as the page's other moves."""
+        lease = self.session.robot_lease
+        self.tip_to_target.setText("Tip to" if target is None
+                                   else f"Tip to {_target_name(target)}")
+        self.tip_to_target.setEnabled(ready and target is not None)
+        self.tip_to_target.setToolTip(
+            "Put a tip on first." if self.session.tip.attached is not True
+            else f"Robot busy: {lease.holder}." if lease.busy
+            else "Move the tip there. Nothing is dispensed.")
 
     def _status_lines(self, busy: bool, problems: list[str]) -> list[str]:
         """What holds while it is true, on the picture under the chips."""

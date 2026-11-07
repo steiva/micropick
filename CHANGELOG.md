@@ -10,6 +10,8 @@ the third for fixes.
 
 ## Unreleased
 
+- Manual pick: Tip to in the Dispense card takes the tip to the chosen well or
+  point and leaves it there, dispensing nothing.
 - Manual pick: Dispense into a well has a height, Top, Middle or Bottom with a
   signed Offset, said in words. It starts at the bottom plus the deposit offset.
 - Manual pick: a Retract card at the foot of the work column, in the same place

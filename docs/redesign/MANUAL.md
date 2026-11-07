@@ -357,8 +357,14 @@ without any move.
        Top with a positive Offset is allowed, and above the travel height is held
        there;
      - the header button reads **Dispense into A3**.
-   - **At a point:** point chips, as in Aspirate, at the point's own Z. The
-     button reads **Dispense 10 µl**.
+   - **At a point:** point chips, as in Aspirate, at the point's own Z, shown
+     where a well's sentence is. The button reads **Dispense 10 µl**.
+   - **Tip to** (#138), on the row of that sentence, "Tip to A7", "Tip to M1":
+     the tip to the target and height a Dispense would use, left there. No
+     dispense, no lift whatever After dispensing says, no camera move back, and
+     it works with an empty tip; the operator can then jog and use Dispense in
+     place. Refused as Dispense is, in the same words, answered "Tip at A7."; gray
+     with no tip on or the robot busy.
 2. **Fields:**
    - **How much:** **Part | All** (small segmented);
    - **µl** (only when Part);
