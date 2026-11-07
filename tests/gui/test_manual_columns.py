@@ -161,7 +161,7 @@ def test_the_list_fills_the_points_column(app, page):
 
 
 def test_the_scroll_bar_does_not_narrow_the_columns(app, page):
-    _shown(app, page, (2560, 700))
+    _shown(app, page, (2560, 790))
     area = next(a for a in page.findChildren(QScrollArea)
                 if a.widget() is page.aspirate_card.parentWidget())
     first = _where(page)
@@ -188,10 +188,6 @@ def test_a_full_hd_window_needs_no_scrolling(app, page, session):
     page.aspirate_retract.choice.buttons[1].click()      # After a wait
     _settle(app, page)
     assert not _bar(page), "Aspirate, its lifting row open"
-    page.aspirate_retract.header.click()
-    page.work_cards.open(page.dispense_card)
-    _settle(app, page)
-    assert not _bar(page), "Dispense on In a well"
 
 
 def test_the_column_shrinks_with_nothing_wrapped_in_it(app, page):

@@ -10,6 +10,9 @@ the third for fixes.
 
 ## Unreleased
 
+- Manual pick: a Retract card at the foot of the work column, in the same place
+  whatever folds. R retracts by default on every screen; rebind or clear it in
+  Settings.
 - Settings: Tip calibration has a Height, the Z the tip goes to over the disc to
   be measured (67.1 mm at the start). Below the platform's top the calibration
   does not start and says why.

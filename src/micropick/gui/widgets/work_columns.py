@@ -16,12 +16,14 @@ room: in a window too short for the card, the bar lies over the card's edge.
 `set_outer_width`, which is what changes the arrangement. The page hears of it
 by `two_columns_changed`: Points' list fills a column of its own, and is as tall
 as it was built under the work. `last` stays at the end of the work's column,
-under Points there: a jog panel, whose pad is over the picture.
+under Points there: a jog panel, whose pad is over the picture. `foot` is under
+the work's column, outside its scroll, in both arrangements: it stands in one
+place whatever folds or scrolls, and takes that room from the column.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from ..theme.factory import scroll_column
@@ -36,6 +38,9 @@ COLUMN_GAP = 16
 CARD_GAP = 12
 # The row's width: a window of 1600 less the page's margins.
 TWO_COLUMNS_FROM = 1560
+# A scroll column's viewport stands this far inside it: `foot` stands level
+# with the cards in it.
+AREA_INSET = 1
 
 
 def _column(parent: QWidget) -> tuple[QWidget, QVBoxLayout]:
@@ -51,9 +56,11 @@ class WorkColumns(QWidget):
 
     def __init__(self, cards, points: FoldCard,
                  parent: QWidget | None = None, *,
-                 last: QWidget | None = None):
+                 last: QWidget | None = None,
+                 foot: QWidget | None = None):
         super().__init__(parent)
         self._points = points
+        self._foot = foot
         self._two: bool | None = None
 
         work, self._work = _column(self)
@@ -72,7 +79,15 @@ class WorkColumns(QWidget):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(max(0, COLUMN_GAP - self._bar))
-        row.addWidget(self._work_area)
+        left = QVBoxLayout()
+        left.setSpacing(CARD_GAP)
+        left.addWidget(self._work_area, 1)
+        if foot is not None:
+            under = QVBoxLayout()
+            under.setContentsMargins(AREA_INSET, 0, 0, AREA_INSET)
+            under.addWidget(foot, 0, Qt.AlignmentFlag.AlignLeft)
+            left.addLayout(under)
+        row.addLayout(left)
         row.addWidget(self._beside_area)
         self._arrange(False)
 
@@ -111,6 +126,8 @@ class WorkColumns(QWidget):
         self._beside_area.setVisible(two)
         self._work_area.set_outer_width(
             (COLUMN if two else ONE_COLUMN) + self._bar)
+        if self._foot is not None:
+            self._foot.setFixedWidth(COLUMN if two else ONE_COLUMN)
         if not first:
             self.two_columns_changed.emit(two)
 

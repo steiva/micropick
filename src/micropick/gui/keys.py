@@ -9,9 +9,9 @@ changed from the default are stored, so a default changed here reaches every
 computer that kept it.
 
 A default may have aliases - "+" and "=" are one key on most keyboards,
-Enter arrives as either - and a rebound action has the one key chosen. An
-action may have no default (Retract): it has no key until one is chosen.
-Esc is not offered: it is Stop, window-wide (`shell.MainWindow._stop`).
+Enter arrives as either - and a rebound action has the one key chosen. A
+`clearable` action (Retract) may be left with none, stored as "": the top bar
+and its card still do it. Esc is not offered: it is Stop, window-wide (`shell.MainWindow._stop`).
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ class Action:
     id: str
     label: str                      # on the Settings page
     defaults: tuple                 # Qt.Key values, the first one shown
+    clearable: bool = False         # may be left with no key
 
 
 ACTIONS = (
@@ -46,7 +47,7 @@ ACTIONS = (
     Action("help", "Show or hide the key list", (Qt.Key.Key_H,)),
     Action("aspirate", "Aspirate (Manual control)", (Qt.Key.Key_A,)),
     Action("dispense", "Dispense (Manual control)", (Qt.Key.Key_D,)),
-    Action("retract", "Retract the tip", ()),
+    Action("retract", "Retract the tip", (Qt.Key.Key_R,), clearable=True),
 )
 
 _BY_ID = {a.id: a for a in ACTIONS}
@@ -61,11 +62,13 @@ def action(action_id: str) -> Action:
 
 def sequences(bindings: dict, action_id: str) -> list[QKeySequence]:
     """The keys of `action_id`: the one chosen in Settings, else the
-    defaults with their aliases."""
+    defaults with their aliases; none for a `clearable` one left empty."""
     chosen = (bindings or {}).get(action_id)
     if chosen:
         return [QKeySequence.fromString(chosen,
                                         QKeySequence.SequenceFormat.PortableText)]
+    if chosen == "" and _BY_ID[action_id].clearable:
+        return []
     return [QKeySequence(key) for key in _BY_ID[action_id].defaults]
 
 

@@ -106,9 +106,9 @@ the TopBar's breadcrumb is the title.
 
 Manual pick's Run (#113, MANUAL.md §1) is the picture, then
 `widgets.work_columns.WorkColumns`: from a window of about 1600 px two columns of
-400 px, the work (In place, Aspirate, Dispense) and Points at the full height, its
-list filling it; under that one column of 420 px, Points a card after Dispense,
-folded by default (`FoldCard.set_folds`). The widths are fixed, the picture takes
+400 px, the work (In place, Aspirate, Dispense, the Retract card pinned under them)
+and Points at the full height, its list filling it; under that one column of 420
+px, Points a card after Dispense, folded by default (`FoldCard.set_folds`). The widths are fixed, the picture takes
 the rest (`FeedRow`, `width_in`), so a card's width never follows what it shows,
 long text wraps or is cut, and no card is under 380 px. A row of buttons in these
 cards has to fit a column, or goes one under the other. Look at and Detect cuboids
@@ -543,8 +543,11 @@ has one, else claims the lease for a worker of its own. Retract beside it
 (#108, `MainWindow._retract`) takes the tip straight up to the travel height
 (`Motion.rise`, staying where it is above it), by the same path and refusals,
 "Retracting…" while it runs, nothing asked; its key (`retract` in `gui.keys`)
-has no default and is bound in Settings. There is no Machine card: Home is in
-Settings, Advanced.
+is R, window-wide, rebound or cleared in Settings, and a field with the keyboard
+keeps it. Manual pick's Retract card (#136, `foot` of `WorkColumns`: under the
+work column, outside its scroll, in both layouts) asks for this same Retract
+(`Session.retract_requested`), gray when it is (`Session.not_free`), R drawn on
+its button as bound. There is no Machine card: Home is in Settings, Advanced.
 "The robot is busy" (`MainWindow._robot_busy`) is the robot's lease being
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.

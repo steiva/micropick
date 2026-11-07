@@ -193,8 +193,14 @@ static until the session owns them.
 - [ ] **Retract goes straight up and asks nothing (#108).**
   Tip low over the dish, Retract in the top bar, on Home and on a step: the tip
   rises where it stands to the travel height, "Retracting…" while it moves.
-  Again above it: nothing moves. Bind a key in Settings, Keys: it does the same
-  and the pad's Keys lists it. Home is in Settings, Advanced, and asks first.
+  Again above it: nothing moves. R does the same and the pad's Keys lists it;
+  rebind it in Settings, Keys. Home is in Settings, Advanced, and asks first.
+
+- [ ] **Retract card (#136).**
+  Manual pick's Run: Retract at the foot of the work column, R on its button.
+  Fold and open Aspirate and Dispense, scroll the column, narrow the window to
+  one column: it stands in one place. It does what the top bar's does, gray with
+  it (a run, Lock). With a number field holding the keyboard, R does nothing.
 
 - [ ] **"Remember in profile" survives a restart.**
   Name a real deck landmark, close the application, reopen it, and check that

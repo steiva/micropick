@@ -97,9 +97,12 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
 - **Column 1 (400 px), the work:**
   - **In place** card;
   - **Aspirate** FoldCard;
-  - **Dispense** FoldCard.
+  - **Dispense** FoldCard;
+  - **Retract** card, pinned at the foot, outside the scroll, in the same place
+    whatever folds or scrolls, in one column too (#136).
 
-  It scrolls vertically only if it must, and at 1080 px it does not.
+  It scrolls vertically only if it must. At 1080 px, with Dispense open, the
+  lifting row goes under the scroll: accepted for the Retract card.
 - **Column 2 (400 px):** the **Points** card, full height. There is **no
   Machine card any more**: Home is Park, and Retract is in the TopBar (§2.1).
 - **Narrower windows:** under about 1600 px of window width, the two columns
@@ -137,8 +140,10 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
   - the *Retract Z* button on Manual;
   - the *Machine* card with *Home robot position*. **Park** covers Home.
     Park's behavior does not change.
-- **Keyboard:** add a `gui.keys` action `retract` with no default key, so it
-  can be bound on the Settings page.
+- **Keyboard:** the `gui.keys` action `retract`, R by default (#136), window-wide;
+  rebound or cleared on the Settings page. A field with the keyboard keeps it.
+- **Manual pick's Retract card** (#136) does the same by the same path, gray
+  when this button is, its key drawn on it as bound.
 
 ### 2.2 Camera picture chrome (every screen with a camera picture)
 
@@ -552,7 +557,7 @@ Explanatory sentences from the mockup are not copied onto the screen.
    "Click a well. Filled wells already got liquid today." Liquid's `POINTS_HELP`
    stays.
 3. **In place does not lift** (§9 Q2), keys A and D included. This changes #104
-   on purpose. The tip is raised with Retract in the TopBar.
+   on purpose. The tip is raised with Retract (the TopBar's, or the card's, #136).
 4. **In place's values** start from what Aspirate's fields start from, then
    live in the page's memory, apart from the cards. Not the literal 10 and 50.
 5. **Dispense in place above what the tip holds** is refused in a red toast,

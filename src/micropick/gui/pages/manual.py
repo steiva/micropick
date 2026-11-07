@@ -193,11 +193,19 @@ In place
 --------
 The card that aspirates or dispenses where the tip is (#111): no move and
 no lift, whatever Aspirate's and Dispense's cards say; the tip is raised with
-Retract in the top bar. Its amount and speed start as Aspirate's fields do and
+Retract (below). Its amount and speed start as Aspirate's fields do and
 then stay in the page's memory, apart from the cards. A and D do what its
 buttons do, the keys drawn on them as bound, and nothing while a field has
 the keyboard. A dispense above what the tip holds is refused: the plunger
 would push out air.
+
+Retract
+-------
+The card at the foot of the work column, outside its scroll (`WorkColumns`,
+`foot`), so it stands in one place whatever folds (#136). It asks for the top
+bar's Retract (`Session.retract_requested`), whose path and refusals are the
+shell's, and is gray when that one is (`Session.not_free`). Its key is
+window-wide, the shell's too; the button only names it.
 
 How the tip leaves
 ------------------
@@ -339,6 +347,7 @@ CLICK_MOVES = ("Camera", "Tip")
 
 
 TIP_EMPTY = "The tip is empty. Aspirate first."
+RETRACT_TIP = "Raise the tip to the travel height"
 POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
 # The Points card's list, and three rows of chips under "At a point".
 POINTS_LIST_PX = 280
@@ -571,7 +580,8 @@ class ManualPage(QWidget):
         self.in_place_card = self._in_place_card()
         columns = WorkColumns([self.in_place_card, self._aspirate_card(),
                                self._dispense_card()],
-                              self._points_card(), self, last=self.jog)
+                              self._points_card(), self, last=self.jog,
+                              foot=self._retract_card())
         self.work_cards = FoldGroup([self.aspirate_card, self.dispense_card])
         columns.two_columns_changed.connect(self._columns_changed)
 
@@ -593,6 +603,7 @@ class ManualPage(QWidget):
         session.task_requested.connect(self._task_requested)
         session.robot_state_changed.connect(self._robot_changed)
         session.robot_busy_changed.connect(self._on_robot_busy)
+        session.lock_changed.connect(lambda _on: self._refresh())
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._show_deck())
         session.labware_changed.connect(lambda _s: self._bottom_changed())
@@ -656,6 +667,16 @@ class ManualPage(QWidget):
         row.addWidget(self.dispense_in_place, 1)
         box.layout().addLayout(row)
         return box
+
+    def _retract_card(self) -> QWidget:
+        """One button; see "Retract"."""
+        self.retract_card = card(self)
+        self.retract_button = KeycapButton("Retract", self)
+        self.retract_button.setObjectName("secondary")
+        self.retract_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.retract_button.clicked.connect(self.session.retract_requested)
+        self.retract_card.layout().addWidget(self.retract_button)
+        return self.retract_card
 
     def _aspirate_card(self) -> QWidget:
         """From and what it asks, the fields, the lifting row, Aspirate in
@@ -920,10 +941,11 @@ class ManualPage(QWidget):
         self._name_keys()
 
     def _name_keys(self) -> None:
-        """In place's buttons carry the keys that do them."""
+        """In place's buttons and Retract's carry the keys that do them."""
         bindings = self.session.settings.keys
         self.aspirate_in_place.set_keycap(keys.key_text(bindings, "aspirate"))
         self.dispense_in_place.set_keycap(keys.key_text(bindings, "dispense"))
+        self.retract_button.set_keycap(keys.key_text(bindings, "retract"))
 
     # -- liquid ------------------------------------------------------------------
 
@@ -2073,6 +2095,9 @@ class ManualPage(QWidget):
         ready = has_robot and self.session.tip.attached is True and free
         self.aspirate_in_place.setEnabled(ready)
         self.dispense_in_place.setEnabled(ready and self.session.in_tip > 0)
+        reason = self.session.not_free
+        self.retract_button.setEnabled(not reason)
+        self.retract_button.setToolTip(reason or RETRACT_TIP)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
         self.dispense_button.setEnabled(has_robot and target is not None

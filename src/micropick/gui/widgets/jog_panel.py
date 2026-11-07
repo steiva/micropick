@@ -159,7 +159,7 @@ TYPING_HELP = ("Keys now control the input field, not the robot.",
 _ENTER = (Qt.Key.Key_Return, Qt.Key.Key_Enter)
 
 
-def _input_field(widget) -> QWidget | None:
+def input_field(widget) -> QWidget | None:
     """The text or number field `widget` is, or None."""
     if isinstance(widget, QAbstractSpinBox):
         return widget
@@ -168,7 +168,7 @@ def _input_field(widget) -> QWidget | None:
     return None
 from ..workers import Worker
 
-__all__ = ["JogPanel", "UNBOUND", "HOME_TITLE", "HOME_DETAIL", "view_move",
+__all__ = ["JogPanel", "UNBOUND", "input_field", "HOME_TITLE", "HOME_DETAIL", "view_move",
            "check_view_axes"]
 
 log = logging.getLogger(__name__)
@@ -684,7 +684,7 @@ class JogPanel(QWidget):
     # -- a field with the keys ------------------------------------------------
 
     def _focus_moved(self, _old, new) -> None:
-        field = _input_field(new)
+        field = input_field(new)
         typing = field is not None and self._host.isAncestorOf(field)
         if typing:
             field.installEventFilter(self)      # for its Enter
@@ -707,7 +707,7 @@ class JogPanel(QWidget):
         kind = event.type()
         if kind == QEvent.Type.MouseButtonPress:
             # Not a click in a field: that one places its cursor.
-            if _input_field(watched) is None:
+            if input_field(watched) is None:
                 self._release_keys()
         elif (kind == QEvent.Type.KeyPress and event.key() in _ENTER
               and isinstance(watched, (QLineEdit, QAbstractSpinBox))):
@@ -716,7 +716,7 @@ class JogPanel(QWidget):
         return False
 
     def _release_keys(self) -> None:
-        field = _input_field(QApplication.focusWidget())
+        field = input_field(QApplication.focusWidget())
         if field is not None and self._host.isAncestorOf(field):
             field.clearFocus()
 
