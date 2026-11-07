@@ -346,9 +346,19 @@ without any move.
      - the plate in real proportions (max 340 px wide). Wells filled today
        are `plate`-filled (§7.3); the chosen well is `accent` with a ring;
      - the caption "Click a well. Filled wells already got liquid today.";
+     - the **well height** (#137): **Height** Top | Middle | Bottom and **Offset,
+       mm**, signed, with a sentence under them in words ("1 mm below the top",
+       "0.5 mm above the measured bottom"), named in the card's summary too. It
+       starts at Bottom with the picking settings' deposit offset, which is only
+       read, then stays in the page's memory, never in the profile. On a
+       measured plate Bottom is the measured bottom, Top the measured rim and
+       Middle halfway, the numbers of the height line; else the drawing. Too far
+       under the bottom is refused (§10.6's limits, `manual.under_the_bottom`),
+       Top with a positive Offset is allowed, and above the travel height is held
+       there;
      - the header button reads **Dispense into A3**.
-   - **At a point:** point chips, as in Aspirate. The button reads
-     **Dispense 10 µl**.
+   - **At a point:** point chips, as in Aspirate, at the point's own Z. The
+     button reads **Dispense 10 µl**.
 2. **Fields:**
    - **How much:** **Part | All** (small segmented);
    - **µl** (only when Part);
@@ -563,8 +573,8 @@ Explanatory sentences from the mockup are not copied onto the screen.
 5. **Dispense in place above what the tip holds** is refused in a red toast,
    nothing moved: "Only 5 µl in the tip."
 6. **Heights stay.** By clicking keeps Z | Above the bottom (From tip only with
-   Z). In a well has an "Above the bottom, mm" field. Dispense has no height
-   field: it reads Aspirate's height, as today.
+   Z). In a well has an "Above the bottom, mm" field. Dispense has a well height
+   of its own (§4.3, #137).
 7. **The height line stays** (#95), under the status plate, in the overlay
    style.
 8. **Lifting** has the code's three choices (§9 Q1): Right away = Retract

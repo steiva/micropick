@@ -1793,6 +1793,12 @@ tip box and a 384 plate at hand.
   button reads "Dispense into A7"; the tip goes into that well at
   the deposit height, above the same bottom as Aspirate's. At a point: "Dispense 6 µl".
 
+- [ ] **Dispense's well height (#137).**
+  In a well, on a measured plate: Top −1: the tip stops 1 mm under the height
+  line's top; Middle halfway; Bottom 0.5 reads "0.5 mm above the measured bottom".
+  A plate not measured: the same by the drawing. Bottom −3: refused in red, nothing
+  moves. Top +5: over the well. Picking's deposit offset is unchanged afterwards.
+
 - [ ] **Aspirate and Dispense fold (#114).**
   Manual pick's Run, tip empty: Aspirate open and primary, Dispense folded, outlined
   and gray, "The tip is empty. Aspirate first." in yellow and whole. A press on the

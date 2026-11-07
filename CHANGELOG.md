@@ -10,6 +10,8 @@ the third for fixes.
 
 ## Unreleased
 
+- Manual pick: Dispense into a well has a height, Top, Middle or Bottom with a
+  signed Offset, said in words. It starts at the bottom plus the deposit offset.
 - Manual pick: a Retract card at the foot of the work column, in the same place
   whatever folds. R retracts by default on every screen; rebind or clear it in
   Settings.

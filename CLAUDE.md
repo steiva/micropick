@@ -449,7 +449,7 @@ spot not in a well is refused, "The spot is not in a well.", nothing moved,
 with Aspirate as soon as I click too (`well_center.in_a_well`: the
 definition's outline at the measured center, less `TIP_RADIUS_MM`), and so
 is a click aiming into a slot with no bottom; Z may be on a well's wall.
-A target's Z (Tip to, At a point, By clicking's Z) more than 1 mm under the
+A target's Z (Tip to, At a point, By clicking's Z, Dispense's well height) more than 1 mm under the
 bottom of its slot when measured, or 2 mm under a drawing's, is refused in a
 red toast, nothing moved (#101, `manual.under_the_bottom`, its limits
 constants; `ManualPage._heights_in`, what the height line reads, nothing
@@ -489,8 +489,13 @@ opens Dispense. A card folding takes the keyboard off its fields, and the action
 buttons take no focus: else it passes to the next field, and the robot's keys
 with it. Dispense (MANUAL.md §4.3): In a well (a `WellPicker`, the plan's plate
 first, any well choosable, the plan's wells in one color, no legend and nothing
-of what a run filled, §10.10; a well's bottom, as Aspirate's, plus the deposit
-offset, from its well center, no height field) / At a point, then Part | All
+of what a run filled, §10.10; from its well center, at a **well height**, #137:
+Height Top | Middle | Bottom and a signed Offset, `core.liquid_plan.Height` said
+by `height_words` under them and in the summary, "measured" with a measured
+bottom; Bottom plus `picking.deposit_offset_z` at start, only read, then the
+page's memory; a measured plate by its rim and depth, the numbers of
+`well_center.plate_heights`, else the drawing; under the bottom refused as a
+target's Z, above the travel height held there) / At a point, then Part | All
 (#99: Part chosen at start, its volume `picking.vol`), its own speed (#97, from
 `picking.flow_rate` at start, in the page's memory) and the lifting row, its
 button saying what it does ("Dispense into A7", "Dispense 10 µl"), gray and only

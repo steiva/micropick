@@ -24,7 +24,7 @@ from .motion import Motion
 
 __all__ = ["go_to_top", "Nominal", "Measurement", "xy", "deposit_offset",
            "plan_plate", "for_plan", "definition_depth", "measured_bottom",
-           "plate_heights", "in_a_well", "run_using",
+           "plate_heights", "above_bottom", "well_xy", "in_a_well", "run_using",
            "TIP_RADIUS_MM", "AT_TOP", "FORGET_TIP", "in_use_tip"]
 
 # What the pages say, the same on both: the tip is at the robot's well top,
@@ -137,6 +137,31 @@ def plate_heights(center, definition,
     return rim, rim - depth
 
 
+def above_bottom(height, depth: float) -> float:
+    """How far over a well's bottom a well height (`core.liquid_plan.Height`)
+    is, in a well `depth` deep."""
+    level = {"top": depth, "middle": depth / 2, "bottom": 0.0}[height.ref]
+    return level + height.offset_mm
+
+
+def _origin(definition, slot, center_xy, labware_offset) -> tuple[float, float]:
+    """What a well's x and y in the definition are from, in the robot's
+    frame."""
+    corner = definition.data["cornerOffsetFromSlot"]
+    slot_x, slot_y = slot_corner(slot)
+    return (slot_x + corner["x"] + labware_offset[0] + center_xy[0],
+            slot_y + corner["y"] + labware_offset[1] + center_xy[1])
+
+
+def well_xy(definition, well: str, slot, center_xy, *,
+            labware_offset=(0.0, 0.0, 0.0)) -> tuple[float, float]:
+    """`well`'s x and y in the robot's frame, with no robot to ask, moved by
+    `center_xy` and the labware offset the robot applies, as `in_a_well`."""
+    x, y = _origin(definition, slot, center_xy, labware_offset)
+    drawn = definition.data["wells"][well]
+    return x + drawn["x"], y + drawn["y"]
+
+
 def in_a_well(definition, slot, center_xy, spot, *,
               labware_offset=(0.0, 0.0, 0.0),
               tip_radius: float = TIP_RADIUS_MM) -> bool:
@@ -144,10 +169,7 @@ def in_a_well(definition, slot, center_xy, spot, *,
     inside a well of the plate in `slot`: within a well's outline from the
     definition, moved by `center_xy` (the measured center) and the labware
     offset the robot applies, less the tip's radius."""
-    corner = definition.data["cornerOffsetFromSlot"]
-    slot_x, slot_y = slot_corner(slot)
-    origin_x = slot_x + corner["x"] + labware_offset[0] + center_xy[0]
-    origin_y = slot_y + corner["y"] + labware_offset[1] + center_xy[1]
+    origin_x, origin_y = _origin(definition, slot, center_xy, labware_offset)
     return any(_inside(well, spot[0] - origin_x - well["x"],
                        spot[1] - origin_y - well["y"], tip_radius)
                for well in definition.data["wells"].values())
