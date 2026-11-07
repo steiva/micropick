@@ -29,6 +29,10 @@ _Avoid_: z top, Z max, ceiling
 The height a move across the deck is made at: 1 mm under the measured top, since the robot refuses a move to the retracted height itself.
 _Avoid_: safe height, clearance height
 
+**Well height**:
+Where in a well the tip goes: the top, the middle or the bottom of the well, with an offset up or down from it.
+_Avoid_: center (the well center is a place in X and Y, not a height)
+
 **Park**:
 Moving the head out of the way, to the back right of the deck at the travel height, without homing.
 _Avoid_: home (homing drives all axes to their switches and is done from Settings)
