@@ -412,6 +412,7 @@ class SettingsPage(QWidget):
             grid.addWidget(QLabel(action.label), row, 0)
             edit = QKeySequenceEdit(self)
             edit.setMaximumSequenceLength(1)
+            edit.setClearButtonEnabled(action.clearable)
             edit.keySequenceChanged.connect(lambda _k: self._edited())
             grid.addWidget(edit, row, 1)
             self.key_edits[action.id] = edit

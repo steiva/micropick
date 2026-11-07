@@ -368,7 +368,8 @@ without any move.
    - **One straight move** (#139): with the tip within 0.1 mm of the target's X
      and Y, Dispense and every Tip to on this page (this one, a point's in the
      list, Tip to crosshair) go straight up or down to the height, no trip to the
-     travel height. Further off, or to another well, the whole path. Aspirate
+     travel height. Further off, to another well, or while the top is not
+     measured, so nothing says how high the tip may go, the whole path. Aspirate
      always takes the whole path: the plunger is made ready above the liquid.
 2. **Fields:**
    - **How much:** **Part | All** (small segmented);

@@ -268,6 +268,8 @@ def _liquid_calls(session):
 def test_the_button_names_the_chosen_well_and_point(app, page, session):
     _ready(app, page, session)
     assert page.tip_to_target.text() == "Tip to A7"
+    page.target_wells.map.well_clicked.emit("H12")
+    assert page.tip_to_target.text() == "Tip to H12"
     point = _at_a_point(page, session)
     assert page.tip_to_target.text() == f"Tip to {point.name}"
 
@@ -514,3 +516,26 @@ def test_aspirate_still_rises_first_in_the_well_under_the_tip(
     names = [c[0] for c in robot.calls]
     assert names.index("retract_axis") < names.index("move_to_well")
     assert names.index("move_to_well") < names.index("prepare_to_aspirate")
+
+
+def test_a_long_points_name_is_cut_and_the_button_keeps_its_width(
+        app, page, session):
+    _ready(app, page, session)
+    width = page.tip_to_target.width()
+    point = session.add_memo_point(150.0, 120.0, 30.0)
+    name = "a very long name for a point that goes on and on"
+    session.save_memo_point(point.name, name)
+    page.target.buttons[1].click()
+    page.target_points.choose(name)
+    assert page.tip_to_target.width() == width
+    assert page.tip_to_target.text().startswith("Tip to a")
+    assert page.tip_to_target.text().endswith("…")
+    assert page.tip_to_target.sizeHint().width() <= width
+
+
+def test_another_profile_starts_at_the_bottom_again(app, page, session):
+    _height(page, "Top", -2.0)
+    session.load_profile("mock")
+    assert WELL_HEIGHT[page.well_ref.current()] == "Bottom"
+    assert page.well_offset.value() == pytest.approx(
+        session.profile.picking.deposit_offset_z)

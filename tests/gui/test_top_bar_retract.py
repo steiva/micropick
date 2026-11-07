@@ -199,6 +199,8 @@ def test_the_settings_card_binds_and_clears_it(app, window):
     assert page._typed_keys() == {}
     page.key_edits["retract"].setKeySequence(QKeySequence("F6"))
     assert page._typed_keys() == {"retract": "F6"}
+    assert page.key_edits["retract"].isClearButtonEnabled()
+    assert not page.key_edits["x-"].isClearButtonEnabled()
     page.key_edits["retract"].clear()
     assert page._typed_keys() == {"retract": ""}
 

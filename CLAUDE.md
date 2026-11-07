@@ -370,7 +370,7 @@ never in the profile), as does Point at crosshair
 (the picture's center through the pixel map, as By clicking's aim,
 no Z; gray without a pixel map, "Calibrate the camera first."). Under it
 **Tip to crosshair** (#99) sends the tip to that spot at the travel height
-(`Motion.tip_to`, through `JogPanel.run_job`) and leaves it there, no point
+(`Motion.to_spot`, through `JogPanel.run_job`) and leaves it there, no point
 needed; gray without a tip or a pixel map or while the robot is busy,
 checked against the jog envelope at the travel height. A point is
 one kind - a place on the deck, no purpose stored (#66). One card, **Points**
@@ -393,7 +393,7 @@ takes a star off. A double click edits X, Y, Z and a saved point's name
 (`rename_saved_point`), in a box over the cell: Enter or leaving keeps it,
 Esc puts it back and is no Stop. A click chooses a row (again: lets it go),
 and the chosen row unfolds under the point **Camera to** (`Motion.camera_to`,
-the point less the tip offset, its Z unused), **Tip to** (`Motion.tip_to`
+the point less the tip offset, its Z unused), **Tip to** (`Motion.to_spot`
 to its Z, no higher than the travel height; gray while no tip is on, "Put
 a tip on first.") and Z from tip, each checked against the jog envelope,
 through `JogPanel.run_job`. A click chooses and unfolds at once; when that
@@ -555,7 +555,7 @@ has one, else claims the lease for a worker of its own. Retract beside it
 (#108, `MainWindow._retract`) takes the tip straight up to the travel height
 (`Motion.rise`, staying where it is above it), by the same path and refusals,
 "Retracting…" while it runs, nothing asked; its key (`retract` in `gui.keys`)
-is R, window-wide, rebound or cleared in Settings, and a field with the keyboard
+is R, window-wide, rebound in Settings or cleared there (`Action.clearable`), and a field with the keyboard
 keeps it. Manual pick's Retract card (#136, `foot` of `WorkColumns`: under the
 work column, outside its scroll, in both layouts) asks for this same Retract
 (`Session.retract_requested`), gray when it is (`Session.not_free`), R drawn on

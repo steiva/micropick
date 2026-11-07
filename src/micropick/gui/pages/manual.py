@@ -379,6 +379,9 @@ AT_A_POINT_PX = 124
 SOURCE_MAP_PX = 320
 TARGET_MAP_PX = 340
 POPOVER_PX = 360
+# Dispense's Tip to: as wide whatever it names, a long point's name cut.
+TIP_TO_PX = 130
+TIP_TO_PADDING_PX = 24
 # The fields' widths: room for the range's longest number.
 NUMBER_PX = 72
 Z_PX = 80
@@ -849,6 +852,7 @@ class ManualPage(QWidget):
 
         self.height_sentence = muted_label("", self)
         self.tip_to_target = secondary_button("Tip to", self)
+        self.tip_to_target.setFixedWidth(TIP_TO_PX)
         self.tip_to_target.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tip_to_target.clicked.connect(self._tip_to_target)
         row = QHBoxLayout()
@@ -1646,8 +1650,7 @@ class ManualPage(QWidget):
         name = _target_name(target)
 
         def job(log):
-            go(log)
-            return f"Tip at {name}."
+            return Reached(go(log), f"Tip at {name}.")
 
         if not self.jog.run_job(job):
             self.jog.refuse(self.session.robot_lease.refusal)
@@ -2255,14 +2258,15 @@ class ManualPage(QWidget):
 
     def _show_tip_to(self, target, ready: bool) -> None:
         """Tip to, named for `target`; gray as the page's other moves."""
-        lease = self.session.robot_lease
-        self.tip_to_target.setText("Tip to" if target is None
-                                   else f"Tip to {_target_name(target)}")
-        self.tip_to_target.setEnabled(ready and target is not None)
-        self.tip_to_target.setToolTip(
+        button = self.tip_to_target
+        words = "Tip to" if target is None else f"Tip to {_target_name(target)}"
+        button.setText(button.fontMetrics().elidedText(
+            words, Qt.TextElideMode.ElideRight, TIP_TO_PX - TIP_TO_PADDING_PX))
+        button.setEnabled(ready and target is not None)
+        button.setToolTip(
             "Put a tip on first." if self.session.tip.attached is not True
-            else f"Robot busy: {lease.holder}." if lease.busy
-            else "Move the tip there. Nothing is dispensed.")
+            else self.session.not_free
+            or f"{words}. Nothing is dispensed.")
 
     def _status_lines(self, busy: bool, problems: list[str]) -> list[str]:
         """What holds while it is true, on the picture under the chips."""
@@ -2298,6 +2302,7 @@ class ManualPage(QWidget):
                 self.in_place_amount.setValue(profile.picking.vol)
                 self.in_place_rate.setValue(profile.picking.flow_rate)
                 self.dispense_rate.setValue(profile.picking.flow_rate)
+                self.well_ref.set_current(WELL_HEIGHT.index("Bottom"))
                 self.well_offset.setValue(profile.picking.deposit_offset_z)
                 self.part.setValue(profile.picking.vol)
             self._forget_targets()
