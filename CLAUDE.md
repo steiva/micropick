@@ -498,7 +498,11 @@ page's memory; a measured plate by its rim and depth, the numbers of
 target's Z, above the travel height held there) / At a point, its Z said where
 a well's height is, then, beside that sentence, **Tip to** (#138, "Tip to A7",
 `ManualPage._to_target` as Dispense: the tip left there, nothing dispensed, no
-lift, an empty tip too, gray with no tip on or the robot busy), then Part | All
+lift, an empty tip too, gray with no tip on or the robot busy; with the tip
+within `motion.SAME_SPOT_MM` of the target's X and Y, it and Dispense, a point's
+Tip to and Tip to crosshair are one straight move, up or down, `Motion.to_spot`,
+#139, and never Aspirate, whose plunger is made ready above the liquid, or a run),
+then Part | All
 (#99: Part chosen at start, its volume `picking.vol`), its own speed (#97, from
 `picking.flow_rate` at start, in the page's memory) and the lifting row, its
 button saying what it does ("Dispense into A7", "Dispense 10 µl"), gray and only

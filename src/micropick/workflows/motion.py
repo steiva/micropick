@@ -47,6 +47,15 @@ back and raises if the robot declined the move, so a refusal is a message,
 not a gantry that silently stayed put. That pose is what a move returns: a
 caller that shows where the robot is need not ask it again.
 
+Or no trip at all
+-----------------
+A tip already on its target's X and Y only has to change height: `to_spot`
+then makes one straight move, up or down, with no trip to the travel height.
+Further off than `SAME_SPOT_MM` it takes the whole path, so a tip never slides
+sideways inside a well. Only Manual pick's Dispense and Tip to ask for this.
+Not an aspirate: `descend`'s `prepare` makes the plunger ready above the
+liquid, and an empty tip already down would blow into it. Not a run.
+
 Threads
 -------
 The measured top is read and written under a lock, so a clear from the GUI
@@ -57,6 +66,7 @@ moving the robot at once is not this module's business.
 from __future__ import annotations
 
 import threading
+from math import hypot
 
 import numpy as np
 
@@ -68,6 +78,7 @@ from .jog import AXES, Limits
 __all__ = ["Motion", "NoRobot", "WELL_LEVELS", "PARK_XY", "APPROACH_MM",
            "descend",
            "TRAVEL_BELOW_TOP_MM", "Z_NOZZLE_TOP_MM", "JOG_BELOW_TOP_MM",
+           "SAME_SPOT_MM",
            "SLOW_RISE_MM", "SLOW_RISE_MM_S",
            "UNKNOWN_TIP_LENGTH_MM", "MODULE_MARGIN_MM", "envelope_for",
            "refusal"]
@@ -89,6 +100,10 @@ TRAVEL_BELOW_TOP_MM = 1.0
 # The reported Z wanders by hundredths; a tip that far under the travel
 # height is still at it.
 READ_TOL_MM = 0.05
+
+# How far from a target's X and Y the tip is still on them: see "Or no trip at
+# all".
+SAME_SPOT_MM = 0.1
 
 # Retract slowly: how far the tip rises out of the liquid, and how fast.
 SLOW_RISE_MM = 2.0
@@ -339,6 +354,25 @@ class Motion:
         if z < travel:
             reached = _straight(robot, xy, z)
         return reached
+
+    def to_spot(self, xy, z: float, *, path=None, log=None) -> np.ndarray:
+        """The tip to `z` at `xy`, rising only if it must: see "Or no trip at
+        all". On that spot, one straight move, no higher than the travel
+        height. Elsewhere, or with the top not measured, so no height to hold
+        it under, `path(log)` if given, else `tip_to`. Returns the pose
+        reached."""
+        robot = self._need_robot()
+        top = self.top
+        x, y, _z = xyz(robot)
+        if top is None or hypot(x - xy[0], y - xy[1]) > SAME_SPOT_MM:
+            if path is None:
+                return self.tip_to(xy, z, log=log)
+            path(log)
+            return np.array(xyz(robot))
+        z = min(float(z), _travel(top))
+        if log is not None:
+            log(f"tip straight to z {z:g}")
+        return _straight(robot, xy, z)
 
     def to_well(self, labware_id: str, well: str, level: str, offset, *,
                 log=None) -> None:

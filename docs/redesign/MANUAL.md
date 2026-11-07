@@ -365,6 +365,11 @@ without any move.
      it works with an empty tip; the operator can then jog and use Dispense in
      place. Refused as Dispense is, in the same words, answered "Tip at A7."; gray
      with no tip on or the robot busy.
+   - **One straight move** (#139): with the tip within 0.1 mm of the target's X
+     and Y, Dispense and every Tip to on this page (this one, a point's in the
+     list, Tip to crosshair) go straight up or down to the height, no trip to the
+     travel height. Further off, or to another well, the whole path. Aspirate
+     always takes the whole path: the plunger is made ready above the liquid.
 2. **Fields:**
    - **How much:** **Part | All** (small segmented);
    - **µl** (only when Part);

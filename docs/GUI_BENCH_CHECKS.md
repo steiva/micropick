@@ -1805,6 +1805,14 @@ tip box and a 384 plate at hand.
   it, then Dispense in place: it dispenses there. At a point: "Tip to M1", the
   point's Z beside it. With an empty tip it works; with no tip it is gray.
 
+- [ ] **One straight move over the same spot (#139).**
+  Tip to A7 at Top, then Bottom 1 and Tip to again: the tip goes straight down, not
+  up first. Top +2 and Tip to: straight up. Dispense: no trip up. Choose A8: Tip to
+  goes up, across and down. A point under the tip, its Tip to in the list, and Tip
+  to crosshair: the same. Aspirate with the tip already there: it still rises first.
+  Bench: over a well, watch that the tip does not shift sideways by more than a
+  hair, and that Z agrees with the height line.
+
 - [ ] **Aspirate and Dispense fold (#114).**
   Manual pick's Run, tip empty: Aspirate open and primary, Dispense folded, outlined
   and gray, "The tip is empty. Aspirate first." in yellow and whole. A press on the

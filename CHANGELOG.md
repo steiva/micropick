@@ -10,6 +10,8 @@ the third for fixes.
 
 ## Unreleased
 
+- Manual pick: with the tip already over the target, Dispense and Tip to go
+  straight up or down to the height, with no trip to the travel height.
 - Manual pick: Tip to in the Dispense card takes the tip to the chosen well or
   point and leaves it there, dispensing nothing.
 - Manual pick: Dispense into a well has a height, Top, Middle or Bottom with a

@@ -187,6 +187,11 @@ Beside that sentence, **Tip to** (#138) takes the tip to the same target
 dispensed, no lift whatever After dispensing says, no camera back, with an
 empty tip too. The operator can then jog and use Dispense in place.
 
+With the tip already on the target's X and Y, Dispense and every Tip to of this
+page (the card's, a point's, Tip to crosshair) are one straight move to the
+height, up or down (`Motion.to_spot`, #139). Aspirate keeps its whole path: the
+plunger is made ready above the liquid.
+
 Its button says what it does - "Dispense into A7", "Dispense 10 µl" - and,
 gray while the tip is empty, only "Dispense".
 
@@ -1333,21 +1338,25 @@ class ManualPage(QWidget):
                         labware_id, well, offset[:2], *measured, offset[2],
                         prepare=prepare, log=log)
             return go
-        point = what
-        xy = np.array([point.x, point.y])
-        pose = self.jog.pose
-        check_z = point.z if point.z is not None else (
-            pose[2] if pose is not None else 0.0)
-        why = (motion.refused((point.x, point.y, check_z))
-               or self._under_the_bottom(point.x, point.y, point.z))
-        if why:
-            raise ValueError(f"Not reachable: {why}.")
-        # No Z: as high as a move may go, which is the travel height.
-        to_z = float("inf") if point.z is None else point.z
+        xy, to_z = self._point_target(what)
 
         def go(log):
             motion.tip_to(xy, to_z, log=log)
         return go
+
+    def _point_target(self, point) -> tuple[np.ndarray, float]:
+        """Where the tip goes for `point`, (xy, z). Raises ValueError with the
+        reason when it is out of reach."""
+        pose = self.jog.pose
+        check_z = point.z if point.z is not None else (
+            pose[2] if pose is not None else 0.0)
+        why = (self.session.motion.refused((point.x, point.y, check_z))
+               or self._under_the_bottom(point.x, point.y, point.z))
+        if why:
+            raise ValueError(f"Not reachable: {why}.")
+        # No Z: as high as a move may go, which is the travel height.
+        return (np.array([point.x, point.y]),
+                float("inf") if point.z is None else point.z)
 
     def _well_spot(self, chosen) -> WellSpot:
         """The well of `_target` at the well height."""
@@ -1365,21 +1374,24 @@ class ManualPage(QWidget):
     def _to_target(self, target):
         """The move to Dispense's `target`, as a job's first part: a well at
         its well height, no higher than the travel height, a point at its own
-        Z. Raises ValueError with the reason when it is out of reach."""
-        if target[0] == "point":
-            return self._go_to(target, None)
+        Z, one straight move if the tip is on its X and Y. Raises ValueError
+        with the reason when it is out of reach."""
         motion = self.session.motion
+        if target[0] == "point":
+            xy, z = self._point_target(target[1])
+            return lambda log: motion.to_spot(xy, z, log=log)
         spot = self._well_spot(target[1])
         why = (motion.refused(spot[:3]) or moves.under_the_bottom(
             spot.z, spot.bottom, target[1][0], measured=spot.measured))
         if why:
             raise ValueError(f"Not reachable: {why}.")
 
-        def go(log):
+        def path(log):
             motion.raise_tip(log=log)
             over = max(0.0, spot.z - motion.travel_z)
             self._go_to(target, spot.above - over)(log)
-        return go
+
+        return lambda log: motion.to_spot(spot[:2], spot.z, path=path, log=log)
 
     def _aspirate_from_source(self) -> None:
         """Aspirate: to the source, then aspirate there."""
@@ -1927,7 +1939,7 @@ class ManualPage(QWidget):
 
         def job(log_):
             # No Z: as high as a move may go, which is the travel height.
-            return Reached(motion.tip_to(spot, float("inf"), log=log_),
+            return Reached(motion.to_spot(spot, float("inf"), log=log_),
                            f"Tip at ({spot[0]:.2f}, {spot[1]:.2f}).")
 
         if not self.jog.run_job(job):
@@ -2051,23 +2063,16 @@ class ManualPage(QWidget):
         robot = self.session.robot
         if robot is None or self._busy() or self.jog.busy:
             return
-        xy = np.array([point.x, point.y])
-        pose = self.jog.pose
-        check_z = point.z if point.z is not None else (
-            pose[2] if pose is not None else 0.0)
-        what = (f"tip to {point.name} ({point.x:.2f}, {point.y:.2f}) "
-                f"at z {_memo_z_text(point.z)}")
-        why = (self.session.motion.refused((point.x, point.y, check_z))
-               or self._under_the_bottom(point.x, point.y, point.z))
-        if why:
-            self.jog.refuse(f"Not reachable: {why}.")
+        try:
+            xy, z = self._point_target(point)
+        except ValueError as exc:
+            self.jog.refuse(str(exc))
             return
-        log.info("%s", what)
-        # No Z: as high as a move may go, which is the travel height.
-        z = float("inf") if point.z is None else point.z
+        log.info("tip to %s (%.2f, %.2f) at z %s", point.name, point.x,
+                 point.y, _memo_z_text(point.z))
 
         def job(log_):
-            return Reached(self.session.motion.tip_to(xy, z, log=log_),
+            return Reached(self.session.motion.to_spot(xy, z, log=log_),
                            f"Tip at {point.name}.")
 
         if not self.jog.run_job(job):

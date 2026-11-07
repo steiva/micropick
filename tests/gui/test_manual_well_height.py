@@ -1,6 +1,7 @@
 """Dispense's well height on Manual pick's Run (#137): Top, Middle or Bottom and
 a signed Offset, in words, starting at the deposit offset and kept by the page;
-and Tip to beside its sentence (#138), the same target with nothing dispensed.
+Tip to beside its sentence (#138), the same target with nothing dispensed; and
+one straight move when the tip is on the target's X and Y (#139).
 
 The mock's `move_to_well` stays where it is; here it goes where the robot's
 would, from the numbers of the plate's drawing, so a test reads the Z reached.
@@ -19,7 +20,9 @@ from PySide6.QtWidgets import QApplication                       # noqa: E402
 
 from micropick.config.labware import (LabwareDefinition,         # noqa: E402
                                       resolve_definition)
-from micropick.config.schema import DeckModule                   # noqa: E402
+from micropick.config.schema import (DeckModule,                 # noqa: E402
+                                      PipetteOffset)
+from micropick.config.schema import PixelMap as PixelMapConfig   # noqa: E402
 from micropick.core.deck import slot_corner                      # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages.manual import (LIFT, WELL_HEIGHT,       # noqa: E402
@@ -29,6 +32,7 @@ from micropick.gui.widgets.toast import toast_of                 # noqa: E402
 
 PLATE = "corning_96_wellplate_360ul_flat"
 TOP, BOTTOM = 14.22, 3.55
+W, H, K = 2592, 1944, 0.026
 
 
 @pytest.fixture(scope="module")
@@ -362,3 +366,151 @@ def test_dispense_in_place_after_it_dispenses_there_with_no_move(
     assert _liquid_calls(session)[-1] == ("dispense_in_place", 4.0, 7.0)
     assert _pose(session) == at
     assert _moves(session) == moved
+
+
+# -- one straight move on the same spot (#139) ---------------------------------
+
+
+def _watched(session):
+    """From here on, what the robot is asked to move."""
+    robot = session.robot
+    robot.calls.clear()
+    robot.log.clear()
+    return robot
+
+
+def _one_straight_move(robot, z):
+    assert [c for c in robot.calls if c[0] in ("retract_axis",
+                                               "move_to_well")] == []
+    assert len(robot.log) == 1
+    assert robot.log[0][2] == pytest.approx(z, abs=0.01)
+
+
+def test_dispense_in_the_well_the_tip_stands_over_is_one_move(
+        app, page, session):
+    _ready(app, page, session, measured=True)
+    _height(page, "Top", -1.0)
+    page.tip_to_target.click()
+    _wait(app, page)
+    _height(page, "Bottom", 0.5)
+    robot = _watched(session)
+    _dispensed(app, page)
+    _one_straight_move(robot, 13.22 - 9.0 + 0.5)
+    assert session.in_tip == 0.0
+
+
+@pytest.mark.parametrize("first, second, z", [
+    (("Top", 0.0), ("Bottom", 1.0), BOTTOM + 1.0),       # down
+    (("Bottom", 1.0), ("Top", 2.0), TOP + 2.0),          # up
+])
+def test_tip_to_on_a_new_height_over_the_well_is_one_move(
+        app, page, session, first, second, z):
+    _ready(app, page, session)
+    _height(page, *first)
+    page.tip_to_target.click()
+    _wait(app, page)
+    _height(page, *second)
+    robot = _watched(session)
+    page.tip_to_target.click()
+    _wait(app, page)
+    _one_straight_move(robot, z)
+
+
+def test_tip_to_another_well_takes_the_full_path(app, page, session):
+    _ready(app, page, session)
+    page.tip_to_target.click()
+    _wait(app, page)
+    page.target_wells.map.well_clicked.emit("A8")
+    _wait(app, page)
+    robot = _watched(session)
+    page.tip_to_target.click()
+    _wait(app, page)
+    assert ("retract_axis", "leftZ") in robot.calls
+    assert [c[2] for c in robot.calls if c[0] == "move_to_well"] == ["A8"]
+
+
+def _on_the_point(app, page, session, z=30.0):
+    """The tip down at (150, 120, 40), on a point of its X and Y at `z`."""
+    _ready(app, page, session)
+    session.robot.move_to_coordinates((150.0, 120.0, 40.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    return _at_a_point(page, session, z=z)
+
+
+def test_dispense_at_the_point_under_the_tip_is_one_move(app, page, session):
+    _on_the_point(app, page, session)
+    robot = _watched(session)
+    _dispensed(app, page)
+    _one_straight_move(robot, 30.0)
+    assert session.in_tip == 0.0
+
+
+def test_the_cards_tip_to_a_point_is_one_move(app, page, session):
+    _on_the_point(app, page, session, z=60.0)
+    robot = _watched(session)
+    page.tip_to_target.click()
+    _wait(app, page)
+    _one_straight_move(robot, 60.0)
+
+
+def test_a_points_tip_to_in_the_list_is_one_move(app, page, session):
+    point = _on_the_point(app, page, session)
+    page.points_list.choose(point.name)
+    _wait(app, page)
+    robot = _watched(session)
+    page.tip_to_button.click()
+    _wait(app, page)
+    _one_straight_move(robot, 30.0)
+
+
+def test_tip_to_crosshair_over_the_spot_is_one_move(app, page, session):
+    _ready(app, page, session)
+    s = W / 2
+    calibration = session.profile.calibration
+    calibration.pixel_map = PixelMapConfig(
+        degree=1, cu=W / 2, cv=H / 2, s=s,
+        coef=[[0.0, K * s], [K * s, 0.0]], zero=[0.0, 0.0],
+        ref=[W / 2, H / 2], bounds=[100.0, 100.0, W - 100.0, H - 100.0],
+        image_size=[W, H], sweep_z=0.0)
+    calibration.pipette_offset = PipetteOffset(dx=0.0, dy=0.0)
+    page.show()
+    session.open_camera(session.upper_camera_label)
+    app.processEvents()
+    session.robot.move_to_coordinates((150.0, 120.0, 40.0), verbose=False)
+    page.jog.refresh_position()
+    _wait(app, page)
+    travel = session.motion.travel_z
+    robot = _watched(session)
+    page.tip_crosshair_button.click()
+    _wait(app, page)
+    _one_straight_move(robot, travel)
+
+
+def test_aspirate_still_rises_first_at_the_point_under_the_tip(
+        app, page, session):
+    point = _on_the_point(app, page, session)
+    page.source.buttons[1].click()                       # At a point
+    page.source_points.choose(point.name)
+    _wait(app, page)
+    robot = _watched(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    assert ("retract_axis", "leftZ") in robot.calls
+    assert session.in_tip > 10.0
+
+
+def test_aspirate_still_rises_first_in_the_well_under_the_tip(
+        app, page, session):
+    _ready(app, page, session, measured=True)
+    page.tip_to_target.click()
+    _wait(app, page)
+    page.source.buttons[2].click()                       # In a well
+    page.source_wells.choose(5, "A7")
+    _wait(app, page)
+    robot = _watched(session)
+    page.aspirate_button.click()
+    _wait(app, page)
+    names = [c[0] for c in robot.calls]
+    assert names.index("retract_axis") < names.index("move_to_well")
+    assert names.index("move_to_well") < names.index("prepare_to_aspirate")
