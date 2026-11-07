@@ -38,7 +38,6 @@ dev = ["nbstripout", "pytest", "pytest-xdist", "ruff", "onnx", "onnxslim"]
 
 [project.scripts]
 micropick-gui = "micropick.gui.__main__:main"
-micropick-slices = "micropick.slices.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

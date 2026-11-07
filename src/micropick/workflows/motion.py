@@ -312,18 +312,6 @@ class Motion:
             log(f"tip up to z {_travel(top):g}")
         return _straight(robot, (x, y), _travel(top))
 
-    def slide_to(self, xy, *, log=None) -> np.ndarray:
-        """Straight across to `xy` at the height the tip is at, not raised
-        first: the one move that is not at the travel height. Only for a
-        short way inside what the caller has checked, the field of the
-        fixed microscope (`slices`), where the tool works just over the
-        sample. Returns the pose reached."""
-        robot = self._need_robot()
-        z = float(self.reachable(xyz(robot))[2])
-        if log is not None:
-            log(f"sliding to ({xy[0]:.3f}, {xy[1]:.3f}) at z {z:g}")
-        return _straight(robot, xy, z)
-
     def camera_to(self, xy, *, log=None) -> np.ndarray:
         """The tip up, then the gantry to `xy` at the travel height.
         Returns the pose reached."""
