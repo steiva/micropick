@@ -8,6 +8,12 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## 1.0.1 - 2026-11-09
+
+- The installed program did not start: the build had left out the robot
+  wrapper and the stock labware. The build now checks itself before it is
+  published.
+
 ## 1.0.0 - 2026-11-09
 
 The redesign: a Home screen with the robot, Robot setup and three tasks (Auto

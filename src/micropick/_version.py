@@ -11,7 +11,7 @@ second for a feature, the third for a fix. Each release is a git tag
 is empty when running from the source tree (see `packaging/build.py`).
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 try:                                     # written by packaging/build.py
     from ._build import BUILD            # type: ignore[import-not-found]

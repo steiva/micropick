@@ -32,6 +32,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The robot wrapper, src/opentrons_api, is a submodule.
+          submodules: true
 
       - uses: actions/setup-python@v5
         with:
@@ -43,6 +45,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install ".[gui,ml,hardware,dev]" pyinstaller
+          # The stock labware; its numpy pin is not what it needs at run time
+          # (pyproject's `stock`), so without its dependencies.
+          pip install opentrons-shared-data --no-deps
+          pip install jsonschema
 
       - name: Models
         run: gh release download models --pattern "*.pt" --dir ml_models
@@ -55,6 +61,15 @@ jobs:
 
       - name: Build
         run: python packaging/build.py
+
+      # A module missing from the build stops it in a dialog, which waits.
+      - name: Self-test of the built program
+        timeout-minutes: 10
+        run: |
+          $env:MICROPICK_ROOT = "$env:RUNNER_TEMP\micropick-selftest"
+          $p = Start-Process dist\micropick\micropick.exe -ArgumentList "--self-test" -Wait -PassThru
+          Get-Content "$env:MICROPICK_ROOT\logs\micropick_*.log"
+          if ($p.ExitCode -ne 0) { throw "self-test failed ($($p.ExitCode))" }
 
       - name: Keep the files of a trial build
         if: github.event_name == 'workflow_dispatch'

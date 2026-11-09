@@ -65,7 +65,18 @@ def _video() -> str:
     return f"{frames} frames"
 
 
-CHECKS = (("detector models", _models), ("labware", _labware),
+def _window_modules() -> str:
+    # What the window imports at start: a module a build left out (the
+    # robot wrapper, once) stops it before it opens, with nothing logged.
+    import importlib
+    names = ("micropick.gui.shell", "opentrons_api.ot2_api")
+    for name in names:
+        importlib.import_module(name)
+    return ", ".join(names)
+
+
+CHECKS = (("window modules", _window_modules),
+          ("detector models", _models), ("labware", _labware),
           ("pickup clip video", _video))
 
 
