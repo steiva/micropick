@@ -26,6 +26,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       YOLO_AUTOINSTALL: "false"
+      # build.py's lines as they happen: buffered, they all came at the end.
+      PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4
         with:
