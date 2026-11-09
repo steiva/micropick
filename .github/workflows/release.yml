@@ -43,15 +43,16 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          # torch and torchvision from one index, made for each other: a
-          # torchvision from PyPI beside this torch has no nms and the models
-          # do not load.
-          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          # A pair made for each other, the lab environment's: a torchvision
+          # beside another torch has no nms (its _C does not load), the build
+          # leaves _C out and the models do not load.
+          pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
           pip install ".[gui,ml,hardware,dev]" pyinstaller
           # The stock labware; its numpy pin is not what it needs at run time
           # (pyproject's `stock`), so without its dependencies.
           pip install opentrons-shared-data --no-deps
           pip install jsonschema
+          python -c "import torch, torchvision; torchvision.ops.nms(torch.zeros(1, 4), torch.zeros(1), 0.5); print('torch', torch.__version__, 'torchvision', torchvision.__version__)"
 
       - name: Models
         run: gh release download models --pattern "*.pt" --dir ml_models
