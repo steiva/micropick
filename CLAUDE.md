@@ -36,8 +36,11 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
 ## Versions
 
 One source: `src/micropick/_version.py` (pyproject reads it). A release:
-bump it, add a CHANGELOG.md entry, commit, tag `v<version>`, build from
-the tagged commit. The window title, the log and a report show the version
+bump it, add a CHANGELOG.md entry, commit, tag `v<version>`, push the tag:
+`.github/workflows/release.yml` builds on Windows and publishes the
+installer and zip as that tag's GitHub Release (the models' `.pt` come from
+the release tagged `models`). `main` is the current program; `legacy` is
+0.4.0, before the redesign. The window title, the log and a report show the version
 and, in a build, its commit.
 
 ## Decisions to keep

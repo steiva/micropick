@@ -1,0 +1,75 @@
+# The Windows build, made by GitHub (packaging/build.py on a Windows runner).
+#
+# A tag v<version> builds the installer and the zip and publishes them as that
+# version's Release, its notes the version's CHANGELOG.md entry. Run by hand
+# (Actions > Release > Run workflow) it only builds, the files kept as the
+# run's artifacts, to try a build out.
+#
+# The models are not in git: their .pt files are assets of the release tagged
+# `models`; a new model is uploaded there (gh release upload models x.pt
+# --clobber) before the next tag.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      YOLO_AUTOINSTALL: "false"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install ".[gui,ml,hardware,dev]" pyinstaller
+
+      - name: Models
+        run: gh release download models --pattern "*.pt" --dir ml_models
+
+      - name: Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build
+        run: python packaging/build.py
+
+      - name: Keep the files of a trial build
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: micropick-windows
+          path: dist/*-setup.exe
+          retention-days: 7
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '$0 ~ "^## "v" " {f=1; next} /^## / {if (f) exit} f' \
+            CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "micropick $version" --notes-file notes.md --latest \
+            dist/micropick-"$version"-win64-setup.exe \
+            dist/micropick-"$version"-win64.zip

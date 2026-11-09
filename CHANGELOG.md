@@ -8,7 +8,12 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
-## Unreleased
+## 1.0.0 - 2026-11-09
+
+The redesign: a Home screen with the robot, Robot setup and three tasks (Auto
+pick, Manual pick, Liquid handling), each a row of steps. The cameras, the
+camera calibration, the platforms and the three positions are set in Robot
+setup.
 
 - Settings: Tip calibration has a Height, the Z the tip goes to over the disc to
   be measured (67.1 mm at the start). Below the platform's top the calibration
