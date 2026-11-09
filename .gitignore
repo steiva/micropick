@@ -41,6 +41,7 @@ __pypackages__/
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!packaging/micropick.spec
 
 # Installer logs
 pip-log.txt
