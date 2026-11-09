@@ -739,9 +739,13 @@ class MainWindow(QMainWindow):
             text = owner.run_label() or text
         self.top.set_status(*RUN_ACTIVITY.get(activity, (text, "busy")))
         _holder, task, _step = self._run
+        # A run started from a Robot setup sheet with no task open (the
+        # shake position's tip calibration) is gone back to by Robot setup:
+        # the sheets have no title of their own here.
         self.home.show_run(
             tasks.TASKS[task][0] if task is not None else
-            self._titles[page] if page is not None else "the run")
+            self._titles.get(page, robot_setup.TITLE) if page is not None
+            else "the run")
 
     def go_to_run(self) -> None:
         """The pill's click: back to where the run was started."""

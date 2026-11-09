@@ -610,6 +610,11 @@ def _calibrated_tip_on(app, window, monkeypatch):
     lease = window.session.robot_lease
     # A run of its own, with the pill.
     assert lease.holding_run and lease.holder == "shake tip calibration"
+    # Started from Robot setup with no task open: Home's tiles name it
+    # (a KeyError on every refresh before, the sheet having no title).
+    window._show_run()
+    assert window.home.run_note.text() == (
+        "The robot is busy. Go back to Robot setup to stop or finish it.")
     _wait(app, lambda: calibration.yes_button.isEnabled())
     assert calibration.path.current == "check"
     assert sheet.run_activity() == "waiting"

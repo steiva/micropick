@@ -143,7 +143,8 @@ class CameraSpec(BaseModel):
     homography.
 
     backend is which OpenCV capture backend opens the device; None is
-    OpenCV's default, Media Foundation on Windows. It is per camera because
+    DirectShow on Windows, whose device list gives the index, and OpenCV's
+    default elsewhere (`hardware.camera._default_backend`). It is per camera because
     the drivers differ per device: on the bench the Arducam's motorised
     focus is set fine through Media Foundation but reads back as 1 whatever
     it is, so the read-back check reports it rejected and nothing built on

@@ -8,6 +8,23 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## Unreleased
+
+- The tip calibration saves what its cameras saw into Images\tip_calibration\
+  (a folder per calibration): each camera's last frame, and the same frame
+  with every box the model found in every frame, the tip each frame kept and
+  the tip measured from.
+- The tip calibration is refused, with nothing saved, when the tip (or the
+  crosshair) is found in different places from one frame to the next, or
+  when its check finds the tip over 0.5 mm from the crosshair. Before, such
+  a calibration was saved, and the tip went to a point far away.
+- An error repeated in the log while the shake position's tip calibration
+  ran from Robot setup is gone.
+- A camera whose profile names no capture backend is opened through
+  DirectShow on Windows, whose list gives its number. With OpenCV 5 the
+  upper camera could open another camera and be refused ("asked for
+  2592x1944, device gave 2000x1500").
+
 ## 1.0.1 - 2026-11-09
 
 - The installed program did not start: the build had left out the robot

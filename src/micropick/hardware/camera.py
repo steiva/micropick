@@ -32,6 +32,7 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import sys
 import threading
 import time
 from collections import deque
@@ -86,7 +87,8 @@ class CameraError(RuntimeError):
 _AUTO_EXPOSURE = {"manual": (0.25, 1), "auto": (0.75, 3)}
 
 # CameraSpec.backend, spelled for cv2.VideoCapture. "any" is OpenCV's own
-# CAP_ANY, which is what a spec that names nothing gets too.
+# CAP_ANY, which is what a spec that names nothing gets too, except on
+# Windows (`_default_backend`).
 _BACKENDS = {
     "dshow": cv2.CAP_DSHOW,
     "msmf": cv2.CAP_MSMF,
@@ -94,6 +96,19 @@ _BACKENDS = {
     "avfoundation": cv2.CAP_AVFOUNDATION,
     "any": cv2.CAP_ANY,
 }
+
+
+def _default_backend() -> int | None:
+    """The backend for a spec and a manager that name none.
+
+    On Windows DirectShow: the index comes from DirectShow's own list
+    (`devices._windows_devices`, pygrabber), and only DirectShow numbers the
+    devices that way. OpenCV 5's own choice there is Media Foundation, whose
+    index 2 was another camera on the bench (2026-11-09: the upper camera
+    asked for 2592x1944 and got the lower one's 2000x1500, no frame).
+    Elsewhere OpenCV's own choice.
+    """
+    return cv2.CAP_DSHOW if sys.platform == "win32" else None
 
 _CONTROL_PROPS = {
     "autofocus": cv2.CAP_PROP_AUTOFOCUS,
@@ -973,7 +988,9 @@ class CameraManager:
         if named is not None and named not in _BACKENDS:
             raise CameraError(f"{label}: unknown capture backend {named!r}; "
                               f"known: {', '.join(_BACKENDS)}")
-        backend = _BACKENDS[named] if named is not None else self.backend
+        backend = (_BACKENDS[named] if named is not None else
+                   self.backend if self.backend is not None else
+                   _default_backend())
         cap = (cv2.VideoCapture(device.index, backend) if backend
                else cv2.VideoCapture(device.index))
         if not cap.isOpened():

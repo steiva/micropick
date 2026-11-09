@@ -120,6 +120,7 @@ from PySide6.QtWidgets import (QComboBox, QGraphicsOpacityEffect, QHBoxLayout,
                                QLabel, QProgressBar, QPushButton, QVBoxLayout,
                                QWidget)
 
+from ... import paths
 from ...config.labware import LabwareError, resolve_definition
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
@@ -802,6 +803,11 @@ class TipCalibrationBlock(QObject):
             wait(self.disc_requested, "waiting for you: check the disc, "
                  "then Yes, calibrate")
             time.sleep(0.5)
+            # What the cameras saw, every detection drawn, for a person
+            # to look at: Images\tip_calibration\<when>.
+            images = (None if standin else
+                      paths.images_dir() / "tip_calibration"
+                      / datetime.now().strftime("%Y%m%d_%H%M%S"))
             log(f"starting from ({current[0]:+.3f}, {current[1]:+.3f}) mm, "
                 f"{frames} frames per reading"
                 + (f", tip {tip_type}" if tip_type else ""))
@@ -812,7 +818,7 @@ class TipCalibrationBlock(QObject):
                     verify=verify,
                     tip_type=tip_type, profile=profile,
                     manual_touch_up=None, robot_session=robot_session,
-                    tip_pickup=tip_pickup, log=log)
+                    tip_pickup=tip_pickup, images_to=images, log=log)
             finally:
                 # It switches the lights on when it finds them off.
                 session.refresh_lights()

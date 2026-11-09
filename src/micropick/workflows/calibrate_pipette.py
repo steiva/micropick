@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -43,10 +44,11 @@ from ..core.calibration.homography import HomographyError, HomographyReport
 from ..core.calibration.pixel_map import PixelMap
 from ..hardware.protocols import (Camera, Robot, lights_on, move_relative,
                                   move_to, set_lights, xyz)
+from ..viz.tip_views import save_view
 from .calibrate_homography import homography_from_views
 
-__all__ = ["Detection", "PatternView", "TipDetector", "OffsetResult",
-           "calibrate_pipette_offset", "TipCalibrationError"]
+__all__ = ["Detection", "PatternView", "ViewRecord", "TipDetector",
+           "OffsetResult", "calibrate_pipette_offset", "TipCalibrationError"]
 
 
 class TipCalibrationError(RuntimeError):
@@ -61,6 +63,40 @@ class _TooFewCrosshairs(TipCalibrationError):
 # What to do, said instead of the count when no frame showed the pattern.
 NO_DISC = ("Place the crosshair calibration disc onto the calibration module "
            "and retry; check lighting and focus.")
+
+# How far the frames of one reading may disagree, and how far from the
+# crosshair the check may find the tip, before the calibration is refused.
+# A good reading spreads by a few pixels (0.1 mm); the one that saved a
+# 43 mm offset spread by 41 mm.
+MAX_SPREAD_MM = 0.5
+MAX_RESIDUAL_MM = 0.5
+
+
+def _save_reading(folder: Path | None, name: str, detector, view, problem,
+                  log) -> None:
+    """A reading's pictures into `folder` (`viz.tip_views`), its outcome in
+    the header. Never fails the calibration: a picture not saved is said."""
+    record = getattr(detector, "last_record", None)
+    if folder is None or record is None or record.frame is None:
+        return
+    lines = [f"{name}: {len(record.detections)} frames"]
+    if view is not None:
+        lines[0] += (f", {view.n_frames} usable, spread "
+                     f"{view.spread_px:.1f} px "
+                     f"= {view.spread_px * view.mm_per_px:.2f} mm")
+        if view.tip is not None:
+            lines.append(f"tip measured at {view.tip.round(1)} px (yellow "
+                         f"cross), crosshair at {view.center.round(1)} px")
+    if problem:
+        lines.append(problem[:160])
+    try:
+        save_view(folder, name, record.frame, record.detections,
+                  tip_label=getattr(detector, "tip_label", "tip"),
+                  center=view.center if view is not None else None,
+                  tip=view.tip if view is not None else None, lines=lines)
+        log(f"  pictures saved: {folder / name}_detections.jpg")
+    except Exception as exc:              # noqa: BLE001 - only pictures
+        log(f"  pictures not saved: {exc}")
 
 
 def _expected_under_resolution(under_cam, given, profile) -> tuple[int, int]:
@@ -103,6 +139,18 @@ class Detection:
     label: str
     xy: np.ndarray
     conf: float
+    box: tuple[float, float, float, float] | None = None   # x0, y0, x1, y1
+
+
+@dataclass
+class ViewRecord:
+    """What one reading looked at: its last frame and every frame's
+    detections, a frame without a usable reading included. Kept by
+    `TipDetector.view` as it goes, so a reading that fails still leaves
+    what it saw to be saved (`viz.tip_views`)."""
+
+    frame: np.ndarray | None = None
+    detections: list[list[Detection]] = field(default_factory=list)
 
 
 @dataclass
@@ -142,6 +190,8 @@ class TipDetector:
         self.conf = conf
         self.point_label = point_label
         self.tip_label = tip_label
+        # The frames and boxes of the reading last taken, filled as it goes.
+        self.last_record: ViewRecord | None = None
 
     def detect(self, frame) -> list[Detection]:
         results = self.model.predict(source=frame[..., ::-1], conf=self.conf,
@@ -153,7 +203,7 @@ class TipDetector:
                 x1, y1, x2, y2 = (float(v) for v in box.xyxy[0])
                 out.append(Detection(self.model.names[int(box.cls[0])],
                                      np.array([(x1 + x2) / 2, (y1 + y2) / 2]),
-                                     float(box.conf[0])))
+                                     float(box.conf[0]), (x1, y1, x2, y2)))
         return out
 
     # -- assembling a view --------------------------------------------------
@@ -235,10 +285,12 @@ class TipDetector:
 
         centers, tips, ratios, cvs, last, last_dets = [], [], [], [], None, []
         problems, too_few = [], 0
+        record = self.last_record = ViewRecord()
         for i in range(frames):
             frame = camera.read_after(time.monotonic())
-            last = frame
+            last = record.frame = frame
             dets = self.detect(frame)
+            record.detections.append(dets)
             try:
                 c, nb, tip, mmpp, cv = self._pattern_from(
                     dets, frame.shape, spacing_mm, center_tol_px)
@@ -275,7 +327,7 @@ class TipDetector:
         tip = None
         if tips:
             tip = np.median(tips, axis=0)
-            if len(tips) >= 3:
+            if len(tips) >= 2:
                 tip_spread = np.max(np.linalg.norm(np.array(tips) - tip, axis=1))
                 spread = max(spread, float(tip_spread))
         elif need_tip:
@@ -345,10 +397,13 @@ def calibrate_pipette_offset(
         height: float | None = None,
         frames: int = 5, settle_s: float = 0.8,
         verify: bool = True, max_correction_mm: float = 40.0,
+        max_spread_mm: float = MAX_SPREAD_MM,
+        max_residual_mm: float = MAX_RESIDUAL_MM,
         tip_type: str | None = None, profile=None,
         under_resolution: tuple[int, int] | None = None,
         manual_touch_up=None, robot_session: str | None = None,
-        tip_pickup: str | None = None, log=print) -> OffsetResult:
+        tip_pickup: str | None = None, images_to: Path | None = None,
+        log=print) -> OffsetResult:
     """Drive the tip onto the crosshair and record the offset that did it.
 
     current_offset is the starting estimate. It must be close enough to put the
@@ -372,6 +427,18 @@ def calibrate_pipette_offset(
 
     robot_session and tip_pickup are recorded with the offset: which robot
     session, and which pick-up in it, put on the tip that was measured.
+
+    max_spread_mm refuses a reading whose frames disagree by more than that
+    (the crosshair, or the tip the model kept in each frame), before the
+    gantry moves by it: a model unsure what the tip is gives a median of
+    unrelated boxes. max_residual_mm refuses a verification that finds the
+    tip that far from the crosshair after the correction. Either way nothing
+    is saved. A verification that cannot see the pattern (the tip hides the
+    central crosshair) is logged and not a refusal.
+
+    images_to, if given, is the folder each reading's last frame is saved
+    into, as it came and with every frame's boxes drawn (`viz.tip_views`):
+    1_upper, 2_lower, 3_check - a reading that failed included.
     """
     # First, before the upper camera is even read and long before the gantry
     # moves. Everything the lower camera measures is in its pixels, so its mode
@@ -400,6 +467,31 @@ def calibrate_pipette_offset(
     approach = np.asarray(target.approach_offset, dtype=float)
     height = target.module_height if height is None else float(height)
 
+    def look(name: str, camera: Camera, *, need_tip: bool) -> PatternView:
+        """One reading, its pictures saved whether or not it succeeds."""
+        view, problem = None, ""
+        try:
+            view = detector.view(camera, spacing_mm=target.spacing_mm,
+                                 frames=frames, need_tip=need_tip)
+            return view
+        except TipCalibrationError as exc:
+            problem = str(exc)
+            raise
+        finally:
+            _save_reading(images_to, name, detector, view, problem, log)
+
+    def steady(view: PatternView, what: str, camera: str) -> None:
+        """Refuses a reading whose frames disagree (`max_spread_mm`)."""
+        spread_mm = view.spread_px * view.mm_per_px
+        if spread_mm > max_spread_mm:
+            where = (f"; the pictures are in {images_to}"
+                     if images_to is not None else "")
+            raise TipCalibrationError(
+                f"the {what} was found in different places in the "
+                f"{view.n_frames} frames ({spread_mm:.1f} mm apart, more than "
+                f"{max_spread_mm} mm). Check the {camera} camera's focus and "
+                f"light{where}")
+
     # --- lights on, and known to be on --------------------------------------
     # The upper camera finds the crosshair by the rail lights, and a picking
     # run leaves them off. Checked and switched rather than assumed, and left
@@ -418,8 +510,8 @@ def calibrate_pipette_offset(
 
     # --- upper camera: where is the crosshair, in robot coordinates ---------
     log("upper camera: locating the crosshair")
-    over_view = detector.view(over_cam, spacing_mm=target.spacing_mm,
-                              frames=frames)
+    over_view = look("1_upper", over_cam, need_tip=False)
+    steady(over_view, "crosshair", "upper")
     gx, gy, gz = xyz(robot)
     if not pixel_map.covers(*over_view.center):
         raise TipCalibrationError(
@@ -438,12 +530,14 @@ def calibrate_pipette_offset(
 
     # --- lower camera: how far is the tip from the crosshair ---------------
     log("lower camera: measuring the tip")
-    under_view = detector.view(under_cam, spacing_mm=target.spacing_mm,
-                               frames=frames, need_tip=True)
+    under_view = look("2_lower", under_cam, need_tip=True)
     axes = np.asarray(target.axes, dtype=float)
     correction = axes @ (under_view.residual_px * under_view.mm_per_px)
     log(f"  residual {under_view.residual_px.round(1)} px "
         f"= {correction.round(3)} mm, spread {under_view.spread_px:.1f} px")
+    # Before the gantry moves by it: a median of boxes that disagree is
+    # no measurement (the 43 mm calibration of 2026-11-09).
+    steady(under_view, "tip", "lower")
 
     if np.max(np.abs(correction)) > max_correction_mm:
         raise TipCalibrationError(
@@ -460,14 +554,24 @@ def calibrate_pipette_offset(
     final_view, residual_mm = None, float("nan")
     if verify:
         try:
-            final_view = detector.view(under_cam, spacing_mm=target.spacing_mm,
-                                       frames=frames, need_tip=True)
+            final_view = look("3_check", under_cam, need_tip=True)
             residual_mm = float(np.linalg.norm(
                 axes @ (final_view.residual_px * final_view.mm_per_px)))
             log(f"  after correction the tip is {residual_mm*1000:.0f} um "
                 f"from the crosshair")
         except TipCalibrationError as exc:
             log(f"  verification unavailable: {exc}")
+        # Refused only on a reading that was taken: the operator's touch-up,
+        # when there is one, is what corrects it instead.
+        if final_view is not None and manual_touch_up is None:
+            steady(final_view, "tip", "lower")
+            if residual_mm > max_residual_mm:
+                where = (f"; the pictures are in {images_to}"
+                         if images_to is not None else "")
+                raise TipCalibrationError(
+                    f"after the correction the tip is {residual_mm:.2f} mm "
+                    f"from the crosshair, more than {max_residual_mm} mm: a "
+                    f"detection is wrong{where}")
 
     nudge = None
     if manual_touch_up is not None:
