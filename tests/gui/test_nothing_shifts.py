@@ -23,7 +23,7 @@ from micropick.gui.pages.labware import LabwarePage              # noqa: E402
 from micropick.gui.pages.liquid import LiquidHandlingPage        # noqa: E402
 from micropick.gui.pages.liquid_plan import LiquidPlanPage       # noqa: E402
 from micropick.gui.pages.manual import (AMOUNT, FROM, HEIGHT,    # noqa: E402
-                                        WHERE, ManualPage)
+                                        WELL_HEIGHT, WHERE, ManualPage)
 from micropick.gui.pages.picking import PickingPage              # noqa: E402
 from micropick.gui.pages.routine import RoutinePage              # noqa: E402
 from micropick.gui.pages.well_center import WellCenterPage       # noqa: E402
@@ -133,6 +133,13 @@ def test_manual_height_keeps_the_frame(
         manual, stands_still, chosen):
     _stands_with_the_frame(manual, stands_still, manual.height_mode,
                            HEIGHT.index(chosen), manual.aspirate_card)
+
+
+@pytest.mark.parametrize("chosen", WELL_HEIGHT)
+def test_manual_well_height_moves_nothing(manual, stands_still, chosen):
+    manual.dispense_card.set_open(True)
+    stands_still(manual, lambda: _choose(manual.well_ref,
+                                         WELL_HEIGHT.index(chosen)))
 
 
 @pytest.mark.parametrize("chosen", AMOUNT)

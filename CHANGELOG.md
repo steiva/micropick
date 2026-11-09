@@ -15,6 +15,15 @@ pick, Manual pick, Liquid handling), each a row of steps. The cameras, the
 camera calibration, the platforms and the three positions are set in Robot
 setup.
 
+- Manual pick: with the tip already over the target, Dispense and Tip to go
+  straight up or down to the height, with no trip to the travel height.
+- Manual pick: Tip to in the Dispense card takes the tip to the chosen well or
+  point and leaves it there, dispensing nothing.
+- Manual pick: Dispense into a well has a height, Top, Middle or Bottom with a
+  signed Offset, said in words. It starts at the bottom plus the deposit offset.
+- Manual pick: a Retract card at the foot of the work column, in the same place
+  whatever folds. R retracts by default on every screen; rebind or clear it in
+  Settings.
 - Settings: Tip calibration has a Height, the Z the tip goes to over the disc to
   be measured (67.1 mm at the start). Below the platform's top the calibration
   does not start and says why.

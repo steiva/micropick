@@ -58,7 +58,7 @@ from .robot_monitor import RobotMonitor
 from .session import MOCK_PROFILE_NAME, Session
 from .widgets.banner import Banner
 from .widgets.footer import Footer
-from .widgets.jog_panel import JogPanel
+from .widgets.jog_panel import JogPanel, input_field
 from .widgets.overlays import ConfirmDialog, DimCover, LockOverlay
 from .widgets.step_bar import StepBar
 from .widgets.toast import Toast
@@ -288,6 +288,7 @@ class MainWindow(QMainWindow):
         self.top.light_toggled.connect(self._toggle_lights)
         self.top.park_clicked.connect(self._park)
         self.top.retract_clicked.connect(self._retract)
+        session.retract_requested.connect(self._retract)
         self.top.stop_clicked.connect(self._stop)
         self.top.lock_toggled.connect(self._set_locked)
         self.top.status_clicked.connect(self.go_to_run)
@@ -770,16 +771,10 @@ class MainWindow(QMainWindow):
         return self.session.robot_lease.busy
 
     def _show_park(self) -> None:
-        connected = self.session.robot is not None
-        holder = self.session.robot_lease.holder
-        locked = self.session.locked
-        free = connected and holder is None and not locked
-        reason = ("Robot not connected." if not connected else
-                  "Robot locked." if locked else
-                  f"Robot busy: {holder}." if holder is not None else "")
-        self.top.set_park_enabled(free, reason)
-        self.top.set_retract_enabled(free, reason)
-        if self._retracting and holder is None:
+        reason = self.session.not_free
+        self.top.set_park_enabled(not reason, reason)
+        self.top.set_retract_enabled(not reason, reason)
+        if self._retracting and self.session.robot_lease.holder is None:
             self._retracting = False
             self.top.set_retracting(False)
 
@@ -888,9 +883,8 @@ class MainWindow(QMainWindow):
                      if panel.isVisible()), None)
 
     def _bind_retract(self) -> None:
-        """Retract's key, window-wide, once one is chosen in Settings: it
-        has none by default (`gui.keys`). A field with the keyboard keeps
-        the characters it edits with, as for the jog keys."""
+        """Retract's key, window-wide, none if Settings cleared it
+        (`gui.keys`)."""
         for shortcut in self._retract_keys:
             shortcut.setEnabled(False)
             shortcut.setParent(None)
@@ -899,8 +893,14 @@ class MainWindow(QMainWindow):
         for sequence in keys.sequences(self.session.settings.keys, "retract"):
             shortcut = QShortcut(sequence, self)
             shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
-            shortcut.activated.connect(self._retract)
+            shortcut.activated.connect(self._retract_key)
             self._retract_keys.append(shortcut)
+
+    def _retract_key(self) -> None:
+        """Retract, unless a field has the keyboard: a key rebound to one a
+        field does not edit with would reach here."""
+        if input_field(QApplication.focusWidget()) is None:
+            self._retract()
 
     def _retract(self) -> None:
         """Retract: the tip straight up where it stands to the travel height

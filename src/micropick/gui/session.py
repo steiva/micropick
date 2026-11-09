@@ -388,6 +388,8 @@ class Session(QObject):
     # A page asks for a step of another task, (task, step): Picking's
     # Finish by hand opens Manual pick's Work.
     task_requested = Signal(str, str)
+    # Manual pick's Retract card asks for the top bar's Retract.
+    retract_requested = Signal()
     # Picking done's Choose plan: the plan a run delivered into, for Plan to
     # show again, not in use, its counts fresh at Use this plan.
     plan_chosen = Signal(object)
@@ -1963,6 +1965,15 @@ class Session(QObject):
         return self._api is not None and self._api.hold.is_set()
 
     # -- lock ------------------------------------------------------------------
+
+    @property
+    def not_free(self) -> str:
+        """Why a move asked for now would be refused, or "": what Park and
+        Retract are gray for."""
+        holder = self.robot_lease.holder
+        return ("Robot not connected." if self.robot is None else
+                "Robot locked." if self.locked else
+                f"Robot busy: {holder}." if holder is not None else "")
 
     @property
     def locked(self) -> bool:

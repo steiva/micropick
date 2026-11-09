@@ -155,8 +155,9 @@ height line gives (`_heights_in`): more than 1 mm under a measured bottom
 or 2 mm under a drawing's is refused, nothing moved
 (`moves.under_the_bottom`, #101). So a mistyped Z is stopped where no module
 would stop it, and pressing lightly on the bottom stays possible. A slot
-with no bottom known has nothing to go by. In a well and Above the bottom
-are heights above a bottom, never under it. The check is on the move, not
+with no bottom known has nothing to go by. Aspirate's In a well and Above the
+bottom are heights above a bottom, never under it; Dispense's well height has
+a sign, and the same limits (`_to_target`). The check is on the move, not
 on a point's Z as typed: `Session.memo_problem` stays the jog envelope's. It
 is no part of the jog envelope either, since a jog step, and Dish bottom's
 lowering, go down to a touch.
@@ -171,9 +172,25 @@ row:
 * **In a well** - a plate and its well (`WellPicker`), the plate plan's plate
   first, any well choosable, the plan's wells in one color so the wells a run
   left empty can be filled by hand; nothing says what a run filled (§10.10).
-  The tip goes to the well's bottom (as Aspirate's, measured or the drawing's)
-  plus the picking settings' deposit offset, from the plate's well center.
-* **At a point** - a memo or saved point, as a chip.
+  Then the well height (#137): Top, Middle or Bottom and a signed Offset, in
+  words under them (`height_words`, as on Liquid's Plan), x and y from the
+  plate's well center. It starts at the bottom plus the picking settings'
+  deposit offset, which is only read, then stays in the page's memory. On a
+  measured plate the rim and depth say the heights, the numbers of the height
+  line; else the drawing. Under the bottom is `moves.under_the_bottom`'s to
+  refuse, over the well is allowed, and above the travel height is held there.
+* **At a point** - a memo or saved point, as a chip, at its own Z, said where
+  a well's height is.
+
+Beside that sentence, **Tip to** (#138) takes the tip to the same target
+(`_to_target`, so refused in the same words) and leaves it there: nothing
+dispensed, no lift whatever After dispensing says, no camera back, with an
+empty tip too. The operator can then jog and use Dispense in place.
+
+With the tip already on the target's X and Y, Dispense and every Tip to of this
+page (the card's, a point's, Tip to crosshair) are one straight move to the
+height, up or down (`Motion.to_spot`, #139). Aspirate keeps its whole path: the
+plunger is made ready above the liquid.
 
 Its button says what it does - "Dispense into A7", "Dispense 10 µl" - and,
 gray while the tip is empty, only "Dispense".
@@ -193,11 +210,19 @@ In place
 --------
 The card that aspirates or dispenses where the tip is (#111): no move and
 no lift, whatever Aspirate's and Dispense's cards say; the tip is raised with
-Retract in the top bar. Its amount and speed start as Aspirate's fields do and
+Retract (below). Its amount and speed start as Aspirate's fields do and
 then stay in the page's memory, apart from the cards. A and D do what its
 buttons do, the keys drawn on them as bound, and nothing while a field has
 the keyboard. A dispense above what the tip holds is refused: the plunger
 would push out air.
+
+Retract
+-------
+The card at the foot of the work column, outside its scroll (`WorkColumns`,
+`foot`), so it stands in one place whatever folds (#136). It asks for the top
+bar's Retract (`Session.retract_requested`), whose path and refusals are the
+shell's, and is gray when that one is (`Session.not_free`). Its key is
+window-wide, the shell's too; the button only names it.
 
 How the tip leaves
 ------------------
@@ -251,6 +276,7 @@ from PySide6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
 
 from ...core.calibration.pixel_map import PixelMap
 from ...core.deck import nearest_slot, slot_center
+from ...core.liquid_plan import Height, height_words
 from ...hardware.protocols import xyz
 from ...viz import overlays
 from ...workflows import manual as moves
@@ -321,6 +347,10 @@ WHERE = ("In a well", "At a point")
 # By clicking's height: a Z, or above the bottom of the spot's slot.
 HEIGHT = ("Z", "Above the bottom")
 
+# Dispense's well height, and how far its Offset goes.
+WELL_HEIGHT = ("Top", "Middle", "Bottom")
+WELL_OFFSET_RANGE = (-100.0, 100.0)
+
 # How the tip leaves, each card its own; the wait's bounds and start.
 LIFT = ("Right away", "After a wait", "Stay")
 WAIT_RANGE = (0.5, 60.0)
@@ -339,6 +369,7 @@ CLICK_MOVES = ("Camera", "Tip")
 
 
 TIP_EMPTY = "The tip is empty. Aspirate first."
+RETRACT_TIP = "Raise the tip to the travel height"
 POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
 # The Points card's list, and three rows of chips under "At a point".
 POINTS_LIST_PX = 280
@@ -348,6 +379,9 @@ AT_A_POINT_PX = 124
 SOURCE_MAP_PX = 320
 TARGET_MAP_PX = 340
 POPOVER_PX = 360
+# Dispense's Tip to: as wide whatever it names, a long point's name cut.
+TIP_TO_PX = 130
+TIP_TO_PADDING_PX = 24
 # The fields' widths: room for the range's longest number.
 NUMBER_PX = 72
 Z_PX = 80
@@ -369,6 +403,12 @@ def _point_words(point) -> tuple[str, str]:
     """A point as a summary says it: it has its own height."""
     return (point.name,
             "travel height" if point.z is None else f"Z {point.z:g} mm")
+
+
+def _target_name(target) -> str:
+    """The well or the point of `_target`."""
+    kind, what = target
+    return what[3] if kind == "well" else what.name
 
 
 def _in_place_button(text: str, color: str, parent: QWidget) -> KeycapButton:
@@ -521,6 +561,18 @@ class SlotHeights(NamedTuple):
     measured: bool
 
 
+class WellSpot(NamedTuple):
+    """Where Dispense goes in a well, in the robot's frame: `above` its
+    `bottom`, `measured` False for a drawing's."""
+
+    x: float
+    y: float
+    z: float
+    above: float
+    bottom: float
+    measured: bool
+
+
 class ManualPage(QWidget):
     def __init__(self, session: Session, parent: QWidget | None = None):
         super().__init__(parent)
@@ -571,7 +623,8 @@ class ManualPage(QWidget):
         self.in_place_card = self._in_place_card()
         columns = WorkColumns([self.in_place_card, self._aspirate_card(),
                                self._dispense_card()],
-                              self._points_card(), self, last=self.jog)
+                              self._points_card(), self, last=self.jog,
+                              foot=self._retract_card())
         self.work_cards = FoldGroup([self.aspirate_card, self.dispense_card])
         columns.two_columns_changed.connect(self._columns_changed)
 
@@ -593,6 +646,7 @@ class ManualPage(QWidget):
         session.task_requested.connect(self._task_requested)
         session.robot_state_changed.connect(self._robot_changed)
         session.robot_busy_changed.connect(self._on_robot_busy)
+        session.lock_changed.connect(lambda _on: self._refresh())
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._show_deck())
         session.labware_changed.connect(lambda _s: self._bottom_changed())
@@ -656,6 +710,16 @@ class ManualPage(QWidget):
         row.addWidget(self.dispense_in_place, 1)
         box.layout().addLayout(row)
         return box
+
+    def _retract_card(self) -> QWidget:
+        """One button; see "Retract"."""
+        self.retract_card = card(self)
+        self.retract_button = KeycapButton("Retract", self)
+        self.retract_button.setObjectName("secondary")
+        self.retract_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.retract_button.clicked.connect(self.session.retract_requested)
+        self.retract_card.layout().addWidget(self.retract_button)
+        return self.retract_card
 
     def _aspirate_card(self) -> QWidget:
         """From and what it asks, the fields, the lifting row, Aspirate in
@@ -770,6 +834,31 @@ class ManualPage(QWidget):
 
         self.target_points = self._point_chips()
         body.addWidget(self.target_points)
+
+        self.well_ref = _small(Segmented(
+            list(WELL_HEIGHT), current=WELL_HEIGHT.index("Bottom"),
+            parent=self))
+        self.well_ref.changed.connect(lambda _i: self._refresh())
+        self.well_offset = number_field(self, 0.5, WELL_OFFSET_RANGE,
+                                        width=Z_PX)
+        self.well_offset.valueChanged.connect(lambda _v: self._refresh())
+        self.well_height_row = QWidget(self)
+        self.well_height_row.setObjectName("plain")
+        fields = QVBoxLayout(self.well_height_row)
+        fields.setContentsMargins(0, 0, 0, 0)
+        fields.addLayout(_fields(labeled("Height", self.well_ref, self),
+                                 labeled("Offset, mm", self.well_offset, self)))
+        body.addWidget(self.well_height_row)
+
+        self.height_sentence = muted_label("", self)
+        self.tip_to_target = secondary_button("Tip to", self)
+        self.tip_to_target.setFixedWidth(TIP_TO_PX)
+        self.tip_to_target.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tip_to_target.clicked.connect(self._tip_to_target)
+        row = QHBoxLayout()
+        row.addWidget(self.height_sentence, 1)
+        row.addWidget(self.tip_to_target)
+        body.addLayout(row)
 
         self.amount = _small(Segmented(list(AMOUNT), parent=self))
         self.amount.changed.connect(lambda _i: self._target_changed())
@@ -920,10 +1009,11 @@ class ManualPage(QWidget):
         self._name_keys()
 
     def _name_keys(self) -> None:
-        """In place's buttons carry the keys that do them."""
+        """In place's buttons and Retract's carry the keys that do them."""
         bindings = self.session.settings.keys
         self.aspirate_in_place.set_keycap(keys.key_text(bindings, "aspirate"))
         self.dispense_in_place.set_keycap(keys.key_text(bindings, "dispense"))
+        self.retract_button.set_keycap(keys.key_text(bindings, "retract"))
 
     # -- liquid ------------------------------------------------------------------
 
@@ -936,7 +1026,9 @@ class ManualPage(QWidget):
         self.above_bottom.setToolTip(self._height_words())
 
     def _show_dispense_summary(self) -> None:
-        """The header's summary: where, how much, how."""
+        """The header's summary: where, how much, how; the height's
+        sentence."""
+        self.height_sentence.setText(self._target_height_words())
         if self.session.in_tip <= 0:
             self.dispense_card.set_summary(TIP_EMPTY, warn=True)
             return
@@ -969,7 +1061,29 @@ class ManualPage(QWidget):
         if target is None:
             return (WHERE[self.target.current()],)
         kind, what = target
-        return _point_words(what) if kind == "point" else (_well_words(what),)
+        if kind == "point":
+            return _point_words(what)
+        return _well_words(what), self._well_height_words(what)
+
+    def _target_height_words(self) -> str:
+        """Beside Tip to: the well height, or the chosen point's Z."""
+        target = self._target()
+        if WHERE[self.target.current()] == "In a well":
+            return self._well_height_words(
+                None if target is None else target[1])
+        return "" if target is None else _point_words(target[1])[1]
+
+    def _well_height(self) -> Height:
+        return Height(ref=WELL_HEIGHT[self.well_ref.current()].lower(),
+                      offset_mm=float(self.well_offset.value()))
+
+    def _well_height_words(self, well) -> str:
+        """The well height as said, for `well` of `_target`, or none yet."""
+        words = height_words(self._well_height())
+        if well is None or self._well_center(
+                well[0], well[2].load_name) is None:
+            return words
+        return words.replace("the bottom", "the measured bottom")
 
     def _part(self) -> float | None:
         """Dispense's volume; None for All."""
@@ -1144,6 +1258,7 @@ class ManualPage(QWidget):
         with laid_out_at_once(self.dispense_card):
             self.target_wells.setVisible(well)
             self.target_points.setVisible(chosen == "At a point")
+            self.well_height_row.setVisible(well)
         self.part_row.setVisible(AMOUNT[self.amount.current()] == "Part")
         self._refresh()
 
@@ -1215,6 +1330,9 @@ class ManualPage(QWidget):
             slot, labware_id, definition, well = what
             offset = self._well_offset(slot, definition, z)
             measured = self._measured_bottom(slot, definition, well)
+            if measured is None and z < 0:
+                # The robot refuses a well command under its drawing's bottom.
+                measured = 0.0, well_center.definition_depth(definition, well)
 
             def go(log):
                 if measured is None:
@@ -1224,21 +1342,60 @@ class ManualPage(QWidget):
                         labware_id, well, offset[:2], *measured, offset[2],
                         prepare=prepare, log=log)
             return go
-        point = what
-        xy = np.array([point.x, point.y])
-        pose = self.jog.pose
-        check_z = point.z if point.z is not None else (
-            pose[2] if pose is not None else 0.0)
-        why = (motion.refused((point.x, point.y, check_z))
-               or self._under_the_bottom(point.x, point.y, point.z))
-        if why:
-            raise ValueError(f"Not reachable: {why}.")
-        # No Z: as high as a move may go, which is the travel height.
-        to_z = float("inf") if point.z is None else point.z
+        xy, to_z = self._point_target(what)
 
         def go(log):
             motion.tip_to(xy, to_z, log=log)
         return go
+
+    def _point_target(self, point) -> tuple[np.ndarray, float]:
+        """Where the tip goes for `point`, (xy, z). Raises ValueError with the
+        reason when it is out of reach."""
+        pose = self.jog.pose
+        check_z = point.z if point.z is not None else (
+            pose[2] if pose is not None else 0.0)
+        why = (self.session.motion.refused((point.x, point.y, check_z))
+               or self._under_the_bottom(point.x, point.y, point.z))
+        if why:
+            raise ValueError(f"Not reachable: {why}.")
+        # No Z: as high as a move may go, which is the travel height.
+        return (np.array([point.x, point.y]),
+                float("inf") if point.z is None else point.z)
+
+    def _well_spot(self, chosen) -> WellSpot:
+        """The well of `_target` at the well height."""
+        slot, _labware_id, definition, well = chosen
+        _held, entry, _definition = self._plate_in(slot)
+        center = self._well_center(slot, definition.load_name)
+        top, bottom = well_center.plate_heights(
+            center, definition, self.session.profile.deck.module_height(slot))
+        above = well_center.above_bottom(self._well_height(), top - bottom)
+        x, y = well_center.well_xy(
+            definition, well, slot, self._well_offset(slot, definition, 0)[:2],
+            labware_offset=entry.offset or (0.0, 0.0, 0.0))
+        return WellSpot(x, y, bottom + above, above, bottom, center is not None)
+
+    def _to_target(self, target):
+        """The move to Dispense's `target`, as a job's first part: a well at
+        its well height, no higher than the travel height, a point at its own
+        Z, one straight move if the tip is on its X and Y. Raises ValueError
+        with the reason when it is out of reach."""
+        motion = self.session.motion
+        if target[0] == "point":
+            xy, z = self._point_target(target[1])
+            return lambda log: motion.to_spot(xy, z, log=log)
+        spot = self._well_spot(target[1])
+        why = (motion.refused(spot[:3]) or moves.under_the_bottom(
+            spot.z, spot.bottom, target[1][0], measured=spot.measured))
+        if why:
+            raise ValueError(f"Not reachable: {why}.")
+
+        def path(log):
+            motion.raise_tip(log=log)
+            over = max(0.0, spot.z - motion.travel_z)
+            self._go_to(target, spot.above - over)(log)
+
+        return lambda log: motion.to_spot(spot[:2], spot.z, path=path, log=log)
 
     def _aspirate_from_source(self) -> None:
         """Aspirate: to the source, then aspirate there."""
@@ -1438,8 +1595,7 @@ class ManualPage(QWidget):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _dispense(self, target) -> None:
-        """Part or All at `target` (see `_go_to`); a well is given into at
-        the deposit's height above its bottom."""
+        """Part or All at `target` (see `_to_target`)."""
         problem = self._tip_problem("dispense")
         held = self.session.in_tip
         volume = self._part()
@@ -1450,10 +1606,8 @@ class ManualPage(QWidget):
         if problem:
             self.jog.refuse(problem)
             return
-        z = (self.session.profile.picking.deposit_offset_z
-             if target[0] == "well" else None)
         try:
-            go = self._go_to(target, z)
+            go = self._to_target(target)
         except ValueError as exc:
             self.jog.refuse(str(exc))
             return
@@ -1477,6 +1631,28 @@ class ManualPage(QWidget):
             return said
 
         if not self.jog.run_job(job, then=then):
+            self.jog.refuse(self.session.robot_lease.refusal)
+
+    def _tip_to_target(self) -> None:
+        """Tip to: the tip to Dispense's target, and nothing else."""
+        target = self._target()
+        if target is None:
+            return
+        problem = self._tip_problem("move")
+        if problem:
+            self.jog.refuse(problem)
+            return
+        try:
+            go = self._to_target(target)
+        except ValueError as exc:
+            self.jog.refuse(str(exc))
+            return
+        name = _target_name(target)
+
+        def job(log):
+            return Reached(go(log), f"Tip at {name}.")
+
+        if not self.jog.run_job(job):
             self.jog.refuse(self.session.robot_lease.refusal)
 
     def _tip_problem(self, what: str) -> str:
@@ -1766,7 +1942,7 @@ class ManualPage(QWidget):
 
         def job(log_):
             # No Z: as high as a move may go, which is the travel height.
-            return Reached(motion.tip_to(spot, float("inf"), log=log_),
+            return Reached(motion.to_spot(spot, float("inf"), log=log_),
                            f"Tip at ({spot[0]:.2f}, {spot[1]:.2f}).")
 
         if not self.jog.run_job(job):
@@ -1890,23 +2066,16 @@ class ManualPage(QWidget):
         robot = self.session.robot
         if robot is None or self._busy() or self.jog.busy:
             return
-        xy = np.array([point.x, point.y])
-        pose = self.jog.pose
-        check_z = point.z if point.z is not None else (
-            pose[2] if pose is not None else 0.0)
-        what = (f"tip to {point.name} ({point.x:.2f}, {point.y:.2f}) "
-                f"at z {_memo_z_text(point.z)}")
-        why = (self.session.motion.refused((point.x, point.y, check_z))
-               or self._under_the_bottom(point.x, point.y, point.z))
-        if why:
-            self.jog.refuse(f"Not reachable: {why}.")
+        try:
+            xy, z = self._point_target(point)
+        except ValueError as exc:
+            self.jog.refuse(str(exc))
             return
-        log.info("%s", what)
-        # No Z: as high as a move may go, which is the travel height.
-        z = float("inf") if point.z is None else point.z
+        log.info("tip to %s (%.2f, %.2f) at z %s", point.name, point.x,
+                 point.y, _memo_z_text(point.z))
 
         def job(log_):
-            return Reached(self.session.motion.tip_to(xy, z, log=log_),
+            return Reached(self.session.motion.to_spot(xy, z, log=log_),
                            f"Tip at {point.name}.")
 
         if not self.jog.run_job(job):
@@ -2073,15 +2242,31 @@ class ManualPage(QWidget):
         ready = has_robot and self.session.tip.attached is True and free
         self.aspirate_in_place.setEnabled(ready)
         self.dispense_in_place.setEnabled(ready and self.session.in_tip > 0)
+        reason = self.session.not_free
+        self.retract_button.setEnabled(not reason)
+        self.retract_button.setToolTip(reason or RETRACT_TIP)
         target = self._target()
         self.dispense_button.setText(self._dispense_text(target))
         self.dispense_button.setEnabled(has_robot and target is not None
                                         and self.session.in_tip > 0 and free)
+        self._show_tip_to(target, ready)
         set_primary(self.aspirate_button, self.session.in_tip <= 0)
         set_primary(self.dispense_button, self.session.in_tip > 0)
         self._show_aspirate_summary()
         self._show_dispense_summary()
         self.view.set_status(self._status_lines(busy, problems))
+
+    def _show_tip_to(self, target, ready: bool) -> None:
+        """Tip to, named for `target`; gray as the page's other moves."""
+        button = self.tip_to_target
+        words = "Tip to" if target is None else f"Tip to {_target_name(target)}"
+        button.setText(button.fontMetrics().elidedText(
+            words, Qt.TextElideMode.ElideRight, TIP_TO_PX - TIP_TO_PADDING_PX))
+        button.setEnabled(ready and target is not None)
+        button.setToolTip(
+            "Put a tip on first." if self.session.tip.attached is not True
+            else self.session.not_free
+            or f"{words}. Nothing is dispensed.")
 
     def _status_lines(self, busy: bool, problems: list[str]) -> list[str]:
         """What holds while it is true, on the picture under the chips."""
@@ -2117,6 +2302,8 @@ class ManualPage(QWidget):
                 self.in_place_amount.setValue(profile.picking.vol)
                 self.in_place_rate.setValue(profile.picking.flow_rate)
                 self.dispense_rate.setValue(profile.picking.flow_rate)
+                self.well_ref.set_current(WELL_HEIGHT.index("Bottom"))
+                self.well_offset.setValue(profile.picking.deposit_offset_z)
                 self.part.setValue(profile.picking.vol)
             self._forget_targets()
         else:

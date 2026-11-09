@@ -1,6 +1,6 @@
 """Retract in the top bar (#108): the tip straight up to the travel height,
 no confirmation, through the shown page's jog panel or on Park's path;
-refused as Park is; and a key that can be bound in Settings."""
+refused as Park is; and its key, R, rebound or cleared in Settings."""
 
 import os
 import time
@@ -164,10 +164,8 @@ def test_disabled_and_refused_while_locked(app, window, monkeypatch):
     assert window.top.retract.isEnabled()
 
 
-def test_the_action_has_no_default_key():
-    assert keys.action("retract").defaults == ()
-    assert keys.sequences({}, "retract") == []
-    assert keys.key_text({}, "retract") == ""
+def test_the_action_has_r_by_default():
+    assert keys.key_text({}, "retract") == "R"
     assert keys.problems({}) == []
 
 
@@ -175,10 +173,10 @@ def test_a_key_bound_in_settings_retracts(app, window, monkeypatch):
     _connect(app, window)
     calls = _rises(window, monkeypatch)
     settings = window.session.settings.model_copy(
-        update={"keys": {"retract": "R"}})
+        update={"keys": {"retract": "F6"}})
     window.session.set_settings(settings)
     bound = [s for s in window.findChildren(QShortcut)
-             if s.parent() is window and s.key() == QKeySequence("R")]
+             if s.parent() is window and s.key() == QKeySequence("F6")]
     assert len(bound) == 1
     bound[0].activated.emit()
     _settle(app, window)
@@ -187,22 +185,24 @@ def test_a_key_bound_in_settings_retracts(app, window, monkeypatch):
 
 def test_a_bound_key_is_in_the_pads_list(app, window):
     panel = window.findChildren(JogPanel)[0]
-    assert not any("retract" in line for line in panel._pad_help())
-    window.session.set_settings(window.session.settings.model_copy(
-        update={"keys": {"retract": "R"}}))
     assert "R   retract the tip" in panel._pad_help()
+    window.session.set_settings(window.session.settings.model_copy(
+        update={"keys": {"retract": ""}}))
+    assert not any("retract" in line for line in panel._pad_help())
 
 
 def test_the_settings_card_binds_and_clears_it(app, window):
     sheet = window.settings_sheet
     page = next(w for w in sheet.findChildren(object)
                 if hasattr(w, "key_edits"))
-    assert page.key_edits["retract"].keySequence().isEmpty()
+    assert page.key_edits["retract"].keySequence() == QKeySequence("R")
     assert page._typed_keys() == {}
-    page.key_edits["retract"].setKeySequence(QKeySequence("R"))
-    assert page._typed_keys() == {"retract": "R"}
+    page.key_edits["retract"].setKeySequence(QKeySequence("F6"))
+    assert page._typed_keys() == {"retract": "F6"}
+    assert page.key_edits["retract"].isClearButtonEnabled()
+    assert not page.key_edits["x-"].isClearButtonEnabled()
     page.key_edits["retract"].clear()
-    assert page._typed_keys() == {}
+    assert page._typed_keys() == {"retract": ""}
 
 
 def test_the_machine_card_is_gone(app, window):

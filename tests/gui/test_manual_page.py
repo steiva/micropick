@@ -946,7 +946,7 @@ def test_aspirate_prepares_the_plunger_over_the_rim_not_in_the_well(
 def test_dispense_in_a_measured_plate_reaches_the_deposit_height(
         app, page, session):
     _measured_plate(app, page, session)
-    session.profile.picking.deposit_offset_z = 1.5
+    page.well_offset.setValue(1.5)
     page._aspirate_in_place()
     _wait(app, page)
     _lift(page.dispense_retract, "Stay")
@@ -2304,10 +2304,11 @@ def test_the_summaries_state_the_whole_action(app, page, session):
     page.target_wells.map.well_clicked.emit("A7")
     page.part.setValue(6.0)
     page.dispense_rate.setValue(20.0)
-    assert dispense.full == ("Slot 5 · A7 · 6 µl · 20 µl/s · "
-                             "lift right away")
+    assert dispense.full == ("Slot 5 · A7 · 0.5 mm above the bottom · 6 µl · "
+                             "20 µl/s · lift right away")
     page.amount.buttons[1].click()                       # All
-    assert dispense.full.startswith("Slot 5 · A7 · everything · ")
+    assert dispense.full.startswith(
+        "Slot 5 · A7 · 0.5 mm above the bottom · everything · ")
 
 
 def test_a_point_in_a_summary_is_the_point_as_it_stands(app, page, session):

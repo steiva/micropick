@@ -220,3 +220,76 @@ def test_rise_slowly_with_the_top_not_measured_goes_slowly_first():
     assert _speeds(robot) == [("move_with_speed", (100.0, 100.0, 52.0), 0.5)]
     assert len(_retracts(robot)) == 1
     assert motion.top == pytest.approx(TOP)
+
+
+# -- one straight move on the same spot (#139) ---------------------------------
+
+
+def _down_at(x, y, z=50.0):
+    """A robot with the top measured, the tip down at (x, y, z), its log
+    empty."""
+    robot = _robot()
+    motion = Motion(robot)
+    motion.tip_to((x, y), z)
+    robot.log.clear()
+    robot.calls.clear()
+    return robot, motion
+
+
+@pytest.mark.parametrize("z", [30.0, 80.0])
+def test_on_the_same_spot_it_is_one_straight_move_down_or_up(z):
+    robot, motion = _down_at(120.0, 90.0)
+    reached = motion.to_spot((120.0, 90.0), z)
+    assert robot.log == [pytest.approx((120.0, 90.0, z))]
+    assert not _retracts(robot)
+    assert reached == pytest.approx((120.0, 90.0, z))
+
+
+def test_within_the_tolerance_it_is_one_move_to_the_target():
+    robot, motion = _down_at(120.0, 90.0)
+    motion.to_spot((120.06, 89.94), 30.0)         # 0.085 mm off
+    assert robot.log == [pytest.approx((120.06, 89.94, 30.0))]
+    assert not _retracts(robot)
+
+
+def test_past_the_tolerance_it_goes_up_and_over():
+    robot, motion = _down_at(120.0, 90.0)
+    motion.to_spot((120.08, 89.92), 30.0)         # 0.113 mm off
+    assert len(_retracts(robot)) == 1
+    assert robot.log[-2:] == [pytest.approx((120.08, 89.92, TOP - 1.0)),
+                              pytest.approx((120.08, 89.92, 30.0))]
+
+
+def test_elsewhere_it_takes_the_path_given():
+    robot, motion = _down_at(120.0, 90.0)
+    taken = []
+
+    def path(log):
+        taken.append(log)
+        robot.move_to_coordinates((200.0, 150.0, 40.0), verbose=False)
+
+    reached = motion.to_spot((200.0, 150.0), 40.0, path=path)
+    assert len(taken) == 1
+    assert reached == pytest.approx((200.0, 150.0, 40.0))
+
+
+def test_on_the_same_spot_the_path_is_not_taken():
+    robot, motion = _down_at(120.0, 90.0)
+    motion.to_spot((120.0, 90.0), 30.0, path=lambda _log: pytest.fail("path"))
+    assert robot.log == [pytest.approx((120.0, 90.0, 30.0))]
+
+
+def test_on_the_same_spot_a_target_above_the_travel_height_is_held_there():
+    robot, motion = _down_at(120.0, 90.0)
+    motion.to_spot((120.0, 90.0), float("inf"))
+    assert robot.log == [pytest.approx((120.0, 90.0, TOP - 1.0))]
+    assert not _refused(robot)
+
+
+def test_with_the_top_not_measured_it_takes_the_path_that_measures_it():
+    robot = _robot()
+    motion = Motion(robot)
+    motion.to_spot((100.0, 100.0), float("inf"))
+    assert len(_retracts(robot)) == 1
+    assert xyz(robot)[2] == pytest.approx(TOP - 1.0)
+    assert not _refused(robot)

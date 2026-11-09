@@ -193,8 +193,14 @@ static until the session owns them.
 - [ ] **Retract goes straight up and asks nothing (#108).**
   Tip low over the dish, Retract in the top bar, on Home and on a step: the tip
   rises where it stands to the travel height, "Retracting…" while it moves.
-  Again above it: nothing moves. Bind a key in Settings, Keys: it does the same
-  and the pad's Keys lists it. Home is in Settings, Advanced, and asks first.
+  Again above it: nothing moves. R does the same and the pad's Keys lists it;
+  rebind it in Settings, Keys. Home is in Settings, Advanced, and asks first.
+
+- [ ] **Retract card (#136).**
+  Manual pick's Run: Retract at the foot of the work column, R on its button.
+  Fold and open Aspirate and Dispense, scroll the column, narrow the window to
+  one column: it stands in one place. It does what the top bar's does, gray with
+  it (a run, Lock). With a number field holding the keyboard, R does nothing.
 
 - [ ] **"Remember in profile" survives a restart.**
   Name a real deck landmark, close the application, reopen it, and check that
@@ -1786,6 +1792,26 @@ tip box and a 384 plate at hand.
   mini map shows Filled / Planned; a click on a well chooses it and the
   button reads "Dispense into A7"; the tip goes into that well at
   the deposit height, above the same bottom as Aspirate's. At a point: "Dispense 6 µl".
+
+- [ ] **Dispense's well height (#137).**
+  In a well, on a measured plate: Top −1: the tip stops 1 mm under the height
+  line's top; Middle halfway; Bottom 0.5 reads "0.5 mm above the measured bottom".
+  A plate not measured: the same by the drawing. Bottom −3: refused in red, nothing
+  moves. Top +5: over the well. Picking's deposit offset is unchanged afterwards.
+
+- [ ] **Tip to in the Dispense card (#138).**
+  Dispense on In a well, Top −1, After dispensing: lift right away. Tip to A7: the
+  tip stops 1 mm under the top and stays, the gauge unchanged, "Tip at A7.". Jog
+  it, then Dispense in place: it dispenses there. At a point: "Tip to M1", the
+  point's Z beside it. With an empty tip it works; with no tip it is gray.
+
+- [ ] **One straight move over the same spot (#139).**
+  Tip to A7 at Top, then Bottom 1 and Tip to again: the tip goes straight down, not
+  up first. Top +2 and Tip to: straight up. Dispense: no trip up. Choose A8: Tip to
+  goes up, across and down. A point under the tip, its Tip to in the list, and Tip
+  to crosshair: the same. Aspirate with the tip already there: it still rises first.
+  Bench: over a well, watch that the tip does not shift sideways by more than a
+  hair, and that Z agrees with the height line.
 
 - [ ] **Aspirate and Dispense fold (#114).**
   Manual pick's Run, tip empty: Aspirate open and primary, Dispense folded, outlined

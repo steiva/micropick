@@ -101,7 +101,8 @@ OVER_CENTER, LOWER, DONE = 0, 1, 2
 # The page's keys: action id -> what it does, in the key list.
 KEYS = (("z+", "z-", "tip up / down"),
         ("step_up", "step_down", "larger / smaller step"),
-        ("help", None, "show or hide this list"))
+        ("help", None, "show or hide this list"),
+        ("retract", None, "retract the tip"))
 
 
 def ago(when: datetime) -> str:
@@ -354,7 +355,8 @@ class DishBottomPage(QWidget):
         lines = []
         for first, second, what in KEYS:
             names = [keycap(bindings, a) for a in (first, second) if a]
-            lines.append(f"{'/'.join(names)}   {what}")
+            if all(names):              # Retract's may have been cleared
+                lines.append(f"{'/'.join(names)}   {what}")
         self.keys_list.setText("<br>".join(key_row(line) for line in lines))
         self._show_keycaps()
         self._enable_keys()

@@ -97,9 +97,12 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
 - **Column 1 (400 px), the work:**
   - **In place** card;
   - **Aspirate** FoldCard;
-  - **Dispense** FoldCard.
+  - **Dispense** FoldCard;
+  - **Retract** card, pinned at the foot, outside the scroll, in the same place
+    whatever folds or scrolls, in one column too (#136).
 
-  It scrolls vertically only if it must, and at 1080 px it does not.
+  It scrolls vertically only if it must. At 1080 px, with Dispense open, the
+  lifting row goes under the scroll: accepted for the Retract card.
 - **Column 2 (400 px):** the **Points** card, full height. There is **no
   Machine card any more**: Home is Park, and Retract is in the TopBar (§2.1).
 - **Narrower windows:** under about 1600 px of window width, the two columns
@@ -137,8 +140,10 @@ but users and Ivan found it chaotic. The problems on the 0.4.0 screen:
   - the *Retract Z* button on Manual;
   - the *Machine* card with *Home robot position*. **Park** covers Home.
     Park's behavior does not change.
-- **Keyboard:** add a `gui.keys` action `retract` with no default key, so it
-  can be bound on the Settings page.
+- **Keyboard:** the `gui.keys` action `retract`, R by default (#136), window-wide;
+  rebound or cleared on the Settings page. A field with the keyboard keeps it.
+- **Manual pick's Retract card** (#136) does the same by the same path, gray
+  when this button is, its key drawn on it as bound.
 
 ### 2.2 Camera picture chrome (every screen with a camera picture)
 
@@ -341,9 +346,31 @@ without any move.
      - the plate in real proportions (max 340 px wide). Wells filled today
        are `plate`-filled (§7.3); the chosen well is `accent` with a ring;
      - the caption "Click a well. Filled wells already got liquid today.";
+     - the **well height** (#137): **Height** Top | Middle | Bottom and **Offset,
+       mm**, signed, with a sentence under them in words ("1 mm below the top",
+       "0.5 mm above the measured bottom"), named in the card's summary too. It
+       starts at Bottom with the picking settings' deposit offset, which is only
+       read, then stays in the page's memory, never in the profile. On a
+       measured plate Bottom is the measured bottom, Top the measured rim and
+       Middle halfway, the numbers of the height line; else the drawing. Too far
+       under the bottom is refused (§10.6's limits, `manual.under_the_bottom`),
+       Top with a positive Offset is allowed, and above the travel height is held
+       there;
      - the header button reads **Dispense into A3**.
-   - **At a point:** point chips, as in Aspirate. The button reads
-     **Dispense 10 µl**.
+   - **At a point:** point chips, as in Aspirate, at the point's own Z, shown
+     where a well's sentence is. The button reads **Dispense 10 µl**.
+   - **Tip to** (#138), on the row of that sentence, "Tip to A7", "Tip to M1":
+     the tip to the target and height a Dispense would use, left there. No
+     dispense, no lift whatever After dispensing says, no camera move back, and
+     it works with an empty tip; the operator can then jog and use Dispense in
+     place. Refused as Dispense is, in the same words, answered "Tip at A7."; gray
+     with no tip on or the robot busy.
+   - **One straight move** (#139): with the tip within 0.1 mm of the target's X
+     and Y, Dispense and every Tip to on this page (this one, a point's in the
+     list, Tip to crosshair) go straight up or down to the height, no trip to the
+     travel height. Further off, to another well, or while the top is not
+     measured, so nothing says how high the tip may go, the whole path. Aspirate
+     always takes the whole path: the plunger is made ready above the liquid.
 2. **Fields:**
    - **How much:** **Part | All** (small segmented);
    - **µl** (only when Part);
@@ -552,14 +579,14 @@ Explanatory sentences from the mockup are not copied onto the screen.
    "Click a well. Filled wells already got liquid today." Liquid's `POINTS_HELP`
    stays.
 3. **In place does not lift** (§9 Q2), keys A and D included. This changes #104
-   on purpose. The tip is raised with Retract in the TopBar.
+   on purpose. The tip is raised with Retract (the TopBar's, or the card's, #136).
 4. **In place's values** start from what Aspirate's fields start from, then
    live in the page's memory, apart from the cards. Not the literal 10 and 50.
 5. **Dispense in place above what the tip holds** is refused in a red toast,
    nothing moved: "Only 5 µl in the tip."
 6. **Heights stay.** By clicking keeps Z | Above the bottom (From tip only with
-   Z). In a well has an "Above the bottom, mm" field. Dispense has no height
-   field: it reads Aspirate's height, as today.
+   Z). In a well has an "Above the bottom, mm" field. Dispense has a well height
+   of its own (§4.3, #137).
 7. **The height line stays** (#95), under the status plate, in the overlay
    style.
 8. **Lifting** has the code's three choices (§9 Q1): Right away = Retract

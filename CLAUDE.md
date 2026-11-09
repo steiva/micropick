@@ -109,9 +109,9 @@ the TopBar's breadcrumb is the title.
 
 Manual pick's Run (#113, MANUAL.md §1) is the picture, then
 `widgets.work_columns.WorkColumns`: from a window of about 1600 px two columns of
-400 px, the work (In place, Aspirate, Dispense) and Points at the full height, its
-list filling it; under that one column of 420 px, Points a card after Dispense,
-folded by default (`FoldCard.set_folds`). The widths are fixed, the picture takes
+400 px, the work (In place, Aspirate, Dispense, the Retract card pinned under them)
+and Points at the full height, its list filling it; under that one column of 420
+px, Points a card after Dispense, folded by default (`FoldCard.set_folds`). The widths are fixed, the picture takes
 the rest (`FeedRow`, `width_in`), so a card's width never follows what it shows,
 long text wraps or is cut, and no card is under 380 px. A row of buttons in these
 cards has to fit a column, or goes one under the other. Look at and Detect cuboids
@@ -373,7 +373,7 @@ never in the profile), as does Point at crosshair
 (the picture's center through the pixel map, as By clicking's aim,
 no Z; gray without a pixel map, "Calibrate the camera first."). Under it
 **Tip to crosshair** (#99) sends the tip to that spot at the travel height
-(`Motion.tip_to`, through `JogPanel.run_job`) and leaves it there, no point
+(`Motion.to_spot`, through `JogPanel.run_job`) and leaves it there, no point
 needed; gray without a tip or a pixel map or while the robot is busy,
 checked against the jog envelope at the travel height. A point is
 one kind - a place on the deck, no purpose stored (#66). One card, **Points**
@@ -396,7 +396,7 @@ takes a star off. A double click edits X, Y, Z and a saved point's name
 (`rename_saved_point`), in a box over the cell: Enter or leaving keeps it,
 Esc puts it back and is no Stop. A click chooses a row (again: lets it go),
 and the chosen row unfolds under the point **Camera to** (`Motion.camera_to`,
-the point less the tip offset, its Z unused), **Tip to** (`Motion.tip_to`
+the point less the tip offset, its Z unused), **Tip to** (`Motion.to_spot`
 to its Z, no higher than the travel height; gray while no tip is on, "Put
 a tip on first.") and Z from tip, each checked against the jog envelope,
 through `JogPanel.run_job`. A click chooses and unfolds at once; when that
@@ -452,7 +452,7 @@ spot not in a well is refused, "The spot is not in a well.", nothing moved,
 with Aspirate as soon as I click too (`well_center.in_a_well`: the
 definition's outline at the measured center, less `TIP_RADIUS_MM`), and so
 is a click aiming into a slot with no bottom; Z may be on a well's wall.
-A target's Z (Tip to, At a point, By clicking's Z) more than 1 mm under the
+A target's Z (Tip to, At a point, By clicking's Z, Dispense's well height) more than 1 mm under the
 bottom of its slot when measured, or 2 mm under a drawing's, is refused in a
 red toast, nothing moved (#101, `manual.under_the_bottom`, its limits
 constants; `ManualPage._heights_in`, what the height line reads, nothing
@@ -492,8 +492,20 @@ opens Dispense. A card folding takes the keyboard off its fields, and the action
 buttons take no focus: else it passes to the next field, and the robot's keys
 with it. Dispense (MANUAL.md §4.3): In a well (a `WellPicker`, the plan's plate
 first, any well choosable, the plan's wells in one color, no legend and nothing
-of what a run filled, §10.10; a well's bottom, as Aspirate's, plus the deposit
-offset, from its well center, no height field) / At a point, then Part | All
+of what a run filled, §10.10; from its well center, at a **well height**, #137:
+Height Top | Middle | Bottom and a signed Offset, `core.liquid_plan.Height` said
+by `height_words` under them and in the summary, "measured" with a measured
+bottom; Bottom plus `picking.deposit_offset_z` at start, only read, then the
+page's memory; a measured plate by its rim and depth, the numbers of
+`well_center.plate_heights`, else the drawing; under the bottom refused as a
+target's Z, above the travel height held there) / At a point, its Z said where
+a well's height is, then, beside that sentence, **Tip to** (#138, "Tip to A7",
+`ManualPage._to_target` as Dispense: the tip left there, nothing dispensed, no
+lift, an empty tip too, gray with no tip on or the robot busy; with the tip
+within `motion.SAME_SPOT_MM` of the target's X and Y, it and Dispense, a point's
+Tip to and Tip to crosshair are one straight move, up or down, `Motion.to_spot`,
+#139, and never Aspirate, whose plunger is made ready above the liquid, or a run),
+then Part | All
 (#99: Part chosen at start, its volume `picking.vol`), its own speed (#97, from
 `picking.flow_rate` at start, in the page's memory) and the lifting row, its
 button saying what it does ("Dispense into A7", "Dispense 10 µl"), gray and only
@@ -546,8 +558,11 @@ has one, else claims the lease for a worker of its own. Retract beside it
 (#108, `MainWindow._retract`) takes the tip straight up to the travel height
 (`Motion.rise`, staying where it is above it), by the same path and refusals,
 "Retracting…" while it runs, nothing asked; its key (`retract` in `gui.keys`)
-has no default and is bound in Settings. There is no Machine card: Home is in
-Settings, Advanced.
+is R, window-wide, rebound in Settings or cleared there (`Action.clearable`), and a field with the keyboard
+keeps it. Manual pick's Retract card (#136, `foot` of `WorkColumns`: under the
+work column, outside its scroll, in both layouts) asks for this same Retract
+(`Session.retract_requested`), gray when it is (`Session.not_free`), R drawn on
+its button as bound. There is no Machine card: Home is in Settings, Advanced.
 "The robot is busy" (`MainWindow._robot_busy`) is the robot's lease being
 held, nothing else: a camera opening, a look for the marker or a picture
 saved take no lease and busy nothing.
