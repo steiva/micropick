@@ -119,7 +119,7 @@ def move_to_pixel(session, jog, u: float, v: float, *,
     pmap = PixelMap.from_config(profile.pixel_map)
     # The pose the panel shows, not one read here: a read is a robot
     # command, and the window would wait on it (#36).
-    gantry = jog.pose
+    gantry = jog.known_pose()
     if gantry is None:
         return False
     xy = camera_target(pmap, u, v, gantry)
@@ -151,7 +151,7 @@ def tip_at_pixel(session, jog, u: float, v: float, *, no_map: str):
     if not pmap.covers(u, v):
         jog.refuse(OUTSIDE_THE_MAP)
         return None
-    gantry = jog.pose                    # not a read: see move_to_pixel
+    gantry = jog.known_pose()            # not a read: see move_to_pixel
     if gantry is None:
         return None
     return tip_target(pmap, u, v, gantry[:2], offset)

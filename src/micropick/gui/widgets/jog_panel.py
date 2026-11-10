@@ -152,6 +152,8 @@ from .toast import show_toast
 NO_ROBOT = "robot not connected"
 # Why the pad is gray then.
 NO_ROBOT_REASON = "Robot not connected."
+# A click that needs the pose while none is known: it is read, nothing moves.
+POSE_UNKNOWN = "Reading the robot's position. Click again."
 
 # Under the pad while a field has the keyboard; see "A field has the keys".
 TYPING_HELP = ("Keys now control the input field, not the robot.",
@@ -464,6 +466,16 @@ class JogPanel(QWidget):
             raise RuntimeError(f"unhandled jog command {command!r}")
 
     # -- for the pages that host one -----------------------------------------
+
+    def known_pose(self):
+        """The pose shown, for a click that moves from it; None while a job
+        runs, or when none is known - then it is read and the operator told
+        to click again, never a click that silently does nothing."""
+        if self.pose is not None or self.controller is None or self._busy():
+            return self.pose
+        self.refresh_position()
+        self.refuse(POSE_UNKNOWN)
+        return None
 
     @property
     def busy(self) -> bool:
@@ -857,15 +869,23 @@ class JogPanel(QWidget):
             self._set_enabled(False)
             return
 
+        if self.controller is not None and self.controller.robot is robot:
+            # The same robot, its state passing by: the monitor's look (it
+            # may not answer for a moment while it moves), a run's status.
+            # Nothing is rebuilt and the job in flight stays this panel's:
+            # a read started over it took its place, and failing, left no
+            # pose - and a click on the picture nothing to move from.
+            self._set_enabled(self._worker is None)
+            if self.pose is None:
+                self.refresh_position()
+            return
         self.controller = JogController(robot,
                                         limits=self.session.motion.envelope,
                                         steps=list(DEFAULT_STEPS),
                                         step=self.pad.step)
-        self._set_enabled(True)
+        self._set_enabled(self._worker is None)
         # The first pose read is HTTP like any other.
-        controller = self.controller
-        self._run(Worker(lambda: (None, controller.status())),
-                  robot_work=False)
+        self.refresh_position()
 
     def _robot_elsewhere(self) -> str | None:
         """What has the robot, if it is not this panel: then nothing here may

@@ -1837,8 +1837,10 @@ class ManualPage(QWidget):
         # The pose the panel shows, not one read here: a read is a robot
         # command, and the window - the picture with it - would wait on it
         # (#36).
-        pose = self.jog.pose
-        if self._busy() or self.jog.busy or pose is None:
+        if self._busy() or self.jog.busy:
+            return
+        pose = self.jog.known_pose()
+        if pose is None:
             return
         profile = self.session.profile
         motion = self.session.motion
