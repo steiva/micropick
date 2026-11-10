@@ -31,6 +31,9 @@ for package in ("ultralytics", "qdarktheme", "qtawesome", "pyqtgraph",
 datas += [(str(ROOT / "labware"), "labware"),
           (str(ROOT / "ml_models"), "ml_models"),
           (str(ROOT / "src" / "micropick" / "gui" / "theme" / "micropick.qss"),
+           "micropick/gui/theme"),
+          # The window's icon (gui.app.ICON); the exe's is micropick.ico.
+          (str(ROOT / "src" / "micropick" / "gui" / "theme" / "micropick.png"),
            "micropick/gui/theme")]
 # The robot wrapper is imported inside functions, and the GUI's pages by
 # the shell's table.
@@ -56,6 +59,7 @@ exe = EXE(                                       # noqa: F821
     exclude_binaries=True,
     name="micropick",
     console=False,
+    icon=str(ROOT / "packaging" / "micropick.ico"),
     disable_windowed_traceback=False,
 )
 coll = COLLECT(                                  # noqa: F821

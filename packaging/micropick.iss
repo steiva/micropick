@@ -51,6 +51,8 @@ OutputBaseFilename={#SetupName}
 Compression=lzma2
 SolidCompression=yes
 LZMAUseSeparateProcess=yes
+; Beside this script, as the exe's (micropick.spec).
+SetupIconFile=micropick.ico
 UninstallDisplayIcon={app}\micropick.exe
 UninstallDisplayName=micropick {#AppVersion}
 ; A running micropick holds its DLLs open; the installer asks to close it.

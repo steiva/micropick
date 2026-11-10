@@ -9,13 +9,23 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import theme
 from .shell import MainWindow
 
-__all__ = ["Options", "create_app", "run"]
+__all__ = ["Options", "create_app", "run", "window_icon"]
+
+# The program's icon, 256 px; the exe's and the installer's are
+# packaging/micropick.ico, made from the same picture.
+ICON = Path(__file__).with_name("theme") / "micropick.png"
+
+
+def window_icon() -> QIcon:
+    return QIcon(str(ICON))
 
 
 @dataclass(frozen=True)
@@ -45,9 +55,19 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     # QGuiApplication is constructed and ignores a later change.
     theme.configure_hidpi()
 
+    if sys.platform == "win32":
+        # Run from the source tree the process is python's, and the taskbar
+        # would show python's icon, not the window's.
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "micropick")
+        except (AttributeError, OSError):
+            pass
     app = QApplication(sys.argv if argv is None else argv)
     app.setApplicationName("micropick")
     app.setApplicationDisplayName("micropick")
+    app.setWindowIcon(window_icon())
     theme.apply_theme(app)
     return app
 

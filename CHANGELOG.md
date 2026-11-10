@@ -10,6 +10,8 @@ the third for fixes.
 
 ## Unreleased
 
+- micropick has its own icon: the window, the taskbar, the program file, the
+  installer and the desktop shortcut.
 - The tip calibration can be done by hand, for tips the model does not find
   (Settings, Tip calibration, Mode: By hand). The robot finds the crosshair,
   brings the tip near it and stops; you center the tip on the crosshair with
