@@ -69,11 +69,11 @@ Save enabled at once (`save_by_hand`, `method` "manual"), Cancel saving
 nothing, the path back on Camera over the disc. Until either, leaving asks
 Save / Discard.
 
-Each reading the routine takes is held on the picture with the model's
-boxes (`viz.tip_views.view_items`) until the next or the run's end, a
-failed one until the next start: what the model saw. On the live lower
-camera afterwards the crosshair it read is a ring. The **Detections** chip
-turns all of it off: centering by eye, a mark is in the way.
+The picture is live, the camera the routine reads with: the upper one
+while it reads, the lower one from its first frame. Each frame's boxes
+(`viz.tip_views.view_items`) are drawn over it as the model gives them,
+the gantry standing still, and wiped when it moves; a failed reading's stay
+until the next start. The **Detections** chip turns them off.
 
 Controls start folded on the page (TIP.md §3.3), the jog, Undo step and the
 keys all there: the path's buttons move the robot. That is the page's rule, a
@@ -535,9 +535,10 @@ class TipCalibrationBlock(QObject):
     # operator at the disc. A signal, so that the slot runs on the GUI
     # thread whatever thread asked.
     disc_requested = Signal()
-    # A reading the routine took, from the worker thread: (frame, items,
-    # the lower camera's crosshair in pixels or None).
-    reading_seen = Signal(object)
+    # From the worker thread: a frame's boxes, (camera role, items), as the
+    # model gives them; and the gantry about to move.
+    frame_seen = Signal(object)
+    moving_seen = Signal()
     changed = Signal()
     calibrated = Signal()
 
@@ -572,17 +573,17 @@ class TipCalibrationBlock(QObject):
         # offset is recorded with (tip type, robot session, pick-up).
         self._hand: HandStart | None = None
         self._hand_record: tuple = ()
-        # A reading held on the picture (frame, items), and the crosshair
-        # the lower camera read, drawn as a ring on its live picture.
-        self._held: tuple | None = None
-        self._ring = None
-        self._ring_items: tuple = (None, [])
+        # The last frame's boxes over the live picture, (camera role, items),
+        # until the gantry moves; and the camera the routine reads with.
+        self._boxes: tuple | None = None
+        self._seeing: str | None = None
         self._marks_drawn: list = []
         self.opener = CameraOpener(session, self)
         self.box = self._build(parent)
 
         self.disc_requested.connect(self._at_disc)
-        self.reading_seen.connect(self._show_reading)
+        self.frame_seen.connect(self._show_frame)
+        self.moving_seen.connect(self._wipe_boxes)
         self.detections_chip = view.add_chip("Detections")
         self.detections_chip.setChecked(True)
         self.detections_chip.setToolTip("What the calibration detected.")
@@ -590,6 +591,8 @@ class TipCalibrationBlock(QObject):
         for panel in (self.jog, self.touch_jog):
             panel.pose_changed.connect(self._on_pose)
         self.touch_jog.moved.connect(self._on_nudge)
+        for panel in (self.jog, self.touch_jog):
+            panel.moved.connect(self._wipe_boxes)
         # One screen, one fold, whichever pad is over the picture.
         self.jog.pad.fold_changed.connect(self.touch_jog.pad.set_folded)
         self.touch_jog.pad.fold_changed.connect(self.jog.pad.set_folded)
@@ -860,7 +863,7 @@ class TipCalibrationBlock(QObject):
         tip_pickup = session.tip.pickup
         wait = self._wait
         by_hand = self._by_hand()
-        on_reading = self._on_reading
+        on_frame, on_move = self._on_frame, self.moving_seen.emit
 
         def job(log):
             log("loading the tip detector")
@@ -890,7 +893,7 @@ class TipCalibrationBlock(QObject):
                         robot, over, under, detector, pmap, target=target,
                         current_offset=current, height=height, frames=frames,
                         profile=profile, images_to=images,
-                        on_reading=on_reading, log=log)
+                        on_frame=on_frame, on_move=on_move, log=log)
                 finally:
                     session.refresh_lights()
                 pose = tuple(float(v) for v in xyz(robot))
@@ -903,7 +906,7 @@ class TipCalibrationBlock(QObject):
                     tip_type=tip_type, profile=profile,
                     manual_touch_up=None, robot_session=robot_session,
                     tip_pickup=tip_pickup, images_to=images,
-                    on_reading=on_reading, log=log)
+                    on_frame=on_frame, on_move=on_move, log=log)
             finally:
                 # It switches the lights on when it finds them off.
                 session.refresh_lights()
@@ -924,7 +927,7 @@ class TipCalibrationBlock(QObject):
         self._adjusting = self._nudged = False
         self._hand = None
         self._hand_record = (tip_type, robot_session, tip_pickup)
-        self._release_reading()
+        self._boxes = self._seeing = None
         self._disc_seen = False
         self._phase = MOVING
         worker = Worker(job, what="calibrating the pipette", lease=lease)
@@ -1106,48 +1109,33 @@ class TipCalibrationBlock(QObject):
 
     # -- the readings on the picture ------------------------------------------
 
-    def _on_reading(self, name: str, record, view) -> None:
-        """The routine's hook, on the worker's thread: the items drawn
-        there, the frame carried over to the GUI's."""
-        items = view_items(record.frame.shape, record.detections,
-                           center=None if view is None else view.center,
-                           tip=None if view is None else view.tip)
-        ring = (view.center if view is not None and name == "2_lower"
-                else None)
-        self.reading_seen.emit((record.frame, items, ring))
+    def _on_frame(self, name: str, index: int, frame, dets) -> None:
+        """The routine's hook, on the worker's thread: the frame's boxes."""
+        role = "over" if name == "1_upper" else "under"
+        self.frame_seen.emit((role, view_items(frame.shape, [dets],
+                                               first=index)))
 
-    def _show_reading(self, payload) -> None:
-        frame, items, ring = payload
-        if ring is not None:
-            self._ring = tuple(float(v) for v in ring)
-        self._held = (frame, items)
-        self.view.hold(frame, whole=True)
-        self._show_marks()
+    def _show_frame(self, boxes) -> None:
+        self._seeing = boxes[0]
+        self._boxes = boxes
+        self.refresh()
 
-    def _release_reading(self) -> None:
-        """The picture live again: a run starting, or ending well."""
-        if self._held is not None:
-            self._held = None
-            self.view.resume()
-        self._show_marks()
+    def _wipe_boxes(self, *_args) -> None:
+        """The gantry moves: the boxes are no longer where it is."""
+        if self._boxes is not None:
+            self._boxes = None
+            self._show_marks()
 
     def _show_marks(self) -> None:
-        """The held reading's boxes, else the ring on the lower camera's
-        live picture, or nothing with Detections off."""
+        """The last frame's boxes over its camera's live picture, or nothing
+        with Detections off."""
         items: list = []
-        under = self._under_camera()
-        if not self.detections_chip.isChecked():
-            pass
-        elif self._held is not None:
-            items = self._held[1]
-        elif (self._ring is not None and under is not None
-              and self.view.camera is under):
-            width, height = under.resolution
-            key = (self._ring, width, height)
-            if self._ring_items[0] != key:
-                self._ring_items = (key, view_items((height, width), [],
-                                                    center=self._ring))
-            items = self._ring_items[1]
+        if self.detections_chip.isChecked() and self._boxes is not None:
+            role, boxes = self._boxes
+            camera = (self._over_camera() if role == "over"
+                      else self._under_camera())
+            if camera is not None and self.view.camera is camera:
+                items = boxes
         # By identity: the items hold arrays, and a repaint per refresh is
         # what this saves.
         if items is not self._marks_drawn and (items or self._marks_drawn):
@@ -1169,7 +1157,6 @@ class TipCalibrationBlock(QObject):
     def _on_finished(self, payload) -> None:
         self._worker = None
         self._phase = None
-        self._release_reading()
         if payload[0] == HAND:
             _hand, start, pose = payload
             self._hand = start
@@ -1246,14 +1233,18 @@ class TipCalibrationBlock(QObject):
             self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
             self.touch_jog.set_step(TOUCH_UP_STEP_MM)
         self._show(running, tuning, adjusting)
-        # The upper camera finds the disc; the lower one sees the tip.
-        lower = (self._phase == MEASURING or centering
-                 or not running and self.done and self._over_crosshair())
-        # A reading held stays on the picture whatever camera follows: a
-        # switch would drop it.
-        if self._held is None:
-            self.view.set_camera(self._under_camera() if lower
-                                 else self._over_camera())
+        # The camera the routine reads with while it measures, the boxes'
+        # while they stand (a failed reading's included); else the upper
+        # camera finds the disc and the lower one sees the tip.
+        if self._boxes is not None:
+            lower = self._boxes[0] == "under"
+        elif self._phase == MEASURING:
+            lower = self._seeing == "under"
+        else:
+            lower = (centering or not running and self.done
+                     and self._over_crosshair())
+        self.view.set_camera(self._under_camera() if lower
+                             else self._over_camera())
         self._show_marks()
         # The host's pad follows the picture shown: over the lower camera's,
         # turned and mirrored, its arrows go through TipTarget.axes too, or

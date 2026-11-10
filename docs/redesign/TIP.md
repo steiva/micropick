@@ -264,15 +264,14 @@ This is the PlateGrid look from `LIQUID.md` R5, applied to tip racks:
   bound as ever: the robot is moved by the path's buttons, and the jog stays
   for when it is wanted. **Adjust by hand** opens them, XY only, at
   0.05 mm. They are hidden while a run has the robot, as today.
-- **The detections (#141):** each reading the run takes is held on the
-  picture with the model's boxes (class and confidence, a tip a frame did not
-  keep in red, the one it kept in orange, the crosshair taken as the center
-  ringed, the tip measured from a cross) until the next reading or the run's
-  end; a failed reading stays until the next start, under the red banner. On
-  the lower camera's live picture after the run, the crosshair it read is a
-  ring. The **Detections** chip, on at the start, turns all of it off:
-  centering by eye, a mark is in the way. Nothing else is drawn; the path and
-  the StatusPill say where the run is.
+- **The detections (#141):** the picture stays live, the camera the run
+  reads with: the upper one while it reads, the lower one from its first
+  frame. Each frame's boxes (class and confidence; a tip in red, the one a
+  frame kept in orange) are drawn over it as the model gives them, and wiped
+  when the gantry moves; a failed reading's stay until the next start, under
+  the red banner. No frame is held. The **Detections** chip, on at the start,
+  turns them off. Nothing else is drawn; the path and the StatusPill say
+  where the run is.
 
 ### 3.4 TopBar and footer
 

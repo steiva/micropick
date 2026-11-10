@@ -45,18 +45,19 @@ def _cross(xy, size: int, color, thickness: int) -> list[Item]:
 
 
 def view_items(frame_shape, detections, *, tip_label: str = "tip",
-               center=None, tip=None, lines=()) -> list[Item]:
+               center=None, tip=None, lines=(), first: int = 1) -> list[Item]:
     """The boxes of every frame, then the reading, then the header.
 
     `detections` is one list per frame; a frame that gave no usable reading
     still has its boxes drawn. `center` and `tip` are the reading's (None
-    where there is none), `lines` the header's text.
+    where there is none), `lines` the header's text, `first` the number of
+    the first frame given (one frame drawn as it comes is labeled its own).
     """
     h, w = frame_shape[:2]
     s = max(1, round(w / 1000))             # 4 px lines on a 4000 px frame
     font = 0.5 * s
     out: list[Item] = []
-    for i, dets in enumerate(detections, start=1):
+    for i, dets in enumerate(detections, start=first):
         tips = [d for d in dets if d.label == tip_label]
         kept = max(tips, key=lambda d: d.conf) if tips else None
         for d in dets:

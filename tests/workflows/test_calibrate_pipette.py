@@ -157,12 +157,17 @@ def _start_by_hand(tmp_path, tip_at, *, under_finds_disc=True, **kw):
         model.predict = predict
     robot = MockRobot(position=(150.0, 150.0, 67.1), noise_mm=0.0)
     readings = []
+
+    def on_frame(name, index, _frame, _dets):
+        # Each frame as it is detected; a reading named once.
+        if index == 1:
+            readings.append(name)
     start = start_by_hand(
         robot, _Camera("over"), _Camera("under"),
         TipDetector(model, imgsz=W), PixelMap.from_config(profile.pixel_map),
         target=profile.calibration.tip_target, current_offset=(16.0, 60.0),
         frames=5, settle_s=0.0, profile=profile, log=lambda _l: None,
-        on_reading=lambda name, record, view: readings.append(name), **kw)
+        on_frame=on_frame, on_move=lambda: readings.append("move"), **kw)
     return profile, robot, start, readings
 
 
@@ -176,7 +181,7 @@ def test_by_hand_leaves_the_tip_where_the_offset_puts_it_and_saves_nothing(
     pose = robot.get_position(verbose=False)[0]
     assert (round(pose["x"], 3), round(pose["y"], 3), round(pose["z"], 1)) \
         == (166.0, 210.0, 67.1)
-    assert readings == ["1_upper", "2_lower"]
+    assert readings == ["1_upper", "move", "2_lower", "move"]
     assert start.under_view is not None
     assert profile.calibration.pipette_offset is None
 
@@ -185,7 +190,7 @@ def test_by_hand_without_the_disc_in_the_lower_camera_carries_on(tmp_path):
     _profile_, robot, start, readings = _start_by_hand(
         tmp_path, lambda i: None, under_finds_disc=False)
     assert start.under_view is None
-    assert readings == ["1_upper", "2_lower"]
+    assert readings == ["1_upper", "move", "2_lower", "move"]
     pose = robot.get_position(verbose=False)[0]
     assert (round(pose["x"], 3), round(pose["y"], 3)) == (166.0, 210.0)
 
@@ -201,3 +206,17 @@ def test_the_offset_by_hand_is_where_the_tip_was_left(tmp_path):
     assert offset.tip_type == "vwr"
     saved = load_profile("t", directory=tmp_path).calibration.pipette_offset
     assert (round(saved.dx, 3), saved.method) == (16.5, "manual")
+
+
+def test_each_frame_is_handed_on_as_it_is_detected(tmp_path):
+    frames = []
+    _profile_, _images, _lines, call = _run(
+        tmp_path, lambda i: (W / 2 + 40, H / 2) if i >= 5 else None,
+        on_frame=lambda name, i, frame, dets: frames.append(
+            (name, i, frame.shape, len(dets))))
+    with pytest.raises(TipCalibrationError):
+        call()          # the check finds the tip where it was: refused
+    assert [f[:2] for f in frames[:6]] == [("1_upper", i) for i in range(1, 6)] \
+        + [("2_lower", 1)]
+    assert frames[0][2:] == ((H, W, 3), 5)
+    assert frames[5][3] == 6                     # the tip as well

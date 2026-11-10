@@ -1069,19 +1069,27 @@ def test_dropping_the_tip_while_adjusting_ends_it(app, page, ready):
 
 # -- by hand (#141) -------------------------------------------------------------
 
-def _reading(name="2_lower", tip=None):
-    """A reading as the routine hands it on: its frame, the boxes, the view."""
+def _frame(tip=False):
+    """A frame as the routine hands it on, and the model's boxes on it."""
     import numpy as np
 
-    from micropick.workflows.calibrate_pipette import (Detection,
-                                                       PatternView,
-                                                       ViewRecord)
+    from micropick.workflows.calibrate_pipette import Detection
     frame = np.zeros((480, 640, 3), np.uint8)
     dets = [Detection("point", np.array([320.0, 240.0]), 0.9,
                       (310, 230, 330, 250))]
-    view = PatternView(np.array([320.0, 240.0]), np.zeros((4, 2)), tip, 0.2,
+    if tip:
+        dets.append(Detection("tip", np.array([300.0, 200.0]), 0.6,
+                              (290, 190, 310, 210)))
+    return frame, dets
+
+
+def _pattern():
+    import numpy as np
+
+    from micropick.workflows.calibrate_pipette import PatternView
+    frame, dets = _frame()
+    return PatternView(np.array([320.0, 240.0]), np.zeros((4, 2)), None, 0.2,
                        0.5, 0.0, 5, frame, dets)
-    return name, ViewRecord(frame, [dets]), view
 
 
 @pytest.fixture
@@ -1100,15 +1108,17 @@ def by_hand(app, page, monkeypatch):
     seen["gate"].set()
 
     def start(robot, over, under, detector, pmap, *, current_offset, height,
-              on_reading, **_kw):
+              on_frame, on_move, **_kw):
         seen["start"] = current_offset
-        name, record, view = _reading()
-        on_reading(name, record, view)
+        on_frame("1_upper", 1, *_frame())
         seen["gate"].wait(10)
+        on_move()
+        on_frame("2_lower", 1, *_frame())
+        on_move()
         move_to(robot, (150.0 + current_offset[0], 150.0 + current_offset[1],
                         height), force_direct=True)
-        return HandStart(np.array([150.0, 150.0]), view, None, (150.0, 150.0),
-                         (640, 480), (640, 480), TipTarget())
+        return HandStart(np.array([150.0, 150.0]), _pattern(), None,
+                         (150.0, 150.0), (640, 480), (640, 480), TipTarget())
 
     monkeypatch.setattr(tip_page, "start_by_hand", start)
     monkeypatch.setattr(tip_page, "load_tip_detector",
@@ -1186,20 +1196,20 @@ def test_by_hand_leaving_unsaved_can_be_discarded(app, page, by_hand):
 
 # -- the detections on the picture (#141) ---------------------------------------
 
-def test_a_reading_holds_its_frame_with_the_boxes_until_the_run_moves_on(
+def test_each_frame_has_its_boxes_over_the_live_camera_that_took_it(
         app, page, by_hand):
     from micropick.viz.overlays import Rect
-    # A camera's view crop is for its live picture: a reading is shown whole.
-    page.calibration._under_camera().crop = 0.5
-    page.calibration._over_camera().crop = 0.5
+    upper = page.calibration._over_camera()
+    under = page.calibration._under_camera()
     by_hand["gate"].clear()
     page.go_button.click()
     assert _until(app, lambda: page.yes_button.isEnabled())
     page.yes_button.click()
-    assert _until(app, lambda: page.view.held_frame is not None
-                  and not page.view.live)
-    assert any(isinstance(i, Rect) for i in page.view._overlay)
-    assert page.view._view_size == (640, 480)
+    # The upper camera's frame: its live picture, the boxes over it.
+    assert _until(app, lambda: any(isinstance(i, Rect)
+                                   for i in page.view._overlay))
+    assert page.view.camera is upper
+    assert page.view.live
     assert page.detections_chip.isChecked()
     page.detections_chip.click()
     assert page.view._overlay == []
@@ -1207,26 +1217,30 @@ def test_a_reading_holds_its_frame_with_the_boxes_until_the_run_moves_on(
     assert any(isinstance(i, Rect) for i in page.view._overlay)
     by_hand["gate"].set()
     assert _until(app, lambda: not page.calibration.running)
-    # Centering by hand: the live picture, the crosshair as a ring alone.
+    # The gantry moved after the last frame: the lower camera live, bare.
+    assert page.view.camera is under
     assert page.view.live
-    from micropick.viz.overlays import Circle
-    assert [type(i) for i in page.view._overlay] == [Circle]
-    assert page.view._overlay[0].center == (320, 240)
-    page.detections_chip.click()
     assert page.view._overlay == []
 
 
-def test_a_failed_reading_stays_on_the_picture(app, page, ready, monkeypatch):
-    import numpy as np
+def test_a_failed_reading_keeps_its_boxes_over_its_camera(
+        app, page, ready, monkeypatch):
+    from micropick.viz.overlays import Rect
+    from micropick.workflows.calibrate_pipette import TipCalibrationError
 
-    def failing(robot, over, under, detector, pmap, *, on_reading, **_kw):
-        # A tip measured: its cross is drawn too.
-        on_reading(*_reading(tip=np.array([300.0, 200.0])))
-        raise tip_page.TipCalibrationError("the tip was not detected")
+    def failing(robot, over, under, detector, pmap, *, on_frame, on_move,
+                **_kw):
+        on_frame("1_upper", 1, *_frame())
+        on_move()
+        on_frame("2_lower", 1, *_frame(tip=True))
+        raise TipCalibrationError("the tip was not detected")
 
     monkeypatch.setattr(tip_page, "calibrate_pipette_offset", failing)
+    page.calibration.open_cameras()
+    assert _until(app, lambda: page.calibration._under_camera() is not None)
     _calibrate(app, page)
     assert page.calibration.failure.isVisibleTo(page)
-    assert not page.view.live
-    assert page.view.held_frame is not None
-    assert page.view._overlay
+    assert "the tip was not detected" in page.calibration.failure.label.text()
+    assert page.view.camera is page.calibration._under_camera()
+    assert page.view.live
+    assert any(isinstance(i, Rect) for i in page.view._overlay)

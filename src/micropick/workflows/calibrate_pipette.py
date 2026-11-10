@@ -271,12 +271,16 @@ class TipDetector:
 
     def view(self, camera: Camera, *, spacing_mm: float, frames: int = 5,
              center_tol_px: float | None = None, need_tip: bool = False,
-             max_radius_cv: float = 0.05, settle_s: float = 0.0) -> PatternView:
+             max_radius_cv: float = 0.05, settle_s: float = 0.0,
+             on_frame=None) -> PatternView:
         """Average several frames into one reading.
 
         The spread between repeats is reported rather than hidden: it is the
         cheapest indication that the scene moved, that focus drifted, or that
         the model is guessing.
+
+        on_frame, if given, is called as f(index, frame, detections) for each
+        frame as soon as it is detected, from 1: what the model sees, shown.
         """
         if settle_s:
             time.sleep(settle_s)
@@ -293,6 +297,8 @@ class TipDetector:
             last = record.frame = frame
             dets = self.detect(frame)
             record.detections.append(dets)
+            if on_frame is not None:
+                on_frame(i + 1, frame, dets)
             try:
                 c, nb, tip, mmpp, cv = self._pattern_from(
                     dets, frame.shape, spacing_mm, center_tol_px)
@@ -422,28 +428,33 @@ def _check_lower_mode(under_cam: Camera, under_resolution, profile
 
 
 def _reader(detector: TipDetector, target: TipTarget, frames: int,
-            images_to: Path | None, on_reading, log):
-    """`look(name, camera, need_tip=)`: one reading, its pictures saved and
-    shown (`on_reading(name, record, view)`) whether or not it succeeds -
-    a failed reading's boxes are what tells why."""
+            images_to: Path | None, on_frame, log):
+    """`look(name, camera, need_tip=)`: one reading, its pictures saved
+    whether or not it succeeds, each frame handed on as it is detected
+    (`on_frame(name, index, frame, detections)`)."""
+    def shown(name):
+        if on_frame is None:
+            return None
+
+        def each(index, frame, dets):
+            try:
+                on_frame(name, index, frame, dets)
+            except Exception as exc:          # noqa: BLE001 - only showing
+                log(f"  frame not shown: {exc}")
+        return each
+
     def look(name: str, camera: Camera, *, need_tip: bool) -> PatternView:
         view, problem = None, ""
         try:
             view = detector.view(camera, spacing_mm=target.spacing_mm,
-                                 frames=frames, need_tip=need_tip)
+                                 frames=frames, need_tip=need_tip,
+                                 on_frame=shown(name))
             return view
         except TipCalibrationError as exc:
             problem = str(exc)
             raise
         finally:
             _save_reading(images_to, name, detector, view, problem, log)
-            record = getattr(detector, "last_record", None)
-            if on_reading is not None and record is not None \
-                    and record.frame is not None:
-                try:
-                    on_reading(name, record, view)
-                except Exception as exc:      # noqa: BLE001 - only showing
-                    log(f"  reading not shown: {exc}")
     return look
 
 
@@ -533,7 +544,7 @@ def calibrate_pipette_offset(
         under_resolution: tuple[int, int] | None = None,
         manual_touch_up=None, robot_session: str | None = None,
         tip_pickup: str | None = None, images_to: Path | None = None,
-        on_reading=None, log=print) -> OffsetResult:
+        on_frame=None, on_move=None, log=print) -> OffsetResult:
     """Drive the tip onto the crosshair and record the offset that did it.
 
     current_offset is the starting estimate. It must be close enough to put the
@@ -570,14 +581,17 @@ def calibrate_pipette_offset(
     into, as it came and with every frame's boxes drawn (`viz.tip_views`):
     1_upper, 2_lower, 3_check - a reading that failed included.
 
-    on_reading, if given, is called as f(name, record, view) after each of
-    those readings, a failed one with view None: what it saw, to be shown.
+    on_frame, if given, is called as f(name, index, frame, detections) for
+    each frame of those readings as it is detected, and on_move as f()
+    before each move of the gantry: what the cameras see, to be shown, and
+    when it stops being where the gantry is.
     """
     actual = _check_lower_mode(under_cam, under_resolution, profile)
     target = target or TipTarget()
     approach = np.asarray(target.approach_offset, dtype=float)
     height = target.module_height if height is None else float(height)
-    look = _reader(detector, target, frames, images_to, on_reading, log)
+    look = _reader(detector, target, frames, images_to, on_frame, log)
+    moving = on_move or (lambda: None)
 
     def steady(view: PatternView, what: str, camera: str) -> None:
         _steady(view, what, camera, max_spread_mm, images_to)
@@ -588,6 +602,7 @@ def calibrate_pipette_offset(
 
     # --- drive the tip there, offset to one side so it does not hide it -----
     aim = target_xy + np.asarray(current_offset, dtype=float) + approach
+    moving()
     move_to(robot, (aim[0], aim[1], height), min_z_height=height - 0.1)
     time.sleep(settle_s)
 
@@ -609,6 +624,7 @@ def calibrate_pipette_offset(
             f"detection is wrong; nothing has been saved"
         )
 
+    moving()
     move_relative(robot, "x", float(correction[0]))
     move_relative(robot, "y", float(correction[1]))
     time.sleep(settle_s)
@@ -737,7 +753,7 @@ def start_by_hand(
         frames: int = 5, settle_s: float = 0.8,
         max_spread_mm: float = MAX_SPREAD_MM, profile=None,
         under_resolution: tuple[int, int] | None = None,
-        images_to: Path | None = None, on_reading=None,
+        images_to: Path | None = None, on_frame=None, on_move=None,
         log=print) -> HandStart:
     """The tip calibration for a tip the model does not know: the operator
     puts the tip on the crosshair, and `save_by_hand` reads the offset off
@@ -754,7 +770,8 @@ def start_by_hand(
     target = target or TipTarget()
     approach = np.asarray(target.approach_offset, dtype=float)
     height = target.module_height if height is None else float(height)
-    look = _reader(detector, target, frames, images_to, on_reading, log)
+    look = _reader(detector, target, frames, images_to, on_frame, log)
+    moving = on_move or (lambda: None)
 
     _lights(robot, settle_s, log)
     over_view, target_xy, gantry = _locate_crosshair(
@@ -762,6 +779,7 @@ def start_by_hand(
 
     near = target_xy + np.asarray(current_offset, dtype=float)
     aside = near + approach
+    moving()
     move_to(robot, (aside[0], aside[1], height), min_z_height=height - 0.1)
     time.sleep(settle_s)
     log("lower camera: locating the crosshair")
@@ -772,6 +790,7 @@ def start_by_hand(
         log(f"  the lower camera did not find the crosshair, so no "
             f"homography: {exc}")
 
+    moving()
     move_to(robot, (near[0], near[1], height), min_z_height=height - 0.1)
     log("  the tip is at the start offset: center it by hand")
     return HandStart(target_xy, over_view, under_view, gantry,

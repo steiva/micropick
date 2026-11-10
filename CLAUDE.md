@@ -838,11 +838,12 @@ the start offset; **Center the tip by hand** follows, outside the run: the lower
 camera live, Controls open from 0.5 mm (`HAND_STEP_MM`), Save at once
 (`save_by_hand`, `method` "manual"), Cancel saving nothing ("Stopped. Nothing was
 saved."), the path back on the disc; left before either, Save / Discard is asked.
-Each reading of either mode is held on the picture with the model's boxes
-(`viz.tip_views.view_items`) until the next or the run's end, a failed one until
-the next start; on the lower camera's live picture the crosshair it read is a
-ring. The **Detections** chip (`CameraView.add_chip`), on at the start, takes all
-of it off: centering by eye, a mark is in the way.
+In either mode the picture stays live, the camera the routine reads with (the
+upper one while it reads, the lower one from its first frame); each frame's boxes
+(`viz.tip_views.view_items`, from the routine's `on_frame`) are drawn over it as
+the model gives them and wiped when the gantry moves (`on_move`, a jog step), a
+failed reading's kept until the next start. No frame is held, nothing else drawn.
+The **Detections** chip (`CameraView.add_chip`), on at the start, takes them off.
 A step counts while the tip is in line with the crosshair: raised straight up it
 can still be saved, moved elsewhere it is dropped, its pose no offset. Controls
 start folded on the step, the path's buttons moving the robot, and are gone
