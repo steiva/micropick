@@ -1189,6 +1189,9 @@ def test_by_hand_leaving_unsaved_can_be_discarded(app, page, by_hand):
 def test_a_reading_holds_its_frame_with_the_boxes_until_the_run_moves_on(
         app, page, by_hand):
     from micropick.viz.overlays import Rect
+    # A camera's view crop is for its live picture: a reading is shown whole.
+    page.calibration._under_camera().crop = 0.5
+    page.calibration._over_camera().crop = 0.5
     by_hand["gate"].clear()
     page.go_button.click()
     assert _until(app, lambda: page.yes_button.isEnabled())
@@ -1196,6 +1199,7 @@ def test_a_reading_holds_its_frame_with_the_boxes_until_the_run_moves_on(
     assert _until(app, lambda: page.view.held_frame is not None
                   and not page.view.live)
     assert any(isinstance(i, Rect) for i in page.view._overlay)
+    assert page.view._view_size == (640, 480)
     assert page.detections_chip.isChecked()
     page.detections_chip.click()
     assert page.view._overlay == []

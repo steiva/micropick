@@ -260,6 +260,7 @@ class CameraView(QWidget):
 
         # Zoom about a point: the view pixel that sits at the widget's center.
         self._zoom = 1.0
+        self._whole = False                       # see hold
         self._center: tuple[float, float] | None = None
         self._shown = QRect()                     # where the image lands
         self._pan_from: QPointF | None = None     # middle button held here
@@ -367,6 +368,7 @@ class CameraView(QWidget):
         if camera is self._camera:
             return
         self._camera = camera
+        self._whole = False
         self._raw = None
         self._image = None
         self._lost = None
@@ -771,14 +773,19 @@ class CameraView(QWidget):
         """The frame currently on screen, in sensor pixels. Not a copy."""
         return self._raw
 
-    def hold(self, frame: np.ndarray | None) -> None:
+    def hold(self, frame: np.ndarray | None, *, whole: bool = False) -> None:
         """Show this frame and stop reading the camera.
 
         One call rather than two, because `live = False` followed by assigning a
         frame leaves a window in which the old picture is up and the new tables
         are being drawn on it.
+
+        `whole` shows all of it, the camera's view crop aside: a frame that
+        may be another camera's (the tip calibration's readings), or that is
+        looked at as the model saw it. Until `resume` or another camera.
         """
         self._live = False
+        self._whole = bool(whole)
         self._raw = frame
         self._dirty = True
         self._rebuild()
@@ -786,6 +793,9 @@ class CameraView(QWidget):
 
     def resume(self) -> None:
         self._live = True
+        if self._whole:
+            self._whole = False
+            self._dirty = True
 
     def set_overlay_items(self, primitives) -> None:
         """Draw these over the picture, in **sensor** coordinates.
@@ -931,7 +941,7 @@ class CameraView(QWidget):
         drawn was shifted by it — DESIGN section 5.
         """
         crop = float(getattr(self._camera, "crop", 1.0)) if self._camera else 1.0
-        if crop == 1.0:
+        if crop == 1.0 or self._whole:
             return frame, 0, 0
         x0, y0, side = center_crop_box(frame.shape, crop)
         return frame[y0:y0 + side, x0:x0 + side], x0, y0

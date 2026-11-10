@@ -1121,7 +1121,7 @@ class TipCalibrationBlock(QObject):
         if ring is not None:
             self._ring = tuple(float(v) for v in ring)
         self._held = (frame, items)
-        self.view.hold(frame)
+        self.view.hold(frame, whole=True)
         self._show_marks()
 
     def _release_reading(self) -> None:
