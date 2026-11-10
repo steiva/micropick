@@ -10,6 +10,15 @@ the third for fixes.
 
 ## Unreleased
 
+- The tip calibration can be done by hand, for tips the model does not find
+  (Settings, Tip calibration, Mode: By hand). The robot finds the crosshair,
+  brings the tip near it and stops; you center the tip on the crosshair with
+  Controls under the lower camera and Save.
+- What the tip calibration's model detected is shown on the picture: each
+  reading's frame with its boxes, held until the next, and the crosshair as a
+  ring on the lower camera afterwards. The Detections chip turns it off.
+- The camera calibration's marker is drawn as its outline only, without the
+  caption saying which way up it lies.
 - The tip calibration saves what its cameras saw into Images\tip_calibration\
   (a folder per calibration): each camera's last frame, and the same frame
   with every box the model found in every frame, the tip each frame kept and

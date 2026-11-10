@@ -1065,3 +1065,164 @@ def test_dropping_the_tip_while_adjusting_ends_it(app, page, ready):
                   and not page.jog.busy)
     assert page.unsaved() == ""
     assert not page.calibration._adjusting
+
+
+# -- by hand (#141) -------------------------------------------------------------
+
+def _reading(name="2_lower", tip=None):
+    """A reading as the routine hands it on: its frame, the boxes, the view."""
+    import numpy as np
+
+    from micropick.workflows.calibrate_pipette import (Detection,
+                                                       PatternView,
+                                                       ViewRecord)
+    frame = np.zeros((480, 640, 3), np.uint8)
+    dets = [Detection("point", np.array([320.0, 240.0]), 0.9,
+                      (310, 230, 330, 250))]
+    view = PatternView(np.array([320.0, 240.0]), np.zeros((4, 2)), tip, 0.2,
+                       0.5, 0.0, 5, frame, dets)
+    return name, ViewRecord(frame, [dets]), view
+
+
+@pytest.fixture
+def by_hand(app, page, monkeypatch):
+    """A tip on, a calibration position, Settings' mode By hand, and the
+    routine replaced by one that shows the lower camera's reading and leaves
+    the tip at the crosshair (150, 150) plus the start offset."""
+    import numpy as np
+
+    from micropick.config.schema import TipTarget
+    from micropick.workflows.calibrate_pipette import HandStart
+    session = page.session
+    _tip_on(app, page)
+    session.remember(CALIBRATION_POSITION, (150.0, 150.0, 80.0))
+    seen = {"gate": threading.Event()}
+    seen["gate"].set()
+
+    def start(robot, over, under, detector, pmap, *, current_offset, height,
+              on_reading, **_kw):
+        seen["start"] = current_offset
+        name, record, view = _reading()
+        on_reading(name, record, view)
+        seen["gate"].wait(10)
+        move_to(robot, (150.0 + current_offset[0], 150.0 + current_offset[1],
+                        height), force_direct=True)
+        return HandStart(np.array([150.0, 150.0]), view, None, (150.0, 150.0),
+                         (640, 480), (640, 480), TipTarget())
+
+    monkeypatch.setattr(tip_page, "start_by_hand", start)
+    monkeypatch.setattr(tip_page, "load_tip_detector",
+                        lambda *a, **k: object())
+    monkeypatch.setattr(tip_page.PixelMap, "from_config",
+                        staticmethod(lambda _config: None))
+    monkeypatch.setattr(page, "_readiness", lambda: [])
+    session.settings = session.settings.model_copy(
+        update={"tip_cal_mode": "hand"})
+    page.calibration.open_cameras()
+    assert _until(app, lambda: page.calibration._under_camera() is not None
+                  and page.calibration._over_camera() is not None)
+    page._refresh()
+    return seen
+
+
+def test_by_hand_the_run_leaves_the_tip_to_center_and_save_writes_it(
+        app, page, by_hand, monkeypatch):
+    session = page.session
+    said = _toasts(monkeypatch)
+    assert page.path.hidden("find") and page.path.hidden("fine")
+    _calibrate(app, page)
+    assert page.path.current == "hand"
+    assert page.path.title("hand") == "Center the tip by hand"
+    assert not tip_calibration_status(session)[0]
+    # Controls open over the lower camera, the steps from 0.5 mm.
+    assert page.touch_jog.isVisibleTo(page)
+    assert not page.jog.isVisibleTo(page)
+    assert not page.touch_jog.pad.folded
+    assert page.touch_jog.pad.step == pytest.approx(0.5)
+    assert page.view.camera is page.calibration._under_camera()
+    assert _until(app, lambda: not page.touch_jog.busy)
+    # The start offset may be right already: Save at once.
+    assert page.hand_save_button.isEnabled()
+    assert page.unsaved() == "Tip calibration: the tip is not centered yet."
+    page.touch_jog.step("x", +1)
+    assert _until(app, lambda: not page.touch_jog.busy
+                  and not session.robot_lease.busy)
+    x, y, _z = tip_page.xyz(session.robot)
+    page.hand_save_button.click()
+    assert _until(app, lambda: tip_calibration_status(session)[0])
+    offset = session.profile.calibration.pipette_offset
+    assert offset.method == "manual"
+    assert (offset.dx, offset.dy) == pytest.approx((x - 150.0, y - 150.0))
+    assert offset.robot_session == session.run_state.run_id
+    assert said[-1] == tip_page.CALIBRATED
+    assert page.unsaved() == ""
+    assert page.path.current is None or page.path.current != "hand"
+    assert page.path.title("hand") == "Tip centered"
+
+
+def test_by_hand_cancel_saves_nothing_and_goes_back_to_the_disc(
+        app, page, by_hand, monkeypatch):
+    session = page.session
+    said = _toasts(monkeypatch)
+    _calibrate(app, page)
+    assert _until(app, lambda: not page.touch_jog.busy)
+    pose = tip_page.xyz(session.robot)
+    page.hand_cancel_button.click()
+    assert session.profile.calibration.pipette_offset is None
+    assert said[-1] == tip_page.STOPPED
+    assert page.path.current == "go"
+    assert page.unsaved() == ""
+    assert not page.touch_jog.isVisibleTo(page)
+    assert tip_page.xyz(session.robot) == pytest.approx(pose, abs=0.05)
+
+
+def test_by_hand_leaving_unsaved_can_be_discarded(app, page, by_hand):
+    _calibrate(app, page)
+    assert page.unsaved()
+    page.discard_unsaved()
+    assert page.unsaved() == ""
+    assert page.session.profile.calibration.pipette_offset is None
+
+
+# -- the detections on the picture (#141) ---------------------------------------
+
+def test_a_reading_holds_its_frame_with_the_boxes_until_the_run_moves_on(
+        app, page, by_hand):
+    from micropick.viz.overlays import Rect
+    by_hand["gate"].clear()
+    page.go_button.click()
+    assert _until(app, lambda: page.yes_button.isEnabled())
+    page.yes_button.click()
+    assert _until(app, lambda: page.view.held_frame is not None
+                  and not page.view.live)
+    assert any(isinstance(i, Rect) for i in page.view._overlay)
+    assert page.detections_chip.isChecked()
+    page.detections_chip.click()
+    assert page.view._overlay == []
+    page.detections_chip.click()
+    assert any(isinstance(i, Rect) for i in page.view._overlay)
+    by_hand["gate"].set()
+    assert _until(app, lambda: not page.calibration.running)
+    # Centering by hand: the live picture, the crosshair as a ring alone.
+    assert page.view.live
+    from micropick.viz.overlays import Circle
+    assert [type(i) for i in page.view._overlay] == [Circle]
+    assert page.view._overlay[0].center == (320, 240)
+    page.detections_chip.click()
+    assert page.view._overlay == []
+
+
+def test_a_failed_reading_stays_on_the_picture(app, page, ready, monkeypatch):
+    import numpy as np
+
+    def failing(robot, over, under, detector, pmap, *, on_reading, **_kw):
+        # A tip measured: its cross is drawn too.
+        on_reading(*_reading(tip=np.array([300.0, 200.0])))
+        raise tip_page.TipCalibrationError("the tip was not detected")
+
+    monkeypatch.setattr(tip_page, "calibrate_pipette_offset", failing)
+    _calibrate(app, page)
+    assert page.calibration.failure.isVisibleTo(page)
+    assert not page.view.live
+    assert page.view.held_frame is not None
+    assert page.view._overlay

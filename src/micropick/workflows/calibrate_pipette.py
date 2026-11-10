@@ -36,6 +36,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -48,7 +49,8 @@ from ..viz.tip_views import save_view
 from .calibrate_homography import homography_from_views
 
 __all__ = ["Detection", "PatternView", "ViewRecord", "TipDetector",
-           "OffsetResult", "calibrate_pipette_offset", "TipCalibrationError"]
+           "OffsetResult", "calibrate_pipette_offset", "TipCalibrationError",
+           "HandStart", "start_by_hand", "save_by_hand"]
 
 
 class TipCalibrationError(RuntimeError):
@@ -389,6 +391,134 @@ class OffsetResult:
         return "\n".join(lines)
 
 
+def _check_lower_mode(under_cam: Camera, under_resolution, profile
+                      ) -> tuple[int, int]:
+    """The lower camera's mode, refused unless it is the calibration's.
+
+    First, before the upper camera is even read and long before the gantry
+    moves. Everything the lower camera measures is in its pixels, so its mode
+    sets the scale of the result: the four outer crosshairs rescale mm/px, but
+    the detector's center tolerance is a fraction of the frame width and YOLO
+    runs at a fixed imgsz either way, so a smaller mode is a quietly coarser
+    calibration rather than a failed one. That is the failure this refuses:
+    the same camera label is legitimately reopened at 2000x1500 for the
+    picking clip, and nothing downstream can tell which mode produced a stored
+    offset. Not a warning - a calibration taken at the wrong scale is wrong.
+    """
+    expected = _expected_under_resolution(under_cam, under_resolution, profile)
+    # The device's own read-back, not what was asked for: this camera is already
+    # known to accept settings it then ignores, which is why every control is
+    # verified rather than assumed (see ControlReport).
+    actual = tuple(int(v) for v in under_cam.resolution)
+    if actual != expected:
+        raise TipCalibrationError(
+            f"the tip calibration is defined at "
+            f"{expected[0]}x{expected[1]}, but the lower camera "
+            f"{getattr(under_cam, 'label', '?')!r} is running at "
+            f"{actual[0]}x{actual[1]}. Reopen it at the calibrated mode "
+            f"(cams.open(label) takes the profile's default) and run again; "
+            f"nothing has moved and nothing was saved")
+    return actual
+
+
+def _reader(detector: TipDetector, target: TipTarget, frames: int,
+            images_to: Path | None, on_reading, log):
+    """`look(name, camera, need_tip=)`: one reading, its pictures saved and
+    shown (`on_reading(name, record, view)`) whether or not it succeeds -
+    a failed reading's boxes are what tells why."""
+    def look(name: str, camera: Camera, *, need_tip: bool) -> PatternView:
+        view, problem = None, ""
+        try:
+            view = detector.view(camera, spacing_mm=target.spacing_mm,
+                                 frames=frames, need_tip=need_tip)
+            return view
+        except TipCalibrationError as exc:
+            problem = str(exc)
+            raise
+        finally:
+            _save_reading(images_to, name, detector, view, problem, log)
+            record = getattr(detector, "last_record", None)
+            if on_reading is not None and record is not None \
+                    and record.frame is not None:
+                try:
+                    on_reading(name, record, view)
+                except Exception as exc:      # noqa: BLE001 - only showing
+                    log(f"  reading not shown: {exc}")
+    return look
+
+
+def _steady(view: PatternView, what: str, camera: str, max_spread_mm: float,
+            images_to: Path | None) -> None:
+    """Refuses a reading whose frames disagree (`max_spread_mm`)."""
+    spread_mm = view.spread_px * view.mm_per_px
+    if spread_mm > max_spread_mm:
+        where = (f"; the pictures are in {images_to}"
+                 if images_to is not None else "")
+        raise TipCalibrationError(
+            f"the {what} was found in different places in the "
+            f"{view.n_frames} frames ({spread_mm:.1f} mm apart, more than "
+            f"{max_spread_mm} mm). Check the {camera} camera's focus and "
+            f"light{where}")
+
+
+def _lights(robot: Robot, settle_s: float, log) -> None:
+    """Lights on, and known to be on.
+
+    The upper camera finds the crosshair by the rail lights, and a picking
+    run leaves them off. Checked and switched rather than assumed, and left
+    on afterwards: the calibration does not own the lights, it needs them.
+    """
+    before = lights_on(robot)
+    if before is None:
+        log("warning: the rail lights cannot be read; make sure they are on")
+    elif not before:
+        log("rail lights were off: switching them on for the calibration")
+        set_lights(robot, True)
+        if lights_on(robot) is not True:
+            raise TipCalibrationError(
+                "the rail lights are off and could not be switched on; the "
+                "upper camera cannot find the crosshair without them")
+        time.sleep(settle_s)             # let the exposure settle
+
+
+def _locate_crosshair(look, robot: Robot, over_cam: Camera,
+                      pixel_map: PixelMap, max_spread_mm: float,
+                      images_to: Path | None, log):
+    """The upper camera: where the crosshair is, in robot coordinates.
+    Returns the reading, the crosshair's XY and the gantry's XY it was
+    taken at."""
+    log("upper camera: locating the crosshair")
+    over_view = look("1_upper", over_cam, need_tip=False)
+    _steady(over_view, "crosshair", "upper", max_spread_mm, images_to)
+    gx, gy, _gz = xyz(robot)
+    if not pixel_map.covers(*over_view.center):
+        raise TipCalibrationError(
+            f"the crosshair is at {over_view.center.round(0)}, outside the "
+            f"calibrated area of the pixel map; center the disc better"
+        )
+    target_xy = np.asarray(pixel_map.to_robot(over_view.center[0],
+                                              over_view.center[1], (gx, gy)))
+    log(f"  crosshair at {target_xy.round(3)} mm, "
+        f"spread {over_view.spread_px:.1f} px over {over_view.n_frames} frames")
+    return over_view, target_xy, (float(gx), float(gy))
+
+
+def _homography(over_view, under_view, target: TipTarget, gantry, over_cam,
+                under_resolution, log):
+    """The upper-to-lower homography from the two views of the same disc,
+    (None, None) when the fit is too poor: never fatal to the offset."""
+    try:
+        homography, report = homography_from_views(
+            over_view, under_view, target.under_rotation_deg, gantry,
+            over_resolution=over_cam.resolution,
+            under_resolution=under_resolution)
+        log(f"  {report}")
+        return homography, report
+    except HomographyError as exc:
+        log(f"  homography unavailable: {exc}")
+        return None, None
+
+
 def calibrate_pipette_offset(
         robot: Robot, over_cam: Camera, under_cam: Camera,
         detector: TipDetector, pixel_map: PixelMap, *,
@@ -403,7 +533,7 @@ def calibrate_pipette_offset(
         under_resolution: tuple[int, int] | None = None,
         manual_touch_up=None, robot_session: str | None = None,
         tip_pickup: str | None = None, images_to: Path | None = None,
-        log=print) -> OffsetResult:
+        on_reading=None, log=print) -> OffsetResult:
     """Drive the tip onto the crosshair and record the offset that did it.
 
     current_offset is the starting estimate. It must be close enough to put the
@@ -439,89 +569,22 @@ def calibrate_pipette_offset(
     images_to, if given, is the folder each reading's last frame is saved
     into, as it came and with every frame's boxes drawn (`viz.tip_views`):
     1_upper, 2_lower, 3_check - a reading that failed included.
-    """
-    # First, before the upper camera is even read and long before the gantry
-    # moves. Everything the lower camera measures is in its pixels, so its mode
-    # sets the scale of the result: the four outer crosshairs rescale mm/px, but
-    # the detector's center tolerance is a fraction of the frame width and YOLO
-    # runs at a fixed imgsz either way, so a smaller mode is a quietly coarser
-    # calibration rather than a failed one. That is the failure this refuses:
-    # the same camera label is legitimately reopened at 2000x1500 for the
-    # picking clip, and nothing downstream can tell which mode produced a stored
-    # offset. Not a warning - a calibration taken at the wrong scale is wrong.
-    expected = _expected_under_resolution(under_cam, under_resolution, profile)
-    # The device's own read-back, not what was asked for: this camera is already
-    # known to accept settings it then ignores, which is why every control is
-    # verified rather than assumed (see ControlReport).
-    actual = tuple(int(v) for v in under_cam.resolution)
-    if actual != expected:
-        raise TipCalibrationError(
-            f"the tip calibration is defined at "
-            f"{expected[0]}x{expected[1]}, but the lower camera "
-            f"{getattr(under_cam, 'label', '?')!r} is running at "
-            f"{actual[0]}x{actual[1]}. Reopen it at the calibrated mode "
-            f"(cams.open(label) takes the profile's default) and run again; "
-            f"nothing has moved and nothing was saved")
 
+    on_reading, if given, is called as f(name, record, view) after each of
+    those readings, a failed one with view None: what it saw, to be shown.
+    """
+    actual = _check_lower_mode(under_cam, under_resolution, profile)
     target = target or TipTarget()
     approach = np.asarray(target.approach_offset, dtype=float)
     height = target.module_height if height is None else float(height)
-
-    def look(name: str, camera: Camera, *, need_tip: bool) -> PatternView:
-        """One reading, its pictures saved whether or not it succeeds."""
-        view, problem = None, ""
-        try:
-            view = detector.view(camera, spacing_mm=target.spacing_mm,
-                                 frames=frames, need_tip=need_tip)
-            return view
-        except TipCalibrationError as exc:
-            problem = str(exc)
-            raise
-        finally:
-            _save_reading(images_to, name, detector, view, problem, log)
+    look = _reader(detector, target, frames, images_to, on_reading, log)
 
     def steady(view: PatternView, what: str, camera: str) -> None:
-        """Refuses a reading whose frames disagree (`max_spread_mm`)."""
-        spread_mm = view.spread_px * view.mm_per_px
-        if spread_mm > max_spread_mm:
-            where = (f"; the pictures are in {images_to}"
-                     if images_to is not None else "")
-            raise TipCalibrationError(
-                f"the {what} was found in different places in the "
-                f"{view.n_frames} frames ({spread_mm:.1f} mm apart, more than "
-                f"{max_spread_mm} mm). Check the {camera} camera's focus and "
-                f"light{where}")
+        _steady(view, what, camera, max_spread_mm, images_to)
 
-    # --- lights on, and known to be on --------------------------------------
-    # The upper camera finds the crosshair by the rail lights, and a picking
-    # run leaves them off. Checked and switched rather than assumed, and left
-    # on afterwards: the calibration does not own the lights, it needs them.
-    before = lights_on(robot)
-    if before is None:
-        log("warning: the rail lights cannot be read; make sure they are on")
-    elif not before:
-        log("rail lights were off: switching them on for the calibration")
-        set_lights(robot, True)
-        if lights_on(robot) is not True:
-            raise TipCalibrationError(
-                "the rail lights are off and could not be switched on; the "
-                "upper camera cannot find the crosshair without them")
-        time.sleep(settle_s)             # let the exposure settle
-
-    # --- upper camera: where is the crosshair, in robot coordinates ---------
-    log("upper camera: locating the crosshair")
-    over_view = look("1_upper", over_cam, need_tip=False)
-    steady(over_view, "crosshair", "upper")
-    gx, gy, gz = xyz(robot)
-    if not pixel_map.covers(*over_view.center):
-        raise TipCalibrationError(
-            f"the crosshair is at {over_view.center.round(0)}, outside the "
-            f"calibrated area of the pixel map; center the disc better"
-        )
-    target_xy = np.asarray(pixel_map.to_robot(over_view.center[0],
-                                              over_view.center[1], (gx, gy)))
-    log(f"  crosshair at {target_xy.round(3)} mm, "
-        f"spread {over_view.spread_px:.1f} px over {over_view.n_frames} frames")
+    _lights(robot, settle_s, log)
+    over_view, target_xy, (gx, gy) = _locate_crosshair(
+        look, robot, over_cam, pixel_map, max_spread_mm, images_to, log)
 
     # --- drive the tip there, offset to one side so it does not hide it -----
     aim = target_xy + np.asarray(current_offset, dtype=float) + approach
@@ -616,15 +679,9 @@ def calibrate_pipette_offset(
     # resolutions are the modes the two views were taken at; the clip records at
     # another one and the matrix is rescaled to it. A poor fit is logged and
     # dropped, never fatal to the offset.
-    homography, homography_report = None, None
-    try:
-        homography, homography_report = homography_from_views(
-            over_view, under_view, target.under_rotation_deg, (gx, gy),
-            over_resolution=over_cam.resolution,
-            under_resolution=under_cam.resolution)
-        log(f"  {homography_report}")
-    except HomographyError as exc:
-        log(f"  homography unavailable: {exc}")
+    homography, homography_report = _homography(
+        over_view, under_view, target, (gx, gy), over_cam,
+        under_cam.resolution, log)
 
     result = OffsetResult(offset, tuple(current_offset), correction,
                           residual_mm, over_view, under_view, final_view, nudge,
@@ -635,12 +692,114 @@ def calibrate_pipette_offset(
     # by-product of this measurement and used to be written by a separate step
     # that was easy to forget, leaving the profile with a matrix from an older
     # tip and an older pose.
-    if profile is not None:
-        profile.calibration.pipette_offset = offset
-        wrote = "offset"
-        if homography is not None:
-            profile.calibration.homography = homography
-            wrote += " and homography"
-        profile.save_calibration(backup=False)
-        log(f"  saved {wrote} to profile {profile.name!r}")
+    _save(profile, offset, homography, log)
     return result
+
+
+def _save(profile, offset: PipetteOffset, homography, log) -> None:
+    """The offset, and the homography measured with it, into the profile."""
+    if profile is None:
+        return
+    profile.calibration.pipette_offset = offset
+    wrote = "offset"
+    if homography is not None:
+        profile.calibration.homography = homography
+        wrote += " and homography"
+    profile.save_calibration(backup=False)
+    log(f"  saved {wrote} to profile {profile.name!r}")
+
+
+# ---------------------------------------------------------------------------
+# by hand
+# ---------------------------------------------------------------------------
+
+@dataclass
+class HandStart:
+    """What `start_by_hand` left for `save_by_hand`: the crosshair in robot
+    XY, and the readings the homography is made from (`under_view` None when
+    the lower camera did not find the disc)."""
+
+    target_xy: np.ndarray
+    over_view: PatternView
+    under_view: PatternView | None
+    gantry: tuple[float, float]
+    over_resolution: tuple[int, int]
+    under_resolution: tuple[int, int]
+    target: TipTarget
+
+
+def start_by_hand(
+        robot: Robot, over_cam: Camera, under_cam: Camera,
+        detector: TipDetector, pixel_map: PixelMap, *,
+        target: TipTarget | None = None,
+        current_offset: tuple[float, float],
+        height: float | None = None,
+        frames: int = 5, settle_s: float = 0.8,
+        max_spread_mm: float = MAX_SPREAD_MM, profile=None,
+        under_resolution: tuple[int, int] | None = None,
+        images_to: Path | None = None, on_reading=None,
+        log=print) -> HandStart:
+    """The tip calibration for a tip the model does not know: the operator
+    puts the tip on the crosshair, and `save_by_hand` reads the offset off
+    the pose they left it at.
+
+    The upper camera finds the crosshair, as `calibrate_pipette_offset`. The
+    tip is then put aside (`approach_offset`) and the lower camera reads the
+    crosshair alone, for the homography and to show where it is; a disc it
+    does not find costs only the homography. Last the tip goes to the
+    crosshair plus `current_offset`, at `height`, and is left there. Nothing
+    is saved. The arguments are `calibrate_pipette_offset`'s.
+    """
+    actual = _check_lower_mode(under_cam, under_resolution, profile)
+    target = target or TipTarget()
+    approach = np.asarray(target.approach_offset, dtype=float)
+    height = target.module_height if height is None else float(height)
+    look = _reader(detector, target, frames, images_to, on_reading, log)
+
+    _lights(robot, settle_s, log)
+    over_view, target_xy, gantry = _locate_crosshair(
+        look, robot, over_cam, pixel_map, max_spread_mm, images_to, log)
+
+    near = target_xy + np.asarray(current_offset, dtype=float)
+    aside = near + approach
+    move_to(robot, (aside[0], aside[1], height), min_z_height=height - 0.1)
+    time.sleep(settle_s)
+    log("lower camera: locating the crosshair")
+    under_view = None
+    try:
+        under_view = look("2_lower", under_cam, need_tip=False)
+    except TipCalibrationError as exc:
+        log(f"  the lower camera did not find the crosshair, so no "
+            f"homography: {exc}")
+
+    move_to(robot, (near[0], near[1], height), min_z_height=height - 0.1)
+    log("  the tip is at the start offset: center it by hand")
+    return HandStart(target_xy, over_view, under_view, gantry,
+                     tuple(int(v) for v in over_cam.resolution), actual,
+                     target)
+
+
+def save_by_hand(start: HandStart, pose_xy, *, profile=None,
+                 tip_type: str | None = None,
+                 robot_session: str | None = None,
+                 tip_pickup: str | None = None, log=print) -> PipetteOffset:
+    """The offset is where the operator left the tip, less the crosshair;
+    saved into `profile` with the homography its readings give."""
+    from datetime import datetime, timezone
+    x, y = (float(v) for v in pose_xy[:2])
+    offset = PipetteOffset(
+        dx=x - float(start.target_xy[0]), dy=y - float(start.target_xy[1]),
+        tip_type=tip_type, measured_at=datetime.now(timezone.utc),
+        method="manual", residual_mm=None,
+        n_samples=start.over_view.n_frames,
+        spread_mm=float(start.over_view.spread_px * start.over_view.mm_per_px),
+        under_resolution=list(start.under_resolution),
+        robot_session=robot_session, tip_pickup=tip_pickup)
+    homography = None
+    if start.under_view is not None:
+        homography, _report = _homography(
+            start.over_view, start.under_view, start.target, start.gantry,
+            SimpleNamespace(resolution=start.over_resolution),
+            start.under_resolution, log)
+    _save(profile, offset, homography, log)
+    return offset

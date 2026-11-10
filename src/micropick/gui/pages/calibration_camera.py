@@ -547,10 +547,7 @@ class CameraCalibrationSheet(SheetWindow):
         if corners is None:
             self.view.set_overlay_items([])
             return
-        marker_id = getattr(self._sighting, "marker_id", None)
-        self.view.set_overlay_items(
-            markers.items(corners, marker_id,
-                          label=f"tracked  ·  {markers.orientation(corners)}"))
+        self.view.set_overlay_items(markers.items(corners))
 
     def _stop(self) -> None:
         if not self._running():

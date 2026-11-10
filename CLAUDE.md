@@ -70,8 +70,8 @@ have in common in the same places. The status plate at the top left: Manual's Ti
 (`add_top_left_widget`), the robot's X, Y and Z one per line (fixed font), the
 step (`CameraView.set_step_line`), dividers between; nothing under it but
 Manual pick Run's height line (`set_height_line`), its row kept. At the top
-right the chips (Crosshair, Points, Manual's Past picks, Sizes where there is a
-histogram) and the picture button, left of them the page's buttons (`add_top_widget`, which
+right the chips (Crosshair, Points, Manual's Past picks, the Tip step's
+Detections, Sizes where there is a histogram) and the picture button, left of them the page's buttons (`add_top_widget`, which
 restyles them), then the page's lines (`set_status`: found counts, the marker
 seen, what holds while it is true). One quiet mouse row bottom-left
 (`CameraView.set_mouse_help`, "gesture what it does" per item). No native
@@ -204,7 +204,8 @@ role's device swapped in, a camera added to a profile without one), gray
 while the robot is busy; Cancel and × save nothing. The camera
 calibration has its sheet too (`pages.calibration_camera.
 CameraCalibrationSheet`), the steps confirmed one after another: place
-the marker (It is in place); its slot on the mini deck slot chooser
+the marker (It is in place; drawn as its outline alone, nothing saying which way
+up it lies); its slot on the mini deck slot chooser
 (`widgets.slot_chooser.SlotChooser`: all 12 slots, the `mini_deck.Tile`s of
 every mini deck with what stands there (`labware_kinds.deck_tiles`), nothing
 preselected, grayed while the robot is busy; a click moves the camera there at once,
@@ -794,8 +795,8 @@ runs it) through ONNX Runtime - DirectML on Windows, so any GPU - and Auto
 measures each device that works on the first load and takes the faster
 (`core.vision.yolo`). `core.vision.onnx_yolo` gives ultralytics' own boxes:
 change its letterbox or NMS only together with a parity check.
-So are the tip calibration's (`AppSettings.tip_cal_*`: tip type, frames,
-verify, manual adjustment, the start offset dx, dy, the height the tip is
+So are the tip calibration's (`AppSettings.tip_cal_*`: the mode, Auto or By
+hand, tip type, frames, verify, manual adjustment, the start offset dx, dy, the height the tip is
 measured at, refused at the start below a deck module's top). The Tip step
 (`pages.calibration_pipette`, TIP.md) is one column of two cards. The Tip card,
 the same on the shake position's sheet, says the state at a glance: a drawn tip
@@ -828,6 +829,20 @@ gray with "The tip is not over the crosshair." while it is not (leaving raises
 the tip, Redo brings it back), opens Controls, the lower camera and the XY pad at
 0.05 mm. Save gray until a step, a short job, not a run; Cancel saves nothing and
 leaves the tip where it is; left with a step not saved, Save / Discard is asked.
+By hand (`tip_cal_mode` "hand", #141; verify and the adjustment gray in Settings,
+"Only for Auto."), for a tip the model does not find: Find the tip and Adjust by
+hand are off the path. The run (`calibrate_pipette.start_by_hand`) finds the
+crosshair with the upper camera, the tip aside reads it with the lower one (not
+found: no homography, nothing else), and ends with the tip at the crosshair plus
+the start offset; **Center the tip by hand** follows, outside the run: the lower
+camera live, Controls open from 0.5 mm (`HAND_STEP_MM`), Save at once
+(`save_by_hand`, `method` "manual"), Cancel saving nothing ("Stopped. Nothing was
+saved."), the path back on the disc; left before either, Save / Discard is asked.
+Each reading of either mode is held on the picture with the model's boxes
+(`viz.tip_views.view_items`) until the next or the run's end, a failed one until
+the next start; on the lower camera's live picture the crosshair it read is a
+ring. The **Detections** chip (`CameraView.add_chip`), on at the start, takes all
+of it off: centering by eye, a mark is in the way.
 A step counts while the tip is in line with the crosshair: raised straight up it
 can still be saved, moved elsewhere it is dropped, its pose no offset. Controls
 start folded on the step, the path's buttons moving the robot, and are gone

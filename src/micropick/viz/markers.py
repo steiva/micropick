@@ -18,8 +18,8 @@ face down, or printed through the back of the paper, is **mirrored**, and a
 mirrored marker is never detected — the dictionary has no entry for it. On
 screen that looks exactly like bad lighting, a wrong dictionary, or a marker
 just outside the frame. So the feed says which of those it is, and when the
-marker is found it shows the four corners it was found by and which one is
-the marker's own first corner, since that is what says which way up it is.
+marker is found it shows the outline it was found by. Which way up it lies
+does not matter to the sweep, so the picture does not say it.
 
 Corner order is ArUco's: index 0 is the marker's own top-left as printed,
 then clockwise. Rotating the marker under the camera does not change its id
@@ -31,26 +31,19 @@ from __future__ import annotations
 
 import numpy as np
 
-from .overlays import Circle, Item, Polyline, Text
+from .overlays import Circle, Item, Polyline
 
 __all__ = ["items", "crosshairs", "rotation_deg", "orientation", "FOUND",
-           "FIRST_CORNER", "TOP_EDGE", "REFERENCE", "OUTSIDE", "CHOSEN"]
+           "REFERENCE", "OUTSIDE", "CHOSEN"]
 
 # BGR, as everything in viz is.
 FOUND = (0, 255, 0)          # green: the outline it was detected by
-TOP_EDGE = (0, 255, 255)     # yellow: the marker's own top edge
-FIRST_CORNER = (255, 255, 255)   # white: corner 0, the marker's top-left
 REFERENCE = (0, 0, 255)      # red: the pixel map's reference pixel
 OUTSIDE = (120, 120, 120)    # grey: detected, but outside the fitted area
 CHOSEN = (255, 255, 255)     # white: the one the operator picked, as in
                              # overlays.CHOSEN - white is "a decision", not
                              # "a class of thing", in both files
 
-# The text is sized from the marker rather than from the frame: the frame is
-# 2592 px wide and the widget is a third of that, so a fixed scale is either
-# unreadable on screen or enormous in a recorded frame.
-_TEXT_FRACTION = 1 / 6.0
-_CV_FONT_PX = 22.0           # cv2's FONT_HERSHEY_SIMPLEX at scale 1.0
 
 
 def rotation_deg(corners) -> float:
@@ -72,38 +65,12 @@ def orientation(corners) -> str:
             "a quarter turn anticlockwise")[quarter]
 
 
-def items(corners, marker_id: int | None = None, *,
-          label: str | None = None) -> list[Item]:
-    """Primitives for one detected marker, in frame pixels.
-
-    `label` replaces the default caption, which is the id and the rotation.
-    """
+def items(corners) -> list[Item]:
+    """The detected marker's outline, in frame pixels: which way up it lies
+    does not matter, so nothing says it."""
     c = np.asarray(corners, dtype=float).reshape(4, 2)
-    side = float(max(np.linalg.norm(c[i] - c[(i + 1) % 4]) for i in range(4)))
-
-    out: list[Item] = [
-        Polyline(points=np.round(c).astype(np.int32), closed=True,
-                 color=FOUND, thickness=2),
-        # The top edge over the outline, so which way up reads without
-        # having to find the white dot first.
-        Polyline(points=np.round(c[:2]).astype(np.int32), closed=False,
-                 color=TOP_EDGE, thickness=3),
-        Circle(center=tuple(np.round(c[0]).astype(int)),
-               radius=max(3, int(side / 14)), color=FIRST_CORNER,
-               thickness=-1, fill=True),
-    ]
-
-    caption = label
-    if caption is None:
-        caption = (f"id {marker_id}" if marker_id is not None else "marker")
-        caption += f"  ·  {orientation(c)}"
-    text_px = max(12.0, side * _TEXT_FRACTION)
-    top = c[np.argmin(c[:, 1])]
-    out.append(Text(text=caption,
-                    org=(int(round(c[:, 0].min())),
-                         int(round(top[1] - text_px * 0.4))),
-                    scale=text_px / _CV_FONT_PX, color=FOUND, thickness=2))
-    return out
+    return [Polyline(points=np.round(c).astype(np.int32), closed=True,
+                     color=FOUND, thickness=2)]
 
 
 # ---------------------------------------------------------------------------

@@ -93,7 +93,7 @@ class Sighting:
         """Overlay primitives for the camera view, or nothing."""
         if self.corners is None:
             return []
-        return markers.items(self.corners, self.marker_id)
+        return markers.items(self.corners)
 
     def describe(self) -> str:
         """One or two sentences for the operator, never a log line."""

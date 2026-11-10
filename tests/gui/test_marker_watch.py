@@ -12,7 +12,7 @@ import pytest
 from micropick.gui.marker_watch import DICTIONARIES, MarkerWatch
 from micropick.hardware.mock import MarkerScene
 from micropick.viz import markers
-from micropick.viz.overlays import Circle, Polyline, Text
+from micropick.viz.overlays import Circle, Polyline
 
 
 @pytest.fixture(scope="module")
@@ -82,19 +82,13 @@ def test_offset_is_from_the_frame_center(watch, frame):
     assert f"{np.linalg.norm(expected):.0f} px" in sighting.describe()
 
 
-def test_items_carry_the_outline_the_first_corner_and_a_caption(watch, frame):
+def test_the_marker_is_drawn_as_its_outline_alone(watch, frame):
+    """Which way up the marker lies does not matter: no caption, no top
+    edge, no first corner."""
     sighting = watch.look(frame, "DICT_6X6_250")
     items = sighting.items()
-    kinds = [type(i) for i in items]
-    assert kinds == [Polyline, Polyline, Circle, Text]
-    outline, top_edge, corner, caption = items
-    assert len(outline.points) == 4 and outline.closed
-    # The top edge is the first two corners, and it is not closed: it marks
-    # an edge, not a shape.
-    assert len(top_edge.points) == 2 and not top_edge.closed
-    assert np.allclose(corner.center, np.round(sighting.corners[0]), atol=1)
-    assert corner.fill
-    assert "id 1" in caption.text
+    assert [type(i) for i in items] == [Polyline]
+    assert len(items[0].points) == 4 and items[0].closed
 
 
 def test_a_dictionary_is_built_once(watch, frame):

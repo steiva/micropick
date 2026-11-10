@@ -342,6 +342,10 @@ class SettingsPage(QWidget):
         page, which says which of these it will use."""
         box = card(self)
         box.layout().addWidget(heading("Tip calibration", 2))
+        self.tip_mode = combo_box(self)
+        for text, value in (("Auto", "auto"), ("By hand", "hand")):
+            self.tip_mode.addItem(text, value)
+        self.tip_mode.currentIndexChanged.connect(lambda _i: self._edited())
         self.tip_type = QLineEdit(self)
         self.tip_type.setPlaceholderText("from the tip rack")
         self.tip_type.textEdited.connect(lambda _t: self._edited())
@@ -372,6 +376,8 @@ class SettingsPage(QWidget):
         self.tip_height.valueChanged.connect(lambda _v: self._edited())
         grid = QGridLayout()
         for row, (label, widget, hint) in enumerate((
+                ("Mode", self.tip_mode,
+                 "By hand: you center the tip on the crosshair."),
                 ("Tip type", self.tip_type,
                  "Recorded with the offset. Empty: the tip rack's type."),
                 ("Frames", self.tip_frames,
@@ -390,14 +396,22 @@ class SettingsPage(QWidget):
         grid.setColumnStretch(1, 1)
         box.layout().addLayout(grid)
         self.tip_verify = QCheckBox("Verify after the correction", self)
-        self.tip_verify.setToolTip("Measure again at the corrected offset.")
         self.tip_touch_up = QCheckBox("Fine-tune by hand", self)
-        self.tip_touch_up.setToolTip("Offer to nudge the tip onto the "
-                                     "crosshair after calibrating.")
         for box_ in (self.tip_verify, self.tip_touch_up):
             box_.toggled.connect(lambda _on: self._edited())
             box.layout().addWidget(box_)
+        self.tip_mode.currentIndexChanged.connect(lambda _i: self._show_mode())
         return box
+
+    def _show_mode(self) -> None:
+        """Verify and the fine-tune are Auto's: gray, not hidden, by hand."""
+        auto = self.tip_mode.currentData() != "hand"
+        tips = {self.tip_verify: "Measure again at the corrected offset.",
+                self.tip_touch_up: "Offer to nudge the tip onto the "
+                                   "crosshair after calibrating."}
+        for box_, tip in tips.items():
+            box_.setEnabled(auto)
+            box_.setToolTip(tip if auto else "Only for Auto.")
 
     def _keys_card(self) -> QWidget:
         """The keys that drive the robot; see `gui.keys`."""
@@ -452,10 +466,13 @@ class SettingsPage(QWidget):
         return out
 
     def _show_tip(self, settings: AppSettings) -> None:
-        widgets = (self.tip_frames, self.tip_verify, self.tip_touch_up,
-                   self.tip_dx, self.tip_dy, self.tip_height)
+        widgets = (self.tip_mode, self.tip_frames, self.tip_verify,
+                   self.tip_touch_up, self.tip_dx, self.tip_dy,
+                   self.tip_height)
         for widget in widgets:
             widget.blockSignals(True)
+        self.tip_mode.setCurrentIndex(
+            self.tip_mode.findData(settings.tip_cal_mode))
         self.tip_type.setText(settings.tip_cal_tip_type)
         self.tip_frames.setValue(settings.tip_cal_frames)
         self.tip_dx.setValue(settings.tip_cal_start_dx)
@@ -465,6 +482,7 @@ class SettingsPage(QWidget):
         self.tip_touch_up.setChecked(settings.tip_cal_touch_up)
         for widget in widgets:
             widget.blockSignals(False)
+        self._show_mode()
 
     def _show_sweep(self, settings: AppSettings) -> None:
         widgets = (self.marker_side, self.dictionary, self.grid_n,
@@ -655,6 +673,7 @@ class SettingsPage(QWidget):
                            sweep_dictionary=self.dictionary.currentText(),
                            sweep_grid_n=int(self.grid_n.value()),
                            sweep_degree=int(self.degree.value()),
+                           tip_cal_mode=self.tip_mode.currentData(),
                            tip_cal_tip_type=self.tip_type.text().strip(),
                            tip_cal_frames=int(self.tip_frames.value()),
                            tip_cal_verify=self.tip_verify.isChecked(),

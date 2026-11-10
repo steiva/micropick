@@ -224,6 +224,7 @@ This is the PlateGrid look from `LIQUID.md` R5, applied to tip racks:
 | go | Camera over the disc | Camera is over the disc | "Put the crosshair disc on the calibration module. The camera then goes to it." · **Go to the disc** |
 | check | Disc in the picture | Disc is in the picture | "Is the disc with the crosshair in the picture? If not, put it on the calibration module now." · **Yes, calibrate** |
 | find | Find the tip | Tip found | "The robot finds the tip under the camera by itself." · progress bar (6 px, `accent`) · "About 14 s left" (mono 13 px `muted`) |
+| hand | Center the tip by hand | Tip centered | By hand only (#141): "Move the tip onto the central crosshair with Controls on the picture, then save." · **Save** · **Cancel** |
 | fine | Adjust by hand · optional | (stays as is) | see below |
 
 - **The one link:** *find*, once done, gets **Redo**: the old Redo
@@ -242,6 +243,16 @@ This is the PlateGrid look from `LIQUID.md` R5, applied to tip racks:
   - **Adjusting:** "Move the tip onto the central crosshair with Controls on
     the picture, then save." with **Save** (primary, disabled until the tip
     has moved) and **Cancel**.
+- **By hand** (Settings' tip calibration Mode, #141), for a tip the model does
+  not find: *find* and *fine* are off the path and *hand* is on it. The run
+  finds the crosshair with the upper camera, puts the tip aside and reads the
+  crosshair with the lower one (a disc not found there costs only the
+  homography), then leaves the tip at the crosshair plus the start offset and
+  ends. *hand* is then current: Controls open over the live lower camera,
+  XY only, from 0.5 mm; **Save** at once (the offset where the tip is, method
+  "manual"); **Cancel** saves nothing ("Stopped. Nothing was saved."), the
+  path back on *go*. Left before either, Save / Discard is asked. Done, *hand*
+  gets **Redo**, as *find* does.
 
 ### 3.3 The picture
 
@@ -253,8 +264,15 @@ This is the PlateGrid look from `LIQUID.md` R5, applied to tip racks:
   bound as ever: the robot is moved by the path's buttons, and the jog stays
   for when it is wanted. **Adjust by hand** opens them, XY only, at
   0.05 mm. They are hidden while a run has the robot, as today.
-- **Nothing else is drawn on the picture:** no ring and no chip while the tip
-  is found or after. The path and the StatusPill say where the run is.
+- **The detections (#141):** each reading the run takes is held on the
+  picture with the model's boxes (class and confidence, a tip a frame did not
+  keep in red, the one it kept in orange, the crosshair taken as the center
+  ringed, the tip measured from a cross) until the next reading or the run's
+  end; a failed reading stays until the next start, under the red banner. On
+  the lower camera's live picture after the run, the crosshair it read is a
+  ring. The **Detections** chip, on at the start, turns all of it off:
+  centering by eye, a mark is in the way. Nothing else is drawn; the path and
+  the StatusPill say where the run is.
 
 ### 3.4 TopBar and footer
 

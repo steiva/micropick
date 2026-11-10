@@ -60,6 +60,21 @@ saves nothing and leaves the tip where it is. A step taken means nothing
 once the tip is off the crosshair in XY; raised straight up, as leaving
 does before Save / Discard is asked, it still holds.
 
+**By hand** (Settings' tip calibration mode, #141), for a tip the model
+does not find: Find the tip and the fine-tune are off the path, and the run
+(`start_by_hand`) finds the crosshair, reads it with the lower camera and
+leaves the tip at the crosshair plus the start offset. **Center the tip by
+hand** follows: the lower camera live, Controls open from `HAND_STEP_MM`,
+Save enabled at once (`save_by_hand`, `method` "manual"), Cancel saving
+nothing, the path back on Camera over the disc. Until either, leaving asks
+Save / Discard.
+
+Each reading the routine takes is held on the picture with the model's
+boxes (`viz.tip_views.view_items`) until the next or the run's end, a
+failed one until the next start: what the model saw. On the live lower
+camera afterwards the crosshair it read is a ring. The **Detections** chip
+turns all of it off: centering by eye, a mark is in the way.
+
 Controls start folded on the page (TIP.md §3.3), the jog, Undo step and the
 keys all there: the path's buttons move the robot. That is the page's rule, a
 sheet hosting the blocks keeps its own pad.
@@ -125,7 +140,10 @@ from ...config.labware import LabwareError, resolve_definition
 from ...config.schema import PipetteOffset
 from ...core.calibration.pixel_map import PixelMap
 from ...hardware.protocols import xyz
-from ...workflows.calibrate_pipette import calibrate_pipette_offset
+from ...viz.tip_views import view_items
+from ...workflows.calibrate_pipette import (HandStart,
+                                            calibrate_pipette_offset,
+                                            save_by_hand, start_by_hand)
 from ...workflows.motion import READ_TOL_MM
 from ..auto_camera import CameraOpener
 from ..readiness import CALIBRATION_POSITION, tip_calibration_status
@@ -193,6 +211,11 @@ MOVING, DISC, MEASURING = "moving", "disc", "measuring"
 
 # The path's items, and its end.
 GO, CHECK, FIND, FINE, END = "go", "check", "find", "fine", "end"
+HAND = "hand"
+# Centering by hand starts from the start offset, mm away: the pad's steps
+# from here, not the fine-tune's 0.05.
+HAND_STEP_MM = 0.5
+NOT_CENTERED = "Tip calibration: the tip is not centered yet."
 FINE_TITLE = "Adjust by hand · optional"
 
 
@@ -512,6 +535,9 @@ class TipCalibrationBlock(QObject):
     # operator at the disc. A signal, so that the slot runs on the GUI
     # thread whatever thread asked.
     disc_requested = Signal()
+    # A reading the routine took, from the worker thread: (frame, items,
+    # the lower camera's crosshair in pixels or None).
+    reading_seen = Signal(object)
     changed = Signal()
     calibrated = Signal()
 
@@ -542,10 +568,25 @@ class TipCalibrationBlock(QObject):
         self._adjusting = False
         # A fine-tune step was taken since the tip was put on the crosshair.
         self._nudged = False
+        # By hand: the run's result, until Save or Cancel, and what the
+        # offset is recorded with (tip type, robot session, pick-up).
+        self._hand: HandStart | None = None
+        self._hand_record: tuple = ()
+        # A reading held on the picture (frame, items), and the crosshair
+        # the lower camera read, drawn as a ring on its live picture.
+        self._held: tuple | None = None
+        self._ring = None
+        self._ring_items: tuple = (None, [])
+        self._marks_drawn: list = []
         self.opener = CameraOpener(session, self)
         self.box = self._build(parent)
 
         self.disc_requested.connect(self._at_disc)
+        self.reading_seen.connect(self._show_reading)
+        self.detections_chip = view.add_chip("Detections")
+        self.detections_chip.setChecked(True)
+        self.detections_chip.setToolTip("What the calibration detected.")
+        self.detections_chip.toggled.connect(lambda _on: self._show_marks())
         for panel in (self.jog, self.touch_jog):
             panel.pose_changed.connect(self._on_pose)
         self.touch_jog.moved.connect(self._on_nudge)
@@ -608,11 +649,15 @@ class TipCalibrationBlock(QObject):
             PathItem(FIND, "Find the tip", "Tip found",
                      path_body("The robot finds the tip under the camera by "
                            "itself.", self.spinner), link_text="Redo"),
+            PathItem(HAND, "Center the tip by hand", "Tip centered",
+                     self._hand_body(box), link_text="Redo"),
             PathItem(FINE, FINE_TITLE, FINE_TITLE,
                      self._fine_body(box, parent)),
         ], box)
         self.path.link_clicked.connect(lambda _key: self._start())
         column.addWidget(self.path)
+        # Shows nothing itself: its pad is over the picture.
+        column.addWidget(self.touch_jog)
 
         self.failure = Banner("", tone="danger", parent=box)
         self.failure.hide()
@@ -657,7 +702,7 @@ class TipCalibrationBlock(QObject):
         self.touch_jog.hide()
         self.adjust_box = path_body("Move the tip onto the central crosshair with "
                                 "Controls on the picture, then save.",
-                                buttons, self.touch_jog)
+                                buttons)
         self.adjust_box.hide()
 
         body = QWidget(box)
@@ -667,6 +712,31 @@ class TipCalibrationBlock(QObject):
         column.addWidget(self.offer_box)
         column.addWidget(self.adjust_box)
         return body
+
+    def _hand_body(self, box: QWidget) -> QWidget:
+        """Center the tip by hand's body: Save and Cancel."""
+        self.hand_save_button = primary_button("Save", box)
+        self.hand_save_button.clicked.connect(self._save_hand)
+        self.hand_cancel_button = secondary_button("Cancel", box)
+        self.hand_cancel_button.clicked.connect(self._cancel_hand)
+        buttons = QWidget(box)
+        buttons.setObjectName("plain")
+        row = QHBoxLayout(buttons)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(SPACING)
+        row.addWidget(self.hand_save_button)
+        row.addWidget(self.hand_cancel_button)
+        row.addStretch(1)
+        return path_body("Move the tip onto the central crosshair with "
+                         "Controls on the picture, then save.", buttons)
+
+    def _by_hand(self) -> bool:
+        return self.session.settings.tip_cal_mode == "hand"
+
+    @property
+    def centering(self) -> bool:
+        """By hand: the run left the tip to be centered, not saved yet."""
+        return self._hand is not None
 
     @property
     def done(self) -> bool:
@@ -789,6 +859,8 @@ class TipCalibrationBlock(QObject):
                          if session.run_state is not None else None)
         tip_pickup = session.tip.pickup
         wait = self._wait
+        by_hand = self._by_hand()
+        on_reading = self._on_reading
 
         def job(log):
             log("loading the tip detector")
@@ -810,7 +882,19 @@ class TipCalibrationBlock(QObject):
                       / datetime.now().strftime("%Y%m%d_%H%M%S"))
             log(f"starting from ({current[0]:+.3f}, {current[1]:+.3f}) mm, "
                 f"{frames} frames per reading"
-                + (f", tip {tip_type}" if tip_type else ""))
+                + (f", tip {tip_type}" if tip_type else "")
+                + (", by hand" if by_hand else ""))
+            if by_hand:
+                try:
+                    start = start_by_hand(
+                        robot, over, under, detector, pmap, target=target,
+                        current_offset=current, height=height, frames=frames,
+                        profile=profile, images_to=images,
+                        on_reading=on_reading, log=log)
+                finally:
+                    session.refresh_lights()
+                pose = tuple(float(v) for v in xyz(robot))
+                return HAND, start, pose
             try:
                 result = calibrate_pipette_offset(
                     robot, over, under, detector, pmap, target=target,
@@ -818,7 +902,8 @@ class TipCalibrationBlock(QObject):
                     verify=verify,
                     tip_type=tip_type, profile=profile,
                     manual_touch_up=None, robot_session=robot_session,
-                    tip_pickup=tip_pickup, images_to=images, log=log)
+                    tip_pickup=tip_pickup, images_to=images,
+                    on_reading=on_reading, log=log)
             finally:
                 # It switches the lights on when it finds them off.
                 session.refresh_lights()
@@ -837,6 +922,9 @@ class TipCalibrationBlock(QObject):
             return
         self._outcome = self._failure = ""
         self._adjusting = self._nudged = False
+        self._hand = None
+        self._hand_record = (tip_type, robot_session, tip_pickup)
+        self._release_reading()
         self._disc_seen = False
         self._phase = MOVING
         worker = Worker(job, what="calibrating the pipette", lease=lease)
@@ -919,8 +1007,8 @@ class TipCalibrationBlock(QObject):
         """The fine-tune can be done: calibrated, the fine-tune on in
         Settings, nothing running, the tip over the crosshair - at once
         after Calibrate, which leaves it there."""
-        return (self.session.settings.tip_cal_touch_up and not self.running
-                and self.done and self._over_crosshair())
+        return (self.session.settings.tip_cal_touch_up and not self._by_hand()
+                and not self.running and self.done and self._over_crosshair())
 
     def _adjust(self) -> None:
         """Adjust by hand: the fine-tune's pad up and open."""
@@ -977,6 +1065,95 @@ class TipCalibrationBlock(QObject):
             self.touch_jog.refuse(self.session.robot_lease.refusal)
         self.refresh()
 
+    def _save_hand(self) -> None:
+        """By hand: the offset the tip is at now, read and saved."""
+        start, profile = self._hand, self.session.profile
+        if start is None or profile is None:
+            return
+        robot = self.session.robot
+        tip_type, robot_session, tip_pickup = self._hand_record
+
+        def saved(pose) -> str:
+            if self._hand is not start:
+                return ""
+            offset = save_by_hand(start, pose, profile=profile,
+                                  tip_type=tip_type,
+                                  robot_session=robot_session,
+                                  tip_pickup=tip_pickup, log=log.info)
+            log.info("pipette offset centered by hand: dx %+.3f dy %+.3f mm",
+                     offset.dx, offset.dy)
+            self._hand = None
+            self._pose = tuple(float(v) for v in pose)
+            self.session.profile_changed.emit(profile)
+            show_toast(self.box, CALIBRATED)
+            self.refresh()
+            self.calibrated.emit()
+            return ""
+
+        if not self.touch_jog.run_job(lambda _log: xyz(robot), moves=False,
+                                      what="reading the tip's position",
+                                      then=saved):
+            self.touch_jog.refuse(self.session.robot_lease.refusal)
+        self.refresh()
+
+    def _cancel_hand(self) -> None:
+        """By hand: nothing saved; the tip stays where it is."""
+        if self._hand is None:
+            return
+        self._hand = None
+        show_toast(self.box, STOPPED)
+        self.refresh()
+
+    # -- the readings on the picture ------------------------------------------
+
+    def _on_reading(self, name: str, record, view) -> None:
+        """The routine's hook, on the worker's thread: the items drawn
+        there, the frame carried over to the GUI's."""
+        items = view_items(record.frame.shape, record.detections,
+                           center=None if view is None else view.center,
+                           tip=None if view is None else view.tip)
+        ring = (view.center if view is not None and name == "2_lower"
+                else None)
+        self.reading_seen.emit((record.frame, items, ring))
+
+    def _show_reading(self, payload) -> None:
+        frame, items, ring = payload
+        if ring is not None:
+            self._ring = tuple(float(v) for v in ring)
+        self._held = (frame, items)
+        self.view.hold(frame)
+        self._show_marks()
+
+    def _release_reading(self) -> None:
+        """The picture live again: a run starting, or ending well."""
+        if self._held is not None:
+            self._held = None
+            self.view.resume()
+        self._show_marks()
+
+    def _show_marks(self) -> None:
+        """The held reading's boxes, else the ring on the lower camera's
+        live picture, or nothing with Detections off."""
+        items: list = []
+        under = self._under_camera()
+        if not self.detections_chip.isChecked():
+            pass
+        elif self._held is not None:
+            items = self._held[1]
+        elif (self._ring is not None and under is not None
+              and self.view.camera is under):
+            width, height = under.resolution
+            key = (self._ring, width, height)
+            if self._ring_items[0] != key:
+                self._ring_items = (key, view_items((height, width), [],
+                                                    center=self._ring))
+            items = self._ring_items[1]
+        # By identity: the items hold arrays, and a repaint per refresh is
+        # what this saves.
+        if items is not self._marks_drawn and (items or self._marks_drawn):
+            self._marks_drawn = items
+            self.view.set_overlay_items(items)
+
     def _on_stop(self) -> None:
         if self._phase == DISC:
             self._abort()
@@ -992,6 +1169,19 @@ class TipCalibrationBlock(QObject):
     def _on_finished(self, payload) -> None:
         self._worker = None
         self._phase = None
+        self._release_reading()
+        if payload[0] == HAND:
+            _hand, start, pose = payload
+            self._hand = start
+            self._crosshair = tuple(float(v) for v in start.target_xy)
+            self._pose = pose
+            self._outcome = ""
+            # Its pad up and open, from steps the start offset's error needs.
+            self.touch_jog.pad.set_folded(False)
+            self.touch_jog.set_step(HAND_STEP_MM)
+            log.info("pipette calibration: the tip is left to center by hand")
+            self.refresh()
+            return
         result, standin, crosshair, pose = payload
         offset: PipetteOffset = result.offset
         self._crosshair = crosshair
@@ -1034,13 +1224,21 @@ class TipCalibrationBlock(QObject):
     def refresh(self, *_args) -> None:
         self.session.run_activity_changed.emit()
         running = self.running
+        if self._hand is not None and (self.session.tip.attached is not True
+                                       or self.session.tip.pickup
+                                       != self._hand_record[2]):
+            self._hand = None                # the tip it was for is gone
+        centering = self._hand is not None and not running
         tuning = self._tuning()
         self._follow_tuning(tuning)
         adjusting = self._adjusting and tuning
         # The host's jog panel only while nothing runs and the fine-tune's
         # pad is down: hidden, its keys are given up - one pad, one set.
-        self.touch_jog.setVisible(adjusting)
-        self.jog.setVisible(not running and not adjusting)
+        self.touch_jog.setVisible(adjusting or centering)
+        self.jog.setVisible(not running and not adjusting and not centering)
+        if centering:
+            profile = self.session.profile
+            self.touch_jog.set_view_axes(profile.calibration.tip_target.axes)
         if adjusting:
             profile = self.session.profile
             # The lower camera is turned and mirrored: through TipTarget.axes
@@ -1049,10 +1247,14 @@ class TipCalibrationBlock(QObject):
             self.touch_jog.set_step(TOUCH_UP_STEP_MM)
         self._show(running, tuning, adjusting)
         # The upper camera finds the disc; the lower one sees the tip.
-        lower = (self._phase == MEASURING
+        lower = (self._phase == MEASURING or centering
                  or not running and self.done and self._over_crosshair())
-        self.view.set_camera(self._under_camera() if lower
-                             else self._over_camera())
+        # A reading held stays on the picture whatever camera follows: a
+        # switch would drop it.
+        if self._held is None:
+            self.view.set_camera(self._under_camera() if lower
+                                 else self._over_camera())
+        self._show_marks()
         # The host's pad follows the picture shown: over the lower camera's,
         # turned and mirrored, its arrows go through TipTarget.axes too, or
         # left on the screen moves the tip up on the picture.
@@ -1066,10 +1268,15 @@ class TipCalibrationBlock(QObject):
         """Where the path is: an item, its end, or None with nothing to do
         yet. A run's phase first: Redo goes through the items again while
         the calibration before it still holds."""
+        hand = self._by_hand()
         if self.running:
-            return {MOVING: GO, DISC: CHECK, MEASURING: FIND}[self._phase]
+            return {MOVING: GO, DISC: CHECK,
+                    MEASURING: HAND if hand else FIND}[self._phase]
+        if self._hand is not None:
+            return HAND
         if measured:
-            return FINE if self.session.settings.tip_cal_touch_up else END
+            return (FINE if self.session.settings.tip_cal_touch_up
+                    and not hand else END)
         return GO if on else None
 
     def _show_path(self, place: str | None) -> None:
@@ -1104,16 +1311,25 @@ class TipCalibrationBlock(QObject):
         problems = [] if running else self._readiness()
         phase = self._phase
         place = self._place(on, measured)
-        self.path.set_hidden(FINE, not session.settings.tip_cal_touch_up)
+        hand = self._by_hand()
+        self.path.set_hidden(FIND, hand)
+        self.path.set_hidden(HAND, not hand)
+        self.path.set_hidden(FINE, hand or not session.settings.tip_cal_touch_up)
         self._show_path(place)
         self._show_chip(running, measured)
 
         free = not running and not session.robot_lease.busy
         self.go_button.setEnabled(free and not problems)
         self.yes_button.setEnabled(phase == DISC)
-        redo = self.path.link(FIND)
-        redo.setEnabled(free and not problems)
-        redo.setToolTip(problems[0] if problems else "")
+        for key in (FIND, HAND):
+            redo = self.path.link(key)
+            redo.setEnabled(free and not problems)
+            redo.setToolTip(problems[0] if problems else "")
+        centering = self._hand is not None and not running
+        self.hand_save_button.setEnabled(
+            centering and not self.touch_jog.busy
+            and not session.robot_lease.busy)
+        self.hand_cancel_button.setEnabled(centering)
 
         lines = [self._outcome] if self._outcome else []
         if problems and on:
@@ -1214,7 +1430,9 @@ class PipetteCalibration(QWidget):
             setattr(self, name, getattr(self.tip, name))
         for name in ("path", "chip", "go_button", "yes_button", "spinner",
                      "checks", "adjust_button", "tune_away", "touch_jog",
-                     "tune_save_button", "tune_cancel_button"):
+                     "tune_save_button", "tune_cancel_button",
+                     "hand_save_button", "hand_cancel_button",
+                     "detections_chip"):
             setattr(self, name, getattr(self.calibration, name))
         self._refresh()
 
@@ -1246,14 +1464,22 @@ class PipetteCalibration(QWidget):
     # -- a value typed and not saved (`MainWindow._ask_unsaved`) -------------
 
     def unsaved(self) -> str:
+        if self.calibration.centering:
+            return NOT_CENTERED
         return ("Tip calibration: the fine-tune is not saved."
                 if self.calibration._nudged else "")
 
     def save_unsaved(self) -> None:
-        self.calibration._save_tune()
+        if self.calibration.centering:
+            self.calibration._save_hand()
+        else:
+            self.calibration._save_tune()
 
     def discard_unsaved(self) -> None:
-        self.calibration._cancel_tune()
+        if self.calibration.centering:
+            self.calibration._cancel_hand()
+        else:
+            self.calibration._cancel_tune()
 
     def _refresh(self, *_args) -> None:
         self.calibration.refresh()

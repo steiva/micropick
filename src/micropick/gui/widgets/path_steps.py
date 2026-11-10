@@ -234,6 +234,10 @@ class PathSteps(QWidget):
         if row.state == DONE:
             row.title.setText(title)
 
+    def hidden(self, key: str) -> bool:
+        """The item is off the path (`set_hidden`)."""
+        return self._rows[key].hidden
+
     def set_hidden(self, key: str, hidden: bool) -> None:
         """An item that does not apply now: not on the path, the line ending
         at the one before it."""

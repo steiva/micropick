@@ -69,7 +69,9 @@ class AppSettings(BaseModel):
     # The tip calibration: the tip type recorded with the offset when the
     # robot's record does not name the rack ("" is "from the rack"), frames
     # per reading, the check after the correction, and the manual
-    # adjustment at the end.
+    # adjustment at the end. "hand" is for a tip the model does not find:
+    # the operator centers it, and verify and the adjustment are Auto's.
+    tip_cal_mode: Literal["auto", "hand"] = "auto"
     tip_cal_tip_type: str = ""
     tip_cal_frames: int = Field(default=7, ge=1, le=30)
     tip_cal_verify: bool = True

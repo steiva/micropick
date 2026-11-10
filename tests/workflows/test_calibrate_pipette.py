@@ -14,7 +14,7 @@ import pytest
 from micropick.config.schema import (Calibration, CameraSpec, PickingConfig,
                                      ProfileMeta, TipTarget)
 from micropick.config.schema import PixelMap as PixelMapConfig
-from micropick.config.store import Profile
+from micropick.config.store import Profile, load_profile
 from micropick.core.calibration.pixel_map import PixelMap
 from micropick.hardware.mock import MockRobot
 from micropick.viz.tip_views import view_items
@@ -137,3 +137,67 @@ def test_every_tip_box_is_drawn_with_its_frame_and_confidence():
     assert len(rects) == 4
     # The tip a frame kept is drawn thicker than the one it passed over.
     assert rects[2].thickness > rects[1].thickness
+
+
+# -- by hand -------------------------------------------------------------------
+
+def _start_by_hand(tmp_path, tip_at, *, under_finds_disc=True, **kw):
+    from micropick.workflows.calibrate_pipette import start_by_hand
+    profile = _profile(tmp_path)
+    model = _Model(tip_at)
+    if not under_finds_disc:
+        upper_predict = model.predict
+
+        def predict(**k):
+            # The upper camera's 5 frames, then nothing.
+            if model.calls >= 5:
+                model.calls += 1
+                return [SimpleNamespace(boxes=[])]
+            return upper_predict(**k)
+        model.predict = predict
+    robot = MockRobot(position=(150.0, 150.0, 67.1), noise_mm=0.0)
+    readings = []
+    start = start_by_hand(
+        robot, _Camera("over"), _Camera("under"),
+        TipDetector(model, imgsz=W), PixelMap.from_config(profile.pixel_map),
+        target=profile.calibration.tip_target, current_offset=(16.0, 60.0),
+        frames=5, settle_s=0.0, profile=profile, log=lambda _l: None,
+        on_reading=lambda name, record, view: readings.append(name), **kw)
+    return profile, robot, start, readings
+
+
+def test_by_hand_leaves_the_tip_where_the_offset_puts_it_and_saves_nothing(
+        tmp_path):
+    # No tip is ever found: by hand never looks for one.
+    profile, robot, start, readings = _start_by_hand(tmp_path, lambda i: None)
+    # The disc is at the frame's center, the picture's center maps to the
+    # pose the reading was taken at: the crosshair is at (150, 150).
+    assert np.allclose(start.target_xy, (150.0, 150.0), atol=1e-6)
+    pose = robot.get_position(verbose=False)[0]
+    assert (round(pose["x"], 3), round(pose["y"], 3), round(pose["z"], 1)) \
+        == (166.0, 210.0, 67.1)
+    assert readings == ["1_upper", "2_lower"]
+    assert start.under_view is not None
+    assert profile.calibration.pipette_offset is None
+
+
+def test_by_hand_without_the_disc_in_the_lower_camera_carries_on(tmp_path):
+    _profile_, robot, start, readings = _start_by_hand(
+        tmp_path, lambda i: None, under_finds_disc=False)
+    assert start.under_view is None
+    assert readings == ["1_upper", "2_lower"]
+    pose = robot.get_position(verbose=False)[0]
+    assert (round(pose["x"], 3), round(pose["y"], 3)) == (166.0, 210.0)
+
+
+def test_the_offset_by_hand_is_where_the_tip_was_left(tmp_path):
+    from micropick.workflows.calibrate_pipette import save_by_hand
+    profile, _robot, start, _readings = _start_by_hand(tmp_path, lambda i: None)
+    offset = save_by_hand(start, (166.5, 209.25), profile=profile,
+                          tip_type="vwr", robot_session="r1", tip_pickup="p1")
+    assert (round(offset.dx, 3), round(offset.dy, 3)) == (16.5, 59.25)
+    assert offset.method == "manual"
+    assert offset.residual_mm is None
+    assert offset.tip_type == "vwr"
+    saved = load_profile("t", directory=tmp_path).calibration.pipette_offset
+    assert (round(saved.dx, 3), saved.method) == (16.5, "manual")

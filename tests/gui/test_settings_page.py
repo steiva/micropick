@@ -308,3 +308,19 @@ def test_the_inference_device_is_saved_and_the_detector_reloads(app, session,
     assert session.detector.name is None          # loaded again when needed
     assert "GPU" in page.inference_state.text()   # found, or none found
     page.deleteLater()
+
+
+def test_tip_calibration_by_hand_is_saved_and_grays_what_only_auto_uses(
+        app, session, tmp_path):
+    page = SettingsPage(session)
+    assert page.tip_mode.currentData() == "auto"
+    assert page.tip_verify.isEnabled() and page.tip_touch_up.isEnabled()
+    page.tip_mode.setCurrentIndex(page.tip_mode.findData("hand"))
+    assert not page.tip_verify.isEnabled()
+    assert not page.tip_touch_up.isEnabled()
+    assert page.tip_verify.toolTip() == "Only for Auto."
+    page._save()
+    data = json.loads((tmp_path / "settings.json").read_text())
+    assert data["tip_cal_mode"] == "hand"
+    assert session.settings.tip_cal_mode == "hand"
+    page.deleteLater()
