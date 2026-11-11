@@ -773,17 +773,6 @@ def test_a_wait_still_says_stop_works(app, page):
             in said)
 
 
-def test_the_wait_help_line_is_not_cut_off_on_a_small_window(app, themed,
-                                                             window, page):
-    window.resize(1280, 800)
-    page.add_step("wait")
-    app.processEvents()
-    (line,) = [label for label in page.wait_form.findChildren(QLabel)
-               if "Pause and Stop" in label.text()]
-    assert line.width() == page.wait_form.width()
-    assert line.height() >= line.heightForWidth(line.width())
-
-
 @pytest.mark.parametrize("step_kind, form", [
     ("wait", lambda page: page.wait_form),
     ("wait_for_me", lambda page: page.message_form)])
@@ -1840,3 +1829,14 @@ def test_what_is_under_the_title_starts_at_the_same_height(app, themed,
         opens(page)
         app.processEvents()
         assert page.question_body.y() == height
+
+
+def test_the_wait_help_line_is_not_cut_off_on_a_small_window(app, themed,
+                                                             window, page):
+    window.resize(1280, 800)
+    page.add_step("wait")
+    app.processEvents()
+    (line,) = [label for label in page.wait_form.findChildren(QLabel)
+               if "Pause and Stop" in label.text()]
+    assert line.width() == page.wait_form.width()
+    assert line.height() >= line.heightForWidth(line.width())
