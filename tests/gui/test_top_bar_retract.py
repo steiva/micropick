@@ -89,12 +89,17 @@ def test_one_click_rises_with_no_question(app, window, monkeypatch):
     assert window.top.retract.text() == "Retract"
 
 
-def test_it_shows_retracting_on_its_own_worker(app, window, monkeypatch):
+def test_it_shows_retracting_on_its_own_worker(app, window, until,
+                                               robot_free):
+    """Shown before its worker starts: a job that ends at once lets the
+    robot go on its own thread, and the window hears it only through its
+    events, so "Retracting…" stands at least until they run."""
     _connect(app, window)
     window.top.retract.click()
     assert window.top.retract.text() == "Retracting…"
-    _settle(app, window)
-    assert window.top.retract.text() == "Retract"
+    # the lease is let go on the worker's thread, before the window knows
+    until(lambda: window.top.retract.text() == "Retract", what="Retract again")
+    robot_free(window)
     assert window.top.retract.isEnabled()
 
 

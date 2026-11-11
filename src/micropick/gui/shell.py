@@ -936,8 +936,11 @@ class MainWindow(QMainWindow):
         _log.info("retracting from the top bar")
         self._retracting = True
         self.top.set_retracting(True)
-        worker.start()
+        # Shown before the start: a job that ends at once lets the lease go
+        # on its own thread, and `_show_park` after it would put "Retract"
+        # back during the click. Its end reaches here only through events.
         self._show_park()
+        worker.start()
 
     def _retract_done(self, _result=None) -> None:
         self._retract_worker = None

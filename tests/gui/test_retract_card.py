@@ -153,13 +153,15 @@ def test_the_card_stands_still_while_the_column_scrolls(app, page):
     assert _place(page) == place
 
 
-def test_its_button_rises_by_the_top_bars_path(app, window, monkeypatch):
+def test_its_button_rises_by_the_top_bars_path(app, window, monkeypatch,
+                                               until, robot_free):
     page = _on_manual(app, window)
     calls = _rises(window, monkeypatch)
     assert page.retract_button.isEnabledTo(page)
     page.retract_button.clicked.emit()     # the step is dimmed: no calibration
     assert window.top.retract.text() == "Retracting…"
-    _settle(app, window)
+    until(lambda: window.top.retract.text() == "Retract", what="Retract again")
+    robot_free(window)
     assert len(calls) == 1
 
 
