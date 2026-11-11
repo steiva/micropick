@@ -6,7 +6,6 @@ only while it is the one lowering - the last ending in Save dish bottom -
 Last time with Use it, where the dish is with Change, and Redo."""
 
 import os
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -51,23 +50,14 @@ def session(app, tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def page(app, session):
+def page(app, session, robot_free):
     p = DishBottomPage(session)
     p.show()
     # Shown, it reads the pose; Move the tip stays gray until that is done.
-    assert _until(app, lambda: not p.jog.busy)
+    robot_free(session, p.jog)
     yield p
     p.hide()
     p.deleteLater()
-
-
-def _until(app, condition, timeout_s=10.0):
-    end = time.monotonic() + timeout_s
-    while not condition() and time.monotonic() < end:
-        app.processEvents()
-        time.sleep(0.01)
-    app.processEvents()
-    return condition()
 
 
 def _measured(session, z=66.4, days=3):
@@ -164,27 +154,40 @@ def test_up_and_down_only_while_lowering(app, session, page):
     assert not page.save_button.isEnabled()
 
 
-def _touch(app, page):
+def _touch(until, page):
     """It touches on the card lowering: the next card is lowering then."""
     stage = page._stage
     page.lowering.touch.click()
-    assert _until(app, lambda: page._stage == stage + 1
-                  and page.up_button.isEnabled())
+    until(lambda: page._stage == stage + 1 and page.up_button.isEnabled()
+          and not page.jog.job_pending, what="the next card lowering")
 
 
-def _to_last(app, page):
+def _to_last(until, page):
     page.move_button.click()
-    assert _until(app, lambda: page.up_button.isEnabled())
-    _touch(app, page)
-    _touch(app, page)
+    until(lambda: page.up_button.isEnabled() and not page.jog.job_pending,
+          what="the tip over the dish")
+    _touch(until, page)
+    _touch(until, page)
 
 
-def test_measured_with_the_tip(app, session, page):
+def _saved_and_lifted(until, session, page, touch_z):
+    """Save stores the bottom, then lifts the tip on a timer of its own:
+    done once the bottom is confirmed, the tip above the touch and the
+    lift's end delivered."""
+    robot = session.robot
+    until(lambda: session.is_confirmed("dish_bottom")
+          and float(xyz(robot)[2]) > touch_z + 1
+          and not page.jog.job_pending,
+          what="the dish bottom saved and the tip lifted")
+
+
+def test_measured_with_the_tip(app, session, page, until, robot_free):
     _calibrated(session)
     page.refresh()
     robot = session.robot
     page.move_button.click()
-    assert _until(app, lambda: page.up_button.isEnabled())
+    until(lambda: page.up_button.isEnabled() and not page.jog.job_pending,
+          what="the tip over the dish")
     # Over the dish center, a little above the dish bottom stored now.
     z = float(xyz(robot)[2])
     assert z == pytest.approx(session.profile.picking.dish_bottom
@@ -200,66 +203,69 @@ def test_measured_with_the_tip(app, session, page):
         assert not page.stages[i - 1].up.isEnabled() if i else True
         page.down_button.click()
         low -= step
-        assert _until(app, lambda: page.z_readout.text() == f"Z {low:.2f}"
-                      and page.up_button.isEnabled())
+        until(lambda: page.z_readout.text() == f"Z {low:.2f}"
+              and page.up_button.isEnabled() and not page.jog.job_pending,
+              what=f"Z {low:.2f} shown")
         if i < len(page_module.STAGES) - 1:
-            _touch(app, page)
+            _touch(until, page)
             low += step
             assert page.z_readout.text() == f"Z {low:.2f}"
     assert page.save_button.text() == "Save dish bottom"
     assert page.save_button.isEnabled()
 
     session.profile.picking.dish_bottom = low + 0.5   # no question asked
-    assert _until(app, lambda: not page.jog.busy)  # a busy panel refuses
+    robot_free(session, page.jog)                  # a busy panel refuses
     page.save_button.click()
-    assert _until(app, lambda: session.is_confirmed("dish_bottom")
-                  and not page.jog.busy)
+    # The tip is raised afterwards.
+    _saved_and_lifted(until, session, page, low)
     assert session.profile.picking.dish_bottom == pytest.approx(low, abs=0.01)
     assert page.result.label.text() == f"Dish bottom: Z {low:.2f} mm"
     assert not page.up_button.isEnabled()
     assert not page.redo_button.isHidden()
-    # The tip is raised afterwards.
-    assert _until(app, lambda: float(xyz(robot)[2]) > low + 1
-                  and not page.jog.busy)
 
 
 def test_lowering_goes_past_the_bottom_with_nothing_refused(
-        app, session, page):
+        app, session, page, until):
     """A target's check (#101) is not this page's: it lowers to a touch,
     and the stored bottom may be too high."""
     _calibrated(session)
     session.set_dish_bottom(66.0)
     page.refresh()
     page.move_button.click()
-    assert _until(app, lambda: page.up_button.isEnabled())
+    until(lambda: page.up_button.isEnabled() and not page.jog.job_pending,
+          what="the tip over the dish")
     robot = session.robot
     while float(xyz(robot)[2]) > 63.5:
         z = float(xyz(robot)[2])
         page.down_button.click()
-        assert _until(app, lambda: float(xyz(robot)[2]) < z - 0.5
-                      and page.up_button.isEnabled())
+        until(lambda: float(xyz(robot)[2]) < z - 0.5
+              and page.up_button.isEnabled() and not page.jog.job_pending,
+              what="the tip lowered a step")
     assert toast_of(page).property("tone") != "refusal"
 
 
-def test_a_big_change_is_asked_about_first(app, session, page, monkeypatch):
+def test_a_big_change_is_asked_about_first(app, session, page, monkeypatch,
+                                           until):
     _calibrated(session)
     page.refresh()
     asked = []
     monkeypatch.setattr(page_module.ConfirmDialog, "confirm",
                         classmethod(lambda cls, host, q, **kw:
                                     asked.append(q) or False))
-    _to_last(app, page)
+    _to_last(until, page)
     page.save_button.click()                       # 10 mm over the old value
-    assert _until(app, lambda: asked and not page.jog.busy)
+    until(lambda: asked and not page.jog.job_pending, what="the question")
     assert not session.is_confirmed("dish_bottom")
     assert session.profile.picking.dish_bottom == 66.1
 
 
-def test_nothing_moves_while_the_robot_is_busy_elsewhere(app, session, page):
+def test_nothing_moves_while_the_robot_is_busy_elsewhere(
+        app, session, page, until, robot_free):
     _calibrated(session)
     page.refresh()
     page.move_button.click()
-    assert _until(app, lambda: page.up_button.isEnabled())
+    until(lambda: page.up_button.isEnabled() and not page.jog.job_pending,
+          what="the tip over the dish")
     lease = session.robot_lease.claim("picking run", run=True)
     try:
         app.processEvents()
@@ -269,14 +275,15 @@ def test_nothing_moves_while_the_robot_is_busy_elsewhere(app, session, page):
     finally:
         lease.release()
     # Let go, the pose is read again (#56), then Up is back.
-    assert _until(app, lambda: page.up_button.isEnabled())
+    until(lambda: page.up_button.isEnabled(), what="Up enabled again")
+    robot_free(session, page.jog)
 
 
 def test_a_refusal_is_a_toast_and_nothing_is_said_under_the_height(
-        app, session, page):
+        app, session, page, robot_free):
     _calibrated(session)
     page.refresh()
-    assert _until(app, lambda: not page.jog.busy)
+    robot_free(session, page.jog)
     slot = nearest_slot(*page_module.dish_center(session.profile)[0])
     session.set_deck_modules(
         [DeckModule(slots=[slot], offset=[0, 0, 200.0], name="Platform")])
@@ -296,7 +303,8 @@ def _press(app, page, key):
     app.processEvents()
 
 
-def test_the_z_and_step_keys_work_while_lowering(app, session, page):
+def test_the_z_and_step_keys_work_while_lowering(app, session, page, until,
+                                                 robot_free):
     _calibrated(session)
     page.refresh()
     robot = session.robot
@@ -304,27 +312,30 @@ def test_the_z_and_step_keys_work_while_lowering(app, session, page):
     _press(app, page, Qt.Key.Key_PageDown)           # not lowering yet
     assert len(robot.calls) == calls
     page.move_button.click()
-    assert _until(app, lambda: page.up_button.isEnabled())
+    until(lambda: page.up_button.isEnabled() and not page.jog.job_pending,
+          what="the tip over the dish")
     z = float(xyz(robot)[2])
     assert page.carousel.step == page_module.FIRST_STEP_MM
     _press(app, page, Qt.Key.Key_Plus)               # a larger step
     step = page.carousel.step
     assert step > page_module.FIRST_STEP_MM
     _press(app, page, Qt.Key.Key_PageDown)
-    assert _until(app, lambda: page.z_readout.text() == f"Z {z - step:.2f}"
-                  and page.up_button.isEnabled())
+    until(lambda: page.z_readout.text() == f"Z {z - step:.2f}"
+          and page.up_button.isEnabled() and not page.jog.job_pending,
+          what=f"Z {z - step:.2f} shown")
     _press(app, page, Qt.Key.Key_Minus)
     assert page.carousel.step == page_module.FIRST_STEP_MM
     _press(app, page, Qt.Key.Key_PageUp)
-    assert _until(app, lambda: page.z_readout.text()
-                  == f"Z {z - step + page_module.FIRST_STEP_MM:.2f}"
-                  and page.up_button.isEnabled())
+    up = z - step + page_module.FIRST_STEP_MM
+    until(lambda: page.z_readout.text() == f"Z {up:.2f}"
+          and page.up_button.isEnabled() and not page.jog.job_pending,
+          what=f"Z {up:.2f} shown")
     # No XY keys here.
     before = xyz(robot)
     for key in (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up,
                 Qt.Key.Key_Down):
         _press(app, page, key)
-    assert _until(app, lambda: not page.jog.busy)
+    robot_free(session, page.jog)
     assert xyz(robot)[:2] == pytest.approx(before[:2], abs=0.05)
 
 
@@ -363,14 +374,14 @@ def test_keys_puts_the_keys_bound_on_up_down_and_the_step(app, session,
 
 
 def test_redo_goes_back_to_the_first_step_and_keeps_the_value(
-        app, session, page):
+        app, session, page, until):
     _calibrated(session)
     page.refresh()
-    _to_last(app, page)
+    _to_last(until, page)
     session.profile.picking.dish_bottom = 76.0        # no question asked
+    touch_z = float(xyz(session.robot)[2])
     page.save_button.click()
-    assert _until(app, lambda: session.is_confirmed("dish_bottom")
-                  and not page.jog.busy)
+    _saved_and_lifted(until, session, page, touch_z)
     saved = session.profile.picking.dish_bottom
     assert [s.card.state for s in page.stages] == [page_module.OK] * 3
     page.redo_button.click()

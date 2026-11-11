@@ -50,6 +50,63 @@ def _delete_what_the_test_left():
 
 
 
+@pytest.fixture
+def until():
+    """`until(condition, timeout_s=10.0, what=None)`: events run until
+    `condition()` holds, and it returns at once - no events after, which
+    could start a job chained on a zero timer and make it False again. A
+    wait that runs out fails the test there, naming `what`."""
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+
+    def wait(condition, timeout_s=10.0, what=None):
+        end = time.monotonic() + timeout_s
+        while True:
+            if condition():
+                return
+            if time.monotonic() >= end:
+                pytest.fail(f"Waited {timeout_s:g} s for "
+                            f"{what or 'a condition'}: it never held.")
+            app.processEvents()
+            time.sleep(0.005)
+
+    return wait
+
+
+@pytest.fixture
+def robot_free(until):
+    """`robot_free(session_or_window, *panels)`: until no one holds the
+    robot's lease and no panel given - with a window, every `JogPanel` in
+    it - has `job_pending`. Never a panel's `busy`: that goes False as the
+    worker's thread ends, before the job's end reaches the page."""
+    from micropick.gui.widgets.jog_panel import JogPanel
+
+    def wait(holder, *panels, timeout_s=10.0):
+        session = getattr(holder, "session", holder)
+        if not panels and holder is not session:
+            panels = tuple(holder.findChildren(JogPanel))
+        until(lambda: not session.robot_lease.busy
+              and not any(p.job_pending for p in panels),
+              timeout_s, "the robot free and no job pending")
+
+    return wait
+
+
+@pytest.fixture
+def read_pose(robot_free):
+    """`read_pose(panel)`: the pose read for sure. A refresh asked while
+    the panel is busy is dropped, so it waits for the panel first."""
+
+    def read(panel):
+        robot_free(panel.session, panel)
+        panel.refresh_position()
+        robot_free(panel.session, panel)
+
+    return read
+
+
 @pytest.fixture(scope="module")
 def themed(app):
     """The app in the program's theme for a module, put back after it.
