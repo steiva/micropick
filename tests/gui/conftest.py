@@ -9,7 +9,13 @@ test. Delivered here, after each test.
 
 A camera still grabbing after a test is closed too: each grabs at 30 fps
 for the rest of the run, and later files grew slow by them. Most are a
-page's own open still on its way as the test ended, so no warning.
+page's own open still on its way as the test ended, so no warning. That
+open is a worker's: before the deferred deletes, every running worker but a
+background one is waited for (up to 5 s each), so a camera is not met half
+made. A grab thread listed but not yet started (`threading.enumerate` lists
+it from `start()`, before it runs) is skipped, its close would raise
+"cannot join thread before it is started"; a close that raises it all the
+same is tried once more, after a short join once the thread is alive.
 
 And the root logger's handlers and `sys.excepthook` are put back: every
 MainWindow adds a bridge to its log page and a file handler (one window in
@@ -39,15 +45,30 @@ def _delete_what_the_test_left():
         from PySide6.QtCore import QCoreApplication, QEvent
     except ImportError:                      # the gui extra is not installed
         return
+    from micropick.gui.workers import base as workers
+    for worker in list(workers._RUNNING):
+        if worker.running and not worker.background:
+            worker.wait(5_000)
     if QCoreApplication.instance() is not None:
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     for thread in threading.enumerate():
-        if thread.name.startswith("grab-"):
-            camera = getattr(getattr(thread, "_target", None), "__self__",
-                             None)
-            if camera is not None:
-                camera.close()
+        if not thread.name.startswith("grab-") or not thread.is_alive():
+            continue
+        camera = getattr(getattr(thread, "_target", None), "__self__", None)
+        if camera is None:
+            continue
+        try:
+            camera.close()
+        except RuntimeError:
+            _until_alive(thread)
+            thread.join(0.1)
+            camera.close()
 
+
+def _until_alive(thread, timeout_s=1.0):
+    end = time.monotonic() + timeout_s
+    while not thread.is_alive() and time.monotonic() < end:
+        time.sleep(0.005)
 
 
 @pytest.fixture
