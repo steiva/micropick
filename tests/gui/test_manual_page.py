@@ -43,6 +43,17 @@ def session(app, tmp_path, monkeypatch):
     s.shutdown()
 
 
+@pytest.fixture(autouse=True)
+def _shared_waits(request):
+    """The conftest's `robot_free` and `read_pose`, for this file's helpers,
+    which take no fixture: `robot_free(page.session, page.jog)` waits
+    asserting, on `job_pending`; `read_pose(page.jog)` reads the pose for
+    sure, where a bare refresh asked while the panel is busy is dropped."""
+    global robot_free, read_pose
+    robot_free = request.getfixturevalue("robot_free")
+    read_pose = request.getfixturevalue("read_pose")
+
+
 @pytest.fixture
 def page(app, session):
     p = ManualPage(session)
@@ -92,24 +103,14 @@ def _open_upper(app, page, session):
     app.processEvents()
 
 
-def _wait(app, page):
-    import time
-    end = time.monotonic() + 5
-    while page.jog.busy and time.monotonic() < end:
-        app.processEvents()
-        time.sleep(0.01)
-    app.processEvents()
-
-
 def _over_the_deck(app, page, session):
     session.robot.move_to_coordinates((150.0, 150.0, 90.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
 
 
 def _left_click(app, page, u, v):
     page.view.clicked.emit(u, v)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
 
 
 def _xy(session):
@@ -120,7 +121,7 @@ def _xy(session):
 def test_a_single_left_click_moves_the_camera_there(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     # 100 px right of the reference pixel is 2.6 mm in x.
     _left_click(app, page, W / 2 + 100, H / 2)
@@ -137,7 +138,7 @@ def test_a_click_reads_no_pose_on_the_gui_thread(app, page, session,
     import threading
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     robot, reads = session.robot, []
     real = robot.get_position
@@ -176,7 +177,7 @@ def _cuboid_at(page, u, v, half=20):
 def test_a_click_on_a_cuboid_moves_only_the_camera(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.source.buttons[2].click()                     # In a well
     _cuboid_at(page, W / 2 + 100, H / 2)
@@ -200,10 +201,9 @@ def test_no_click_choice_and_no_way_back_to_center(page):
 def test_a_click_outside_the_jog_envelope_moves_nothing(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     session.robot.move_to_coordinates((20.0, 20.0, 90.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     before = _xy(session)
     # Far to the left and up of the deck's corner: past the soft limits.
     _left_click(app, page, 110.0, 110.0)
@@ -219,13 +219,14 @@ def test_a_click_while_the_robot_is_busy_elsewhere_moves_nothing(
         app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     before = _xy(session)
     lease = session.robot_lease.claim("someone else")
     try:
-        _left_click(app, page, W / 2 + 100, H / 2)
+        page.view.clicked.emit(W / 2 + 100, H / 2)      # refused, never queued
     finally:
         lease.release()
+    robot_free(session, page.jog)
     assert _xy(session) == pytest.approx(before)
 
 
@@ -249,11 +250,11 @@ def test_a_right_click_marks_a_point_drawn_only_while_points_are_shown(
         app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     before = _xy(session)
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert [p.name for p in session.memo_points] == ["M1"]
     assert _xy(session) == pytest.approx(before)        # marking moves nothing
     assert page.points_list.chosen_name == "M1"
@@ -266,17 +267,17 @@ def test_the_points_chip_alone_says_whether_points_are_drawn(
     listed and still not drawn (§10.14)."""
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.source.buttons[2].click()                     # In a well
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page.view.marks_box.isChecked()
     assert len(_points_drawn(page)) == 1
     page.view.marks_box.setChecked(False)
     assert _points_drawn(page) == []
     page.view.right_clicked.emit(W / 2 - 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert not page.view.marks_box.isChecked()
     assert page.points_list.names == ["M1", "M2"]
     assert _points_drawn(page) == []
@@ -285,10 +286,10 @@ def test_the_points_chip_alone_says_whether_points_are_drawn(
 def test_the_chosen_point_is_ringed_on_the_picture(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _rings(page) == 1
     page.points_list.choose(None)
     assert _rings(page) == 0
@@ -297,10 +298,10 @@ def test_the_chosen_point_is_ringed_on_the_picture(app, page, session):
 def test_a_new_point_is_chosen_in_the_list_and_said(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page.points_list.chosen_name == "M1"
     assert page.points_list.row("M1").isAncestorOf(page.points_list.actions)
     assert _said(page) == ("M1 added.", "answer")
@@ -309,11 +310,11 @@ def test_a_new_point_is_chosen_in_the_list_and_said(app, page, session):
 def test_a_point_is_deleted_under_its_row(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
     page.view.right_clicked.emit(W / 2 - 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert [p.name for p in session.memo_points] == ["M1", "M2"]
     page.points_list.row("M1").delete.click()
     assert [p.name for p in session.memo_points] == ["M2"]
@@ -323,9 +324,9 @@ def test_a_point_is_deleted_under_its_row(app, page, session):
 def test_look_at_moves_the_camera_over_the_slot(app, page, session):
     from micropick.core.deck import slot_center
     _calibrate(session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.look_at.slot_chosen.emit(5)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     x, y = slot_center(5)
     # The slot's center is the tip's frame: the gantry stops a pipette
     # offset short of it.
@@ -341,23 +342,24 @@ def _tip_on(app, page, session):
     session.load_labware(rack, 10)
     session.pick_up_tip(10, "A1")
     assert session.tip.attached is True
-    _wait(app, page)          # the panel reads the pose again for the tip
+    # the panel reads the pose again for the tip
+    robot_free(page.session, page.jog)
 
 
 def test_the_tip_gauge_follows_aspirate_and_dispense(app, page, session):
     _tip_on(app, page, session)
     page.in_place_amount.setValue(15.0)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page.gauge.volume.text() == "15 µl"
     session.read_tip()                       # the same tip, read again
     assert page.gauge.volume.text() == "15 µl"
     page.amount.buttons[1].click()                       # All
     page._dispense_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page.gauge.volume.text() == "0 µl"
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     session.drop_tip_in_trash()
     app.processEvents()
     assert page.gauge.volume.text() == "0 µl"           # dropped with the tip
@@ -379,7 +381,7 @@ def test_aspirates_summary_says_the_height_amount_speed_and_lift(page):
 def _ready_by_hand(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _tip_on(app, page, session)
     _over_the_deck(app, page, session)
     page.source.buttons[0].click()                     # By clicking
@@ -416,7 +418,7 @@ def test_by_hand_aspirate_is_enabled_with_a_tip_on_and_no_click(
         app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.source.buttons[0].click()                     # By clicking
     assert not page.aspirate_button.isEnabled()         # no tip yet
     _tip_on(app, page, session)
@@ -438,7 +440,7 @@ def test_by_hand_aspirates_under_the_crosshair_and_comes_back(
     page.height_mode.buttons[0].click()                 # Z
     page.hand_z.setValue(70.0)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     # The crosshair is the picture's center: the camera's point, and the
     # tip the pipette offset from it.
     assert at == [pytest.approx((150.0 + 10.0, 150.0 - 5.0, 70.0), abs=0.05)]
@@ -460,7 +462,7 @@ def test_by_hand_above_the_bottom_only_with_a_bottom_this_session(
     assert page.height_mode.current() == 1               # the default then
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     bottom = session.profile.picking.dish_bottom
     assert at[0][2] == pytest.approx(bottom + 0.5, abs=0.05)
 
@@ -516,16 +518,16 @@ def test_dispense_is_gray_until_the_tip_holds_and_gives_back_part_then_all(
     assert not page.dispense_button.isEnabled()          # the tip is empty
     page.in_place_amount.setValue(15.0)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
     assert page.dispense_button.isEnabled()
     page.part.setValue(6.0)                              # Part, from the start
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(9.0)
     page.amount.buttons[1].click()                       # All
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
     assert not page.dispense_button.isEnabled()
 
@@ -533,7 +535,7 @@ def test_dispense_is_gray_until_the_tip_holds_and_gives_back_part_then_all(
 def test_liquid_in_place_and_a_right_click_move_no_card(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _tip_on(app, page, session)
     _over_the_deck(app, page, session)
     page.resize(1600, 900)
@@ -544,11 +546,11 @@ def test_liquid_in_place_and_a_right_click_move_no_card(app, page, session):
 
     before = where()
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip > 0
     assert where() == before
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert where() == before
     assert len(_points_drawn(page)) == 1                 # and it is seen
 
@@ -559,13 +561,13 @@ def test_dispense_in_a_well_says_the_well_and_goes_there(app, page, session):
         resolve_definition("corning_96_wellplate_360ul_flat"), 5)
     _tip_on(app, page, session)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.target.buttons[0].click()                       # In a well
     page.target_wells.map.well_clicked.emit("A7")
     assert page.dispense_button.text() == "Dispense into A7"
-    _wait(app, page)                                     # a busy panel refuses
+    robot_free(page.session, page.jog)                 # a busy panel refuses
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     calls = session.robot.calls
     lid = session.run_state.labware["5"].labware_id
     assert ("move_to_well", lid, "A7", "bottom") in calls
@@ -603,7 +605,7 @@ def test_past_picks_are_drawn_while_shown(app, page, session):
     from micropick.gui.position_marks import PICK
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.record_pick((150.0, 150.0))
     page.record_pick((152.0, 150.0))
@@ -691,10 +693,10 @@ def test_memo_and_saved_points_are_two_lists_both_under_at_a_point(
     session.remember("trough", (150.0, 150.0, 30.0))
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page.view.right_clicked.emit(W / 2 + 100, H / 2)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     for points in (page.points_list, page.source_points, page.target_points):
         assert points.names == ["M1", "trough"]
     assert page.points_list.row("M1").star.text() == "☆"
@@ -711,7 +713,7 @@ def test_a_saved_point_is_drawn_cyan_with_a_filled_mark(app, page, session):
     session.remember("trough", (150.0, 150.0, 30.0))
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     filled = [i for i in page.view._marks if isinstance(i, overlays.Circle)
               and i.color == MEMO and i.fill]
@@ -738,13 +740,13 @@ def test_the_chosen_point_is_the_lists(page, session):
 def test_camera_to_brings_the_camera_over_the_point_at_the_travel_height(
         app, page, session):
     _calibrate(session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     session.remember("trough", (120.0, 130.0, 30.0))
     page.points_list.choose("trough")
     assert page.camera_to_button.isEnabled()
     page.camera_to_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     # The gantry a pipette offset short of the point; the Z is not used.
     assert _xy(session) == pytest.approx((110.0, 135.0), abs=0.05)
     z = session.robot.get_position(verbose=False)[0]["z"]
@@ -754,7 +756,7 @@ def test_camera_to_brings_the_camera_over_the_point_at_the_travel_height(
 def test_tip_to_is_gray_without_a_tip_and_goes_down_to_the_points_z(
         app, page, session):
     _calibrate(session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     session.remember("trough", (120.0, 130.0, 30.0))
     page.points_list.choose("trough")
@@ -764,7 +766,7 @@ def test_tip_to_is_gray_without_a_tip_and_goes_down_to_the_points_z(
     page.points_list.choose("trough")
     assert page.tip_to_button.isEnabled()
     page.tip_to_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     pos = session.robot.get_position(verbose=False)[0]
     assert (pos["x"], pos["y"], pos["z"]) == pytest.approx(
         (120.0, 130.0, 30.0), abs=0.05)
@@ -777,7 +779,7 @@ def test_place_memo_at_crosshair_marks_the_spot_under_it_with_no_z(
     _calibrate(session)
     session.profile_changed.emit(session.profile)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     assert page.place_memo_button.isEnabled()
     page.place_memo_button.click()
@@ -794,11 +796,11 @@ def test_tip_to_crosshair_lands_under_it_at_the_travel_height(
     session.profile_changed.emit(session.profile)
     _tip_on(app, page, session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     assert page.tip_crosshair_button.isEnabled()
     page.tip_crosshair_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     pos = session.robot.get_position(verbose=False)[0]
     # The crosshair is the reference pixel: the gantry plus the tip offset.
     assert (pos["x"], pos["y"]) == pytest.approx((160.0, 145.0), abs=0.05)
@@ -818,13 +820,12 @@ def test_tip_to_crosshair_is_checked_at_the_height_it_moves_at(
         [DeckModule(slots=[8], offset=[0, 0, 64.0], name="Platform")])
     _tip_on(app, page, session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     x, y = slot_center(8)[:2]
     session.robot.move_to_coordinates((x - 100.0, y, 30.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     page.tip_crosshair_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _xy(session) == pytest.approx((x, y), abs=0.05)
 
 
@@ -838,7 +839,7 @@ def test_tip_to_crosshair_is_gray_without_a_tip_or_a_pixel_map(
     session.profile_changed.emit(session.profile)
     assert button.isEnabled()
     session.drop_tip_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert not button.isEnabled()
     assert button.toolTip() == "Put a tip on first."
 
@@ -860,12 +861,11 @@ def test_tip_to_crosshair_says_why_a_spot_cannot_be_reached(
     session.profile_changed.emit(session.profile)
     _tip_on(app, page, session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     session.robot.move_to_coordinates((375.0, 150.0, 90.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     page.tip_crosshair_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _xy(session) == pytest.approx((375.0, 150.0), abs=0.05)
     assert toast_of(page).text().startswith("Not reachable: X 385")
     assert toast_of(page).property("tone") == "refusal"
@@ -917,7 +917,7 @@ def _measured_plate(app, page, session):
     page.source.buttons[2].click()                       # In a well
     page.source_wells.map.well_clicked.emit("A7")
     page.above_bottom.setValue(0.5)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
 
 
 def test_aspirate_in_a_measured_plate_reaches_the_rim_less_depth_plus_height(
@@ -926,7 +926,7 @@ def test_aspirate_in_a_measured_plate_reaches_the_rim_less_depth_plus_height(
     at = _aspirated_at(session)
     z = _pose(session)[2]              # the mock stays here: over the rim
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     # Over the rim by the approach, at the measured x and y ...
     assert session.robot.well_offset == pytest.approx((0.4, -0.3, 1.0))
     # ... then straight down: 2 mm to the rim, 9 to the bottom, 0.5 up.
@@ -937,7 +937,7 @@ def test_aspirate_prepares_the_plunger_over_the_rim_not_in_the_well(
         app, page, session):
     _measured_plate(app, page, session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     names = [c[0] for c in session.robot.calls]
     well = len(names) - 1 - names[::-1].index("move_to_well")
     assert names[well + 1] == "prepare_to_aspirate"
@@ -948,14 +948,14 @@ def test_dispense_in_a_measured_plate_reaches_the_deposit_height(
     _measured_plate(app, page, session)
     page.well_offset.setValue(1.5)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _lift(page.dispense_retract, "Stay")
     page.target.buttons[0].click()                       # In a well
     page.target_wells.map.well_clicked.emit("A7")
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     z = _pose(session)[2]
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.robot.well_offset == pytest.approx((0.4, -0.3, 1.0))
     assert _pose(session)[2] == pytest.approx(z - 2.0 - 9.0 + 1.5, abs=0.01)
     assert session.robot.calls[-1][0] == "dispense_in_place"
@@ -971,12 +971,12 @@ def test_a_plate_measured_in_an_earlier_session_takes_its_measured_bottom(
     session.new_run()                        # nothing pressed in this one
     session.load_labware(resolve_definition(PLATE), 5)
     page.source_wells.map.well_clicked.emit("A7")
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert "above the measured bottom" in page.aspirate_card.summary.full
     at = _aspirated_at(session)
     z = _pose(session)[2]              # the mock stays here: over the rim
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.robot.well_offset == pytest.approx((0.4, -0.3, 1.0))
     assert at[-1][2] == pytest.approx(z - 2.0 - 9.0 + 0.5, abs=0.01)
 
@@ -989,9 +989,9 @@ def test_a_plate_not_measured_takes_the_drawings_bottom(app, page, session):
     page.source.buttons[2].click()
     page.source_wells.map.well_clicked.emit("A7")
     page.above_bottom.setValue(0.5)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _well_moves(session)[-1][3] == "bottom"
     assert session.robot.well_offset == pytest.approx((0.0, 0.0, 0.5))
 
@@ -1051,15 +1051,14 @@ def _aim_at(app, page, session, x, y):
     """The crosshair over (x, y): the tip would go down there."""
     z = _pose(session)[2]
     session.robot.move_to_coordinates((x - 10.0, y + 5.0, z), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
 
 
 def _by_hand_on_a_plate(app, page, session):
     """By hand, the crosshair on A1 of the measured plate, at a safe Z."""
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _measured_plate(app, page, session)
     _over_the_deck(app, page, session)
     page.source.buttons[0].click()                       # By clicking
@@ -1082,7 +1081,7 @@ def test_by_hand_over_a_measured_plate_goes_above_its_bottom(
         "By clicking · 0.5 mm above the bottom of slot 5 · ")
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at[0] == pytest.approx((*A1, PLATE_BOTTOM + 0.5), abs=0.05)
 
 
@@ -1095,7 +1094,7 @@ def test_by_hand_the_bottom_follows_the_spot_from_slot_to_slot(
         "By clicking · 0.5 mm above the bottom of slot 8 · ")
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at[0][2] == pytest.approx(66.5, abs=0.05)
     _aim_at(app, page, session, *A1)
     assert page.aspirate_card.summary.full.startswith(
@@ -1155,7 +1154,7 @@ def test_by_hand_a_spot_on_the_wall_is_refused_and_nothing_moves(
     _aim_at(app, page, session, A1[0] + 4.5, A1[1])      # between A1 and A2
     before, calls = _pose(session), len(session.robot.calls)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert toast_of(page).text() == "The spot is not in a well."
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
@@ -1197,7 +1196,7 @@ def test_by_hand_z_is_not_refused_on_the_wall(app, page, session):
     page.hand_z.setValue(20.0)
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at[0] == pytest.approx((A1[0] + 4.5, A1[1], 20.0), abs=0.05)
 
 
@@ -1228,7 +1227,7 @@ def test_a_point_below_a_platform_is_refused_in_a_sentence(app, page, session):
     _point_below_the_platform(app, page, session)
     before = _pose(session)
     page.tip_to_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx(before)
     assert _said(page) == (f"Not reachable: {BELOW}.", "refusal")
     assert len(page.jog.position_lines) == 1
@@ -1238,13 +1237,12 @@ def test_a_point_marked_below_a_platform_says_so_and_its_z_stays_red(
         app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     session.set_deck_modules(
         [DeckModule(slots=[8], offset=[0, 0, 64.0], name="Platform")])
     x, y = slot_center(8)
     session.robot.move_to_coordinates((x, y, 90.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     page._set_new_z(50.0)
     page._mark(W / 2, H / 2)
     point = session.memo_points[-1]
@@ -1258,7 +1256,7 @@ def test_a_point_marked_below_a_platform_says_so_and_its_z_stays_red(
 def test_a_memo_point_that_can_be_reached_is_an_answer(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page._mark(W / 2, H / 2)
     text, tone = _said(page)
@@ -1289,7 +1287,7 @@ def test_no_tip_calibration_is_refused_in_a_sentence(app, page, session):
     _calibrate(session)
     session.profile.calibration.pipette_offset = None
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page._mark(W / 2, H / 2)
     assert _said(page) == ("Calibrate the tip first.", "refusal")
@@ -1299,7 +1297,7 @@ def test_a_right_click_outside_the_map_is_refused_in_a_sentence(
         app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page._mark(-5000.0, -5000.0)
     assert _said(page) == ("That spot is outside the calibrated area.",
@@ -1327,7 +1325,7 @@ def test_an_aspirate_is_answered_in_a_sentence(app, page, session):
     _tip_on(app, page, session)
     page.in_place_amount.setValue(10.0)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _said(page) == ("Aspirated 10 µl here.", "answer")
     assert len(page.jog.position_lines) == 1
 
@@ -1346,7 +1344,7 @@ def _camera_over(app, page, session, slot):
 def _calibrated_on_screen(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
 
 
@@ -1437,14 +1435,12 @@ def test_the_height_line_is_the_cameras_slot_not_the_tips(app, page, session):
     session.load_labware(resolve_definition(PLATE), 5)
     x, y = slot_center(5)
     session.robot.move_to_coordinates((x - 60.0, y + 5.0, 90.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     assert page.view.height_line.startswith("Slot 5 ")
     session.profile.calibration.pipette_offset = None
     dx, dy = session.settings.tip_cal_start_offset
     session.robot.move_to_coordinates((x - dx, y - dy, 90.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     assert page.view.height_line.startswith("Slot 5 ")
 
 
@@ -1476,7 +1472,7 @@ def test_the_height_line_stands_during_a_move_and_goes_with_the_robot(
     assert page.jog.pose is None
     assert page.view.height_line == shown
     go_on.set()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     session.disconnect_robot()
     app.processEvents()
     assert page.view.height_line == ""
@@ -1499,9 +1495,9 @@ def test_in_place_uses_its_own_values_not_the_cards(app, page, session):
     page.dispense_rate.setValue(7.0)
     page.part.setValue(2.0)
     page._aspirate_in_place()                                # A
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page._dispense_in_place()                                # D
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _liquid_calls(session) == [("aspirate_in_place", 6.0, 12.0),
                                       ("dispense_in_place", 6.0, 12.0)]
     assert _said(page) == ("Dispensed 6 µl here.", "answer")
@@ -1531,10 +1527,10 @@ def test_the_dispense_button_uses_dispenses_speed(app, page, session):
     page.flow_rate.setValue(40.0)
     page.dispense_rate.setValue(7.0)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _liquid_calls(session)[-1][0] == "dispense_in_place"
     assert _liquid_calls(session)[-1][2] == 7.0
 
@@ -1598,14 +1594,14 @@ def _drawn_plate(app, page, session):
 def _tip_to_refused(app, page, session, said):
     before = _pose(session)
     page.tip_to_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx(before)
     assert _said(page) == (f"Not reachable: {said}.", "refusal")
 
 
 def _tip_to_goes(app, page, session, z):
     page.tip_to_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session)[2] == pytest.approx(z, abs=0.05)
     assert _said(page)[1] == "answer"
 
@@ -1679,7 +1675,7 @@ def test_a_point_with_no_z_goes_to_the_travel_height_over_a_plate(
     _drawn_plate(app, page, session)
     _point_in_slot(app, page, session, 5, None)
     page.tip_to_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session)[:2] == pytest.approx(slot_center(5), abs=0.05)
     assert _said(page)[1] == "answer"
 
@@ -1707,7 +1703,7 @@ def test_aspirate_at_a_point_past_the_limit_moves_nothing(app, page, session):
     page.source_points.choose(point.name)
     at, before = _aspirated_at(session), _pose(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at == [] and session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
     assert _said(page) == ("Not reachable: Z 1.5 is below the drawing's "
@@ -1721,14 +1717,14 @@ def test_aspirate_at_a_point_within_the_limit_goes(app, page, session):
     page.source_points.choose(point.name)
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at[0][2] == pytest.approx(DRAWN_BOTTOM - 1.95, abs=0.05)
 
 
 def _liquid_in_the_tip(app, page, session):
     page.in_place_amount.setValue(15.0)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.target.buttons[1].click()                       # At a point
     page.amount.buttons[1].click()                       # All
 
@@ -1741,7 +1737,7 @@ def test_dispense_at_a_point_past_the_limit_moves_nothing(app, page, session):
     page.target_points.choose(point.name)
     before = _pose(session)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(15.0)
     assert _pose(session) == pytest.approx(before)
     assert _said(page) == ("Not reachable: Z 3.2 is below the measured "
@@ -1756,7 +1752,7 @@ def test_dispense_at_a_point_within_the_limit_goes(app, page, session):
     _lift(page.dispense_retract, "Stay")
     page.target_points.choose(point.name)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
     assert _pose(session)[2] == pytest.approx(MEASURED_BOTTOM - 0.95, abs=0.05)
 
@@ -1767,7 +1763,7 @@ def test_by_hand_z_past_the_limit_moves_nothing(app, page, session):
     page.hand_z.setValue(3.2)
     at, before = _aspirated_at(session), _pose(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at == [] and session.in_tip == 0.0
     assert _pose(session) == pytest.approx(before)
     assert _said(page) == ("Not reachable: Z 3.2 is below the measured "
@@ -1780,7 +1776,7 @@ def test_by_hand_z_within_the_limit_goes(app, page, session):
     page.hand_z.setValue(3.3)
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at[0][2] == pytest.approx(3.3, abs=0.05)
 
 
@@ -1802,12 +1798,11 @@ def test_a_jog_step_is_not_checked_against_the_bottom(app, page, session):
     _drawn_plate(app, page, session)
     x, y = slot_center(5)
     session.robot.move_to_coordinates((x, y, 4.0), verbose=False)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     page.jog.set_step(1.0)
     for _ in range(3):
         page.jog.step("z", -1)
-        _wait(app, page)
+        robot_free(page.session, page.jog)
     assert _pose(session)[2] == pytest.approx(1.0, abs=0.05)
     assert _said(page)[1] != "refusal"
 
@@ -1832,7 +1827,7 @@ def test_aspirate_at_a_point_rises_there_by_default(app, page, session):
     _at_a_point(app, page, session)
     at = _aspirated_at(session)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at == [pytest.approx((170.0, 140.0, 70.0), abs=0.05)]
     assert _pose(session) == pytest.approx(
         (170.0, 140.0, _travel_z(session)), abs=0.05)
@@ -1853,7 +1848,7 @@ def test_aspirate_in_a_well_rises_there_by_default(app, page, session):
         return result
     robot.move_to_well = down_in_the_well
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(15.0)
     assert _pose(session) == pytest.approx((x, y, _travel_z(session)),
                                            abs=0.05)
@@ -1863,7 +1858,7 @@ def test_dont_retract_leaves_the_tip_down_at_a_point(app, page, session):
     _at_a_point(app, page, session)
     _lift(page.aspirate_retract, "Stay")
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx((170.0, 140.0, 70.0), abs=0.05)
 
 
@@ -1874,7 +1869,7 @@ def test_by_hand_dont_retract_leaves_the_tip_down_and_the_camera_where_it_is(
     page.hand_z.setValue(70.0)
     _lift(page.aspirate_retract, "Stay")
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx((160.0, 145.0, 70.0), abs=0.05)
 
 
@@ -1883,8 +1878,7 @@ def _pour(app, page, session):
     _ready_by_hand(app, page, session)
     session.aspirate(15.0, 50.0)
     session.motion.tip_to((150.0, 150.0), 70.0)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
     _dispense_at_a_point(page, session, 150.0, 150.0, 70.0)
     page.amount.buttons[1].click()                       # All
 
@@ -1893,7 +1887,7 @@ def test_dispense_rises_by_default(
         app, page, session):
     _pour(app, page, session)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx(
         (150.0, 150.0, _travel_z(session)), abs=0.05)
@@ -1903,7 +1897,7 @@ def test_dispense_dont_retract_stays_down(app, page, session):
     _pour(app, page, session)
     _lift(page.dispense_retract, "Stay")
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
     assert _pose(session) == pytest.approx((150.0, 150.0, 70.0), abs=0.05)
 
@@ -1951,7 +1945,7 @@ def test_esc_in_the_delay_leaves_the_tip_down_and_says_so(app, page, session):
     assert not page.aspirate_button.isEnabled()
     assert not page.dispense_button.isEnabled()
     session.request_stop()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx((170.0, 140.0, 70.0), abs=0.05)
     assert toast_of(page).text() == "Stopped: the tip stays down."
     assert page.aspirate_button.isEnabled()
@@ -1968,7 +1962,7 @@ def test_by_hand_esc_in_the_delay_does_not_bring_the_camera_back(
     page.aspirate_button.click()
     _waiting(app, page, session)
     session.request_stop()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx((160.0, 145.0, 70.0), abs=0.05)
 
 
@@ -1981,7 +1975,7 @@ def test_by_hand_after_the_delay_brings_the_camera_back(app, page, session):
     _lift(rows, "After a wait")
     rows.delay.setValue(0.5)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert _pose(session) == pytest.approx(before, abs=0.05)
 
 
@@ -1992,7 +1986,7 @@ def test_retract_slowly_sends_one_slow_move_then_rises(app, page, session):
     _at_a_point(app, page, session)
     page.aspirate_retract.slowly.setChecked(True)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert [c for c in session.robot.calls if c[0] == "move_with_speed"] == [
         ("move_with_speed", pytest.approx((170.0, 140.0, 72.0), abs=0.05),
          0.5)]
@@ -2071,8 +2065,7 @@ def test_in_place_starts_as_aspirate_then_stays_its_own(page, session):
 def _low(app, page, session):
     _ready_by_hand(app, page, session)
     session.motion.tip_to((180.0, 120.0), 70.0)
-    page.jog.refresh_position()
-    _wait(app, page)
+    read_pose(page.jog)
 
 
 def _stayed(session):
@@ -2085,7 +2078,7 @@ def test_aspirate_in_place_neither_lifts_nor_moves(app, page, session):
     page.in_place_amount.setValue(12.0)
     page.in_place_rate.setValue(30.0)
     page.aspirate_in_place.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert at == [pytest.approx((180.0, 120.0, 70.0), abs=0.05)]
     assert session.in_tip == pytest.approx(12.0)
     assert _liquid_calls(session)[-1][2] == 30.0
@@ -2096,11 +2089,11 @@ def test_aspirate_in_place_neither_lifts_nor_moves(app, page, session):
 def test_dispense_in_place_neither_lifts_nor_moves(app, page, session):
     _low(app, page, session)
     session.aspirate(15.0, 50.0)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.in_place_amount.setValue(10.0)
     page.in_place_rate.setValue(20.0)
     page.dispense_in_place.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(5.0)
     assert _liquid_calls(session)[-1][2] == 20.0
     _stayed(session)
@@ -2111,10 +2104,10 @@ def test_the_keys_do_what_the_buttons_do(app, page, session):
     _low(app, page, session)
     page.in_place_amount.setValue(10.0)
     page._key(page._aspirate_in_place)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(10.0)
     page._key(page._dispense_in_place)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(0.0)
     _stayed(session)
 
@@ -2124,7 +2117,7 @@ def test_a_and_d_do_nothing_while_a_field_has_the_keyboard(
     _low(app, page, session)
     monkeypatch.setattr(page.jog, "_typing", True)
     page._key(page._aspirate_in_place)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
 
 
@@ -2146,11 +2139,11 @@ def test_dispense_in_place_above_what_the_tip_holds_is_refused(
         app, page, session):
     _low(app, page, session)
     session.aspirate(5.0, 50.0)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.in_place_amount.setValue(10.0)
     calls = len(_liquid_calls(session))
     page.dispense_in_place.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert toast_of(page).text() == "Only 5 µl in the tip."
     assert toast_of(page).property("tone") == "refusal"
     assert session.in_tip == pytest.approx(5.0)
@@ -2163,7 +2156,7 @@ def test_in_place_keeps_what_was_found_on_the_picture(app, page, session):
     _low(app, page, session)
     _cuboid_at(page, W / 2 + 100, H / 2)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page._cuboids is not None
 
 
@@ -2174,7 +2167,7 @@ def _held(app, page, session, ul=15.0):
     _tip_on(app, page, session)
     page.in_place_amount.setValue(ul)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
 
 
 def test_aspirate_is_open_at_start_and_one_card_opens_at_a_time(page):
@@ -2193,7 +2186,7 @@ def test_the_buttons_are_in_the_headers_and_work_folded(app, page, session):
     assert not page.dispense_card.body.isAncestorOf(page.dispense_button)
     assert not page.aspirate_card.body.isAncestorOf(page.aspirate_button)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(5.0)
 
 
@@ -2208,7 +2201,7 @@ def test_the_empty_tip_grays_dispense_and_a_full_one_makes_it_primary(
     assert page.dispense_card.summary.property("warn") is True
 
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page.aspirate_button.objectName() == "secondary"
     assert page.dispense_button.objectName() == "primary"
     assert page.dispense_card.summary.property("warn") is False
@@ -2225,9 +2218,9 @@ def test_a_successful_aspirate_opens_dispense(app, page, session):
     session.add_memo_point(150.0, 150.0, 70.0)
     page.source.buttons[1].click()                       # At a point
     page.source_points.choose("M1")
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip > 0
     assert page.dispense_card.is_open()
     assert not page.aspirate_card.is_open()
@@ -2247,9 +2240,9 @@ def test_an_aspirate_refused_opens_nothing(app, page, session):
     session.add_memo_point(150.0, 150.0, 70.0)
     page.source.buttons[1].click()                       # At a point
     page.source_points.choose("M1")
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.aspirate_button.click()                         # no tip on
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert page.aspirate_card.is_open()
 
 
@@ -2259,12 +2252,12 @@ def test_a_dispense_that_empties_the_tip_opens_aspirate(app, page, session):
     page.dispense_card.set_open(True)
     page.part.setValue(6.0)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == pytest.approx(9.0)
     assert page.dispense_card.is_open()                  # some is left
     page.amount.buttons[1].click()                       # All
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
     assert page.aspirate_card.is_open()
     assert not page.dispense_card.is_open()
@@ -2276,7 +2269,7 @@ def test_in_place_switches_no_card(app, page, session):
     assert page.aspirate_card.is_open()                  # not Dispense
     page.dispense_card.set_open(True)
     page._dispense_in_place()                            # empties it
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert session.in_tip == 0.0
     assert page.dispense_card.is_open()                  # not Aspirate
 
@@ -2590,12 +2583,12 @@ def test_an_aspirate_and_a_dispense_answer_in_the_designs_words(app, page,
     _from(page, "In a well")
     page.source_wells.choose("5", "A3")
     page.aspirate_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert toast_of(page).text() == "Aspirated 10 µl."
     page.target_wells.choose("5", "A7")
     page.part.setValue(4.0)
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert toast_of(page).text() == "Dispensed 4 µl into A7."
 
 
@@ -2603,28 +2596,28 @@ def test_a_dispense_at_a_point_says_the_point(app, page, session):
     session.add_memo_point(150.0, 150.0, 90.0)
     _tip_on(app, page, session)
     page._aspirate_in_place()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     page.target.buttons[1].click()                       # At a point
     page.target_points.choose("M1")
     page.dispense_button.click()
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert toast_of(page).text().endswith("µl at M1.")
 
 
 def test_look_at_answers_camera_moved_to_slot(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     page._slot_clicked(4)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     assert toast_of(page).text() == "Camera moved to slot 4."
 
 
 def test_detecting_answers_how_many_were_found(app, page, session):
     _calibrate(session)
     _open_upper(app, page, session)
-    _wait(app, page)
+    robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
     _cuboid_at(page, W / 2, H / 2)
     assert toast_of(page).text() == "1 cuboid found."
