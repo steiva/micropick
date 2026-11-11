@@ -290,20 +290,26 @@ def test_home_never_says_not_connected(app, window, monkeypatch):
     assert "not connected" not in home.robot_text.text().lower()
 
 
-def test_a_look_is_not_work_that_stop_waits_for(app, window, monkeypatch):
+def test_a_look_is_not_work_that_stop_waits_for(window, monkeypatch,
+                                                until):
+    # `any_running` is the whole process's: a job an earlier test left
+    # running (two "raising the tip" from a failed setup sheet test, #145)
+    # fails this one. And `until`, not `_until`: an event run after the
+    # wait could start a page's read that is running at the assert.
     from micropick.gui.workers import any_running
     session = window.session
-    _until(app, lambda: session.robot is not None)
+    until(lambda: session.robot is not None, what="the robot connected")
     gate = __import__("threading").Event()
     looked = session.look_at_robot
     monkeypatch.setattr(session, "look_at_robot",
                         lambda api=None: (gate.wait(5), looked(api))[1])
-    _until(app, lambda: not any_running())    # the pages' own reads first
+    until(lambda: not any_running() and not window.monitor.busy,
+          what="the pages' own reads and the monitor's look over")
     window.monitor.look()
     assert window.monitor.busy
     assert not any_running()
     gate.set()
-    _until(app, lambda: not window.monitor.busy)
+    until(lambda: not window.monitor.busy, what="the look over")
 
 
 def test_a_session_let_go_is_not_carried_on_with_until_continued(session):
