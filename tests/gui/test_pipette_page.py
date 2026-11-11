@@ -220,7 +220,8 @@ def test_a_tip_taken_says_so_in_a_toast(until, app, page):
 
 
 @pytest.mark.parametrize("button", ["drop_button", "drop_here_button"])
-def test_a_tip_dropped_says_calibration_needs_a_new_one(until, app, page, button):
+def test_a_tip_dropped_says_calibration_needs_a_new_one(
+        until, app, page, button):
     page.show()
     _tip_on(until, page, "A3")
     getattr(page, button).click()
@@ -426,7 +427,8 @@ def _adjust(until, page):
           and not page.session.robot_lease.busy)
 
 
-def test_the_drops_are_gray_while_a_run_waits_at_the_disc(until, app, page, ready):
+def test_the_drops_are_gray_while_a_run_waits_at_the_disc(
+        until, app, page, ready):
     page.go_button.click()
     until(lambda: page.yes_button.isEnabled())
     assert page.run_activity() == "waiting"
@@ -438,7 +440,8 @@ def test_the_drops_are_gray_while_a_run_waits_at_the_disc(until, app, page, read
     assert page.drop_button.isEnabled()
 
 
-def test_two_clicks_calibrate_save_at_once_and_end_the_run(until, app, page, ready):
+def test_two_clicks_calibrate_save_at_once_and_end_the_run(
+        until, app, page, ready):
     session = page.session
     assert page.chip.text() == "Not done"
     page.go_button.click()
@@ -476,7 +479,8 @@ def test_two_clicks_calibrate_save_at_once_and_end_the_run(until, app, page, rea
     assert page.path.current == "fine"
 
 
-def test_yes_calibrate_confirms_then_calibrates_once_each(until, app, page, ready):
+def test_yes_calibrate_confirms_then_calibrates_once_each(
+        until, app, page, ready):
     block, calls = page.calibration, []
     there, calibrate = block._disc_there, block._calibrate
     block._disc_there = lambda: (calls.append("disc"), there())
@@ -562,7 +566,8 @@ def test_the_fine_tune_says_when_the_tip_is_away_from_the_crosshair(until,
     assert not page.touch_jog.isVisibleTo(page)
 
 
-def test_the_fine_tune_follows_the_lower_camera_in_xy_only(until, app, page, ready):
+def test_the_fine_tune_follows_the_lower_camera_in_xy_only(
+        until, app, page, ready):
     _calibrate(until, page)
     _adjust(until, page)
     jog = page.touch_jog
@@ -573,7 +578,8 @@ def test_the_fine_tune_follows_the_lower_camera_in_xy_only(until, app, page, rea
     assert not any("PgUp" in line for line in jog.help_lines)
 
 
-def test_the_movement_keys_move_the_tip_in_the_fine_tune(until, app, page, ready):
+def test_the_movement_keys_move_the_tip_in_the_fine_tune(
+        until, app, page, ready):
     """The fine-tune's pad has the keys (#57), the host's none."""
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QTest
@@ -645,7 +651,8 @@ def test_leaving_the_step_raises_the_tip_to_the_travel_height(until,
                for c in session.robot.calls[before:])
 
 
-def test_the_panel_is_free_again_after_the_tip_was_raised(until, app, page, ready):
+def test_the_panel_is_free_again_after_the_tip_was_raised(
+        until, app, page, ready):
     """The raise ends the panel's job like any other: the number `raise_tip`
     returns is not what a job may return, and it broke the job's end before
     `moved`."""
@@ -786,7 +793,8 @@ def test_stop_at_the_disc_goes_to_the_end_while_a_calibration_holds(until,
     assert page.chip.text() == "Done"
 
 
-def test_a_first_stop_while_finding_the_tip_changes_nothing(until, app, page, ready):
+def test_a_first_stop_while_finding_the_tip_changes_nothing(
+        until, app, page, ready):
     session = page.session
     page.go_button.click()
     until(lambda: page.yes_button.isEnabled())
@@ -905,7 +913,8 @@ def _fake_routine(monkeypatch):
                         staticmethod(lambda _config: None))
 
 
-def test_a_fine_tune_not_saved_is_asked_about_when_leaving(until, app, page, ready):
+def test_a_fine_tune_not_saved_is_asked_about_when_leaving(
+        until, app, page, ready):
     _calibrate(until, page)
     assert page.unsaved() == ""
     _adjust(until, page)
@@ -921,8 +930,8 @@ def test_a_fine_tune_not_saved_is_asked_about_when_leaving(until, app, page, rea
 
 # -- adjust by hand (#123) ----------------------------------------------------
 
-def test_after_a_calibration_adjust_by_hand_is_offered_and_opens_controls(until, 
-        app, page, ready):
+def test_after_a_calibration_adjust_by_hand_is_offered_and_opens_controls(
+        until, app, page, ready):
     _calibrate(until, page)
     assert page.path.current == "fine"
     assert page.path.title("fine") == "Adjust by hand · optional"
@@ -943,7 +952,8 @@ def test_after_a_calibration_adjust_by_hand_is_offered_and_opens_controls(until,
     assert page.tune_cancel_button.isVisibleTo(page)
 
 
-def test_cancel_saves_nothing_and_leaves_the_tip_where_it_is(until, app, page, ready):
+def test_cancel_saves_nothing_and_leaves_the_tip_where_it_is(
+        until, app, page, ready):
     session = page.session
     _calibrate(until, page)
     offset = session.profile.calibration.pipette_offset
@@ -963,7 +973,8 @@ def test_cancel_saves_nothing_and_leaves_the_tip_where_it_is(until, app, page, r
     assert tip_page.xyz(session.robot) == pytest.approx(pose, abs=0.05)
 
 
-def test_with_the_setting_off_the_path_ends_on_tip_found(until, app, page, ready):
+def test_with_the_setting_off_the_path_ends_on_tip_found(
+        until, app, page, ready):
     session = page.session
     session.settings.tip_cal_touch_up = False
     page.calibration.refresh()
@@ -977,7 +988,8 @@ def test_with_the_setting_off_the_path_ends_on_tip_found(until, app, page, ready
     assert page.path.current == "fine"
 
 
-def test_controls_start_folded_and_the_keys_still_work(until, app, page, ready):
+def test_controls_start_folded_and_the_keys_still_work(
+        until, app, page, ready):
     session = page.session
     assert page.jog.pad.folded
     page.show()
@@ -994,7 +1006,8 @@ def test_controls_start_folded_and_the_keys_still_work(until, app, page, ready):
     page.hide()
 
 
-def test_controls_stay_hidden_while_a_run_has_the_robot(until, app, page, ready):
+def test_controls_stay_hidden_while_a_run_has_the_robot(
+        until, app, page, ready):
     page.go_button.click()
     until(lambda: page.yes_button.isEnabled())
     assert not page.jog.isVisibleTo(page)
@@ -1003,7 +1016,8 @@ def test_controls_stay_hidden_while_a_run_has_the_robot(until, app, page, ready)
     until(lambda: not page.calibration.running)
 
 
-def test_a_step_not_saved_survives_the_raise_on_leaving(until, app, page, ready):
+def test_a_step_not_saved_survives_the_raise_on_leaving(
+        until, app, page, ready):
     """Leaving raises the tip before Save / Discard is asked: straight up, so
     the step is still the tip's, and Save stores it."""
     session = page.session
