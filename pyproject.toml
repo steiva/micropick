@@ -34,7 +34,7 @@ gui = ["PySide6>=6.7", "pyqtdarktheme-fork", "pyqtgraph", "qtawesome"]
 # stack needs; install with pip's warning (runtime works with numpy 2), or keep
 # your plates in labware/.
 stock = ["opentrons-shared-data"]
-dev = ["nbstripout", "pytest", "pytest-xdist", "ruff", "onnx", "onnxslim"]
+dev = ["nbstripout", "pytest", "pytest-timeout", "pytest-xdist", "ruff", "onnx", "onnxslim"]
 
 [project.scripts]
 micropick-gui = "micropick.gui.__main__:main"
@@ -47,3 +47,9 @@ build-backend = "hatchling.build"
 packages = ["src/micropick", "src/opentrons_api"]
 [tool.hatch.version]
 path = "src/micropick/_version.py"
+
+# A test that hangs dumps every thread's stack after 2 minutes and is ended
+# after 5 (pytest-timeout), rather than blocking the run until it is killed.
+[tool.pytest.ini_options]
+faulthandler_timeout = 120
+timeout = 300
