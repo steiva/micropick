@@ -221,7 +221,7 @@ def test_start_new_robot_session_from_advanced(app, window, monkeypatch):
 
 
 def test_home_from_advanced_asks_and_undoes_the_tip_calibration(
-        app, window, monkeypatch):
+        app, window, monkeypatch, until):
     from PySide6.QtWidgets import QMessageBox
     from micropick.config.schema import PipetteOffset
     from micropick.gui import tasks
@@ -247,9 +247,9 @@ def test_home_from_advanced_asks_and_undoes_the_tip_calibration(
     monkeypatch.setattr(QMessageBox, "question",
                         lambda *a, **k: QMessageBox.StandardButton.Yes)
     advanced.home_button.click()
-    _until(app, lambda: not session.robot_lease.busy)
+    # the lease is let go on the worker's thread, before the page knows
+    until(lambda: advanced.state.text() == "Homed.", what="Homed. shown")
     assert [c[0] for c in session._api.calls] == ["home_robot"]
-    assert advanced.state.text() == "Homed."
     done, detail, _ = tip_calibration_status(session)
     assert not done and detail == "Homed since it was measured."
     assert tasks.step_state(session, "auto", "tip").done is False

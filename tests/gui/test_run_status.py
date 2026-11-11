@@ -228,14 +228,16 @@ def test_park_is_refused_during_a_run(app, window, picking_run, monkeypatch):
     assert "busy" in window.toast.text()
 
 
-def test_parking_shows_until_the_move_ends(app, window):
+def test_parking_shows_until_the_move_ends(app, window, until, robot_free):
     _connect(app, window)
     window.open_home()                       # no jog panel: its own worker
+    robot_free(window)
     window._park()
     assert window.top.park.text() == "Parking…"
     assert not _stop_shown(window)
-    _settle(app, window)
-    assert window.top.park.text() == "Park"
+    # the lease is let go on the worker's thread, before the window knows
+    until(lambda: window.top.park.text() == "Park", what="Park again")
+    assert window.top.park.isEnabled()
 
 
 def test_home_during_a_run_dims_the_tiles(app, window, picking_run):

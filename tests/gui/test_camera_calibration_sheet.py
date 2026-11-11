@@ -65,12 +65,12 @@ def _open(app, window):
 
 def _robot_free(window):
     """No job holds the robot, and every jog panel knows it: the lease is
-    let go on the worker's thread, a panel's busy only once its finish is
+    let go on the worker's thread, a panel's job over only once its end is
     delivered here, and a job given to a busy panel is refused."""
     panels = [getattr(p, "jog", None) for p in (*window.pages.values(),
                                                  *window.sheets.values())]
     return not window.session.robot_lease.busy and not any(
-        j is not None and j.busy for j in panels)
+        j is not None and j.job_pending for j in panels)
 
 
 def _at_the_marker(app, window, sheet):
@@ -198,7 +198,8 @@ def sweep(monkeypatch):
     return calls
 
 
-def test_the_sweep_is_a_run_with_stop_and_the_pill(app, window, sweep):
+def test_the_sweep_is_a_run_with_stop_and_the_pill(app, window, sweep, until,
+                                                   robot_free):
     sheet = _open(app, window)
     _at_the_marker(app, window, sheet)
     sheet.centered_button.click()
@@ -216,10 +217,11 @@ def test_the_sweep_is_a_run_with_stop_and_the_pill(app, window, sweep):
     assert sweep[0]["grid_n"] == 9
     assert sweep[0]["marker_side_mm"] == 6.8
     window.top.stop.click()
-    _wait(app, lambda: not lease.busy)
+    # the lease is let go on the worker's thread, before the sheet knows
+    until(lambda: sheet.step == "center", what="the sheet back on centering")
+    robot_free(window)
     assert window.top.stop.isHidden()
     # Stopped: the gantry is not where the sweep started.
-    assert sheet.step == "center"
     assert window.session.profile.pixel_map is None
 
 
