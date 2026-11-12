@@ -31,6 +31,7 @@ back unclassified and the reason is on the screen.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 
 import cv2
@@ -67,6 +68,20 @@ def wanted_model(profile, mock: bool) -> str:
         return named
     return STANDIN if mock else ""
 
+def _lap(timings: dict[str, float], name: str, start: float) -> float:
+    """Note the milliseconds since `start` under `name`; return now."""
+    now = time.perf_counter()
+    timings[name] = (now - start) * 1000.0
+    return now
+
+
+def format_timings(timings: dict[str, float]) -> str:
+    """'model 160 ms, contours 130 ms, total 290 ms', for the log."""
+    parts = [f"{name} {ms:.0f} ms" for name, ms in timings.items()]
+    parts.append(f"total {sum(timings.values()):.0f} ms")
+    return ", ".join(parts)
+
+
 @dataclass
 class Detection:
     """One frame's worth of detection, and what could not be worked out."""
@@ -84,6 +99,9 @@ class Detection:
     # The measured table before the picking filters labelled it: what a
     # changed window is applied to again (`relabel`) without inference.
     measured: pd.DataFrame | None = None
+    # Milliseconds each part of `detect` took, in the order they ran, for the
+    # log: the model, the contours and the labels. Empty after `relabel`.
+    timings: dict[str, float] = field(default_factory=dict)
 
     @property
     def summary(self) -> str:
@@ -186,12 +204,16 @@ class DetectorService(QObject):
         if self._model is None:
             raise RuntimeError("no detector loaded")
 
+        timings: dict[str, float] = {}
+        start = time.perf_counter()
         boxes, confs = cuboids.detect_boxes(self._model, frame, cfg)
+        start = _lap(timings, "model", start)
         gray = (cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3
                 else frame)
 
         df = cuboids.build_cuboid_df(gray, boxes, confs,
                                      pad=cfg.otsu_pad, open_k=cfg.otsu_open_k)
+        start = _lap(timings, "contours", start)
         notes: list[str] = []
         if self.is_standin:
             notes.append(IS_STANDIN_NOTE)
@@ -201,10 +223,13 @@ class DetectorService(QObject):
             empty = df.iloc[0:0]
             return Detection(boxes, confs, df, empty, empty, empty, {},
                              classified=False, standin=self.is_standin,
-                             notes=notes)
+                             notes=notes, timings=timings)
 
         df = cuboids.add_derived(df, one_d ** 2, one_d, cfg.circle_center)
-        return self._labelled(boxes, confs, df, cfg, notes)
+        detection = self._labelled(boxes, confs, df, cfg, notes)
+        _lap(timings, "labels", start)
+        detection.timings = timings
+        return detection
 
     def relabel(self, detection: Detection, cfg: PickingConfig) -> Detection:
         """The same detection under other picking settings - the size

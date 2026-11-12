@@ -167,7 +167,7 @@ from ...viz import overlays
 from ...workflows import well_center
 from ...workflows.picking import PickingSession, RobotState, stir
 from ..auto_camera import CameraOpener
-from ..detector import wanted_model
+from ..detector import format_timings, wanted_model
 from ..readiness import DISH_POSITION, SHAKE_POSITION, readiness_checks
 from ..session import Session
 from ..theme import COLORS, SPACING
@@ -705,23 +705,51 @@ class PickingPage(QWidget):
 
         def job(log):
             # The bench dark for the frame, lit again as it was found; no
-            # lease, as the lights switch never takes one.
+            # lease, as the lights switch never takes one. Each part timed
+            # into `timings`, in the order it ran, for the log line that
+            # `_analysed` writes.
+            timings: dict[str, float] = {}
+            start = time.perf_counter()
+
+            def lap(name):
+                nonlocal start
+                now = time.perf_counter()
+                timings[name] = (now - start) * 1000.0
+                start = now
+
             before = set_lights(robot, False) if robot is not None else None
+            lap("lights off")
+            detection = None
             try:
                 log("taking a frame")
                 frame = camera.read_after(time.monotonic())
+                lap("frame")
                 log("detecting")
-                return frame, detector.detect(frame, cfg, pixel_map)
+                detection = detector.detect(frame, cfg, pixel_map)
+                start = time.perf_counter()
+                return frame, detection, timings
             finally:
                 if before:
                     set_lights(robot, True)
+                lap("lights on")
                 if robot is not None:
                     session.refresh_lights()
+                lap("lights read")
+                if detection is not None:
+                    # The detector's own parts in the place they ran.
+                    after = {k: timings.pop(k)
+                             for k in ("lights on", "lights read")}
+                    timings.update(detection.timings)
+                    timings.update(after)
+                timings["_ended"] = time.perf_counter()
 
         self._run(Worker(job, what="detecting the cuboids"), self._analysed)
 
     def _analysed(self, payload) -> None:
-        frame, detection = payload
+        frame, detection, timings = payload
+        ended = timings.pop("_ended")
+        start = time.perf_counter()
+        timings["to the page"] = (start - ended) * 1000.0
         self._frame, self._detection = frame, detection
         log.info("analysis: %s", detection.summary.replace("\n", " | "))
         # Over the live feed, not a held frame: if the dish moves after
@@ -729,8 +757,14 @@ class PickingPage(QWidget):
         # sign to analyse again.
         self._stale = False
         self._draw_overlay()
+        now = time.perf_counter()
+        timings["overlay"], start = (now - start) * 1000.0, now
         self._draw_histogram()
+        now = time.perf_counter()
+        timings["histogram"], start = (now - start) * 1000.0, now
         self._refresh()
+        timings["refresh"] = (time.perf_counter() - start) * 1000.0
+        log.info("detect timings: %s", format_timings(timings))
 
     def _found(self) -> list[str]:
         """The picture's line: how many cuboids the analysis found."""
