@@ -6,6 +6,7 @@ transform - the sensor pixel under the cursor stays under it through a zoom
 """
 
 import os
+import time
 from pathlib import Path
 
 import numpy as np
@@ -656,3 +657,46 @@ def test_a_press_on_the_lines_under_the_chips_is_nobodys(app):
                      pos=QPoint(view.width() - 30, y))
     assert clicks == []
     view.hide()
+
+
+def _click_pending(app, view, point):
+    """Press and release: the click waits out the double-click interval."""
+    for kind, buttons in ((QMouseEvent.Type.MouseButtonPress,
+                           Qt.MouseButton.LeftButton),
+                          (QMouseEvent.Type.MouseButtonRelease,
+                           Qt.MouseButton.NoButton)):
+        app.sendEvent(view, QMouseEvent(kind, point, view.mapToGlobal(point),
+                                        Qt.MouseButton.LeftButton, buttons,
+                                        Qt.KeyboardModifier.NoModifier))
+
+
+def _interval_out(app, view):
+    end = time.monotonic() + QApplication.doubleClickInterval() / 1000 + 0.2
+    while time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+
+
+def test_a_click_is_not_sent_once_the_view_is_hidden(app):
+    """Home or another step shown in the double-click interval: the click
+    moves nothing on the page left (GUI-08)."""
+    view = _view(app, _Camera("over", (800, 600)))
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    _click_pending(app, view, view.transform.map(QPointF(400.0, 300.0)))
+    view.hide()
+    _interval_out(app, view)
+    assert seen == []
+    view.close()
+
+
+def test_a_click_is_not_sent_once_the_camera_changed(app):
+    """The pixel was the other camera's."""
+    view = _view(app, _Camera("over", (800, 600)))
+    seen = []
+    view.clicked.connect(lambda u, v: seen.append((u, v)))
+    _click_pending(app, view, view.transform.map(QPointF(400.0, 300.0)))
+    view.set_camera(_Camera("under", (800, 600)))
+    _interval_out(app, view)
+    assert seen == []
+    view.close()

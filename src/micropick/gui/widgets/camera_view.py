@@ -366,6 +366,7 @@ class CameraView(QWidget):
         """Attach or detach. Passing None leaves the placeholder up."""
         if camera is self._camera:
             return
+        self._drop_click()
         self._camera = camera
         self._raw = None
         self._image = None
@@ -731,8 +732,17 @@ class CameraView(QWidget):
 
     def _send_click(self) -> None:
         click, self._pending_click = self._pending_click, None
-        if click is not None and self._click_moves():
+        # Not once the page was left or grayed in the double-click interval
+        # (GUI-08): the robot would move for a picture no longer seen.
+        if (click is not None and self.isVisible() and self.isEnabled()
+                and self._click_moves()):
             self.clicked.emit(*click)
+
+    def _drop_click(self) -> None:
+        """A click still waiting out the double-click interval is forgotten:
+        the picture was hidden, or is another camera's now."""
+        self._click_timer.stop()
+        self._pending_click = None
 
     def mouseDoubleClickEvent(self, event) -> None:
         # The first click of the pair is not a click; see the module notes.
@@ -1058,6 +1068,7 @@ class CameraView(QWidget):
         untouched: it belongs to the session and its grab thread carries on.
         """
         self._timer.stop()
+        self._drop_click()
         super().hideEvent(event)
 
     # -- drawing -------------------------------------------------------------
