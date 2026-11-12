@@ -78,8 +78,12 @@ def save_report(session) -> Path:
         for item in _recent(paths.logs_dir(create=False), REPORT_DAYS):
             zf.write(item, f"logs/{item.name}")
         profile = session.profile
-        if profile is not None and Path(profile.path).is_dir():
-            for item in sorted(Path(profile.path).glob("*.json")):
+        # With none loaded, the folder that could not be read: its files
+        # are what the report is for.
+        folder = (Path(profile.path) if profile is not None
+                  else getattr(session, "profile_problem_dir", None))
+        if folder is not None and Path(folder).is_dir():
+            for item in sorted(Path(folder).glob("*.json")):
                 zf.write(item, f"profile/{item.name}")
         for name in ("settings.json", "robot_sessions.json"):
             item = paths.root() / name

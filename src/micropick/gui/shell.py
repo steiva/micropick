@@ -379,9 +379,17 @@ class MainWindow(QMainWindow):
             else:
                 self.session.load_profile(name)
         except Exception as exc:                     # noqa: BLE001
-            # Shown in full: a legacy profile's message is the instructions.
             _log.error("could not load the profile: %s", exc)
-            self.home.show_error(str(exc))
+            problem = self.session.profile_problem
+            if problem is None:
+                self.home.show_error(str(exc))
+            else:
+                # The file by its name, the whole message in the tooltip; a
+                # legacy profile's message is the instructions: in full.
+                path = getattr(problem, "path", None)
+                self.home.show_profile_problem(
+                    f"The setup could not be read: {path.name}."
+                    if path is not None else str(problem), str(problem))
 
     def closeEvent(self, event) -> None:
         """Nothing is left running: cameras hold grab threads, and the robot
@@ -555,6 +563,8 @@ class MainWindow(QMainWindow):
     def open_task(self, task: str) -> None:
         """On its first step not done, an optional one skipped; the last
         when all are."""
+        if self._no_profile():
+            return
         self._set_task(task)
         steps = self._steps
         first = next((s for s in steps
@@ -565,8 +575,17 @@ class MainWindow(QMainWindow):
 
     def open_task_step(self, task: str, step: str) -> None:
         """`task` on `step`, done or not (`Session.task_requested`)."""
+        if self._no_profile():
+            return
         self._set_task(task)
         self.show_step(step)
+
+    def _no_profile(self) -> bool:
+        """No task opens without a profile: every page reads it (GUI-13)."""
+        if self.session.profile is not None:
+            return False
+        self.refuse("The setup could not be read. See Home.")
+        return True
 
     def show_step(self, step: str) -> None:
         # Liquid's Tip step has no calibration; Well center opens by task.

@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import sys
 import threading
 import time
@@ -460,6 +461,11 @@ class Session(QObject):
         # The second Stop's hold (`hold_robot`); the lock (`set_locked`) is
         # the other reason the robot wrapper refuses moves.
         self._stop_hold = False
+        # A profile that could not be read: the error, its name and folder
+        # (`load_profile`, `start_empty_setup`).
+        self.profile_problem: store.ProfileError | None = None
+        self.profile_problem_name: str | None = None
+        self.profile_problem_dir: Path | None = None
         # The first Stop, for a short job: a jog panel's job that is not a
         # run sends no command once it is set (`ot2_api.stopping_on`), and
         # clears it as it starts.
@@ -897,11 +903,23 @@ class Session(QObject):
     # -- profile -------------------------------------------------------------
 
     def load_profile(self, name: str) -> store.Profile:
-        """Blocking, but only on disk. Raises ProfileError as it comes."""
-        if name == MOCK_PROFILE_NAME and self.mock:
-            profile = self._load_mock_profile()
-        else:
-            profile = store.load_profile(name)
+        """Blocking, but only on disk. Raises ProfileError as it comes, and
+        keeps it (`profile_problem`) for Home to say, with the folder it was
+        read from (`profile_problem_dir`)."""
+        try:
+            if name == MOCK_PROFILE_NAME and self.mock:
+                profile = self._load_mock_profile()
+            else:
+                profile = store.load_profile(name)
+        except store.ProfileError as exc:
+            self.profile_problem = exc
+            self.profile_problem_name = name
+            self.profile_problem_dir = (
+                mock_profile_dir() if name == MOCK_PROFILE_NAME and self.mock
+                else store.profile_dir(name))
+            raise
+        self.profile_problem = None
+        self.profile_problem_dir = None
         self.profile = profile
         if not self.uses_mock_profile():
             store.remember_last_profile(profile.name)
@@ -2430,6 +2448,24 @@ class Session(QObject):
             return []
         return [(m.width, m.height)
                 for m in camera_devices.device_modes(device.index)]
+
+    def start_empty_setup(self) -> Path:
+        """The way on from a profile that could not be read (GUI-13): its
+        folder zipped beside it, dated, as Reset setup does, then a new
+        empty profile of the same name made and loaded. Returns the
+        archive."""
+        problem, folder = self.profile_problem, self.profile_problem_dir
+        if problem is None or folder is None:
+            raise SessionError("the setup was read: nothing to start over")
+        name = self.profile_problem_name
+        archive = store.archive_folder(folder)
+        shutil.rmtree(folder)
+        log.warning("profile %r could not be read (%s); it is in %s, and an "
+                    "empty one is made", name, problem, archive)
+        if not (name == MOCK_PROFILE_NAME and self.mock):
+            store.create_profile(name)
+        self.load_profile(name)
+        return archive
 
     def reset_setup(self) -> Path:
         """Reset setup (REDESIGN §12.8): the profile's folder zipped beside

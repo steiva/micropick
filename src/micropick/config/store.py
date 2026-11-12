@@ -54,7 +54,12 @@ LEGACY_KEYS = {"tf_mtx", "size_conversion_ratio", "one_d_ratio", "camera_mtx"}
 
 
 class ProfileError(RuntimeError):
-    """A profile could not be read or written."""
+    """A profile could not be read or written. `path`: the file at fault,
+    when it is one file."""
+
+    def __init__(self, message: str, path: Path | None = None):
+        super().__init__(message)
+        self.path = Path(path) if path is not None else None
 
 
 class LegacyProfileError(ProfileError):
@@ -116,11 +121,20 @@ def last_profile() -> str | None:
 # ---------------------------------------------------------------------------
 
 def _read_json(path: Path) -> dict:
+    """The object a profile file holds. Anything else - not JSON, not
+    UTF-8, unreadable, or JSON of another shape (`[]`) - is a ProfileError
+    naming the file, never a Python error further on (GUI-13)."""
     try:
         with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
     except json.JSONDecodeError as exc:
-        raise ProfileError(f"{path} is not valid JSON: {exc}") from exc
+        raise ProfileError(f"{path} is not valid JSON: {exc}",
+                           path) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProfileError(f"{path} could not be read: {exc}", path) from exc
+    if not isinstance(data, dict):
+        raise ProfileError(f"{path} does not hold an object", path)
+    return data
 
 
 def _write_atomic(path: Path, payload: str) -> None:
@@ -145,7 +159,8 @@ def _validate(model_cls, data: dict, path: Path):
     try:
         return model_cls.model_validate(data)
     except ValidationError as exc:
-        raise ProfileError(f"{path} does not match the expected format:\n{exc}") from exc
+        raise ProfileError(f"{path} does not match the expected format:\n{exc}",
+                           path) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -341,14 +356,8 @@ class Profile:
 
     def archive(self) -> Path:
         """The whole folder, history included, zipped beside it and dated
-        (`<name>-<UTC stamp>.zip`). A zip and not a copied folder: a copy
-        would hold a profile.json and be listed, and maybe loaded, as a
-        profile of its own."""
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        base = self.path.parent / f"{self.path.name}-{stamp}"
-        return Path(shutil.make_archive(str(base), "zip",
-                                        root_dir=self.path.parent,
-                                        base_dir=self.path.name))
+        (`archive_folder`)."""
+        return archive_folder(self.path)
 
     def reset_setup(self, positions) -> Path:
         """Reset setup: archive the folder (`archive`), then clear the
@@ -442,7 +451,7 @@ def load_profile(name: str, *, directory: Path | None = None) -> Profile:
     if version != SCHEMA_VERSION:
         raise ProfileError(
             f"{meta_path} has schema_version {version!r}, this build reads "
-            f"{SCHEMA_VERSION}. Refusing to guess at the format."
+            f"{SCHEMA_VERSION}. Refusing to guess at the format.", meta_path
         )
     meta = _validate(ProfileMeta, raw, meta_path)
 
@@ -458,15 +467,22 @@ def load_profile(name: str, *, directory: Path | None = None) -> Profile:
     cameras: dict[str, CameraSpec] = {}
     if cam_path.is_file():
         for label, spec in _read_json(cam_path).items():
+            if not isinstance(spec, dict):
+                raise ProfileError(f"{cam_path}: camera {label!r} is not an "
+                                   f"object", cam_path)
             cameras[label] = _validate(CameraSpec, spec, cam_path)
 
     pos_path = path / POSITIONS_FILE
     positions = {}
     if pos_path.is_file():
         for name, value in _read_json(pos_path).items():
-            if len(value) != 3:
-                raise ProfileError(f"{pos_path}: position {name!r} is not x, y, z")
-            positions[name] = tuple(float(v) for v in value)
+            try:
+                if len(value) != 3:
+                    raise ValueError
+                positions[name] = tuple(float(v) for v in value)
+            except (TypeError, ValueError):
+                raise ProfileError(f"{pos_path}: position {name!r} is not "
+                                   f"x, y, z", pos_path) from None
 
     deck_path = path / DECK_FILE
     deck = (_validate(DeckConfig, _read_json(deck_path), deck_path)
@@ -474,6 +490,18 @@ def load_profile(name: str, *, directory: Path | None = None) -> Profile:
 
     return Profile(meta, calibration, picking, cameras, positions, path,
                    deck=deck)
+
+
+def archive_folder(path: Path) -> Path:
+    """A profile's folder, history included, zipped beside it and dated
+    (`<name>-<UTC stamp>.zip`). A zip and not a copied folder: a copy would
+    hold a profile.json and be listed, and maybe loaded, as a profile of its
+    own. For a folder that cannot be read as a profile too."""
+    path = Path(path)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    base = path.parent / f"{path.name}-{stamp}"
+    return Path(shutil.make_archive(str(base), "zip", root_dir=path.parent,
+                                    base_dir=path.name))
 
 
 def create_profile(name: str, *, camera_label: str | None = None,

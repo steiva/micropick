@@ -460,3 +460,48 @@ def test_an_exception_in_a_slot_is_logged_and_said(app, window, until):
     until(lambda: sum("uncaught" in line for line in lines) == 2,
           what="the second failure logged")
     assert window.toast.text() == "Something else."
+
+
+@pytest.fixture
+def unreadable(app, tmp_path, monkeypatch):
+    """A window started on a profile whose positions.json is `[]`."""
+    from micropick.config import store
+    monkeypatch.setenv("MICROPICK_ROOT", str(tmp_path))
+    profile = store.create_profile("bench")
+    (profile.path / store.POSITIONS_FILE).write_text("[]", encoding="utf-8")
+    w = MainWindow(Options(mock=True, profile="bench"))
+    w.show()
+    yield w
+    w.hide()
+    w.session.shutdown()
+    w.deleteLater()
+
+
+def test_no_task_opens_without_a_profile(app, unreadable):
+    """The file is named on Home, nothing opens, and the way on is there
+    (GUI-13)."""
+    window = unreadable
+    home = window.home
+    assert window.session.profile is None
+    assert home.profile_banner.isVisible()
+    assert "positions.json" in home.profile_banner.label.text()
+    # Itself, not only for want of a robot as the cards under it are.
+    assert not home.tile_row.isEnabledTo(home.below)
+    assert not home.setup_card.isEnabledTo(home.below)
+    assert home.empty_button.isEnabled() and home.report_button.isEnabled()
+    window.open_task("auto")
+    assert window.current_page() is home
+    assert window.toast.text() == "The setup could not be read. See Home."
+
+
+def test_start_with_an_empty_setup_keeps_the_old_one_zipped(app, unreadable):
+    window = unreadable
+    home = window.home
+    folder = window.session.profile_problem_dir
+    home.empty_button.click()
+    assert window.session.profile is not None
+    assert window.session.profile.name == "bench"
+    assert not home.profile_banner.isVisible()
+    assert home.setup_card.isEnabledTo(home.below)
+    assert home.tile_row.isEnabledTo(home.below)
+    assert list(folder.parent.glob("bench-*.zip"))

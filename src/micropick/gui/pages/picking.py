@@ -814,7 +814,10 @@ class PickingPage(QWidget):
         return wanted_model(self.session.profile, self.session.mock)
 
     def _ensure_detector(self) -> None:
-        """Load the profile's model once, when a page that needs it opens."""
+        """Load the profile's model once, when a page that needs it opens.
+        With no profile loaded there is none to load (GUI-13)."""
+        if self.session.profile is None:
+            return
         wanted = self._wanted_model()
         if not wanted or self._busy():
             return

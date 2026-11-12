@@ -41,8 +41,10 @@ from ..theme import COLORS, SPACING
 from ..theme.factory import (caption, card, muted_label, primary_button,
                              quiet_button, reserve)
 from ..theme.icons import pixmap
+from ..widgets.banner import Banner
 from ..widgets.overlays import DimCover
-from ..workers import Worker
+from ..widgets.toast import show_toast
+from ..workers import Worker, describe_error
 from ..shown import when_shown
 
 __all__ = ["HomePage", "TaskTile", "TILE_TEXT", "new_session_dialog"]
@@ -169,6 +171,7 @@ class HomePage(QWidget):
         self.robot_box = self._robot_card()
         column.addWidget(self.robot_box)
         column.addWidget(self._line())
+        column.addWidget(self._profile_banner())
         self.below = QWidget(self)
         below = QVBoxLayout(self.below)
         below.setContentsMargins(0, 0, 0, 0)
@@ -193,6 +196,18 @@ class HomePage(QWidget):
         self.refresh()
 
     # -- construction --------------------------------------------------
+
+    def _profile_banner(self) -> QWidget:
+        """What a profile that could not be read leaves (GUI-13): one
+        sentence naming the file, Save report for help and Start with an
+        empty setup. Outside the cards the robot dims: it needs no robot."""
+        banner = self.profile_banner = Banner("", tone="warn", parent=self)
+        self.report_button = banner.add_action("Save report", quiet=True)
+        self.report_button.clicked.connect(self._save_report)
+        self.empty_button = banner.add_action("Start with an empty setup")
+        self.empty_button.clicked.connect(self._start_empty)
+        banner.hide()
+        return banner
 
     def _line(self) -> QWidget:
         """Under the Robot card, its room kept: until the robot is connected
@@ -327,6 +342,10 @@ class HomePage(QWidget):
                                         and not ready)
         self.home_button.setEnabled(not busy
                                     and not session.robot_lease.busy)
+        # No profile: nothing opens, a task or Robot setup (GUI-13).
+        self.setup_card.setEnabled(session.profile is not None)
+        self.tile_row.setEnabled(session.profile is not None
+                                 and self.run_note.isHidden())
         self.waiting.setVisible(not ready and not self.error.text())
         self.below.setEnabled(ready)
         if ready:
@@ -363,11 +382,35 @@ class HomePage(QWidget):
             self.run_note.setText(f"The robot is busy. Go back to {place} "
                                   f"to stop or finish it.")
         self.run_note.setVisible(running)
-        self.tile_row.setEnabled(not running)
+        self.tile_row.setEnabled(not running
+                                 and self.session.profile is not None)
         if not running:
             self.tiles_dim.hide()
         elif not self.tiles_dim.isVisible():
             self.tiles_dim.open()
+
+    def show_profile_problem(self, sentence: str, detail: str) -> None:
+        """The profile could not be read: `sentence` on Home, `detail` (the
+        loader's whole message, with the path) in its tooltip."""
+        self.profile_banner.set_text(sentence)
+        self.profile_banner.setToolTip(detail)
+        self.profile_banner.setVisible(bool(sentence))
+        self.refresh()
+
+    def _save_report(self) -> None:
+        from ..report import save_report_asking
+        save_report_asking(self.session, self)
+
+    def _start_empty(self) -> None:
+        try:
+            archive = self.session.start_empty_setup()
+        except Exception as exc:                     # noqa: BLE001
+            log.error("could not start with an empty setup: %s", exc)
+            show_toast(self, describe_error(exc), refusal=True)
+            return
+        self.show_profile_problem("", "")
+        show_toast(self, f"Started with an empty setup. The old one is in "
+                         f"{archive.name}.")
 
     def show_error(self, text: str) -> None:
         self.error.setText(text)
