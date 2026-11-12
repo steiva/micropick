@@ -116,8 +116,10 @@ def test_home_the_robot_is_refused_while_the_robot_is_busy(app, session):
     session.robot_seen(session.look_at_robot())
     assert session.needs_home
     page = HomePage(session)
+    page.show()                 # a hidden page reads the lease once shown
     lease = session.robot_lease.claim("picking run", run=True)
     try:
+        app.processEvents()
         assert page.home_button.isVisibleTo(page)
         assert not page.home_button.isEnabled()
     finally:

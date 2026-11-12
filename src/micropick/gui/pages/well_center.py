@@ -80,6 +80,7 @@ from ..widgets.step_card import wrapped
 from ..widgets.toast import show_toast
 from ..widgets.well_picker import WellPicker
 from ..workers import describe_error
+from ..shown import when_shown
 
 __all__ = ["WellCenterPage", "TITLE", "status_text"]
 
@@ -154,7 +155,7 @@ class WellCenterPage(QWidget):
 
         session.labware_changed.connect(lambda _s: self._list_plates())
         session.robot_state_changed.connect(self._on_robot)
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_busy_changed.connect(when_shown(self, self.refresh))
         session.profile_changed.connect(lambda _p: self.refresh())
         session.confirmations_changed.connect(self.refresh)
         self._list_plates()

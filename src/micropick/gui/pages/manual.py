@@ -311,6 +311,7 @@ from ..widgets.work_columns import COLUMN_GAP, WorkColumns
 from ..widgets.size_histogram import SizeHistogram, size_bins
 from ..widgets.well_picker import WellPicker
 from ..workers import Worker
+from ..shown import when_shown
 
 __all__ = ["ManualPage"]
 
@@ -641,7 +642,7 @@ class ManualPage(QWidget):
         session.routine_changed.connect(lambda _r: self._show_plan())
         session.task_requested.connect(self._task_requested)
         session.robot_state_changed.connect(self._robot_changed)
-        session.robot_busy_changed.connect(self._on_robot_busy)
+        session.robot_busy_changed.connect(when_shown(self, self._refresh))
         session.lock_changed.connect(lambda _on: self._refresh())
         session.labware_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._show_deck())
@@ -2308,9 +2309,6 @@ class ManualPage(QWidget):
             self._refresh()
         # A module's height decides whether a measurement is the plate's.
         self._bottom_changed()
-
-    def _on_robot_busy(self, _holder) -> None:
-        self._refresh()
 
     def _robot_changed(self, _state: str) -> None:
         self._reload_plates()

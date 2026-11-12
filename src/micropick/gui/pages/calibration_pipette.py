@@ -162,6 +162,7 @@ from ..widgets.plate_grid import PlateGrid, RackLegend
 from ..widgets.tip_gauge import TipIcon
 from ..widgets.toast import show_toast
 from ..workers import Worker
+from ..shown import when_shown
 
 __all__ = ["PipetteCalibration", "POSITION_NAME", "RUN_HOLDER",
            "TipCalibrationBlock", "TipOnBlock", "TouchUpAborted"]
@@ -250,7 +251,7 @@ class TipOnBlock(QObject):
         self._rack_shown = False
         self.box = self._build(parent)
         session.robot_state_changed.connect(lambda _s: self.refresh())
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_busy_changed.connect(when_shown(self.box, self.refresh))
         session.labware_changed.connect(self.refresh)
         session.tip_changed.connect(lambda _t: self.refresh())
         if calibration is not None:
@@ -599,7 +600,7 @@ class TipCalibrationBlock(QObject):
         session.camera_opened.connect(lambda _l: self.refresh())
         session.camera_closed.connect(lambda _l: self.refresh())
         session.robot_state_changed.connect(lambda _s: self.refresh())
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_busy_changed.connect(when_shown(self.box, self.refresh))
         session.profile_changed.connect(lambda _p: self.refresh())
         session.settings_changed.connect(lambda _s: self.refresh())
         session.labware_changed.connect(self.refresh)

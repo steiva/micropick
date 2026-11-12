@@ -845,6 +845,7 @@ def test_tip_to_crosshair_is_gray_without_a_tip_or_a_pixel_map(
 
 
 def test_tip_to_crosshair_is_gray_while_the_robot_is_busy(app, page, session):
+    page.show()                 # a hidden page reads the lease once shown
     _calibrate(session)
     session.profile_changed.emit(session.profile)
     _tip_on(app, page, session)

@@ -102,6 +102,7 @@ def test_edit_plan_unlocks_it_and_plan_is_not_done_until_used_again(page,
 
 
 def test_edit_plan_is_refused_during_a_picking_run(page, session):
+    page.show()                 # a hidden page reads the lease once shown
     page.plate.set_selection({"A1"})
     page.use_button.click()
     routine = session.routine

@@ -36,6 +36,7 @@ from ..theme.factory import (caption, card, heading, primary_button,
 from ..theme.icons import pixmap
 from ..widgets.overlays import ConfirmDialog
 from ..workers import describe_error
+from ..shown import when_shown
 
 __all__ = ["BLOCKS", "RobotSetupPage", "SetupRow", "TITLE"]
 
@@ -191,7 +192,7 @@ class RobotSetupPage(QWidget):
         outer.addWidget(holder)
 
         session.profile_changed.connect(lambda _p: self.refresh())
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_busy_changed.connect(when_shown(self, self.refresh))
         self.refresh()
 
     # -- display -------------------------------------------------------

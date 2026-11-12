@@ -120,6 +120,7 @@ from ..widgets.point_list import PointButton
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
 from ..workers import describe_error
+from ..shown import when_shown
 
 __all__ = ["LiquidPlanPage", "CURRENT_FILE"]
 
@@ -461,7 +462,7 @@ class LiquidPlanPage(QWidget):
         session.profile_changed.connect(self._profile_changed)
         # A plate skipped on the Well center step.
         session.confirmations_changed.connect(self._deck_changed)
-        session.robot_busy_changed.connect(self._robot_busy)
+        session.robot_busy_changed.connect(when_shown(self, self._show))
         session.memo_points_changed.connect(self._show_points)
         session.stop_requested.connect(self._stop_try.set)
         session.camera_opened.connect(lambda _l: self._show_camera())
@@ -1559,9 +1560,6 @@ class LiquidPlanPage(QWidget):
         return ""
 
     # -- display -------------------------------------------------------------
-
-    def _robot_busy(self, _holder) -> None:
-        self._show()
 
     def _show(self) -> None:
         problems = self.session.liquid_plan_problems()

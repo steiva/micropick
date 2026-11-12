@@ -134,21 +134,41 @@ def read_definition(path: Path) -> LabwareDefinition:
     return definition
 
 
+# What `local_definitions` read, per folder, with the files' names, times
+# and sizes it was read from: a page asks dozens of times a refresh (GUI-10).
+_LOCAL: dict[Path, tuple[tuple, dict[str, LabwareDefinition]]] = {}
+
+
 def local_definitions(directory: Path | None = None
                       ) -> dict[str, LabwareDefinition]:
-    """Every custom definition in the labware directory, keyed by load name."""
+    """Every custom definition in the labware directory, keyed by load name.
+    Read again only when a file there is added, removed or changed."""
     directory = Path(directory) if directory else paths.labware_dir()
     if not directory.is_dir():
         return {}
+    files = sorted(directory.glob("*.json"))
+    stamp = tuple((f.name, *_stat(f)) for f in files)
+    kept = _LOCAL.get(directory)
+    if kept is not None and kept[0] == stamp:
+        return dict(kept[1])
     out: dict[str, LabwareDefinition] = {}
-    for path in sorted(directory.glob("*.json")):
+    for path in files:
         definition = read_definition(path)
         if definition.load_name in out:
             raise LabwareError(
                 f"two files define {definition.load_name!r}: "
                 f"{out[definition.load_name].path.name} and {path.name}")
         out[definition.load_name] = definition
-    return out
+    _LOCAL[directory] = (stamp, out)
+    return dict(out)
+
+
+def _stat(path: Path) -> tuple[int, int]:
+    try:
+        st = path.stat()
+    except OSError:
+        return (0, -1)
+    return (st.st_mtime_ns, st.st_size)
 
 
 # ---------------------------------------------------------------------------

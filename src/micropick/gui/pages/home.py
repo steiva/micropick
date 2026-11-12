@@ -43,6 +43,7 @@ from ..theme.factory import (caption, card, muted_label, primary_button,
 from ..theme.icons import pixmap
 from ..widgets.overlays import DimCover
 from ..workers import Worker
+from ..shown import when_shown
 
 __all__ = ["HomePage", "TaskTile", "TILE_TEXT", "new_session_dialog"]
 
@@ -187,7 +188,7 @@ class HomePage(QWidget):
         outer.addWidget(holder)
 
         session.robot_state_changed.connect(self.refresh)
-        session.robot_busy_changed.connect(self.refresh)
+        session.robot_busy_changed.connect(when_shown(self, self.refresh))
         session.profile_changed.connect(lambda _p: self.refresh())
         self.refresh()
 

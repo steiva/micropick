@@ -46,6 +46,7 @@ from ..session import Session
 from ..theme.factory import (caption, compact, double_spin_box,
                              laid_out_at_once, muted_label,
                              primary_button, reserve, secondary_button)
+from ..shown import when_shown
 from .controls import Segmented
 from .jog_panel import JogPanel
 from .mini_deck import DeckTile, MiniDeckDropdown
@@ -102,7 +103,7 @@ class TipLiquidBox(QWidget):
 
         session.robot_state_changed.connect(lambda _s: self._reload_plates())
         session.labware_changed.connect(lambda _s: self._reload_plates())
-        session.robot_busy_changed.connect(lambda _h: self.refresh())
+        session.robot_busy_changed.connect(when_shown(self, self.refresh))
         session.tip_changed.connect(lambda _t: self.refresh())
         session.in_tip_changed.connect(lambda _ul: self.refresh())
         session.profile_changed.connect(lambda _p: self._show_settings())

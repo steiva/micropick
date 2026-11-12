@@ -201,3 +201,21 @@ def test_recent_labware_keeps_the_last_five_newest_first():
         deck.remember_labware(name)
     assert deck.recent_labware == ["g", "f", "e", "d", "a"]
     assert len(deck.recent_labware) == RECENT_LABWARE
+
+
+def test_local_definitions_are_read_again_only_when_a_file_changes(
+        tmp_path, monkeypatch):
+    """A page asks dozens of times a refresh (GUI-10): the files are read
+    once, and again when one is added or changed."""
+    _write_def(tmp_path, "one")
+    reads = []
+    real = labware.read_definition
+    monkeypatch.setattr(labware, "read_definition",
+                        lambda path: reads.append(path.name) or real(path))
+    assert set(labware.local_definitions(tmp_path)) == {"one"}
+    assert set(labware.local_definitions(tmp_path)) == {"one"}
+    assert reads == ["one.json"]
+    _write_def(tmp_path, "two")
+    assert set(labware.local_definitions(tmp_path)) == {"one", "two"}
+    (tmp_path / "two.json").unlink()
+    assert set(labware.local_definitions(tmp_path)) == {"one"}

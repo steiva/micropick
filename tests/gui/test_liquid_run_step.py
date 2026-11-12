@@ -222,7 +222,10 @@ def test_back_to_plan_is_gray_with_its_sentence_during_a_run(app, window):
         "The plan can be changed when the robot is not moving.",
         "Back to plan", "Pause", "Stop run"]
     assert page.back_button.toolTip() == page.back_note.text()
+    # The plan, hidden, is locked as it is shown.
+    window.stack.setCurrentWidget(plan_page)
     assert not plan_page.add_button.isEnabled()
+    window.stack.setCurrentWidget(page)
     window.session.request_stop()
     assert _until(app, lambda: not page._running and not page.jog.busy)
     assert page.back_button.isEnabled()

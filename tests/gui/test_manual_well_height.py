@@ -328,6 +328,7 @@ def test_gray_with_no_tip_on(app, page, session):
 
 
 def test_gray_while_the_robot_is_busy(app, page, session):
+    page.show()                 # a hidden page reads the lease once shown
     _ready(app, page, session)
     assert page.tip_to_target.isEnabled()
     lease = session.robot_lease.claim("a picking run", run=True)

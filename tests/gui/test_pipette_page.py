@@ -233,6 +233,7 @@ def test_a_tip_dropped_says_calibration_needs_a_new_one(
 
 
 def test_the_drops_are_gray_while_the_robot_is_busy(until, app, page):
+    page.show()                 # a hidden page reads the lease once shown
     _tip_on(until, page)
     assert page.drop_button.isEnabled() and page.drop_here_button.isEnabled()
     lease = page.session.robot_lease.claim("a test")

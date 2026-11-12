@@ -73,6 +73,7 @@ from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
 from ..widgets.plate_grid import PlateGrid, PlateTools
 from ..widgets.slot_chooser import SlotChooser
 from ..widgets.toast import show_toast
+from ..shown import when_shown
 
 __all__ = ["RoutinePage"]
 
@@ -180,7 +181,7 @@ class RoutinePage(QWidget):
         session.routine_changed.connect(lambda _r: self._refresh())
         session.plan_chosen.connect(self._plan_chosen)
         # Edit plan is gray while a picking run has the robot.
-        session.robot_busy_changed.connect(lambda _h: self._refresh())
+        session.robot_busy_changed.connect(when_shown(self, self._refresh))
         self._install_shortcuts()
         self._reload_plates()
 

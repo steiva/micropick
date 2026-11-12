@@ -77,6 +77,7 @@ from ..widgets.deck_tiles import (TRASH_SLOT, DeckTiles, kind_icon,
 from ..widgets.mini_deck import DeckTile
 from ..widgets.toast import show_toast
 from ..workers import Worker
+from ..shown import when_shown
 
 __all__ = ["LabwarePage"]
 
@@ -149,7 +150,7 @@ class LabwarePage(QWidget):
         layout.addWidget(side)
 
         session.robot_state_changed.connect(self._on_robot_changed)
-        session.robot_busy_changed.connect(lambda _h: self._refresh())
+        session.robot_busy_changed.connect(when_shown(self, self._refresh))
         session.labware_changed.connect(lambda _s: self._refresh())
         # Another profile has other platforms and another Frequent.
         session.profile_changed.connect(lambda _p: self._refresh())

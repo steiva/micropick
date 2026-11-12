@@ -72,6 +72,7 @@ from ..widgets.controls import Segmented
 from ..widgets.jog_panel import HOME_DETAIL, HOME_TITLE
 from ..widgets.overlays import SheetWindow
 from ..workers import Worker
+from ..shown import when_shown
 from .log import LogPage
 
 __all__ = ["AdvancedPanel", "SettingsPage", "SettingsSheet", "TITLE",
@@ -907,7 +908,7 @@ class AdvancedPanel(QWidget):
         # Bound methods, not lambdas: the session's signals come from a
         # worker too, and Qt queues only a bound method onto this thread.
         session.robot_state_changed.connect(self.refresh)
-        session.robot_busy_changed.connect(self.refresh)
+        session.robot_busy_changed.connect(when_shown(self, self.refresh))
         session.lock_changed.connect(self.refresh)
         self.refresh()
 

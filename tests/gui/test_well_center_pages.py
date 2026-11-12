@@ -721,6 +721,8 @@ def test_the_measurement_in_hand_outlives_a_change_elsewhere_on_the_deck(
 
 def test_save_says_which_run_uses_the_plate(app, session):
     page = _step(app, session)
+    page.show()                 # a hidden page reads the lease once shown
+    _settle(app, page.jog)
     _go_to_top(app, page)
     page.centered_button.click()
     page.level_button.click()
@@ -738,6 +740,8 @@ def test_save_says_which_run_uses_the_plate(app, session):
 
 def test_a_center_a_run_uses_is_not_replaced_under_it(app, session):
     page = _step(app, session)
+    page.show()                 # a hidden page reads the lease once shown
+    _settle(app, page.jog)
     _go_to_top(app, page)
     _jog(app, session, page.jog, 0.4, -0.3, -1.5)
     page.centered_button.click()

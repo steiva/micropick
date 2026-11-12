@@ -1500,5 +1500,9 @@ class PickingPage(QWidget):
         self.start_button.setVisible(not running and not done)
         self.pause_button.setVisible(running)
         self.stop_button.setVisible(running)
-        # The shell's footer and pill read the run from here.
-        self.session.run_activity_changed.emit()
+        # The shell's footer and pill read the run from here: told only of a
+        # change, each telling refreshes the whole window (GUI-10).
+        said = (self.run_activity(), self.run_status())
+        if said != getattr(self, "_run_said", None):
+            self._run_said = said
+            self.session.run_activity_changed.emit()
