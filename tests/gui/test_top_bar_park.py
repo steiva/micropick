@@ -172,9 +172,12 @@ def test_closing_during_a_run_asks_and_stays_open_until_it_has_stopped(
         assert not event.isAccepted()
         assert window.session.robot is not None and stops == []
         # Yes: the run is told to stop, but does not in time - the pipette
-        # calibration hears Stop only in its touch-up. The window stays,
-        # the robot session with it, and nothing is sent into the run.
-        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: YES)
+        # calibration hears Stop only in its touch-up. Asked whether to close
+        # anyway, No: the window stays, the robot session with it, and
+        # nothing is sent into the run.
+        answers = [YES, NO]
+        monkeypatch.setattr(QMessageBox, "question",
+                            lambda *a, **k: answers.pop(0))
         before = robot.calls.count(("retract_axis", "leftZ"))
         event = QCloseEvent()
         window.closeEvent(event)
@@ -220,3 +223,35 @@ def test_a_second_close_while_the_first_waits_does_not_shut_down_twice(
     assert shutdowns == [1]
     assert window.session.robot is None
     assert robot.calls.count(("retract_axis", "leftZ")) == before + 1
+
+
+def test_close_is_offered_when_a_job_never_ends(app, window, monkeypatch):
+    """A robot that does not answer holds its job for good (GUI-05): the
+    window asks, and Close anyway closes with nothing sent to the robot
+    and the process left."""
+    from PySide6.QtGui import QCloseEvent
+    from micropick.gui import shell
+    _connect(app, window)
+    monkeypatch.setattr(shell, "CLOSE_WAIT_S", 0.2)
+    left = []
+    monkeypatch.setattr(shell, "leave_process", lambda: left.append(1))
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question",
+                        lambda *a, **k: asked.append(a[2]) or YES)
+    robot = window.session.robot
+    before = robot.calls.count(("retract_axis", "leftZ"))
+    # A job whose command the robot never answers: its lease stays held.
+    lease = window.session.robot_lease.claim("moving the robot")
+    try:
+        event = QCloseEvent()
+        window.closeEvent(event)
+        assert event.isAccepted()
+        assert asked and "does not answer" in asked[-1]
+        assert window.session.robot is None
+        assert robot.calls.count(("retract_axis", "leftZ")) == before
+        end = time.monotonic() + 2
+        while not left and time.monotonic() < end:
+            app.processEvents()
+        assert left == [1]
+    finally:
+        lease.release()

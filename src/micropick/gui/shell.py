@@ -38,6 +38,7 @@ click on the pill goes back there.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import TYPE_CHECKING
 
@@ -150,6 +151,13 @@ CLOSE_WAIT_S = 10
 # What an exception nothing caught says, and how long it then keeps quiet.
 UNCAUGHT_TEXT = "Something went wrong. It is in the log."
 UNCAUGHT_QUIET_S = 5.0
+
+
+def leave_process() -> None:
+    """End the process at once, the threads still waiting on a robot or a
+    camera with it: what closing does when it cannot wait for them."""
+    logging.shutdown()
+    os._exit(0)
 
 HELD_DETAIL = (
     "The robot finishes the command it is doing and takes no other until "
@@ -413,10 +421,28 @@ class MainWindow(QMainWindow):
                 QApplication.processEvents()
                 time.sleep(0.02)
         if lease.busy:
-            _log.warning("not closing: %s still has the robot", lease.holder)
-            self.refuse(f"Not closed: the {lease.holder} is still stopping. "
-                        f"Close again once it has.")
-            event.ignore()
+            # A job that never ends is a robot that does not answer (GUI-05):
+            # the operator may close all the same, nothing more sent to it.
+            answer = QMessageBox.question(
+                self, "Close micropick",
+                f"The robot does not answer ({lease.holder}). Close anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                _log.warning("not closing: %s still has the robot",
+                             lease.holder)
+                self.refuse(f"Not closed: the {lease.holder} is still "
+                            f"stopping. Close again once it has.")
+                event.ignore()
+                return
+            _log.warning("closing anyway: %s still has the robot",
+                         lease.holder)
+            self.monitor.stop()
+            self.session.shutdown(retract=False)
+            super().closeEvent(event)
+            # The job's thread waits on the robot for good; the interpreter
+            # would abort on it at exit.
+            QTimer.singleShot(0, leave_process)
             return
         self.monitor.stop()
         self.session.shutdown()

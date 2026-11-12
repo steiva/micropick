@@ -83,6 +83,10 @@ __all__ = ["Session", "SessionError", "RunState", "Tip", "DeckProblem",
 log = logging.getLogger(__name__)
 
 MOCK_PROFILE_NAME = "mock"
+# A robot that takes longer than this to accept a connection is not there.
+CONNECT_TIMEOUT_S = 5.0
+# How long closing waits for the robot to answer the retract.
+SHUTDOWN_RETRACT_S = 5.0
 # The label of a camera opened to be looked at before it is chosen
 # (`Session.preview_camera`); never a profile's.
 PREVIEW_LABEL = "preview"
@@ -1158,10 +1162,15 @@ class Session(QObject):
             else:
                 from opentrons_api import ot2_api
                 host = self.options_host or self.settings.robot_host
+                # A connect that takes long is no robot there; a read is
+                # left as long as the robot takes (a home, a slow dispense),
+                # the connection's keep-alive ending it if the robot went
+                # silent (GUI-05).
                 self._api = ot2_api.OpentronsAPI(
                     host=host,
                     port=None if host and ":" in host
-                    else self.settings.robot_port)
+                    else self.settings.robot_port,
+                    timeout=(CONNECT_TIMEOUT_S, None))
                 log.info("connecting to the robot at %s", self._api.BASE_URL)
             self._apply_hold()
         return self._api
@@ -2448,13 +2457,16 @@ class Session(QObject):
 
     # -- teardown ------------------------------------------------------------
 
-    def shutdown(self) -> None:
+    def shutdown(self, *, retract: bool = True) -> None:
         """Leave nothing running. Called from the window's closeEvent, once
         the robot is free (`MainWindow.closeEvent`).
 
         Cameras first: each holds a grab thread, and a thread still calling
         read() while the interpreter tears down is the one way this exits
-        badly. Then the axis is parked and the robot is let go.
+        badly. Then the axis is parked - waited for SHUTDOWN_RETRACT_S at
+        most, so a robot that no longer answers does not freeze the window -
+        and the robot is let go. `retract=False`: closed anyway with the
+        robot not answering, nothing is sent to it.
         """
         self._shut = True
         for label in list(self._open):
@@ -2463,8 +2475,13 @@ class Session(QObject):
             except Exception as exc:                 # noqa: BLE001
                 log.warning("could not close camera %r: %s", label, exc)
         self.close_preview()
-        if self.robot is not None:
-            self._retract()
+        if self.robot is not None and retract:
+            parking = threading.Thread(target=self._retract, daemon=True,
+                                       name="retract at close")
+            parking.start()
+            parking.join(SHUTDOWN_RETRACT_S)
+            if parking.is_alive():
+                log.warning("closing: the robot did not answer the retract")
         self._api = self.robot = None
         self.motion.set_robot(None)
         self.run_state = self.run_origin = None
