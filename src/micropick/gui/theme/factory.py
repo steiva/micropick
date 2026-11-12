@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 
-from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QLocale, QPointF, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPainter, QPalette, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QFrame, QLabel,
                                QPushButton, QScrollArea, QSpinBox,
@@ -33,7 +33,37 @@ __all__ = ["number_field", "labeled", "primary_button", "secondary_button", "too
            "heading", "caption", "muted_label", "combo_box", "select",
            "spin_box", "double_spin_box", "scroll_column", "Section",
            "fold_arrow", "reserve", "choice_stack",
-           "laid_out_at_once"]
+           "laid_out_at_once", "number_locale"]
+
+
+def number_locale() -> QLocale:
+    """How every number field reads and shows a number, whatever the
+    computer's regional format: a point for decimals and no thousands
+    separator. Left to Windows, a Belgian format reads "0.5" as 5 - the
+    point taken for a thousands separator and dropped - and a Z the tip is
+    sent to with it. A comma typed is read as the point
+    (`_DecimalComma`), since a numpad gives one there."""
+    locale = QLocale("en_US")
+    locale.setNumberOptions(QLocale.NumberOption.OmitGroupSeparator
+                            | QLocale.NumberOption.RejectGroupSeparator)
+    return locale
+
+
+class _DecimalComma:
+    """A spin box in `number_locale`, a comma typed taken as the decimal
+    point and shown as one."""
+
+    def _use_number_locale(self) -> None:
+        self.setLocale(number_locale())
+
+    def validate(self, text: str, pos: int):
+        return super().validate(text.replace(",", "."), pos)
+
+    def valueFromText(self, text: str):
+        return super().valueFromText(text.replace(",", "."))
+
+    def fixup(self, text: str) -> str:
+        return super().fixup(text.replace(",", "."))
 
 
 def primary_button(text: str, parent: QWidget | None = None) -> QPushButton:
@@ -258,28 +288,37 @@ def combo_box(parent: QWidget | None = None) -> QComboBox:
     return _WheelSafeComboBox(parent)
 
 
-class _WheelSafeSpinBox(QSpinBox):
+class _WheelSafeSpinBox(_DecimalComma, QSpinBox):
     """A spin box the wheel does not turn, for the combo box's reason - and
     here the number is often a Z the tip is about to be sent to."""
 
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._use_number_locale()
+
     def wheelEvent(self, event) -> None:
         event.ignore()
 
 
-class _WheelSafeDoubleSpinBox(QDoubleSpinBox):
+class _WheelSafeDoubleSpinBox(_DecimalComma, QDoubleSpinBox):
     """See _WheelSafeSpinBox."""
 
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._use_number_locale()
+
     def wheelEvent(self, event) -> None:
         event.ignore()
 
 
-class _NumberField(QDoubleSpinBox):
+class _NumberField(_DecimalComma, QDoubleSpinBox):
     """A number on Manual pick's Run (MANUAL.md §2.7), its unit in the label
     above it. ↑/↓ and the wheel step it while it has the keyboard: scrolled
     past, it stays what it is, for the wheel-safe boxes' reason."""
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
+        self._use_number_locale()
         self.setObjectName("numberField")
         self.setAlignment(Qt.AlignmentFlag.AlignRight
                           | Qt.AlignmentFlag.AlignVCenter)

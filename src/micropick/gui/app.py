@@ -11,10 +11,12 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from PySide6.QtCore import QLocale
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from . import theme
+from .theme.factory import number_locale
 from .shell import MainWindow
 
 __all__ = ["Options", "create_app", "run", "window_icon"]
@@ -54,6 +56,9 @@ def create_app(argv: list[str] | None = None) -> QApplication:
     # Before the application, not after: Qt reads the rounding policy when
     # QGuiApplication is constructed and ignores a later change.
     theme.configure_hidpi()
+    # Numbers read and shown with a point whatever the regional format:
+    # the number fields set it themselves, this is for anything else.
+    QLocale.setDefault(number_locale())
 
     if sys.platform == "win32":
         # Run from the source tree the process is python's, and the taskbar
