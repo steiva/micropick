@@ -8,7 +8,7 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
-## 1.1.0 - 2026-11-10
+## 1.1.0 - 2026-11-12
 
 - micropick has its own icon: the window, the taskbar, the program file, the
   installer and the desktop shortcut.
