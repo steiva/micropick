@@ -633,18 +633,22 @@ class JogPanel(QWidget):
         result, status = payload
         self._set_status(status)
         then, self._then = self._then, None
-        if then is not None:
-            result = then(result)
-        if isinstance(result, str):
-            self.tell(result)
-        elif result is not None and not result.ok:
-            self.refuse(result.reason or "Refused.")
-        elif result is not None:
-            self.tell(result.reason)
-        self._emit_position()
-        self._set_enabled(True)
-        if self._job_moves:
-            self.moved.emit()
+        try:
+            if then is not None:
+                result = then(result)
+            if isinstance(result, str):
+                self.tell(result)
+            elif result is not None and not result.ok:
+                self.refuse(result.reason or "Refused.")
+            elif result is not None:
+                self.tell(result.reason)
+        finally:
+            # A `then` that raised is the excepthook's to say (GUI-09); the
+            # pad and its keys come back all the same.
+            self._emit_position()
+            self._set_enabled(True)
+            if self._job_moves:
+                self.moved.emit()
 
     def _job_failed(self, reason: str) -> None:
         if not self._claim():

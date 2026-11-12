@@ -147,6 +147,9 @@ STOP_AGAIN_S = 10
 RELEASE_POLL_MS = 200
 # How long closing the window waits for the robot to be free.
 CLOSE_WAIT_S = 10
+# What an exception nothing caught says, and how long it then keeps quiet.
+UNCAUGHT_TEXT = "Something went wrong. It is in the log."
+UNCAUGHT_QUIET_S = 5.0
 
 HELD_DETAIL = (
     "The robot finishes the command it is doing and takes no other until "
@@ -343,6 +346,8 @@ class MainWindow(QMainWindow):
         # which is what lets a worker log without touching the widget.
         self.log_bridge = log_bridge.install()
         self.log_bridge.record.connect(self.log_page.append)
+        self.log_bridge.uncaught.connect(self._uncaught)
+        self._uncaught_said_at = None
         # And to a file per day, for when the window is closed and someone
         # asks what happened (`gui.report`).
         self.log_file = log_bridge.install_file(paths.logs_dir())
@@ -424,6 +429,17 @@ class MainWindow(QMainWindow):
     def refuse(self, text: str) -> None:
         """Why an action did nothing, as a red toast."""
         self.toast.show_text(text, refusal=True)
+
+    def _uncaught(self, _kind: str) -> None:
+        """An exception nothing caught, already in the log: said, so the
+        button pressed does not seem to have done nothing (GUI-09). Once in
+        UNCAUGHT_QUIET_S, so one failing again and again does not flood."""
+        now = time.monotonic()
+        if (self._uncaught_said_at is not None
+                and now - self._uncaught_said_at < UNCAUGHT_QUIET_S):
+            return
+        self._uncaught_said_at = now
+        self.refuse(UNCAUGHT_TEXT)
 
     # -- where the window is --------------------------------------------------
 

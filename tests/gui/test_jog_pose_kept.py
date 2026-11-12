@@ -99,3 +99,22 @@ def test_a_job_ended_but_not_delivered_keeps_the_panel_busy(
     robot_free(session, panel)
     assert session.robot.moves == moves
     assert seen == ["answer of job A"]
+
+
+def test_a_callback_that_raises_leaves_the_pad_usable(
+        app, session, panel, robot_free, monkeypatch):
+    """A page's `then` that raises is the excepthook's to say; the pad and
+    its keys come back all the same (GUI-09)."""
+    import sys
+    raised = []
+    monkeypatch.setattr(sys, "excepthook", lambda *a: raised.append(a[0]))
+
+    def then(_result):
+        raise ZeroDivisionError
+
+    assert panel.run_job(lambda log: "done", moves=False, then=then)
+    robot_free(session, panel)
+    assert raised == [ZeroDivisionError]
+    assert all(b.isEnabled() for b in panel.pad.buttons.values())
+    assert panel.run_job(lambda log: "again", moves=False)
+    robot_free(session, panel)

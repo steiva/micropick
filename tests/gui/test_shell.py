@@ -437,3 +437,26 @@ def test_back_from_manual_picks_run_goes_to_the_step_before(app, window):
     steps = window._steps
     window.footer.back.click()
     assert window.step == steps[steps.index("work") - 1]
+
+
+def test_an_exception_in_a_slot_is_logged_and_said(app, window, until):
+    """PySide hands it to the excepthook: in the log, and a red toast, not
+    a button that seemed to do nothing (GUI-09). Said once in 5 s."""
+    from PySide6.QtCore import QTimer
+    from micropick.gui import shell
+
+    lines = []
+    window.log_bridge.record.connect(lines.append)
+
+    def fails():
+        raise ZeroDivisionError("a slot failed")
+
+    QTimer.singleShot(0, fails)
+    until(lambda: any("uncaught ZeroDivisionError" in line
+                      for line in lines), what="the failure logged")
+    assert window.toast.text() == shell.UNCAUGHT_TEXT
+    window.say("Something else.")
+    QTimer.singleShot(0, fails)
+    until(lambda: sum("uncaught" in line for line in lines) == 2,
+          what="the second failure logged")
+    assert window.toast.text() == "Something else."

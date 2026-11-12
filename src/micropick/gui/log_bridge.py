@@ -27,9 +27,11 @@ DATE_FORMAT = "%H:%M:%S"
 
 
 class LogBridge(QObject):
-    """Carries formatted records to whatever is connected to `record`."""
+    """Carries formatted records to whatever is connected to `record`, and
+    the name of an exception nothing caught to `uncaught`."""
 
     record = Signal(str)
+    uncaught = Signal(str)
 
 
 class _Handler(logging.Handler):
@@ -62,7 +64,33 @@ def install(level: int = logging.INFO) -> LogBridge:
     root.addHandler(handler)
     if root.level == logging.NOTSET or root.level > level:
         root.setLevel(level)
+    _hook_uncaught(bridge)
     return bridge
+
+
+def _hook_uncaught(bridge: LogBridge) -> None:
+    """Log what escapes everything else and tell the bridge.
+
+    PySide hands an exception raised in a slot to `sys.excepthook`: on the
+    GUI thread it would otherwise reach only a console nobody is looking
+    at, and the button the operator pressed seemed to do nothing (GUI-09).
+    Installed here, not with the file: a window whose log file could not
+    be opened still says it.
+    """
+    import sys
+
+    previous = sys.excepthook
+
+    def hook(kind, value, trace):
+        logging.getLogger("micropick.uncaught").critical(
+            "uncaught %s", kind.__name__, exc_info=(kind, value, trace))
+        try:
+            bridge.uncaught.emit(kind.__name__)
+        except RuntimeError:
+            pass                        # the window and its bridge are gone
+        previous(kind, value, trace)
+
+    sys.excepthook = hook
 
 
 # On disk the day is part of the time: a file is read days later.
@@ -71,16 +99,14 @@ FILE_PREFIX = "micropick_"
 
 
 def install_file(directory, level: int = logging.INFO):
-    """Also write the log to a file per day in `directory`, and log what
-    escapes everything else. Returns the file, or None if it cannot be
-    opened - the window must start either way.
+    """Also write the log to a file per day in `directory`. Returns the
+    file, or None if it cannot be opened - the window must start either way.
 
     The log page forgets on close, and "it stopped and said something" is
     then all there is to go on. The file is what a report sends
-    (`gui.report`). Uncaught exceptions go to it too: on the GUI thread one
-    would otherwise reach only a console nobody is looking at.
+    (`gui.report`). Uncaught exceptions reach it through the root logger
+    (`install`).
     """
-    import sys
     import time
     from pathlib import Path
 
@@ -94,15 +120,6 @@ def install_file(directory, level: int = logging.INFO):
     handler.setLevel(level)
     handler.setFormatter(logging.Formatter(FORMAT, FILE_DATE_FORMAT))
     logging.getLogger().addHandler(handler)
-
-    previous = sys.excepthook
-
-    def hook(kind, value, trace):
-        logging.getLogger("micropick.uncaught").critical(
-            "uncaught %s", kind.__name__, exc_info=(kind, value, trace))
-        previous(kind, value, trace)
-
-    sys.excepthook = hook
     from .._version import describe
     logging.getLogger(__name__).info("micropick %s; log file %s", describe(),
                                      path)
