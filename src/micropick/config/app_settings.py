@@ -14,7 +14,10 @@ camera mode is the one the calibrations were measured in.
 They are one small file, `settings.json` in the root (`paths.root()`),
 beside `profiles/`, written atomically as the profiles are. A missing file
 is the defaults; an unreadable one is the defaults too, with the reason
-returned so the Settings page can show it rather than refuse to start.
+returned so the Settings page can show it rather than refuse to start. A
+setting this version does not know (written by a newer one) is left out
+and a value it cannot use is that setting's default, the rest kept: going
+back to an older installer keeps the robot's address and the folders.
 
 `apply` hands the folders to `paths`, which every writer already asks, so a
 changed folder takes effect for the next file without anything else
@@ -102,16 +105,48 @@ def settings_path() -> Path:
 
 
 def load_settings() -> tuple[AppSettings, str]:
-    """The settings, and "" or why the file could not be used."""
+    """The settings, and "" or why some of the file could not be used.
+
+    A key this build does not know is left out, and a value it cannot use
+    falls back to that setting's default alone: the file may have been
+    written by a newer version, and after going back to an older installer
+    the robot's address, the folders and the keys must stay. The model
+    itself keeps extra="forbid", so a setting misspelled in code is still
+    an error."""
     path = settings_path()
     if not path.is_file():
         return AppSettings(), ""
     try:
-        return AppSettings.model_validate(
-            json.loads(path.read_text(encoding="utf-8"))), ""
-    except (json.JSONDecodeError, ValidationError, OSError) as exc:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
         return AppSettings(), f"{path} could not be read, so the defaults " \
                               f"are used: {exc}"
+    if not isinstance(raw, dict):
+        return AppSettings(), f"{path} could not be read, so the defaults " \
+                              f"are used: not a JSON object"
+    known = {k: v for k, v in raw.items() if k in AppSettings.model_fields}
+    unknown = sorted(set(raw) - set(known))
+    bad: list[str] = []
+    while True:
+        try:
+            settings = AppSettings.model_validate(known)
+            break
+        except ValidationError as exc:
+            wrong = {e["loc"][0] for e in exc.errors()
+                     if e["loc"] and e["loc"][0] in known}
+            if not wrong:                     # nothing left to drop
+                return AppSettings(), f"{path} could not be read, so the " \
+                                      f"defaults are used: {exc}"
+            bad += sorted(str(k) for k in wrong)
+            for key in wrong:
+                del known[key]
+    notes = []
+    if unknown:
+        notes.append("not known to this version, left out: "
+                     + ", ".join(unknown))
+    if bad:
+        notes.append("not usable, the default used: " + ", ".join(bad))
+    return settings, (f"{path}: " + "; ".join(notes)) if notes else ""
 
 
 def save_settings(settings: AppSettings) -> Path:

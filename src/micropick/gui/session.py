@@ -503,7 +503,7 @@ class Session(QObject):
         self.settings, self.settings_note = app_settings.load_settings()
         app_settings.apply(self.settings)
         if self.settings_note:
-            log.error("%s", self.settings_note)
+            log.warning("%s", self.settings_note)
 
     # -- confirmations ---------------------------------------------------------
     #

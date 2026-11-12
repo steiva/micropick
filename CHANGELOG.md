@@ -35,6 +35,12 @@ the third for fixes.
   DirectShow on Windows, whose list gives its number. With OpenCV 5 the
   upper camera could open another camera and be refused ("asked for
   2592x1944, device gave 2000x1500").
+- Going back to an older version keeps this computer's settings. A setting
+  written by a newer version is left out and a value that cannot be used
+  takes its default, the rest kept; before, the whole of settings.json was
+  set aside and every setting (the robot's address, the folders, the keys)
+  was its default. From this version on, an installer of an earlier
+  version can be run over a later one to go back.
 
 ## 1.0.1 - 2026-11-09
 

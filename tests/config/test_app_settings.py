@@ -47,3 +47,32 @@ def test_folders_move_where_the_settings_say(root):
     app_settings.apply(AppSettings(images_dir=str(root / "pics")))
     assert paths.images_dir() == root / "pics"
     assert paths.outputs_dir(create=False) == root / "outputs"
+
+
+def test_a_newer_versions_file_keeps_what_this_one_knows(root):
+    # Written by a later version: a setting unknown here is left out, and
+    # everything else is kept rather than the whole file replaced.
+    (root / "settings.json").write_text(
+        '{"robot_host": "10.0.0.5", "keys": {"jog_left": "J"},'
+        ' "from_the_future": 1}')
+    settings, note = app_settings.load_settings()
+    assert settings.robot_host == "10.0.0.5"
+    assert settings.keys == {"jog_left": "J"}
+    assert "from_the_future" in note and "left out" in note
+
+
+def test_a_value_not_usable_is_that_settings_default_alone(root):
+    (root / "settings.json").write_text(
+        '{"robot_host": "10.0.0.5", "inference_device": "tpu",'
+        ' "robot_port": 0}')
+    settings, note = app_settings.load_settings()
+    assert settings.robot_host == "10.0.0.5"
+    assert settings.inference_device == "auto"
+    assert settings.robot_port == 31950
+    assert "inference_device" in note and "robot_port" in note
+
+
+def test_a_file_not_an_object_is_the_defaults(root):
+    (root / "settings.json").write_text("[1, 2]")
+    settings, note = app_settings.load_settings()
+    assert settings == AppSettings() and "could not be read" in note
