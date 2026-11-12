@@ -81,3 +81,21 @@ def test_a_click_with_no_pose_reads_it_and_says_so(app, session, panel):
     assert toast_of(panel).text() == POSE_UNKNOWN
     _settled(app, panel)
     assert panel.known_pose() is not None
+
+
+def test_a_job_ended_but_not_delivered_keeps_the_panel_busy(
+        app, session, panel, robot_free):
+    """Between a job's thread ending and its end reaching the page, a key
+    or a click is refused: else it took the job's place and the first
+    job's `then` was called with the second's result (GUI-06)."""
+    seen = []
+    assert panel.run_job(lambda log: "answer of job A", moves=False,
+                         then=lambda result: seen.append(result) or result)
+    panel._worker.wait()                # the thread ended, nothing delivered
+    assert panel.busy
+    assert not panel.run_job(lambda log: "job B", moves=False)
+    moves = session.robot.moves
+    panel.step("x", +1)                 # what an arrow key does
+    robot_free(session, panel)
+    assert session.robot.moves == moves
+    assert seen == ["answer of job A"]

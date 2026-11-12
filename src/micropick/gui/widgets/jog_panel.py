@@ -479,8 +479,9 @@ class JogPanel(QWidget):
 
     @property
     def busy(self) -> bool:
-        """A step is in flight. A page that reads the pose after the operator
-        is done should wait for this to clear first."""
+        """A step is in flight or its end is still to be delivered. A page
+        that reads the pose after the operator is done should wait for this
+        to clear first."""
         return self._busy()
 
     @property
@@ -573,7 +574,10 @@ class JogPanel(QWidget):
     # -- the worker ----------------------------------------------------------
 
     def _busy(self) -> bool:
-        return self._worker is not None and self._worker.running
+        """A job of this panel's runs or its end is not delivered yet. Not
+        "its thread runs": that ends first, and a key or a click in the gap
+        would start a job that took the first one's `then` (GUI-06)."""
+        return self._worker is not None
 
     def _run(self, worker: Worker, *, moves: bool = True,
              robot_work: bool = True, run: bool = False,

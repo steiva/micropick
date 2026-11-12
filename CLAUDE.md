@@ -20,8 +20,9 @@ picks cuboid microtissues from a dish into a plate. Design notes are in
   its own: `until(condition, what=...)` (fails the test naming `what`,
   and runs no events once the condition holds), `robot_free(session or
   window, *panels)` (no lease held, no panel's `job_pending`) and
-  `read_pose(panel)`. A panel's job is over when `job_pending` is False,
-  never `busy`, which goes False before the job's end reaches the page.
+  `read_pose(panel)`. A panel's job is over when `job_pending` is False
+  (`busy` is the same: a panel stays busy until its job's end reaches the
+  page, GUI-06).
   A hung test is ended after 5 minutes, its stacks dumped after 2
   (`pyproject.toml`, pytest-timeout). A test that needs the program's theme takes `themed`
   (`tests/gui/conftest.py`), never `apply_theme` on the app: it stays for
