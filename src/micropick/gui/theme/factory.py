@@ -412,9 +412,11 @@ class _ScrollColumn(QScrollArea):
     event handler. A label's new text reaches its own geometry before it
     reaches the layouts above it, and asked too early the column answers
     with the height the old text needed. Deferring costs one turn of the
-    event loop and is what makes the number the one on screen. It cannot
-    loop: the minimum is only written when it changes, and writing it
-    produces a resize that measures the same number again.
+    event loop and is what makes the number the one on screen. A pass that
+    changes nothing asks for no other: the layout is invalidated only when
+    a label's height changed, since invalidating an activated layout posts
+    a LayoutRequest, which this column answers with a pass - a pass
+    invalidating every time kept a core busy for ever (GUI-01).
     """
 
     def __init__(self, inner: QWidget, width: int):
@@ -483,10 +485,11 @@ class _ScrollColumn(QScrollArea):
         layout = self._inner.layout()
         if layout is None:
             return
-        self._fit_labels()
-        # invalidate, not merely activate: a layout caches the height it
-        # computed for a width, and the labels just changed theirs.
-        layout.invalidate()
+        if self._fit_labels():
+            # invalidate, not merely activate: a layout caches the height it
+            # computed for a width, and the labels just changed theirs.
+            # Only then: it posts a LayoutRequest, and so another pass.
+            layout.invalidate()
         layout.activate()
         wanted = layout.heightForWidth(self._inner_width)
         if wanted < 0:
@@ -495,8 +498,9 @@ class _ScrollColumn(QScrollArea):
         if wanted > 0 and wanted != self._inner.minimumHeight():
             self._inner.setMinimumHeight(wanted)
 
-    def _fit_labels(self) -> None:
-        """Give every wrapped label a minimum height that is its own text.
+    def _fit_labels(self) -> bool:
+        """Give every wrapped label a minimum height that is its own text;
+        True if one changed.
 
         The column's total height being right is not enough: a `QVBoxLayout`
         distributing more than it needs hands each item its `sizeHint`, and
@@ -516,12 +520,15 @@ class _ScrollColumn(QScrollArea):
         paragraph's height for ever after, and a status line that went from
         long to short sat in the middle of a tall empty box.
         """
+        changed = False
         for label in self._inner.findChildren(QLabel):
             if not label.wordWrap() or label.width() <= 0 or label.isHidden():
                 continue
             wanted = _text_height(label, label.width())
             if wanted > 0 and wanted != label.minimumHeight():
                 label.setMinimumHeight(wanted)
+                changed = True
+        return changed
 
 
 _MEASURE: QLabel | None = None
