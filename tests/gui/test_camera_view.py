@@ -222,8 +222,11 @@ def test_a_size_histogram_is_drawn_over_the_picture_without_failing(app):
     assert view._histogram is None
 
 
+@pytest.mark.parametrize("folder", ["pics", "Stépanov"])
 def test_a_snapshot_is_the_frame_itself_in_the_images_folder(app, tmp_path,
-                                                             monkeypatch):
+                                                             monkeypatch,
+                                                             folder):
+    """Under a folder with an accent too: a Windows user's (GUI-14)."""
     import time
 
     import cv2
@@ -233,7 +236,7 @@ def test_a_snapshot_is_the_frame_itself_in_the_images_folder(app, tmp_path,
     from micropick.gui.widgets.camera_view import CameraView
     from micropick.viz import overlays
     monkeypatch.setenv(paths.ENV_VAR, str(tmp_path))
-    paths.set_overrides(images=str(tmp_path / "pics"))
+    paths.set_overrides(images=str(tmp_path / folder))
     try:
         frame = np.random.default_rng(0).integers(
             0, 255, (240, 320, 3), dtype=np.uint8)
@@ -252,8 +255,9 @@ def test_a_snapshot_is_the_frame_itself_in_the_images_folder(app, tmp_path,
             time.sleep(0.01)
         assert saved, "nothing was saved"
         path = saved[0]
-        assert path.startswith(str(tmp_path / "pics"))
-        assert np.array_equal(cv2.imread(path), frame)
+        assert path.startswith(str(tmp_path / folder))
+        read = cv2.imdecode(np.fromfile(path, np.uint8), cv2.IMREAD_COLOR)
+        assert np.array_equal(read, frame)
         said = toast_of(view)
         assert said.text() == f"Saved: {Path(path).name}"
         assert said.property("tone") == "answer"

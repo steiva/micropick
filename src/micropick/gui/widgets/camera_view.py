@@ -458,8 +458,12 @@ class CameraView(QWidget):
         frame = frame.copy()                  # the grab loop moves on
 
         def write():
-            if not cv2.imwrite(str(path), frame):
-                raise OSError(f"could not write {path}")
+            # Encoded here, written by Python: imwrite fails on a path cv2
+            # cannot encode, a Windows user folder with an accent (GUI-14).
+            ok, data = cv2.imencode(".png", frame)
+            if not ok:
+                raise OSError(f"could not encode the picture for {path}")
+            path.write_bytes(data.tobytes())
             return str(path)
 
         from ..workers import Worker

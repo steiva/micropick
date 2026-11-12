@@ -1171,6 +1171,16 @@ class Session(QObject):
         if not self.mock:
             log.info("%s", robot_clock.sync_clock(api))
 
+    def client(self):
+        """The robot client, made the first time; costs no network. For the
+        connection monitor's look (`look_at_robot`), on the GUI thread."""
+        return self._client()
+
+    @property
+    def connected(self) -> bool:
+        """A robot client is made: something to hold or stop."""
+        return self._api is not None
+
     def _client(self):
         """The robot client, made the first time. Costs no network. GUI
         thread: a look is handed the client (`look_at_robot`)."""

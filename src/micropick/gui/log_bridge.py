@@ -98,6 +98,38 @@ FILE_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 FILE_PREFIX = "micropick_"
 
 
+def day_file(directory, when: float):
+    """The log file of the day `when` (a time.time()) is in."""
+    import time
+    from pathlib import Path
+    return Path(directory) / f"{FILE_PREFIX}{time.strftime('%Y%m%d', time.localtime(when))}.log"
+
+
+class _DayFileHandler(logging.FileHandler):
+    """A file per day, by each record's own day: a program left running
+    overnight writes the next day into that day's file, not the file of the
+    day it started (GUI-15)."""
+
+    def __init__(self, directory):
+        import time
+        self._directory = directory
+        super().__init__(day_file(directory, time.time()), encoding="utf-8")
+
+    def emit(self, record: logging.LogRecord) -> None:
+        import os
+        wanted = os.path.abspath(day_file(self._directory, record.created))
+        if wanted != self.baseFilename:
+            self.acquire()
+            try:
+                if self.stream is not None:
+                    self.stream.close()
+                    self.stream = None
+                self.baseFilename = wanted      # opened by the next write
+            finally:
+                self.release()
+        super().emit(record)
+
+
 def install_file(directory, level: int = logging.INFO):
     """Also write the log to a file per day in `directory`. Returns the
     file, or None if it cannot be opened - the window must start either way.
@@ -110,10 +142,10 @@ def install_file(directory, level: int = logging.INFO):
     import time
     from pathlib import Path
 
-    path = Path(directory) / f"{FILE_PREFIX}{time.strftime('%Y%m%d')}.log"
+    path = day_file(Path(directory), time.time())
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        handler = logging.FileHandler(path, encoding="utf-8")
+        handler = _DayFileHandler(Path(directory))
     except OSError as exc:
         logging.getLogger(__name__).warning("no log file at %s: %s", path, exc)
         return None

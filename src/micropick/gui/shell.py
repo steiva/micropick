@@ -1053,7 +1053,7 @@ class MainWindow(QMainWindow):
     def _hold(self) -> None:
         self._stop_reset.stop()
         self._disarm_stop()
-        if self.session._api is None:
+        if not self.session.connected:
             return
         self.session.request_stop()
         self.session.hold_robot()

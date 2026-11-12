@@ -69,7 +69,7 @@ class RobotMonitor(QObject):
     def look(self) -> None:
         if self._stopped or self.busy:
             return
-        worker = Worker(self.session.look_at_robot, self.session._client(),
+        worker = Worker(self.session.look_at_robot, self.session.client(),
                         what="looking for the robot", background=True)
         worker.finished.connect(self._seen)
         self._look = worker

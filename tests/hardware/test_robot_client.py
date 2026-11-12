@@ -47,7 +47,7 @@ def test_the_session_waits_for_a_slow_command_not_for_a_connect(
     from micropick.gui.session import CONNECT_TIMEOUT_S, Session
     session = Session(Options(mock=False))
     try:
-        api = session._client()
+        api = session.client()
         assert api.timeout == (CONNECT_TIMEOUT_S, None)
     finally:
         session._api = None
