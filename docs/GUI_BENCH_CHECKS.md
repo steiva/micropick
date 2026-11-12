@@ -2610,3 +2610,73 @@ Set up: a 96 well plate and a 24 well plate on the deck, a tip box too.
   From two meters, on the bench's monitor: an optional step reads as different
   from the others, and the ring as a ring, not as a smudge on the number. A dashed
   ring also means a used tip on the Tip step's rack: note if the two are confused.
+
+## GUI audit, 2026-11-11 (#152)
+
+From `docs/agents/gui-audit-2026-11-11.md`, section 5, with what the fixes
+(#153 to #163) should show.
+
+- [ ] **The laptop's decimal sign.**
+  Windows, Settings, Time and language, Region, Regional format; then in the
+  program type `1.5` into Manual pick's Amount and press Enter. The field shows
+  `1.5`. Failure: `15` or `15,00` (GUI-02).
+
+- [ ] **The idle program's processor use.**
+  Start the program, stay on Home for a minute, read the process in the Task
+  Manager: under 2 %. Failure: a steady 100 % of one core (12 % of an 8-core
+  processor) with nothing on screen moving (GUI-01).
+
+- [ ] **The cable pulled during a move.**
+  With the tip at the travel height and nothing under it, start Park and pull
+  the robot's network cable while it moves. Within a minute a red toast "The
+  robot did not answer.", and the buttons come back. Closing then asks "Close
+  anyway?" while a job still waits, and Yes closes. Failure: "Parking…" for
+  good, every button gray, the window refusing to close (GUI-05).
+
+- [ ] **The robot switched off and on with the program open.**
+  Home says "Connecting to the robot…", then "Robot needs to home"; the Tip
+  step is not done; no page still shows a tip on. Failure: a jog pad still
+  enabled on a page while Home says the robot is not connected.
+
+- [ ] **Stop during Shake the dish, with a dish of water.**
+  Press Esc once as the tip starts down: the move in progress ends, nothing
+  more moves, "Stopped: the tip stays where it is.". Failure: the stir goes on
+  to its end (GUI-04). Then, in another shake, press twice: "Robot held.".
+
+- [ ] **Stop during Manual pick's Aspirate.**
+  By clicking, a click on the picture; Esc while the tip travels across: the
+  tip stays at the travel height, nothing aspirated, the toast as above.
+
+- [ ] **The picture at the camera's frame rate.**
+  On Manual pick's Run with the upper camera, jog with a held arrow key for ten
+  seconds: the picture keeps up with the gantry. On the Tip step at zoom 1 the
+  lower camera's disc is as sharp as before (GUI-10, GUI-11).
+
+- [ ] **A sheet's corners over the page.**
+  Open Robot setup's camera sheet: its rounded corners still show the dimmed
+  page under them, no black or stale pixels (GUI-12).
+
+- [ ] **A picture and a clip saved under a Windows user with an accent in the
+  name.** Save picture says "Saved: …" and the file opens. Note whether a
+  picking run's pickup clip is written too (GUI-14).
+
+- [ ] **The window closed while the model loads.**
+  Open Auto pick's Run for the first time after a start and close the window
+  within two seconds: it closes, no Windows error report, no process left in
+  the Task Manager (GUI-07).
+
+- [ ] **↓ in a number field.**
+  On Manual pick's Run with the tip well above the deck and the step at
+  0.1 mm, click In place's amount and press ↓ and PgDn: the amount steps, X Y Z
+  stand. Enter, then ↓: the robot moves (GUI-03).
+
+- [ ] **A camera unplugged during a picking run.**
+  The picture says the camera is being opened again and is the last frame;
+  the run waits or stops with a sentence; plugging it back brings the picture
+  without a restart. Failure: the run goes on deciding from the last frame.
+
+- [ ] **A profile file damaged by hand.**
+  With the program closed, put `[]` into the profile's `positions.json` and
+  start: Home says "The setup could not be read: positions.json.", the tiles
+  and Robot setup are gray, Save report and Start with an empty setup work,
+  and the old profile is a dated zip beside the new one (GUI-13).
