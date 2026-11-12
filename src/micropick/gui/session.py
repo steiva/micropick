@@ -456,6 +456,10 @@ class Session(QObject):
         # The second Stop's hold (`hold_robot`); the lock (`set_locked`) is
         # the other reason the robot wrapper refuses moves.
         self._stop_hold = False
+        # The first Stop, for a short job: a jog panel's job that is not a
+        # run sends no command once it is set (`ot2_api.stopping_on`), and
+        # clears it as it starts.
+        self.stop_event = threading.Event()
         self.lights: bool | None = None          # see lights_changed
         self.cameras: CameraManager | None = None
         self._open: dict[str, object] = {}
@@ -1938,7 +1942,15 @@ class Session(QObject):
         between two poses. The move in progress finishes. From the GUI
         thread; the pages own their runs."""
         log.warning("STOP pressed: stopping after the current move")
+        self.stop_event.set()
         self.stop_requested.emit()
+
+    def stoppable(self):
+        """A block in which, on the calling thread, a command that moves is
+        refused once the first Stop is pressed (`stop_event`): a short job
+        ends after the command in progress, the tip where it is."""
+        from opentrons_api.ot2_api import stopping_on
+        return stopping_on(self.stop_event)
 
     def hold_robot(self) -> None:
         """The second Stop: no command that moves is sent any more; the one

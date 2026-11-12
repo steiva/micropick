@@ -91,6 +91,8 @@ NO_ROBOT_ANSWER = ("The robot did not answer. Check that it is switched on "
 
 # A job cut short by the second Stop (`MainWindow._hold`).
 HELD = "Stopped: Stop was pressed twice."
+# A short job ended by the first Stop, after the command in progress.
+STOPPED = "Stopped: the tip stays where it is."
 
 
 def describe_error(exc: BaseException) -> str:
@@ -109,9 +111,11 @@ def describe_error(exc: BaseException) -> str:
             return NO_ROBOT_ANSWER
     except ImportError:                      # the gui extra without requests
         pass
-    from opentrons_api.ot2_api import RobotHeld
+    from opentrons_api.ot2_api import JobStopped, RobotHeld
     if isinstance(exc, RobotHeld):
         return HELD
+    if isinstance(exc, JobStopped):
+        return STOPPED
     text = str(exc)
     if type(exc).__module__.startswith("micropick") and text:
         return text

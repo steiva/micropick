@@ -17,7 +17,7 @@ import time
 import cv2
 import numpy as np
 
-from opentrons_api.ot2_api import RobotHeld
+from opentrons_api.ot2_api import RobotHeld, refuse_if_stopped
 
 __all__ = ["FakeVideoCapture", "MockRobot", "open_mock_camera"]
 
@@ -402,6 +402,7 @@ def _held(method):
     def refuse_when_held(self, *args, **kwargs):
         if self.hold.is_set():
             raise RobotHeld()
+        refuse_if_stopped()
         return method(self, *args, **kwargs)
     return refuse_when_held
 

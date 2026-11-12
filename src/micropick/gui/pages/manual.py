@@ -262,7 +262,6 @@ Keys toggle); what the mouse does is the picture's mouse row.
 from __future__ import annotations
 
 import logging
-import threading
 import time
 from collections.abc import Callable
 from typing import NamedTuple
@@ -583,11 +582,9 @@ class ManualPage(QWidget):
         self._bottom: SlotBottom | None = None
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
-        # Set by a stop: ends a job's wait before the tip goes up.
         self._last_z: float | None = None   # see _new_z
         self.sizes_popover: _SizesPopover | None = None     # made when opened
         self._working = ""                  # the worker's job, for the picture
-        self._stop = threading.Event()
         self._forget_targets(redraw=False)
 
         self.opener = CameraOpener(session, self)
@@ -637,7 +634,6 @@ class ManualPage(QWidget):
         layout.setSpacing(SPACING)
         layout.addLayout(body, 1)
 
-        session.stop_requested.connect(self._stop.set)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
         session.in_tip_changed.connect(self._in_tip_changed)
@@ -1448,7 +1444,6 @@ class ManualPage(QWidget):
         how = self.aspirate_retract.how()
 
         def job(log):
-            self._stop.clear()
             go(log)
             log(f"aspirate {volume:g} µl at {rate:g} µl/s")
             session.aspirate(volume, rate)
@@ -1468,7 +1463,10 @@ class ManualPage(QWidget):
 
     def _leave(self, how: moves.Retract, log) -> bool:
         """The tip up as the card says, at a job's end; True if it went."""
-        return moves.retract(self.session.motion, how, self._stop, log=log)
+        # The session's first Stop: it ends the wait with the tip down, and
+        # the job's next command otherwise (`Session.stoppable`).
+        return moves.retract(self.session.motion, how,
+                             self.session.stop_event, log=log)
 
     def _hand_z_from_tip(self) -> None:
         """From tip: By clicking's Z, the tip's now. Not a read: see
@@ -1521,7 +1519,6 @@ class ManualPage(QWidget):
         log.info("aspirate by hand: %s", what)
 
         def job(log_):
-            self._stop.clear()
             if aim is not None:
                 motion.camera_to(aim, log=log_)
             camera = np.array(xyz(robot), dtype=float)
@@ -1618,7 +1615,6 @@ class ManualPage(QWidget):
                  else f"at {target[1].name}")
 
         def job(log):
-            self._stop.clear()
             go(log)
             amount = session.dispense(rate, volume)
             if not self._leave(how, log) and how.rises:

@@ -516,9 +516,16 @@ class JogPanel(QWidget):
         if self.controller is None or self._busy():
             return False
         controller = self.controller
+        stoppable = self.session.stoppable
 
         def job(log):
-            result = fn(log)
+            if run:
+                # A run stops at its own safe points.
+                result = fn(log)
+            else:
+                # The first Stop ends it after the command in progress.
+                with stoppable():
+                    result = fn(log)
             if isinstance(result, Reached):
                 return result.said, controller.status(result.pose)
             return result, controller.status()
@@ -586,6 +593,9 @@ class JogPanel(QWidget):
         moves the robot - claims the robot's lease first, or runs under a
         lent one; refused, nothing starts and False is returned. A read
         (`robot_work=False`) takes none."""
+        if robot_work and not run:
+            # A Stop pressed before this job is not this job's.
+            self.session.stop_event.clear()
         if robot_work and self._lent is None:
             what = worker.what or ("moving the robot" if moves
                                    else "talking to the robot")

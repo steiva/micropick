@@ -748,7 +748,11 @@ disc**, the Picking page's **Camera to dish center**.
 
 - **Stop** is Esc, window-wide, and the top bar's STOP while a run has
   the robot; no page binds Esc itself (two shortcuts on one key cancel out). First press:
-  `Session.stop_requested`, every page stops at its next safe point. Second
+  `Session.stop_requested`, every page stops at its next safe point, and a
+  short job (a `JogPanel.run_job` that is not a run) ends after the command
+  in progress, the tip where it is (`Session.stop_event`,
+  `Session.stoppable`: the wrapper refuses that thread's next command,
+  `JobStopped`, "Stopped: the tip stays where it is."). Second
   press within 10 s while work runs: `Session.hold_robot` - the API
   wrapper refuses every command that moves (`RobotHeld`), the one in
   progress finishes, the robot session, labware and tip are kept; it is
