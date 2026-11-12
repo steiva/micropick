@@ -700,3 +700,17 @@ def test_a_click_is_not_sent_once_the_camera_changed(app):
     _interval_out(app, view)
     assert seen == []
     view.close()
+
+
+def test_a_large_reduction_reads_as_one_area_resize(app):
+    """Two steps, the first a whole ratio (GUI-11): the same size, and the
+    picture as one INTER_AREA gives it."""
+    import cv2
+    from micropick.gui.widgets.camera_view import _reduce
+    frame = np.zeros((3000, 4000, 3), np.uint8)
+    cv2.circle(frame, (2000, 1500), 400, (255, 255, 255), -1)
+    frame = cv2.GaussianBlur(frame, (5, 5), 0)
+    once = cv2.resize(frame, (1173, 880), interpolation=cv2.INTER_AREA)
+    twice = _reduce(frame, 1173, 880)
+    assert twice.shape == once.shape and twice.flags["C_CONTIGUOUS"]
+    assert np.abs(once.astype(int) - twice.astype(int)).mean() < 0.5

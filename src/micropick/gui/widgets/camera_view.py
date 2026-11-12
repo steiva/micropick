@@ -232,6 +232,9 @@ class CameraView(QWidget):
         super().__init__(parent)
         self.setMinimumSize(320, 240)
         self.setAutoFillBackground(False)
+        # paintEvent fills the whole rect: nothing behind it is painted for
+        # every frame - under a sheet, the whole Robot setup page (GUI-12).
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
 
         self._camera = None
         self._live = True
@@ -992,8 +995,7 @@ class CameraView(QWidget):
         if pw > RESIZE_ABOVE * max(1, target.width()):
             # INTER_AREA is the correct filter for a large reduction, and it
             # also lands the array contiguous, which to_qimage requires.
-            shown = cv2.resize(part, (target.width(), target.height()),
-                               interpolation=cv2.INTER_AREA)
+            shown = _reduce(part, target.width(), target.height())
         elif self._zoom != ZOOM_MIN and pw < target.width():
             # Enlarging: linear, so pixels read as pixels rather than as
             # blur, and it lands contiguous like the reduction does.
@@ -1372,3 +1374,24 @@ class CameraView(QWidget):
                              Qt.AlignmentFlag.AlignLeft
                              | Qt.AlignmentFlag.AlignVCenter, line)
         return box.bottom() + 1
+
+
+def _reduce(part: np.ndarray, width: int, height: int) -> np.ndarray:
+    """`part` reduced to `width` x `height` by area, in two steps when the
+    ratio is 2 or more (GUI-11).
+
+    OpenCV's area filter is fast for a whole ratio and slow for any other,
+    the one a camera frame and a widget almost always have: 9 to 15 ms of
+    the GUI thread a frame. So first by the largest whole ratio k that
+    leaves the rest at 1 or more - the same averaging, on its fast path,
+    the part cut to a multiple of k, which drops less than k sensor pixels
+    at the right and bottom edges - then by area for the rest, on a frame
+    k*k times smaller.
+    """
+    ph, pw = part.shape[:2]
+    k = int(min(pw / max(1, width), ph / max(1, height)))
+    if k >= 2:
+        cut = part[:ph - ph % k, :pw - pw % k]
+        part = cv2.resize(cut, (cut.shape[1] // k, cut.shape[0] // k),
+                          interpolation=cv2.INTER_AREA)
+    return cv2.resize(part, (width, height), interpolation=cv2.INTER_AREA)
