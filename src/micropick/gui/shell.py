@@ -42,7 +42,7 @@ import os
 import time
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEventLoop, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QMainWindow, QMessageBox,
                                QStackedWidget, QVBoxLayout, QWidget)
@@ -65,7 +65,7 @@ from .widgets.step_bar import StepBar
 from .widgets.toast import Toast
 from .widgets.top_bar import TopBar
 from .report import save_report_asking
-from .workers import Worker, any_running
+from .workers import Worker, any_running, wait_all
 
 if TYPE_CHECKING:                       # app imports this module; annotations
     from .app import Options            # are strings, so the cycle is only a
@@ -148,6 +148,8 @@ STOP_AGAIN_S = 10
 RELEASE_POLL_MS = 200
 # How long closing the window waits for the robot to be free.
 CLOSE_WAIT_S = 10
+# How long closing waits for the work that holds no lease (GUI-07).
+CLOSE_WORKERS_MS = 5000
 # What an exception nothing caught says, and how long it then keeps quiet.
 UNCAUGHT_TEXT = "Something went wrong. It is in the log."
 UNCAUGHT_QUIET_S = 5.0
@@ -418,7 +420,9 @@ class MainWindow(QMainWindow):
             _log.info("closing: waiting for %s", lease.holder)
             deadline = time.monotonic() + CLOSE_WAIT_S
             while lease.busy and time.monotonic() < deadline:
-                QApplication.processEvents()
+                # No click or key meanwhile: Start would begin as it closes.
+                QApplication.processEvents(
+                    QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
                 time.sleep(0.02)
         if lease.busy:
             # A job that never ends is a robot that does not answer (GUI-05):
@@ -445,8 +449,14 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, leave_process)
             return
         self.monitor.stop()
+        left = wait_all(CLOSE_WORKERS_MS)
+        for worker in left:
+            _log.warning("closing: %s still running", worker.what or "a job")
         self.session.shutdown()
         super().closeEvent(event)
+        if left:
+            # A worker that did not end would abort the interpreter's exit.
+            QTimer.singleShot(0, leave_process)
 
     def say(self, text: str) -> None:
         """The answer to an action, as a toast."""

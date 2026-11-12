@@ -255,3 +255,47 @@ def test_close_is_offered_when_a_job_never_ends(app, window, monkeypatch):
         assert left == [1]
     finally:
         lease.release()
+
+
+def test_close_waits_for_a_worker_without_a_lease(app, window, monkeypatch):
+    """A model loading or a picture being written holds no lease: closing
+    waits for it, so no QThread is left running at exit (GUI-07)."""
+    import threading
+    from PySide6.QtGui import QCloseEvent
+    from micropick.gui import shell
+    from micropick.gui.workers import Worker, any_running
+    left = []
+    monkeypatch.setattr(shell, "leave_process", lambda: left.append(1))
+    done = threading.Event()
+    threading.Timer(0.3, done.set).start()
+    worker = Worker(lambda: done.wait(5), what="loading the model")
+    worker.start()
+    event = QCloseEvent()
+    window.closeEvent(event)
+    assert event.isAccepted()
+    assert not any_running()
+    app.processEvents()
+    assert left == []
+
+
+def test_a_worker_that_never_ends_leaves_the_process(app, window,
+                                                     monkeypatch):
+    import threading
+    from PySide6.QtGui import QCloseEvent
+    from micropick.gui import shell
+    from micropick.gui.workers import Worker
+    monkeypatch.setattr(shell, "CLOSE_WORKERS_MS", 200)
+    left = []
+    monkeypatch.setattr(shell, "leave_process", lambda: left.append(1))
+    never = threading.Event()
+    worker = Worker(lambda: never.wait(10), what="saving a picture")
+    worker.start()
+    try:
+        window.closeEvent(QCloseEvent())
+        end = time.monotonic() + 2
+        while not left and time.monotonic() < end:
+            app.processEvents()
+        assert left == [1]
+    finally:
+        never.set()
+        worker.wait(5000)

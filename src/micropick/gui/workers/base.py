@@ -84,6 +84,23 @@ def any_running() -> bool:
                if not worker.background)
 
 
+def wait_all(timeout_ms: int) -> list["Worker"]:
+    """Ask every running worker to stop and wait for them, all within
+    `timeout_ms`; returns those still running. For closing: a model loading,
+    a detection, a camera opening or a picture being written hold no lease,
+    and a QThread still running as the interpreter ends aborts the process
+    (GUI-07)."""
+    import time
+    workers = [w for w in list(_RUNNING) if w.running]
+    for worker in workers:
+        worker.request_cancel()
+    deadline = time.monotonic() + timeout_ms / 1000
+    for worker in workers:
+        left_ms = max(0, int((deadline - time.monotonic()) * 1000))
+        worker.wait(left_ms)
+    return [w for w in workers if w.running]
+
+
 NO_ROBOT_ANSWER = ("The robot did not answer. Check that it is switched on "
                    "and has finished starting up (the light on its front "
                    "stops blinking), and that the cable is plugged in.")
