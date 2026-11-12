@@ -171,3 +171,56 @@ def test_a_key_rebound_in_settings_moves_the_robot_at_once(app, window):
     _press(app, window, Qt.Key.Key_Right)             # no longer bound
     assert _free(app, window)
     assert float(xyz(session.robot)[0]) == pytest.approx(x)
+
+
+def _field_has_keys(app, window, field):
+    window.activateWindow()
+    assert QTest.qWaitForWindowActive(window)
+    field.setFocus()
+    assert _wait(app, lambda: QApplication.focusWidget() is field
+                 or field.isAncestorOf(QApplication.focusWidget()))
+
+
+FIELD_KEYS = [Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp,
+              Qt.Key.Key_PageDown]
+
+
+def _the_name_editor(app, window):
+    from PySide6.QtWidgets import QLineEdit
+    from micropick.gui.widgets.point_list import PointRow
+    page = window.manual_page
+    window.session.add_memo_point(100.0, 100.0, None)
+    assert _wait(app, lambda: page.points_list.findChildren(PointRow))
+    row = page.points_list.findChildren(PointRow)[0]
+    row.edit("name")
+    assert _wait(app, lambda: row.findChildren(QLineEdit))
+    return row.findChildren(QLineEdit)[0]
+
+
+@pytest.mark.parametrize("key", FIELD_KEYS)
+@pytest.mark.parametrize("which", ["number", "name"])
+def test_no_jog_key_moves_the_robot_while_a_field_has_the_keyboard(
+        app, window, which, key):
+    window.open_task_step("manual", "work")
+    page = window.manual_page
+    assert _free(app, window)
+    field = (page.in_place_amount if which == "number"
+             else _the_name_editor(app, window))
+    _field_has_keys(app, window, field)
+    assert page.jog.typing
+    moves = window.session.robot.moves
+    QTest.keyClick(QApplication.focusWidget(), key)
+    app.processEvents()
+    assert _free(app, window)
+    assert window.session.robot.moves == moves
+
+
+def test_up_steps_the_number_field_on_a_page_with_a_pad(app, window):
+    window.open_task_step("manual", "work")
+    field = window.manual_page.in_place_amount
+    assert _free(app, window)
+    _field_has_keys(app, window, field)
+    value = field.value()
+    QTest.keyClick(QApplication.focusWidget(), Qt.Key.Key_Up)
+    app.processEvents()
+    assert field.value() > value

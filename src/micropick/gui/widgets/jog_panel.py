@@ -703,6 +703,10 @@ class JogPanel(QWidget):
         if typing != self._typing:
             self._typing = typing
             self._fill_pad_keys()
+            # The keys off while the field has them: a line edit or a spin
+            # box does not claim Up, Down, PgUp or PgDn, so the shortcut
+            # would take them and move the robot (GUI-03).
+            self._set_enabled(self._worker is None)
 
     def eventFilter(self, watched, event) -> bool:
         """Enter in a field, a click on the picture or the page: the
@@ -922,9 +926,11 @@ class JogPanel(QWidget):
         # Only while the pad is on screen: a robot connect enables every
         # panel, and a window-wide shortcut on a hidden page would compete
         # with the one on the page that is showing. The pad's Show and Hide
-        # keep this true afterwards (`eventFilter`).
+        # keep this true afterwards (`eventFilter`). Off too while a field
+        # has the keyboard: the keys are the field's then (`_focus_moved`).
         for shortcut in self._shortcuts:
             shortcut.setEnabled(usable and self.pad.isVisible()
+                                and not self._typing
                                 and not (self._xy_only
                                          and shortcut in self._z_shortcuts))
         self._enabled = usable
