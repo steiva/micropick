@@ -10,6 +10,9 @@ the third for fixes.
 
 ## Unreleased
 
+- The shake position's tip box step has Change: a tip box put on by
+  mistake comes off the deck there, and its type and slot are chosen again
+  without going to the Deck step.
 - The shake position follows the tip: saved with one tip, it is shifted by
   how differently the next tip sits on the pipette, as its tip calibration
   measures it, so a new tip comes down into the holder's hole and not

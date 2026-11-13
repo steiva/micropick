@@ -68,8 +68,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import (QFrame, QLabel, QPushButton, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton,
+                               QVBoxLayout, QWidget)
 
 from ...hardware.protocols import xyz
 from ..auto_camera import CameraOpener
@@ -240,6 +240,7 @@ class PositionSheet(SheetWindow):
             "hole": self._hole_step}
         # The shake position's tip box step, while built.
         self.tipbox_type = self.tipbox_slots = self.tipbox_line = None
+        self.tipbox_change = None
         # The Tip step's blocks, made the first time the shake position
         # is built and kept (`_tip_blocks`).
         self.tip_on: TipOnBlock | None = None
@@ -336,6 +337,7 @@ class PositionSheet(SheetWindow):
         self.slots = self.save_button = self.saved_note = None
         self._slot_guessed = False
         self.tipbox_type = self.tipbox_slots = self.tipbox_line = None
+        self.tipbox_change = None
         for number, step in enumerate(steps, start=1):
             built = self.builders[step.kind](step, number)
             self.panel.insertWidget(self._cards_at + number - 1,
@@ -408,7 +410,15 @@ class PositionSheet(SheetWindow):
         click that loads it there."""
         card = StepCard(self.column, number, step.title)
         line = self.tipbox_line = wrapped()
-        card.add(line)
+        # A tip box put on by mistake comes off here, the choice back.
+        change = self.tipbox_change = quiet_button("Change", self.column)
+        change.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        change.clicked.connect(self._unload_tipboxes)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(line, 1)
+        row.addWidget(change, 0, Qt.AlignmentFlag.AlignTop)
+        card.add_layout(row)
         hint = wrapped(step.text)
         card.add(hint)
         kinds = self.tipbox_type = select(self.column)
@@ -427,6 +437,8 @@ class PositionSheet(SheetWindow):
             on = self.session.tip_box_slots()
             line.setText(_slots_text(on) if on else "")
             line.setVisible(bool(on))
+            change.setVisible(bool(on))
+            change.setEnabled(free)
             for widget in (hint, kinds, slots):
                 widget.setVisible(not on)
             kinds.setEnabled(reached and free)
@@ -460,6 +472,30 @@ class PositionSheet(SheetWindow):
         # Refused, run_job says why in a toast.
         self.jog.run_job(job, moves=False, then=loaded,
                          what=f"loading {name} into slot {slot}")
+
+    def _unload_tipboxes(self) -> None:
+        """Every tip box off the deck, as the Deck step's ×: the step is
+        then to do again, its type and slot chosen anew."""
+        slots = self.session.tip_box_slots()
+        if not slots or self.session.robot is None:
+            return
+        session = self.session
+
+        def job(_log):
+            for slot in slots:
+                session.unload_labware(slot)
+            return ("The tip box is off the deck." if len(slots) == 1
+                    else "The tip boxes are off the deck.")
+
+        def unloaded(said):
+            if self.tipbox_slots is not None:
+                self.tipbox_slots.set_marked(None)
+            self._refresh()
+            return said
+
+        self.jog.run_job(job, moves=False, then=unloaded,
+                         what="taking the tip box off slots "
+                         + ", ".join(map(str, slots)))
 
     def _tip_blocks(self) -> tuple[TipOnBlock, TipCalibrationBlock]:
         """The Tip step's two blocks, made once, on this sheet's picture

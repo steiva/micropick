@@ -255,7 +255,8 @@ the nearest slot on the mini deck. The
 shake position carries its prerequisites as steps: a tip box (a type
 from the drop-down, Settings' tip calibration type first; a mini deck
 click loads it there through `Session.load_labware`, as the Deck step
-does), put a tip on and calibrate the tip (the Tip step's
+does; once on, Change takes every tip box off for the choice
+again), put a tip on and calibrate the tip (the Tip step's
 `TipOnBlock` and `TipCalibrationBlock`, made once and kept, the run's
 holder `SHAKE_HOLDER` in `shell.RUNS`, its way back `shell.RUN_ITEMS`),
 the source dish in its holder, the holder's slot, a click on the hole

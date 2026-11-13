@@ -561,6 +561,25 @@ def test_a_tip_box_on_the_deck_is_done_at_once(app, window):
     assert sheet.tipbox_slots.isHidden()
 
 
+def test_change_takes_a_wrong_tip_box_off_to_choose_again(app, window):
+    from micropick.config.labware import resolve_definition
+    window.session.load_labware(resolve_definition(RACK), 7)
+    _open(window, "shake_position")
+    sheet = window.position_sheet
+    assert not sheet.tipbox_change.isHidden()
+    sheet.tipbox_change.click()
+    _wait(app, lambda: _racks(window) == {})
+    _wait(app, lambda: sheet.cards["tipbox"].state == "todo")
+    assert sheet.tipbox_change.isHidden()
+    assert not sheet.tipbox_slots.isHidden()
+    _wait(app, lambda: _robot_free(window) and sheet.tipbox_slots.isEnabled())
+    other = "eppendorf_96_tiprack_10ul_eptips"
+    sheet.tipbox_type.setCurrentIndex(sheet.tipbox_type.findData(other))
+    sheet.tipbox_slots.button(10).click()
+    _wait(app, lambda: _racks(window) == {"10": other})
+    _wait(app, lambda: sheet.cards["tipbox"].state == "ok")
+
+
 W, H = 2592, 1944
 
 
