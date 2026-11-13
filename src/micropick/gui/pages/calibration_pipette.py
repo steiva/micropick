@@ -1052,7 +1052,7 @@ class TipCalibrationBlock(QObject):
                 "dx": x - crosshair[0], "dy": y - crosshair[1],
                 "method": "auto+manual",
                 "measured_at": datetime.now(timezone.utc)})
-            profile.calibration.pipette_offset = offset
+            profile.set_pipette_offset(offset)
             profile.save_calibration(backup=False)
             log.info("pipette offset fine-tuned: dx %+.3f dy %+.3f mm",
                      offset.dx, offset.dy)

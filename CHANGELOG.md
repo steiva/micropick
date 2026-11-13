@@ -8,6 +8,14 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
+## Unreleased
+
+- The shake position follows the tip: saved with one tip, it is shifted by
+  how differently the next tip sits on the pipette, as its tip calibration
+  measures it, so a new tip comes down into the holder's hole and not
+  beside it. A shake position saved before this version is compensated from
+  the next tip calibration on; save it again to be sure.
+
 ## 1.1.0 - 2026-11-12
 
 - micropick has its own icon: the window, the taskbar, the program file, the

@@ -76,6 +76,7 @@ from ..auto_camera import CameraOpener
 from ..camera_moves import (move_over_slot, move_tip_to_pixel, move_to_pixel,
                             pose_slot)
 from ..labware_kinds import catalogue, deck_tiles
+from ..readiness import SHAKE_POSITION
 from ..session import Session
 from ..tasks import SETUP_POSITIONS, SETUP_TITLES
 from ..theme import SPACING
@@ -558,6 +559,9 @@ class PositionSheet(SheetWindow):
         where = self._stored()
         if where is None:
             return
+        if self.name == SHAKE_POSITION:
+            # The hole, for the tip on now (`Profile.shake_pose`).
+            where = self.session.profile.shake_pose()
         motion = self.session.motion
 
         def job(log_):

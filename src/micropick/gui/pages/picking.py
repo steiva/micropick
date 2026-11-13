@@ -589,8 +589,9 @@ class PickingPage(QWidget):
         return None if profile is None else profile.positions.get(DISH_POSITION)
 
     def _stored_shake(self):
+        """The shake position for the tip on now (`Profile.shake_pose`)."""
         profile = self.session.profile
-        return None if profile is None else profile.positions.get(SHAKE_POSITION)
+        return None if profile is None else profile.shake_pose()
 
     def _can_center(self) -> bool:
         """Camera to dish center now: between runs while the robot is free,

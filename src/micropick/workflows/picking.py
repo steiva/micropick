@@ -802,7 +802,9 @@ class PickingSession:
     def _stir_dish(self, between) -> None:
         """Into the dish at `shake`, the strokes, and what a stirred dish
         makes stale. AUTO_SHAKE's and a shake on request alike."""
-        shake = self.profile.where("shake")
+        shake = self.profile.shake_pose()
+        if shake is None:
+            shake = self.profile.where("shake")      # says it is missing
         between()
         self._raise_tip()
         between()

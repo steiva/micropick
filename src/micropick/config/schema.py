@@ -358,6 +358,13 @@ class Calibration(BaseModel):
     tip_target: TipTarget = Field(default_factory=lambda: TipTarget())
     floater_baseline: FloaterBaseline | None = None
     homography: CameraHomography | None = None
+    # The tip offset the shake position was taught with. The robot reports
+    # the nozzle's X and Y, so a stored tip pose holds only for the tip that
+    # was on when it was saved; another tip sits differently on the nozzle,
+    # and its end would come down beside the hole. `Profile.shake_pose`
+    # shifts the pose by how far the tip measured now differs from this one.
+    # None: no shake position, or one saved before this was recorded.
+    shake_tip: PipetteOffset | None = None
     # When the dish bottom (PickingConfig.dish_bottom) was last set by
     # touching the dish with the tip, on the Picking page. The value is a
     # picking setting; when it was measured is a calibration's fact.

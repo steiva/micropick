@@ -261,7 +261,10 @@ holder `SHAKE_HOLDER` in `shell.RUNS`, its way back `shell.RUN_ITEMS`),
 the source dish in its holder, the holder's slot, a click on the hole
 (the tip over it at the travel height through the pixel map and the
 measured offset, `camera_moves.move_tip_to_pixel`), lower it with the pad
-(It is in the hole), Save position; the tip stays on. Those first three
+(It is in the hole), Save position; the tip stays on. The pose is the nozzle's, so it
+is saved with that tip's calibration (`Calibration.shake_tip`) and every move there
+takes `Profile.shake_pose`, shifted by the tip calibrated now (the same tip
+measured again shifts nothing). Those first three
 are done by fact (`Built.done`): with a calibrated tip on the sheet opens
 on the fourth. While a Robot setup sheet is open the page
 under it is disabled, so its keys are the sheet's. Reset setup asks (Keep setup primary),

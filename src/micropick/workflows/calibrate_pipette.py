@@ -716,7 +716,7 @@ def _save(profile, offset: PipetteOffset, homography, log) -> None:
     """The offset, and the homography measured with it, into the profile."""
     if profile is None:
         return
-    profile.calibration.pipette_offset = offset
+    profile.set_pipette_offset(offset)
     wrote = "offset"
     if homography is not None:
         profile.calibration.homography = homography

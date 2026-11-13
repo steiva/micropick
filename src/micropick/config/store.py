@@ -46,6 +46,8 @@ PICKING_FILE = "picking.json"
 CAMERAS_FILE = "cameras.json"
 POSITIONS_FILE = "positions.json"
 DECK_FILE = "deck.json"
+# The tip pose the dish is stirred at (`Profile.shake_pose`).
+SHAKE = "shake"
 HISTORY_DIR = "history"
 KEEP_HISTORY = 10
 
@@ -317,6 +319,10 @@ class Profile:
         notebook happened to find them."""
         self.positions[name] = tuple(float(v) for v in position)
         self.save_positions()
+        if name == SHAKE:
+            # The tip on now is the one the hole was found with.
+            self.calibration.shake_tip = self.calibration.pipette_offset
+            self.save_calibration(backup=False)
         return self.positions[name]
 
     def forget(self, name: str) -> None:
@@ -324,6 +330,9 @@ class Profile:
         it to be gone and it is gone."""
         if self.positions.pop(name, None) is not None:
             self.save_positions()
+        if name == SHAKE and self.calibration.shake_tip is not None:
+            self.calibration.shake_tip = None
+            self.save_calibration(backup=False)
 
     def rename(self, old: str, new: str) -> tuple[float, float, float]:
         """Rename a pose, keeping its coordinates. Refuses to overwrite:
@@ -339,6 +348,43 @@ class Profile:
         self.positions[new] = self.positions.pop(old)
         self.save_positions()
         return self.positions[new]
+
+    def shake_pose(self) -> tuple[float, float, float] | None:
+        """The shake position for the tip on now, or None without one.
+
+        The pose is the robot's, the nozzle's X and Y, saved with one tip
+        lowered into the holder's hole. A tip sits on the nozzle a little
+        askew, each its own way, and the tip calibration measures it: the
+        offset from the camera to the tip's end. The camera is fixed to the
+        head, so the difference between the offset measured now and the one
+        the pose was saved with (`Calibration.shake_tip`) is how far this
+        tip's end lies from that one's, and the pose is shifted by it. Not
+        compensated without either offset (a pose from before they were
+        recorded, until the next tip calibration: `set_pipette_offset`)."""
+        pose = self.positions.get(SHAKE)
+        if pose is None:
+            return None
+        then = self.calibration.shake_tip
+        now = self.calibration.pipette_offset
+        if then is None or now is None:
+            return pose
+        x, y, z = pose
+        return (x + now.dx - then.dx, y + now.dy - then.dy, z)
+
+    def set_pipette_offset(self, offset) -> None:
+        """A tip calibration's result, saved, the shake position keeping
+        the tip it was taught with (`shake_pose`). A shake position saved
+        before that was recorded takes the offset being replaced, the tip
+        measured before this one, as the best guess there is. A new
+        measurement of that same tip (a Redo, an adjustment by hand) replaces
+        it there too: the tip did not move, only the measure of it did."""
+        cal = self.calibration
+        if SHAKE in self.positions:
+            if cal.shake_tip is None:
+                cal.shake_tip = cal.pipette_offset
+            if _same_tip(cal.shake_tip, offset):
+                cal.shake_tip = offset
+        cal.pipette_offset = offset
 
     def where(self, name: str) -> tuple[float, float, float]:
         try:
@@ -373,6 +419,8 @@ class Profile:
         self.calibration.pixel_map = None
         for name in positions:
             self.positions.pop(name, None)
+        if SHAKE not in self.positions:
+            self.calibration.shake_tip = None
         self.deck = DeckConfig(modules=[],
                                module_types=list(self.deck.module_types),
                                recent_labware=list(self.deck.recent_labware),
@@ -398,6 +446,14 @@ class Profile:
         pm = self.calibration.pixel_map
         state = "uncalibrated" if pm is None else f"degree {pm.degree}, {pm.n_poses} poses"
         return f"<Profile {self.name!r} ({state}) at {self.path}>"
+
+
+def _same_tip(a, b) -> bool:
+    """Whether two tip calibrations measured one tip: the same pickUpTip in
+    the same robot session. Unknown is not the same."""
+    return (a is not None and b is not None and a.tip_pickup is not None
+            and a.tip_pickup == b.tip_pickup
+            and a.robot_session == b.robot_session)
 
 
 # ---------------------------------------------------------------------------

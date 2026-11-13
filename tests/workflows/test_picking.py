@@ -632,3 +632,22 @@ def test_every_state_says_a_sentence():
         assert said[RobotState.COMPLETED] == "The plan is filled."
     finally:
         camera.close()
+
+
+def test_the_dish_is_stirred_where_the_tip_on_now_meets_the_hole():
+    """The shake position was saved with another tip, one that sat 0.5 mm
+    further in X on the nozzle: the run goes there shifted by the
+    difference of the two tip calibrations (`Profile.shake_pose`)."""
+    profile = make_profile(relaxed_config())
+    profile.calibration.shake_tip = PipetteOffset(dx=OFFSET[0] - 0.5,
+                                                  dy=OFFSET[1])
+    dish = Dish()                                   # empty: it shakes
+    routine = Routine(Destination.coordinates([(200.0, 200.0)]),
+                      {(200.0, 200.0): 1})
+    session, robot, camera = make_session(dish, routine, profile=profile)
+    try:
+        drive(session, until=lambda ev: ev.kind == "shaken")
+        assert (336.0, 223.0, 66.5) in robot.log
+        assert not any(p[:2] == (335.5, 223.0) for p in robot.log)
+    finally:
+        camera.close()
