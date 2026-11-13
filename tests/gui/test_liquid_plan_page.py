@@ -24,6 +24,7 @@ from micropick.core.liquid_plan import (BlowOutStep,  # noqa: E402
 from micropick.gui import session as session_module              # noqa: E402
 from micropick.gui.app import Options                            # noqa: E402
 from micropick.gui.pages import liquid_plan as page_module       # noqa: E402
+from micropick.gui.widgets import points_card as points_card_module  # noqa: E402
 from micropick.gui.shell import MainWindow                       # noqa: E402
 from micropick.gui.theme import COLORS                           # noqa: E402
 from micropick.gui.widgets.step_list import MIME                 # noqa: E402
@@ -1081,8 +1082,18 @@ def _take_from(page, index):
     page.kinds["source"].buttons[index].click()
 
 
-def _point_button(page, name):
-    return page.point_buttons[name]
+def _use(page, name):
+    """Choose the point in the Points card and Use point."""
+    page.points.points_list.choose(name)
+    page.points.use_button.click()
+
+
+def _points_listed(page):
+    return page.points.points_list.names
+
+
+def _star(page, name):
+    return page.points.points_list.row(name).star
 
 
 def _went_to(window, point):
@@ -1106,7 +1117,7 @@ def test_a_step_takes_from_a_saved_point_and_runs(app, window, page):
     _take_from(page, 1)
     assert page.on_camera.isVisibleTo(page)
     assert page.card.rows[0].value.text() == "choose"
-    _point_button(page, "Reservoir").use.click()
+    _use(page, "Reservoir")
     assert page.card.rows[0].value.text() == "Point · Reservoir"
     assert page.plan.steps[0].source.point == "Reservoir"
     page.next_button.click()
@@ -1122,19 +1133,27 @@ def test_setup_positions_are_never_points(app, window, page):
     window.session.remember("tip_calib", POINT)
     window.session.remember("Reservoir", POINT)
     _take_from(page, 1)
-    assert set(page.point_buttons) == {"Reservoir"}
+    assert _points_listed(page) == ["Reservoir"]
 
 
 def test_a_right_click_adds_a_memo_point_a_step_can_use(app, window, page,
                                                         monkeypatch):
-    monkeypatch.setattr(page_module.moves, "tip_at_pixel",
-                        lambda *a, **k: (50.0, 60.0))
+    """The Points card's right click (`PointsCard.mark`, Manual's), the new
+    point chosen in the list."""
+    marked = []
+    monkeypatch.setattr(points_card_module.PointsCard, "mark",
+                        lambda card, u, v: marked.append((u, v))
+                        or card.add_memo((50.0, 60.0), None))
     _take_from(page, 1)
     page.view.right_clicked.emit(10.0, 20.0)
+    assert marked == [(10.0, 20.0)]
     assert [p.name for p in window.session.memo_points] == ["M1"]
     assert window.session.memo_points[0].z is None
-    assert set(page.point_buttons) == {"M1"}
-    assert page.point_buttons["M1"].star.text() == "☆"
+    assert _points_listed(page) == ["M1"]
+    assert _star(page, "M1").text() == "☆"
+    assert page.points.chosen_point() == "M1"
+    page.points.use_button.click()
+    assert page.plan.steps[0].source.spot.name == "M1"
 
 
 def test_a_memo_point_is_stored_as_a_spot_and_survives_a_restart(
@@ -1143,7 +1162,7 @@ def test_a_memo_point_is_stored_as_a_spot_and_survives_a_restart(
     session.add_memo_point(120.0, 90.0, 60.0)
     _set_trash(app, page)
     _take_from(page, 1)
-    _point_button(page, "M1").use.click()
+    _use(page, "M1")
     source = page.plan.steps[0].source
     assert (source.kind, source.spot.name) == ("spot", "M1")
     assert (source.spot.x, source.spot.y, source.spot.z) == POINT
@@ -1167,7 +1186,7 @@ def test_a_memo_point_with_no_z_takes_the_travel_height(app, window, page):
     session = window.session
     session.add_memo_point(120.0, 90.0, None)
     _take_from(page, 1)
-    _point_button(page, "M1").use.click()
+    _use(page, "M1")
     assert page.plan.steps[0].source.spot.z == session.point_z(
         session.memo_point("M1"))
     assert page.plan.steps[0].source.spot.z == session.motion.envelope.z[1]
@@ -1185,12 +1204,13 @@ def test_the_star_saves_a_point_with_its_name_as_the_default(app, window, page,
 
     monkeypatch.setattr(page_module.QInputDialog, "getText", get_text)
     _take_from(page, 1)
-    _point_button(page, "M1").use.click()
-    _point_button(page, "M1").star.click()
+    _use(page, "M1")
+    _star(page, "M1").click()
     assert asked == ["M1"]
     assert session.saved_points()["Reservoir"] == POINT
     assert session.memo_points == []
-    assert page.point_buttons["Reservoir"].star.text() == "★"
+    assert _star(page, "Reservoir").text() == "★"
+    assert not _star(page, "Reservoir").isEnabled()     # never taken off here
     # The step it was in uses the kept point from now on.
     assert page.plan.steps[0].source.kind == "point"
     assert page.plan.steps[0].source.point == "Reservoir"
@@ -1203,10 +1223,9 @@ def test_the_star_is_refused_for_a_name_in_use(app, window, page, monkeypatch):
     said = []
     monkeypatch.setattr(page_module.QInputDialog, "getText",
                         lambda *a, **k: ("Reservoir", True))
-    monkeypatch.setattr(page_module, "show_toast",
-                        lambda _w, text, **k: said.append(text))
     _take_from(page, 1)
-    _point_button(page, "M1").star.click()
+    page.points.points_list.said.connect(said.append)
+    _star(page, "M1").click()
     assert said == ['A point is already called "Reservoir".']
     assert session.memo_point("M1") is not None
     assert session.saved_points()["Reservoir"] == POINT
@@ -1243,7 +1262,7 @@ def test_no_camera_is_said_and_is_not_a_dead_end(app, window, page,
     session.page_requested.connect(asked.append)
     _take_from(page, 1)
     assert page.no_camera.isVisibleTo(page)
-    _point_button(page, "Reservoir").use.click()   # a point needs no picture
+    _use(page, "Reservoir")   # a point needs no picture
     assert page.plan.steps[0].source.point == "Reservoir"
     page.no_camera_button.click()
     assert asked == ["upper_camera"]
@@ -1253,9 +1272,6 @@ def test_the_keys_are_on_only_while_the_pad_is_on_screen(app, window, page):
     _take_from(page, 2)
     assert _until(app, lambda: page.jog.pose is not None
                   and not page.jog.busy)
-    assert not page.jog.pad.isVisibleTo(page.view)
-    assert not _keys_on(page)
-    page.controls_button.click()
     assert page.jog.pad.isVisible()
     assert _until(app, lambda: _keys_on(page))
     page.kinds["source"].buttons[0].click()        # A well: the camera goes
@@ -1268,19 +1284,16 @@ def test_the_keys_are_on_only_while_the_pad_is_on_screen(app, window, page):
     assert not _keys_on(page)
 
 
-def test_the_step_is_in_the_plate_with_the_pad_hidden(app, page):
-    """#109: the pad is behind Controls here, the step never."""
+def test_the_pad_is_open_over_the_picture_and_its_step_in_the_plate(
+        app, page):
+    """The pad floats over the picture, open, as on every page."""
     _take_from(page, 2)
     assert _until(app, lambda: page.jog.pose is not None
                   and not page.jog.busy)
-    assert not page.jog.pad.isVisibleTo(page.view)
+    assert page.jog.pad.isVisibleTo(page.view)
+    assert not page.jog.pad.folded
     assert page.view.step_line == ("STEP · 1 mm", COLORS["accent-hover"])
-    page.controls_button.click()
-    app.processEvents()
     page.jog.set_step(5)
-    assert page.view.step_line == ("STEP · 5 mm", COLORS["warn"])
-    page.controls_button.click()
-    app.processEvents()
     assert page.view.step_line == ("STEP · 5 mm", COLORS["warn"])
 
 
@@ -1372,13 +1385,13 @@ def test_a_saved_point_is_a_trash_and_a_memo_point_is_named_first(
     page.trash_row.click()
     page.kinds["trash"].buttons[1].click()         # A point
     assert page.question_body.currentWidget() is page.on_camera
-    page.point_buttons["Waste"].use.click()
+    _use(page, "Waste")
     assert page.plan.trash == Location(kind="point", point="Waste")
     assert not page.trash_level.isVisibleTo(page)
 
     monkeypatch.setattr(page_module.QInputDialog, "getText",
                         lambda *a, **k: ("Bucket", True))
-    page.point_buttons["M1"].use.click()
+    _use(page, "M1")
     assert page.plan.trash == Location(kind="point", point="Bucket")
     assert "Bucket" in session.saved_points()
     assert session.memo_point("M1") is None
@@ -1392,7 +1405,7 @@ def test_a_memo_point_not_named_is_not_the_trash(app, window, page,
     page.kinds["trash"].buttons[1].click()
     monkeypatch.setattr(page_module.QInputDialog, "getText",
                         lambda *a, **k: ("", False))
-    page.point_buttons["M1"].use.click()
+    _use(page, "M1")
     assert page.plan.trash is None
     assert window.session.memo_point("M1") is not None
 
@@ -1840,3 +1853,92 @@ def test_the_wait_help_line_is_not_cut_off_on_a_small_window(app, themed,
                if "Pause and Stop" in label.text()]
     assert line.width() == page.wait_form.width()
     assert line.height() >= line.heightForWidth(line.width())
+
+
+
+# -- moving to a point and its Z -------------------------------------------------
+
+def test_a_left_click_moves_the_camera_never_the_tip(app, page, monkeypatch):
+    """As on Manual pick's Run (#59): through the pixel map, the camera."""
+    moved = []
+    monkeypatch.setattr(page_module.moves, "move_to_pixel",
+                        lambda _s, _j, u, v, **k: moved.append((u, v)))
+    _take_from(page, 1)
+    assert _until(app, lambda: page.jog.pose is not None
+                  and not page.jog.busy)
+    page.view.clicked.emit(10.0, 20.0)
+    assert moved == [(10.0, 20.0)]
+    assert page.view.mouse_help[0] in (page_module.CLICK_HELP,
+                                       "Use the arrows to move the camera.")
+
+
+def test_look_at_moves_the_camera_over_a_slot(app, page, monkeypatch):
+    moved = []
+    monkeypatch.setattr(page_module.moves, "move_over_slot",
+                        lambda _s, _j, slot, **k: moved.append(slot))
+    _take_from(page, 1)
+    assert _until(app, lambda: page.jog.pose is not None
+                  and not page.jog.busy)
+    assert page.look_at.isVisibleTo(page.view)
+    page.look_at.slot_chosen.emit(5)
+    assert moved == [5]
+
+
+def test_use_point_puts_it_in_the_step_and_marks_it(app, window, page):
+    window.session.remember("Reservoir", POINT)
+    window.session.add_memo_point(10.0, 20.0, 30.0)
+    _take_from(page, 1)
+    listed = page.points.points_list
+    listed.choose("Reservoir")
+    assert page.plan.steps[0].source.point is None     # choosing is not using
+    assert page.points.use_button.text() == "Use point"
+    page.points.use_button.click()
+    assert page.plan.steps[0].source.point == "Reservoir"
+    color = page.plan.steps[0].color
+    assert listed.row("Reservoir")._used == color
+    assert listed.row("M1")._used == ""
+
+
+def test_a_step_follows_its_memo_point_with_no_plan_undo(app, window, page,
+                                                       monkeypatch):
+    said = []
+    monkeypatch.setattr(page_module, "show_toast",
+                        lambda _w, text, **k: said.append(text))
+    session = window.session
+    session.add_memo_point(10.0, 20.0, 30.0)
+    _take_from(page, 1)
+    _use(page, "M1")
+    undos = len(page._undo)
+    session.change_point("M1", z=12.5)
+    spot = page.plan.steps[0].source.spot
+    assert (spot.name, spot.x, spot.y, spot.z) == ("M1", 10.0, 20.0, 12.5)
+    assert said[-1] == "Step 1 follows M1: X 10.00 · Y 20.00 · Z 12.50."
+    assert len(page._undo) == undos
+    assert session.liquid_plan.steps[0].source.spot.z == 12.5
+    session.undo_points()                    # the points' Undo: back again
+    assert page.plan.steps[0].source.spot.z == 30.0
+
+
+def test_a_new_point_under_a_used_name_moves_no_step(app, window, page):
+    session = window.session
+    session.add_memo_point(10.0, 20.0, 30.0)
+    _take_from(page, 1)
+    _use(page, "M1")
+    session.delete_memo_point("M1")
+    session.add_memo_point(99.0, 99.0, 5.0)                 # M1 again
+    spot = page.plan.steps[0].source.spot
+    assert (spot.x, spot.y, spot.z) == (10.0, 20.0, 30.0)
+
+
+def test_the_points_are_beside_the_picture_on_a_wide_window(app, window,
+                                                             page):
+    _take_from(page, 1)
+    window.resize(1920, 1080)
+    assert _until(app, lambda: page._wide is True)
+    assert page.points.x() > page.view.x()
+    assert page.points.y() == pytest.approx(page.view.y(), abs=2)
+    assert page.points.width() == page_module.POINTS_WIDE_PX
+    window.resize(1400, 900)
+    assert _until(app, lambda: page._wide is False)
+    assert page.points.y() > page.view.y()
+    assert page.points.is_open()

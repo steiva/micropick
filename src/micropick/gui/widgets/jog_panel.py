@@ -322,7 +322,6 @@ class JogPanel(QWidget):
         self._help = self._key_help()
         self._typing = False                # a field on the page has the keys
         self._pad_view = None               # the picture the pad floats over
-        self._step_kept = False
         self.pose: tuple[float, float, float] | None = None
 
         # Not a scroll area itself. The page that hosts it may put it in one
@@ -851,21 +850,15 @@ class JogPanel(QWidget):
 
     def _show_step(self) -> None:
         """The step in the picture's plate while the pad is on screen,
-        folded or not, or always (`keep_step_shown`)."""
+        folded or not."""
         if self._pad_view is None:
             return
-        if self.pad.isVisible() or self._step_kept:
+        if self.pad.isVisible():
             mm = self.pad.step
             self._pad_view.set_step_line(self.pad, step_chip_text(mm),
                                          step_ink(mm))
         else:
             self._pad_view.set_step_line(self.pad)
-
-    def keep_step_shown(self) -> None:
-        """The step stays in the plate with the pad hidden: Liquid's Plan,
-        whose pad is behind Controls."""
-        self._step_kept = True
-        self._show_step()
 
     def _on_profile_changed(self, _profile) -> None:
         if self.controller is not None:

@@ -1244,8 +1244,8 @@ def test_a_point_marked_below_a_platform_says_so_and_its_z_stays_red(
     x, y = slot_center(8)
     session.robot.move_to_coordinates((x, y, 90.0), verbose=False)
     read_pose(page.jog)
-    page._set_new_z(50.0)
-    page._mark(W / 2, H / 2)
+    page.points_card.set_last_z(50.0)
+    page.points_card.mark(W / 2, H / 2)
     point = session.memo_points[-1]
     assert _said(page) == (f"{point.name} is not reachable: {BELOW}.",
                            "refusal")
@@ -1259,7 +1259,7 @@ def test_a_memo_point_that_can_be_reached_is_an_answer(app, page, session):
     _open_upper(app, page, session)
     robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
-    page._mark(W / 2, H / 2)
+    page.points_card.mark(W / 2, H / 2)
     text, tone = _said(page)
     assert text == "M1 added."
     assert tone == "answer"
@@ -1290,7 +1290,7 @@ def test_no_tip_calibration_is_refused_in_a_sentence(app, page, session):
     _open_upper(app, page, session)
     robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
-    page._mark(W / 2, H / 2)
+    page.points_card.mark(W / 2, H / 2)
     assert _said(page) == ("Calibrate the tip first.", "refusal")
 
 
@@ -1300,7 +1300,7 @@ def test_a_right_click_outside_the_map_is_refused_in_a_sentence(
     _open_upper(app, page, session)
     robot_free(page.session, page.jog)
     _over_the_deck(app, page, session)
-    page._mark(-5000.0, -5000.0)
+    page.points_card.mark(-5000.0, -5000.0)
     assert _said(page) == ("That spot is outside the calibrated area.",
                            "refusal")
 

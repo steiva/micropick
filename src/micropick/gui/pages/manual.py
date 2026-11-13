@@ -293,19 +293,19 @@ from ..session import Session
 from ..theme import COLORS, SPACING
 from ..theme.factory import (card, heading, labeled, laid_out_at_once,
                              muted_label, number_field, quiet_button, reserve,
-                             secondary_button, select, set_primary,
-                             tool_button)
+                             secondary_button, set_primary)
 from ..theme.icons import icon
 from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented, Switch, closed_by
 from ..widgets.feed_row import FeedRow
-from ..widgets.fold_card import ActionCard, FoldCard, FoldGroup
+from ..widgets.fold_card import ActionCard, FoldGroup
 from ..position_marks import PositionMarks
 from ..widgets.jog_pad import KeycapButton
 from ..widgets.jog_panel import JogPanel
 from ..widgets.mini_deck import MiniDeckDropdown
 from ..widgets.point_chips import PointChips
-from ..widgets.point_list import PointList, TRAVEL_TEXT, Z_TOP_MM
+from ..widgets.point_list import TRAVEL_TEXT, Z_TOP_MM
+from ..widgets.points_card import PointsCard
 from ..widgets.tip_gauge import TipGauge
 from ..widgets.work_columns import COLUMN_GAP, WorkColumns
 from ..widgets.size_histogram import SizeHistogram, size_bins
@@ -370,7 +370,6 @@ CLICK_MOVES = ("Camera", "Tip")
 
 TIP_EMPTY = "The tip is empty. Aspirate first."
 RETRACT_TIP = "Raise the tip to the travel height"
-POINTS_TIP = "Double-click X, Y, Z or a saved point's name to change it."
 # The Points card's list, and three rows of chips under "At a point".
 POINTS_LIST_PX = 280
 NO_LIMIT_PX = 16777215      # Qt's QWIDGETSIZE_MAX, which PySide does not export
@@ -385,9 +384,6 @@ TIP_TO_PADDING_PX = 24
 # The fields' widths: room for the range's longest number.
 NUMBER_PX = 72
 Z_PX = 80
-# What Z a new point gets.
-TRAVEL_Z, TIP_Z, LAST_Z = NEW_Z = ("Travel height", "Z of the tip now",
-                                   "Last Z given")
 
 
 def _memo_z_text(z) -> str:
@@ -583,7 +579,6 @@ class ManualPage(QWidget):
         self._bottom: SlotBottom | None = None
         # Where the tip aspirated, (x, y), oldest first: the past picks.
         self._picks: list[tuple[float, float]] = []
-        self._last_z: float | None = None   # see _new_z
         self.sizes_popover: _SizesPopover | None = None     # made when opened
         self._working = ""                  # the worker's job, for the picture
         self._forget_targets(redraw=False)
@@ -595,7 +590,8 @@ class ManualPage(QWidget):
         self.view.double_click_fits = False
         self.view.marks_default = True      # the chip alone says (§10.14)
         self.view.clicked.connect(self._clicked)
-        self.view.right_clicked.connect(self._mark)
+        self.view.right_clicked.connect(
+            lambda u, v: self.points_card.mark(u, v))
         self.gauge = TipGauge(parent=self)
         self.gauge.set_position(None)       # the view's X, Y, Z is under it
         self.view.add_top_left_widget(self.gauge)
@@ -893,67 +889,23 @@ class ManualPage(QWidget):
         chips.chosen.connect(self._marks_choose)
         return chips
 
-    def _point_list(self, height: int, *, actions: bool = False) -> PointList:
-        """As tall as `height` whatever it lists: more rows scroll."""
-        points = PointList(self.session, self, actions=actions)
-        points.setFixedHeight(height)
-        points.setToolTip(POINTS_TIP)
-        points.chosen.connect(self._marks_choose)
-        points.z_typed.connect(lambda z: self._memo_z_typed(points, z))
-        points.said.connect(self.jog.refuse)
-        points.told.connect(self.jog.tell)
-        return points
-
     def _points_card(self) -> QWidget:
-        """The one Points card: the list, the moves unfolding under the
-        chosen point, and what makes a point; see "Memo points"."""
-        self.points_card = FoldCard("Points", parent=self)
-        self.undo_button = tool_button("Undo", "undo",
-                                       self.session.undo_points, self)
-        self.redo_button = tool_button("Redo", "redo",
-                                       self.session.redo_points, self)
-        self.points_card.header_row.addWidget(self.undo_button)
-        self.points_card.header_row.addWidget(self.redo_button)
-        layout = self.points_card.body.layout()
-
-        self.points_list = self._point_list(POINTS_LIST_PX, actions=True)
-        self.points_list.chosen.connect(
-            lambda _name: self._refresh_memo_buttons())
-        layout.addWidget(self.points_list)
-        self.camera_to_button = self.points_list.camera_to
-        self.camera_to_button.setToolTip(
-            "Move the camera over the chosen point.")
-        self.camera_to_button.clicked.connect(self._camera_to_point)
-        self.tip_to_button = self.points_list.tip_to
-        self.tip_to_button.clicked.connect(self._tip_to_point)
-        self.memo_z = self.points_list.z_from_tip
-        self.memo_z.setToolTip("Set the chosen point's Z to the tip's Z now.")
-        self.memo_z.clicked.connect(self._memo_z_from_tip)
-
-        divider = QFrame(self)
-        divider.setFixedHeight(1)
-        divider.setStyleSheet(f"background: {COLORS['line']};")
-        layout.addWidget(divider)
-        self.place_memo_button = secondary_button("Point at crosshair", self)
-        self.place_memo_button.clicked.connect(self._place_memo)
-        self.tip_crosshair_button = secondary_button("Tip to crosshair", self)
-        self.tip_crosshair_button.clicked.connect(self._tip_to_crosshair)
-        row = QHBoxLayout()
-        for button in (self.place_memo_button, self.tip_crosshair_button):
-            row.addWidget(button)
-        layout.addLayout(row)
-        self.new_z = select(self)
-        self.new_z.addItems(NEW_Z)
-        self.new_z.setCurrentText(LAST_Z)
-        self.new_z.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        row = QHBoxLayout()
-        row.addWidget(muted_label("New points get Z", self), 1)
-        row.addWidget(self.new_z)
-        layout.addLayout(row)
-
+        """The one Points card (`widgets.points_card`): the list, the moves
+        unfolding under the chosen point, and what makes a point; see "Memo
+        points"."""
+        card = PointsCard(self.session, self.jog, self.marks, self,
+                          list_px=POINTS_LIST_PX,
+                          point_target=self._point_target,
+                          problems=self._map_problems)
+        self.points_card = card
+        self.points_list = card.points_list
+        self.points_list.chosen.connect(lambda _name: self._refresh())
+        for name in ("undo_button", "redo_button", "camera_to_button",
+                     "tip_to_button", "memo_z", "place_memo_button",
+                     "tip_crosshair_button", "new_z"):
+            setattr(self, name, getattr(card, name))
         self.session.memo_points_changed.connect(self._refresh)
-        self.jog.pose_changed.connect(lambda _p: self._refresh_memo_buttons())
-        return self.points_card
+        return card
 
     def _columns_changed(self, two: bool) -> None:
         """A column of its own is the list's to fill; under the work it is
@@ -1890,95 +1842,6 @@ class ManualPage(QWidget):
 
     # -- memo points -------------------------------------------------------------
 
-    def _mark(self, u: float, v: float) -> None:
-        """A right click on the picture: a new point where the tip would go
-        down at this pixel. Moves nothing."""
-        problems = self._map_problems()
-        if problems:
-            self.jog.refuse(problems[0])
-            return
-        profile = self.session.profile
-        offset = profile.calibration.pipette_offset
-        if offset is None:
-            self.jog.refuse(NO_TIP_CALIBRATION)
-            return
-        pose = self.jog.pose
-        if pose is None:
-            self.jog.refuse("Robot busy.")
-            return
-        pmap = PixelMap.from_config(profile.pixel_map)
-        if not pmap.covers(u, v):
-            self.jog.refuse(OUTSIDE_THE_MAP)
-            return
-        xy = moves.tip_target(pmap, u, v, np.asarray(pose[:2]), offset)
-        self._add_memo(xy, self._new_z())
-
-    def _place_memo(self) -> None:
-        """Point at crosshair: a point under the picture's center,
-        where By clicking aims, at the travel height. Moves nothing."""
-        problem = self._crosshair_problem()
-        if problem:
-            self.jog.refuse(problem)
-            return
-        self._add_memo(self._crosshair_spot(self.jog.pose[:2]), None)
-
-    def _tip_to_crosshair(self) -> None:
-        """Tip to crosshair: the tip at the spot under the picture's center,
-        where By clicking aims, at the travel height. It stays there: the
-        camera's way back is By clicking's, not this."""
-        problem = self._tip_problem("move") or self._crosshair_problem()
-        if problem:
-            self.jog.refuse(problem)
-            return
-        motion = self.session.motion
-        spot = self._crosshair_spot(self.jog.pose[:2])
-        travel = motion.travel_z
-        why = motion.refused((spot[0], spot[1], motion.envelope.z[1]
-                              if travel is None else travel))
-        if why:
-            self.jog.refuse(f"Not reachable: {why}.")
-            return
-
-        def job(log_):
-            # No Z: as high as a move may go, which is the travel height.
-            return Reached(motion.to_spot(spot, float("inf"), log=log_),
-                           f"Tip at ({spot[0]:.2f}, {spot[1]:.2f}).")
-
-        if not self.jog.run_job(job):
-            self.jog.refuse(self.session.robot_lease.refusal)
-
-    def _add_memo(self, xy, z) -> None:
-        """A new memo point, chosen. It opens nothing: the operator's
-        folding stays."""
-        point = self.session.add_memo_point(xy[0], xy[1], z)
-        self.points_list.choose(point.name)
-        self.jog.tell(f"{point.name} added.")
-        self._say_memo_problem(point.name)
-
-    def _new_z(self) -> float | None:
-        """A new point's Z, as New points get Z says; see "Memo points"."""
-        chosen = self.new_z.currentText()
-        if chosen == LAST_Z:
-            return self._last_z
-        pose = self.jog.pose
-        if chosen == TIP_Z and pose is not None:
-            return round(float(pose[2]), 2)
-        return None
-
-    def _set_new_z(self, z) -> None:
-        """The last Z given; see "Memo points"."""
-        self._last_z = None if z is None else float(z)
-
-    def _memo_z_typed(self, points: PointList, z) -> None:
-        self._set_new_z(z)
-        self._say_memo_problem(points.chosen_name)
-
-    def _say_memo_problem(self, name) -> None:
-        point = self.session.point(name or "")
-        problem = self.session.memo_problem(point) if point else ""
-        if problem:
-            self.jog.refuse(f"{point.name} is not reachable: {problem}.")
-
     def _marks_choose(self, name) -> None:
         self.marks.choose_memo(name)
         self._refresh()
@@ -1988,97 +1851,8 @@ class ManualPage(QWidget):
         return self.points_list.chosen_name
 
     def _refresh_memo_buttons(self) -> None:
-        if not hasattr(self, "new_z"):
-            return
-        self.undo_button.setEnabled(self.session.point_history.can_undo)
-        self.redo_button.setEnabled(self.session.point_history.can_redo)
-        chosen = self.chosen_point() is not None
-        free = (self.session.robot is not None
-                and not self.session.robot_lease.busy)
-        tip = self.session.tip.attached is True
-        self.camera_to_button.setEnabled(chosen and free)
-        self.tip_to_button.setEnabled(chosen and free and tip)
-        self.tip_to_button.setToolTip(
-            "Move the tip to the chosen point." if tip
-            else "Put a tip on first.")
-        self.memo_z.setEnabled(chosen and self.jog.pose is not None)
-        pixel_map = self.session.has_pixel_map()
-        self.place_memo_button.setEnabled(pixel_map)
-        self.place_memo_button.setToolTip(
-            "Mark the spot under the crosshair." if pixel_map
-            else "Calibrate the camera first.")
-        lease = self.session.robot_lease
-        self.tip_crosshair_button.setEnabled(pixel_map and free and tip)
-        self.tip_crosshair_button.setToolTip(
-            "Calibrate the camera first." if not pixel_map
-            else "Put a tip on first." if not tip
-            else f"Robot busy: {lease.holder}." if lease.busy
-            else "Move the tip to the spot under the crosshair.")
-
-    def _memo_z_from_tip(self) -> None:
-        name, pose = self.chosen_point(), self.jog.pose
-        if name is None or pose is None:
-            return
-        z = round(float(pose[2]), 2)
-        self.session.change_point(name, z=z)
-        self._set_new_z(z)
-        self.jog.tell(f"{name}: Z {z:g}.")
-        self._say_memo_problem(name)
-
-    def _camera_to_point(self) -> None:
-        """Camera to: the camera over the chosen point at the travel
-        height; its Z is not used."""
-        point = self.session.point(self.chosen_point() or "")
-        pose = self.jog.pose                # not a read: see _clicked
-        if point is None or pose is None or self.jog.busy:
-            return
-        offset = self.session.profile.calibration.pipette_offset
-        if offset is None:
-            self.jog.refuse(NO_TIP_CALIBRATION)
-            return
-        xy = np.array([point.x - offset.dx, point.y - offset.dy])
-        what = f"camera over {point.name} ({xy[0]:.2f}, {xy[1]:.2f})"
-        why = self.session.motion.refused((xy[0], xy[1], pose[2]))
-        if why:
-            self.jog.refuse(f"Not reachable: {why}.")
-            return
-        log.info("%s", what)
-
-        def job(log_):
-            return Reached(self.session.motion.camera_to(xy, log=log_),
-                           f"Camera over {point.name}.")
-
-        if not self.jog.run_job(job):
-            self.jog.refuse(self.session.robot_lease.refusal)
-
-    def _tip_to_point(self) -> None:
-        """Tip to: the tip to the chosen point, at its Z."""
-        point = self.session.point(self.chosen_point() or "")
-        if point is None:
-            return
-        if self.session.tip.attached is not True:
-            self.jog.refuse("Put a tip on first.")
-            return
-        self._drive_to_memo(point)
-
-    def _drive_to_memo(self, point) -> None:
-        robot = self.session.robot
-        if robot is None or self._busy() or self.jog.busy:
-            return
-        try:
-            xy, z = self._point_target(point)
-        except ValueError as exc:
-            self.jog.refuse(str(exc))
-            return
-        log.info("tip to %s (%.2f, %.2f) at z %s", point.name, point.x,
-                 point.y, _memo_z_text(point.z))
-
-        def job(log_):
-            return Reached(self.session.motion.to_spot(xy, z, log=log_),
-                           f"Tip at {point.name}.")
-
-        if not self.jog.run_job(job):
-            self.jog.refuse(self.session.robot_lease.refusal)
+        if hasattr(self, "points_card"):
+            self.points_card.refresh_buttons()
 
     def _target_at(self, u: float, v: float):
         """(index, deck xy) of the detected cuboid the click is on, or None.

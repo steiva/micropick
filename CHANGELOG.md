@@ -10,6 +10,12 @@ the third for fixes.
 
 ## Unreleased
 
+- Liquid handling's Plan, A point: a click on the picture moves the camera,
+  Look at goes to a slot, and Controls are open over the picture. The points
+  are Manual pick's Points card, beside the picture: a point's X, Y and Z are
+  changed there, with Camera to, Tip to and Z from tip, and **Use point**
+  puts the chosen one in the step. A step follows its point when the point
+  is changed.
 - The shake position's tip box step has Change: a tip box put on by
   mistake comes off the deck there, and its type and slot are chosen again
   without going to the Deck step.

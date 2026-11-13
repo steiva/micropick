@@ -2189,12 +2189,18 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   keeps the focus while the card's row and the sentence follow.
 
 - [ ] **A point and By hand.**
-  Take from A point: the live upper camera, the points under it. A right click
-  adds a memo point; used in a step it reads as its name and is still there
-  after the program restarts, opened from a template. The star asks a name and
-  keeps it as a saved point; Robot setup's positions are never listed. By hand:
-  bring the tip to a spot with Controls, Use this spot ("Spot saved for this
-  step."); the run goes back there without waiting for anyone.
+  Put into A point: the live upper camera at the left, Controls open over it,
+  the Points card beside it (under it on a narrow window). A click on the
+  picture moves the camera there; Look at slot 5 brings the camera over it. A
+  right click adds a memo point, chosen in the list; choosing a row changes
+  nothing in the step, Use point (blue) does, and the row is marked in the
+  step's color. Tip to on the row, lower with Controls, Z from tip: the step's
+  card follows ("Step 1 follows M1: … Z …"), no trip to Manual pick. Used in a
+  step it reads as its name and is still there after the program restarts,
+  opened from a template. The star asks a name and keeps it as a saved point,
+  never taken off here; Robot setup's positions are never listed. By hand
+  (Take from): bring the tip to a spot with Controls, Use this spot ("Spot
+  saved for this step."); the run goes back there without waiting for anyone.
 
 - [ ] **Try once.**
   An open step, Try once: "Step 1: trying on the first well.", the robot does

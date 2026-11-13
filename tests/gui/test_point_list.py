@@ -21,8 +21,7 @@ from micropick.gui.pages.manual import ManualPage           # noqa: E402
 from micropick.gui.session import Session                   # noqa: E402
 from micropick.gui.widgets.camera_view import CameraView    # noqa: E402
 from micropick.gui.widgets.overlays import ConfirmDialog    # noqa: E402
-from micropick.gui.widgets.point_list import (BAD, PointButton,  # noqa: E402
-                                              PointList)
+from micropick.gui.widgets.point_list import BAD, PointList  # noqa: E402
 
 INTERVAL_MS = 40
 
@@ -190,12 +189,13 @@ def test_taking_a_star_off_is_one_undo_step(points, session, monkeypatch):
     assert points.row("trough").star.text() == "★"
 
 
-def test_liquids_star_is_never_taken_off(app):
-    from PySide6.QtWidgets import QWidget
-    holder = QWidget()
-    assert not PointButton("trough", True, holder).star.isEnabled()
-    assert PointButton("M1", False, holder).star.isEnabled()
-    holder.deleteLater()
+def test_liquids_star_is_never_taken_off(app, session):
+    session.remember("trough", (1.0, 2.0, 3.0))
+    session.add_memo_point(4.0, 5.0, None)
+    points = PointList(session, star_removable=False)
+    assert not points.row("trough").star.isEnabled()
+    assert points.row("M1").star.isEnabled()
+    points.deleteLater()
 
 
 # -- choosing a row ------------------------------------------------------------
@@ -469,19 +469,19 @@ def test_new_points_get_z_starts_on_the_last_z_given(page):
     assert [page.new_z.itemText(i) for i in range(page.new_z.count())] == [
         "Travel height", "Z of the tip now", "Last Z given"]
     assert page.new_z.currentText() == "Last Z given"
-    assert page._new_z() is None                # none given yet: travel
+    assert page.points_card.new_point_z() is None                # none given yet: travel
 
 
 def test_new_points_get_the_z_chosen(page):
-    page._set_new_z(44.5)
-    assert page._new_z() == 44.5
+    page.points_card.set_last_z(44.5)
+    assert page.points_card.new_point_z() == 44.5
     page.new_z.setCurrentText("Travel height")
-    assert page._new_z() is None
+    assert page.points_card.new_point_z() is None
     page.new_z.setCurrentText("Z of the tip now")
     page.jog.pose = (1.0, 2.0, 61.234)
-    assert page._new_z() == 61.23
+    assert page.points_card.new_point_z() == 61.23
     page.jog.pose = None
-    assert page._new_z() is None
+    assert page.points_card.new_point_z() is None
 
 
 def test_the_select_leaves_the_arrows_to_the_robot(page):

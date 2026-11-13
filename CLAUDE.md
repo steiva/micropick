@@ -309,8 +309,8 @@ While the pad is on screen, folded or not, its step is the status plate's
 last line, "STEP · 1 mm" in `step_ink` (#99, #109: accent-hover, warn and red
 as `step_color`), from `JogPad.step_changed`; a `jog_pad.StepChip` where there
 is no picture (Well center). The step changes on the pad and by its keys.
-Dish bottom's cards carry their own steps, so none there; on Liquid's Plan it
-stays with the pad hidden behind Controls (`JogPanel.keep_step_shown`).
+Dish bottom's cards carry their own steps, so none there. On Liquid's Plan
+the pad floats over the picture open, as everywhere.
 Undo step is on the pad. A jog panel has no Move or Positions section
 (removed, #27; do not bring them back): saved points are drawn on the
 picture's "points" layer (`show_position_on`), Robot setup's positions
@@ -404,8 +404,8 @@ position's, `Session.point_name_refusal`; never gray: a point at the travel
 height is stored at that height then, `Motion.travel_z` or else the jog
 envelope's top); ★ asks "Remove <name> from saved points?", Keep primary, and
 makes it a memo point with its name and Z (`Session.unkeep_position`, one
-Undo step). `StarButton` and `PointButton` are Liquid's too, and only Manual
-takes a star off. A double click edits X, Y, Z and a saved point's name
+Undo step). The card is `widgets.points_card.PointsCard`, Liquid's Plan's too,
+and only Manual takes a star off (`star_removable`). A double click edits X, Y, Z and a saved point's name
 (`rename_saved_point`), in a box over the cell: Enter or leaving keeps it,
 Esc puts it back and is no Stop. A click chooses a row (again: lets it go),
 and the chosen row unfolds under the point **Camera to** (`Motion.camera_to`,
@@ -612,10 +612,19 @@ real proportions (the SBS footprint, `PlateGrid`), the wells of other steps
 dim. A step's place is wells, a saved point, a **spot** (coordinates kept in
 the plan: By hand's Use this spot, or a memo point used there, one with no Z
 at the travel height, so a plan never depends on what is in memory) or the
-trash. The points are `Session.saved_points` and the memo points; a right
-click adds a memo point and the star keeps it as a saved point, as on Manual
-pick's Run. A jog panel still saves nothing (no Space, #62;
-`jog_panel.UNBOUND`).
+trash. The points are `Session.saved_points` and the memo points, in Manual
+pick's Points card (`PointsCard`, open: beside the picture from `WIDE_PX`, the
+picture at the left and 4:3, else under it): Camera to, Tip to, Z from tip, a
+Z typed, Point at crosshair, Tip to crosshair, New points get Z, a right click
+adding a memo point and the star keeping it, as on Manual pick's Run. A row
+chosen changes no step: its blue **Use point** puts it in the step, and the
+point the step uses is marked in the step's color. A spot follows its memo
+point while it is still where the step took it (moved, its Z changed: the
+step's spot too, said in a toast, no plan undo; a new point under that name
+moves nothing). A single left click on the picture moves the camera (#59),
+Look at over a slot (`camera_moves.move_over_slot`), and the pad is open over
+the picture. Put into has no By hand: a point is the way. A jog panel still
+saves nothing (no Space, #62; `jog_panel.UNBOUND`).
 
 The plan is handed to the session as it is edited
 (`Session.set_liquid_plan`): nothing confirms it. The step is done while

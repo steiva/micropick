@@ -32,17 +32,24 @@ move, the trash, a step added or deleted are one undo each (Ctrl+Z, and Undo
 over the plate), and so is a field typed in digit by digit. The widgets never
 reorder or change a plan themselves.
 
-A point and By hand are on the live upper camera, with the X Y Z over it. Under
-the picture are the points as buttons: the saved ones (`Session.saved_points`,
-so never Robot setup's) and the memo points. A right click adds a memo point.
-Using a memo point stores a **spot** in the step, its coordinates kept in the
-plan, so it does not depend on what is in memory; one with no Z is stored at
-the travel height, as saving it does. The star keeps a point under a name: it
-becomes a saved point, for the steps using it too. Use this spot stores where
-the tip is. Controls opens the jog pad, the face of a panel that is never shown
+A point and By hand are on the live upper camera, with the X Y Z over it, the
+picture at its left. A left click moves the camera there through the pixel map
+(as on Manual pick's Run, #59), Look at over a slot. The jog pad floats over the
+picture's bottom-right, open, the face of a panel that is never shown
 (`JogPanel.run_job` is the page's way to the robot); its keys go with it (#57),
-so they are on only while it is on screen. With no picture the points and the
-pad still work, and a banner goes to the camera's sheet.
+so they are on only while it is on screen. A point is chosen from the Points
+card (`widgets.points_card`, Manual pick's): beside the picture from
+`WIDE_PX`, else under it, open. Its chosen row's Use point puts it in the step;
+the point the step uses is marked in the step's color. A right click adds a
+memo point. Using a memo point stores a **spot** in the step, its coordinates
+kept in the plan, so it does not depend on what is in memory; one with no Z is
+stored at the travel height, as saving it does. A spot follows its memo point
+while it is that point: a point moved, its Z changed, moves the steps using it,
+said in a toast, with no undo of the plan's (the points' Undo is). The star
+keeps a point under a name: it becomes a saved point, for the steps using it
+too; here it is never taken off. Use this spot (By hand) stores where the tip
+is. With no picture the points and the pad still work, and a banner goes to the
+camera's sheet.
 
 A place that is not wells has no height of its own in the step: a point is used
 at its Z, so the offset a new step has for a well is taken off it.
@@ -80,12 +87,12 @@ import threading
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QCheckBox, QFileDialog, QFrame, QGridLayout,
+from PySide6.QtWidgets import (QBoxLayout, QCheckBox, QFileDialog, QGridLayout,
                                QHBoxLayout, QInputDialog, QLabel, QLineEdit,
                                QListWidget, QListWidgetItem, QMenu, QPushButton,
-                               QScrollArea, QStackedWidget, QVBoxLayout,
+                               QStackedWidget, QVBoxLayout,
                                QWidget, QWidgetAction)
 
 from ... import paths
@@ -100,14 +107,13 @@ from ...workflows import liquid
 from ...workflows.liquid_plan import PlanState, run_plan
 from .. import camera_moves as moves
 from ..auto_camera import CameraOpener
-from ..labware_kinds import facts, kind, well_depth
+from ..labware_kinds import deck_tiles, facts, kind, well_depth
 from ..position_marks import PositionMarks
 from ..session import MEASURED, NOT_MEASURED, Session, SessionError
 from ..theme import COLORS, SPACING
-from ..theme.factory import (caption, compact, danger_text_button,
+from ..theme.factory import (caption, danger_text_button,
                              double_spin_box, heading, muted_label, primary_button,
-                             reserve, secondary_button, set_primary,
-                             tool_button)
+                             reserve, secondary_button, tool_button)
 from ..widgets.banner import Banner
 from ..widgets.camera_view import CameraView
 from ..widgets.controls import Segmented, closed_by
@@ -116,7 +122,7 @@ from ..widgets.mini_deck import DeckTile, MiniDeckDropdown
 from ..widgets.plan_forms import (AmountForm, ExtrasForm, HowForm, MessageForm,
                                   WaitForm, uses_height)
 from ..widgets.plate_grid import PlateGrid
-from ..widgets.point_list import PointButton
+from ..widgets.points_card import PointsCard
 from ..widgets.step_list import StepList
 from ..widgets.toast import show_toast
 from ..workers import describe_error
@@ -150,12 +156,18 @@ NOT_MEASURED_TEXT = ("The well center of this plate was not measured. The "
                      "robot will use the plate's drawing.")
 LOCKED = "The plan cannot change during a run."
 NO_CAMERA = ("There is no camera picture. The points and Controls still work.")
-POINTS_HELP = ("Right-click the picture to add a point. The star keeps a "
-               "point for later experiments.")
+POINTS_HELP = "Choose a point, then Use point. Right-click the picture to add one."
+# From this page width the Points card is beside the picture, else under it.
+WIDE_PX = 1400
+POINTS_WIDE_PX = 400
+POINTS_LIST_WIDE_PX = 280
+POINTS_LIST_NARROW_PX = 176
+NO_LIMIT_PX = 16777215      # Qt's QWIDGETSIZE_MAX
 BY_HAND_HELP = ("Bring the tip to the spot with Controls, then use it. The "
                 "robot comes back here every time.")
 NO_POSE = "The robot's position is not known yet."
 MOUSE_HELP = ["Right click   add a point"]
+CLICK_HELP = "Click   move the camera"
 NO_MAP = "Calibrate the camera first."
 BOTTOM_MEASURED = "Bottom measured in Well center"
 BOTTOM_DRAWN = "Bottom from the plate drawing"
@@ -426,8 +438,11 @@ class LiquidPlanPage(QWidget):
         self._accepted: set[tuple[str, str]] = set()   # Use anyway
         self._locked = False
         self._typing: str | None = None          # the field of the last undo
-        self.point_buttons: dict[str, PointButton] = {}
-        self._points_shown: list | None = None
+        self._wide: bool | None = None
+        # The memo points as last seen, name -> (x, y): a spot follows its
+        # memo point while it is still at these.
+        self._memo_seen: dict[str, tuple[float, float]] = {
+            p.name: (p.x, p.y) for p in session.memo_points}
         self._looking = False                    # the camera section is up
         self._camera_failed = False
         self._shown_steps: tuple | None = None
@@ -463,7 +478,7 @@ class LiquidPlanPage(QWidget):
         # A plate skipped on the Well center step.
         session.confirmations_changed.connect(self._deck_changed)
         session.robot_busy_changed.connect(when_shown(self, self._show))
-        session.memo_points_changed.connect(self._show_points)
+        session.memo_points_changed.connect(self._memo_points_changed)
         session.stop_requested.connect(self._stop_try.set)
         session.camera_opened.connect(lambda _l: self._show_camera())
         session.camera_closed.connect(lambda _l: self._show_camera())
@@ -628,37 +643,41 @@ class LiquidPlanPage(QWidget):
         self.view = CameraView(box)
         self.view.marks_default = True           # the points are drawn there
         self.view.set_mouse_help(MOUSE_HELP)
-        self.view.right_clicked.connect(self._mark)
-        # Never shown: the pad over the picture is its face, and its keys go
-        # with the pad.
+        self.view.clicked.connect(self._clicked)
+        self.view.set_click_to_move(CLICK_HELP, self.session.has_pixel_map)
+        # Never shown: the pad over the picture is its face, open, and its
+        # keys go with the pad.
         self.jog = JogPanel(self.session, shortcut_host=self, parent=self)
         self.jog.hide()
         self.jog.show_position_on(self.view)
+        self.jog.pad.show()
         self.jog.pose_changed.connect(lambda _p: self._show_use_spot())
         self.jog.position_changed.connect(lambda _l: self._show_use_spot())
         self.marks = PositionMarks.on(self.session, self.view)
-        self.jog.keep_step_shown()
-        self.controls_button = compact(secondary_button("Controls", self.view))
-        self.controls_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.controls_button.clicked.connect(self._toggle_controls)
-        self.view.add_top_widget(self.controls_button)
-        column.addWidget(self.view, 1)
+        self.look_at = MiniDeckDropdown(self.view, placeholder="Choose a slot",
+                                        prefix="Look at")
+        self.look_at.setToolTip("Move the camera over the slot.")
+        self.look_at.slot_chosen.connect(self._look_at)
+        self.view.add_top_widget(self.look_at)
+        self.look_at.show()
 
-        self.point_row = QHBoxLayout()
-        self.point_row.setContentsMargins(0, 0, 0, 0)
-        self.point_row.setSpacing(SPACING)
-        self.point_row.addStretch(1)
-        holder = QWidget(box)
-        holder.setObjectName("plain")
-        holder.setLayout(self.point_row)
-        self.point_area = QScrollArea(box)
-        self.point_area.setWidget(holder)
-        self.point_area.setWidgetResizable(True)
-        self.point_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.point_area.setFixedHeight(POINT_ROW_PX)
-        self.point_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        column.addWidget(self.point_area)
+        self.points = PointsCard(self.session, self.jog, self.marks, box,
+                                 list_px=POINTS_LIST_WIDE_PX, use=True,
+                                 star_removable=False)
+        self.points.set_open(True)
+        self.points.used.connect(self._use_point)
+        self.points.points_list.kept.connect(self._point_kept)
+        self.view.right_clicked.connect(
+            lambda u, v: self.points.mark(u, v))
+        self.picture_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.picture_row.setSpacing(SPACING * 2)
+        # The picture takes the room until it is as wide as it is shown
+        # (`_fit_view`), the rest after the card.
+        self.picture_row.addWidget(self.view, 100)
+        self.picture_row.addWidget(self.points)
+        self.picture_row.addStretch(1)
+        self.view.installEventFilter(self)
+        column.addLayout(self.picture_row, 1)
 
         line = QHBoxLayout()
         self.camera_help = muted_label("", box)
@@ -1293,6 +1312,7 @@ class LiquidPlanPage(QWidget):
         plates = self.session.plates()
         self.dropdown.set_tiles([self._tile(*plate) for plate in plates
                                  if plate[0].isdigit()])
+        self.look_at.set_tiles(deck_tiles(self.session))
         if self.slot not in {slot for slot, _e, _d in plates}:
             self.slot = plates[0][0] if plates else None
         self._show()
@@ -1436,19 +1456,54 @@ class LiquidPlanPage(QWidget):
 
     # -- points and By hand --------------------------------------------------
 
-    def _toggle_controls(self) -> None:
-        pad = self.jog.pad
-        pad.setVisible(not pad.isVisible())
-        if pad.isVisible():
-            pad.raise_()
+    def _clicked(self, u: float, v: float) -> None:
+        """A left click on the picture: the camera there, through the
+        pixel map. The tip never goes down."""
+        if not self.jog.busy:
+            moves.move_to_pixel(self.session, self.jog, u, v, no_map=NO_MAP)
 
-    def _mark(self, u: float, v: float) -> None:
-        """A right click on the picture: a memo point where the tip would go
-        down at this pixel, at the travel height. Moves nothing."""
-        xy = moves.tip_at_pixel(self.session, self.jog, u, v, no_map=NO_MAP)
-        if xy is not None:
-            point = self.session.add_memo_point(xy[0], xy[1], None)
-            self.jog.tell(f"{point.name} at ({point.x:.2f}, {point.y:.2f}).")
+    def _look_at(self, slot) -> None:
+        """Look at: the camera over the slot's center."""
+        if self.jog.pose is None or self.jog.busy:
+            return
+        moves.move_over_slot(self.session, self.jog, int(slot))
+
+    def _lay_out_points(self) -> None:
+        """Beside the picture from `WIDE_PX`, the picture at the left and
+        no wider than it is shown; else under it, as wide as the picture."""
+        wide = self.width() >= WIDE_PX
+        if wide != self._wide:
+            self._wide = wide
+            row = self.picture_row
+            row.setDirection(QBoxLayout.Direction.LeftToRight if wide
+                             else QBoxLayout.Direction.TopToBottom)
+            row.setAlignment(self.points, Qt.AlignmentFlag.AlignTop
+                             if wide else Qt.AlignmentFlag(0))
+            if wide:
+                self.points.setFixedWidth(POINTS_WIDE_PX)
+            else:
+                self.points.setMinimumWidth(0)
+                self.points.setMaximumWidth(NO_LIMIT_PX)
+            self.points.points_list.setFixedHeight(
+                POINTS_LIST_WIDE_PX if wide else POINTS_LIST_NARROW_PX)
+        self._fit_view()
+
+    def _fit_view(self) -> None:
+        """Wide, the picture is 4:3 at the height it has: no black bars
+        beside it, the card next to it."""
+        width = (max(320, self.view.height() * 4 // 3) if self._wide
+                 else NO_LIMIT_PX)
+        if self.view.maximumWidth() != width:
+            self.view.setMaximumWidth(width)
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.view and event.type() == QEvent.Type.Resize:
+            self._fit_view()
+        return super().eventFilter(watched, event)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._lay_out_points()
 
     def _use_point(self, name: str) -> None:
         """A saved point by its name; a memo point as a spot of the step."""
@@ -1466,9 +1521,8 @@ class LiquidPlanPage(QWidget):
                                          z=self.session.point_z(point))))
 
     def _keep_point(self, name: str) -> str | None:
-        """The star: asks its name, the memo point's by default. The steps
-        using it use the kept point from then on. Returns the name it was
-        kept under, if it was."""
+        """Asks its name, the memo point's by default, and keeps it: the
+        trash's memo point. Returns the name it was kept under, if it was."""
         new_name, chosen = QInputDialog.getText(
             self, "Keep this point", "Name", text=name)
         if not chosen:
@@ -1479,19 +1533,57 @@ class LiquidPlanPage(QWidget):
         except SessionError as exc:
             show_toast(self, str(exc), refusal=True)
             return None
+        self._point_kept(name, new_name.strip(), point)
+        return new_name.strip()
+
+    def _point_kept(self, name: str, new_name: str, point) -> None:
+        """The memo point `name` (as it was: `point`) kept as `new_name`:
+        the steps using it use the kept point from then on."""
+        xy = (point.x, point.y)
         plan = self._edit()
-        kept = Place(kind="point", point=new_name.strip())
+        kept = Place(kind="point", point=new_name)
         used = False
         for step in plan.steps:
             for role, place in places(step):
                 if place.kind == "spot" and (place.spot.name, place.spot.x,
-                                             place.spot.y) == (
-                        name, point.x, point.y):
+                                             place.spot.y) == (name, *xy):
                     setattr(step, role, kept)
                     used = True
         if used:
             self._commit(plan)
-        return new_name.strip()
+
+    def _memo_points_changed(self) -> None:
+        """A memo point moved: the steps using it as a spot follow it; see
+        the module's docstring."""
+        seen, self._memo_seen = self._memo_seen, {
+            p.name: (p.x, p.y) for p in self.session.memo_points}
+        plan, moved = None, {}
+        for point in self.session.memo_points:
+            before = seen.get(point.name)
+            if before is None:
+                continue
+            spot = Spot(name=point.name, x=point.x, y=point.y,
+                        z=self.session.point_z(point))
+            for number, step in enumerate(self.plan.steps):
+                for role, place in places(step):
+                    old = place.spot if place.kind == "spot" else None
+                    if (old is None or old.name != point.name
+                            or (old.x, old.y) != before or old == spot):
+                        continue
+                    plan = plan or self._edit()
+                    getattr(plan.steps[number], role).spot = spot
+                    moved.setdefault(point.name, (spot, []))[1].append(
+                        number + 1)
+        if plan is not None:
+            self._adopt(plan)
+            for name, (spot, numbers) in moved.items():
+                steps = sorted(set(numbers))
+                words = (f"Step {steps[0]} follows" if len(steps) == 1
+                         else "Steps " + ", ".join(map(str, steps))
+                         + " follow")
+                show_toast(self, f"{words} {name}: X {spot.x:.2f} · "
+                                 f"Y {spot.y:.2f} · Z {spot.z:.2f}.")
+        self._show_points()
 
     def _use_spot(self) -> None:
         pose = self.jog.pose
@@ -1518,25 +1610,11 @@ class LiquidPlanPage(QWidget):
         self.use_spot_button.setToolTip("" if known else NO_POSE)
 
     def _show_points(self) -> None:
-        """A button per point, made again only when the points change."""
-        points = [(p.name, p.saved) for p in self.session.points]
-        if points != self._points_shown:
-            self._points_shown = points
-            for button in self.point_buttons.values():
-                self.point_row.removeWidget(button)
-                button.deleteLater()
-            self.point_buttons = {}
-            holder = self.point_area.widget()
-            saved_first = sorted(points, key=lambda point: not point[1])
-            for at, (name, saved) in enumerate(saved_first):
-                button = PointButton(name, saved, holder)
-                button.use.clicked.connect(
-                    lambda _c=False, n=name: self._use_point(n))
-                button.star.clicked.connect(
-                    lambda _c=False, n=name: self._keep_point(n))
-                self.point_row.insertWidget(at, button)
-                self.point_buttons[name] = button
+        """The points as they are now, the one the section's place is marked
+        in the step's color."""
+        self.points.points_list.refresh()
         place = self._shown_place()
+        step = self._open_step()
         chosen = None
         if self.section == TRASH:
             chosen = self.plan.trash.point if self.plan.trash else None
@@ -1544,8 +1622,9 @@ class LiquidPlanPage(QWidget):
             chosen = place.point
         elif place is not None and place.kind == "spot" and place.spot:
             chosen = place.spot.name
-        for name, button in self.point_buttons.items():
-            set_primary(button.use, name == chosen)
+        color = (step.color if step is not None and self.section != TRASH
+                 else COLORS["accent"])
+        self.points.points_list.set_used(chosen, color)
 
     # -- what the shell asks -------------------------------------------------
 
@@ -1578,7 +1657,7 @@ class LiquidPlanPage(QWidget):
         for widget in (self.new_plan_button, self.template_tile,
                        self.template_box, self.trash_row, self.tip_ul,
                        self.add_button, self.card, self.first_step_button,
-                       self.point_area, self.trash_options, self.amount_form,
+                       self.points, self.trash_options, self.amount_form,
                        self.extras_form, self.how_form, self.wait_form,
                        self.message_form):
             widget.setEnabled(not locked)
@@ -1718,7 +1797,7 @@ class LiquidPlanPage(QWidget):
 
     def _show_on_camera(self, step, place_kind: str) -> None:
         by_hand = place_kind == "spot"
-        self.point_area.setVisible(not by_hand)
+        self.points.setVisible(not by_hand)
         self.camera_help.setText(BY_HAND_HELP if by_hand else POINTS_HELP)
         self.use_spot_button.setVisible(by_hand)
         self._show_points()

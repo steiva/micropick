@@ -8,8 +8,8 @@ X, Y, Z and its ×. ☆ asks a name, the point's own by default, and keeps it in
 the profile
 (`Session.save_memo_point`, a point at the travel height with that height as
 its Z); ★ asks, and makes it a memo point again
-(`Session.unkeep_position`). `StarButton` and `PointButton` are Liquid's too,
-whose star is never taken off.
+(`Session.unkeep_position`); Liquid's Plan has the same list with
+`star_removable=False`, its ★ never taken off.
 
 A double click on a cell edits it, in a box over the cell: Enter or leaving
 it keeps what was typed, Esc puts it back and is no Stop. A memo point's Z
@@ -24,7 +24,10 @@ The × deletes the point: a memo point at once, a saved one once asked.
 
 A click chooses a row, a click on the chosen one lets it go. With `actions`
 the chosen row unfolds Camera to, Tip to and Z from tip under the point, for
-the page to connect.
+the page to connect; with `use` too, Use point under them (Liquid's Plan: the
+point for the step's place). Choosing a row changes no step: only Use point
+does. `set_used` marks the row the step goes to, in the step's color.
+`star_removable=False` is Liquid's ★, never taken off there.
 
 A click unfolds at once. Folding the row above lifts the one clicked, and the
 pointer is then on its actions: the second press of a double click would come
@@ -52,12 +55,12 @@ from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QFrame,
 from ..session import Session, SessionError
 from ..theme import COLORS, mono_font
 from ..theme.factory import (close_button, double_spin_box, laid_out_at_once,
-                             secondary_button)
+                             primary_button, secondary_button)
 from ..theme.icons import icon, size
 from .controls import CutLabel
 from .overlays import ConfirmDialog
 
-__all__ = ["BAD", "PointButton", "PointList", "PointRow", "StarButton",
+__all__ = ["BAD", "PointList", "PointRow", "StarButton",
            "STAR_PX", "TRAVEL_TEXT", "Z_TOP_MM", "star_icon"]
 
 # What a point with no Z shows, and the bottom of Z's box that means it.
@@ -109,23 +112,6 @@ class StarButton(QToolButton):
                            " background: transparent; }")
 
 
-class PointButton(QWidget):
-    """A point as Liquid's picker has it: its star and its name, which uses
-    it. A click on ☆ keeps it."""
-
-    def __init__(self, name: str, saved: bool, parent: QWidget):
-        super().__init__(parent)
-        self.setObjectName("plain")
-        row = QHBoxLayout(self)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(2)
-        self.star = StarButton(saved, self)
-        row.addWidget(self.star)
-        self.use = secondary_button(name, self)
-        self.use.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        row.addWidget(self.use)
-
-
 class _Name(CutLabel):
     """A name cut to the room there is, whole under the pointer."""
 
@@ -165,10 +151,13 @@ class PointRow(QFrame):
     # A cell's box closed on a new value: the cell and the value.
     edited = Signal(str, object)
 
-    def __init__(self, point, parent: QWidget, *, problem: str = ""):
+    def __init__(self, point, parent: QWidget, *, problem: str = "",
+                 star_removable: bool = True):
         super().__init__(parent)
         self.setObjectName("pointRow")
         self.point = point
+        self._chosen = False
+        self._used = ""                 # the step's color while it uses it
         self.editor = None              # the open box
         self._key = ""                  # the cell it is on
         self._before = None             # what it opened on
@@ -182,7 +171,8 @@ class PointRow(QFrame):
         line = QHBoxLayout(self.head)
         line.setContentsMargins(0, 0, ROW_END, 0)
         line.setSpacing(0)
-        self.star = StarButton(point.saved, self.head, removable=True)
+        self.star = StarButton(point.saved, self.head,
+                               removable=star_removable)
         self.star.setFixedSize(STAR_WIDTH, ROW_HEIGHT)
         line.addWidget(self.star)
         self.cells = {"name": _Name(self.head)}
@@ -219,10 +209,21 @@ class PointRow(QFrame):
         z.setToolTip(problem)
 
     def set_chosen(self, chosen: bool) -> None:
-        fill = COLORS["selected-bg"] if chosen else "transparent"
-        line = COLORS["accent"] if chosen else "transparent"
+        self._chosen = chosen
+        self._style()
+
+    def set_used(self, color: str) -> None:
+        """The step's color while the step goes to this point, else ""."""
+        self._used = color
+        self._style()
+
+    def _style(self) -> None:
+        fill = COLORS["selected-bg"] if self._chosen else "transparent"
+        line = COLORS["accent"] if self._chosen else "transparent"
+        left = (f" border-left: 4px solid {self._used};" if self._used
+                else "")
         self.setStyleSheet(f"QFrame#pointRow {{ background: {fill};"
-                           f" border: 1px solid {line};"
+                           f" border: 1px solid {line};{left}"
                            f" border-radius: 10px; }}")
 
     # -- the mouse -----------------------------------------------------------
@@ -347,14 +348,20 @@ class PointList(QWidget):
     said = Signal(str)
     # An answer, as a sentence.
     told = Signal(str)
+    # ☆ kept a memo point: its name, the name kept under, the point as it was.
+    kept = Signal(str, str, object)
 
     def __init__(self, session: Session, parent=None, *,
-                 actions: bool = False):
+                 actions: bool = False, use: bool = False,
+                 star_removable: bool = True):
         super().__init__(parent)
         self.session = session
         self.setObjectName("plain")
         self.rows: list[PointRow] = []
         self.chosen_name: str | None = None
+        self._use = use
+        self._star_removable = star_removable
+        self._used: tuple[str | None, str] = (None, "")
         self._letting_go = False
         # Until a double click is ruled out, and then until it is past.
         self._settle = QTimer(self)
@@ -411,9 +418,12 @@ class PointList(QWidget):
     def _make_actions(self) -> QWidget:
         bar = _Actions(self)
         bar.setObjectName("plain")
-        row = QHBoxLayout(bar)
-        row.setContentsMargins(8, 0, 8, 8)
+        column = QVBoxLayout(bar)
+        column.setContentsMargins(8, 0, 8, 8)
+        column.setSpacing(CELL_GAP)
+        row = QHBoxLayout()
         row.setSpacing(CELL_GAP)
+        column.addLayout(row)
         self.camera_to = secondary_button("Camera to", bar)
         self.tip_to = secondary_button("Tip to", bar)
         self.z_from_tip = secondary_button("Z from tip", bar)
@@ -424,6 +434,11 @@ class PointList(QWidget):
             button.setSizePolicy(QSizePolicy.Policy.Ignored,
                                  QSizePolicy.Policy.Fixed)
             row.addWidget(button, 1)
+        self.use_button = None
+        if self._use:
+            self.use_button = primary_button("Use point", bar)
+            self.use_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            column.addWidget(self.use_button)
         bar.hide()
         return bar
 
@@ -446,6 +461,7 @@ class PointList(QWidget):
         if same:
             for row, point in zip(self.rows, points):
                 row.show_point(point, self.session.memo_problem(point))
+            self._show_used()
             return
         chosen = self.chosen_name
         with laid_out_at_once(self):
@@ -459,6 +475,7 @@ class PointList(QWidget):
             for at, row in enumerate(self.rows):
                 self._lines.insertWidget(at, row)
             self._place_divider()
+            self._show_used()
             if self.row(chosen) is None:
                 self.chosen_name = None
             self._show_chosen()
@@ -475,7 +492,8 @@ class PointList(QWidget):
 
     def _make_row(self, point) -> PointRow:
         row = PointRow(point, self.inner,
-                       problem=self.session.memo_problem(point))
+                       problem=self.session.memo_problem(point),
+                       star_removable=self._star_removable)
         row.pressed.connect(lambda: self._pressed(row.name))
         row.double_clicked.connect(lambda key: self._double_clicked(row, key))
         row.edited.connect(lambda key, value: self._edited(row.name, key,
@@ -483,6 +501,16 @@ class PointList(QWidget):
         row.star.clicked.connect(lambda: self._star(row.name))
         row.delete.clicked.connect(lambda: self._delete(row.name))
         return row
+
+    def set_used(self, name: str | None, color: str = "") -> None:
+        """Mark the point a step goes to, in `color`; None: no point."""
+        self._used = (name, color)
+        self._show_used()
+
+    def _show_used(self) -> None:
+        name, color = self._used
+        for row in self.rows:
+            row.set_used(color if row.name == name else "")
 
     # -- choosing ------------------------------------------------------------
 
@@ -614,6 +642,7 @@ class PointList(QWidget):
         if not ok or not new.strip():
             return
         chosen = self.chosen_name == name
+        point = self.session.point(name)
         try:
             self.session.save_memo_point(name, new)
         except SessionError as exc:
@@ -621,6 +650,7 @@ class PointList(QWidget):
             return
         if chosen:
             self.choose(new.strip())
+        self.kept.emit(name, new.strip(), point)
         self.told.emit(f"{new.strip()} kept for later.")
 
     def _unkeep(self, name: str) -> None:
