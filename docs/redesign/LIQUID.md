@@ -521,8 +521,8 @@ with the trash icon:
 
 - **Set:** "Trash · Waste dish · slot 3 · used by every step", then
   **Change** in accent text.
-- **Not set:** warn border and background, "Not set yet. Needed before
-  running.", **Set**.
+- **Not set:** warn border and background, "Trash · not set · needed
+  before running", **Set**.
 
 Click opens a chooser with **A well** (MiniDeckDropdown of any labware, then
 one well) or **A point** (the camera, as in §3.2), then its height and offset.

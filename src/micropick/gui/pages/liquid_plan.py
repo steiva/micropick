@@ -1591,7 +1591,7 @@ class LiquidPlanPage(QWidget):
         trash = self.plan.trash
         self.trash_text.setText(
             f"Trash · {trash_place(trash)} · used by every step"
-            if trash is not None else "Not set yet. Needed before running.")
+            if trash is not None else "Trash · not set · needed before running")
         self.trash_action.setText("Change" if trash is not None else "Set")
         if self.tip_ul.value() != self.plan.tip_ul:
             self.tip_ul.blockSignals(True)

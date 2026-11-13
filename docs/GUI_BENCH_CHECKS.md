@@ -2108,8 +2108,8 @@ at the compile step (`core.liquid_plan`); one on screen only, at the pages.
   step keeps its color, here and on the plate. Drag it back.
 
 - [ ] **The trash is never a dead end.**
-  Behind the Trash row, Remove the trash: the row says "Not set yet. Needed
-  before running.", Next is gray and the footer says "Set the trash to run this
+  Behind the Trash row, Remove the trash: the row says "Trash · not set ·
+  needed before running", Next is gray and the footer says "Set the trash to run this
   plan." Set it from the Trash row, a well of the waste, Done: Next is enabled.
   With a new plan afterwards the trash is already there (Use for future plans).
 
