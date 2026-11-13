@@ -8,7 +8,7 @@ Versions follow `MAJOR.MINOR.PATCH`: the first number changes when a
 profile or a way of working has to change, the second for new features,
 the third for fixes.
 
-## Unreleased
+## 1.2.0 - 2026-11-13
 
 - Liquid handling's Plan, A point: a click on the picture moves the camera,
   Look at goes to a slot, and Controls are open over the picture. The points
